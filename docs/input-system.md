@@ -6,7 +6,7 @@ The canonical implementation is `io.mindspice.lute.engine.input`. `GameCore.crea
 
 ```text
 LibGDX → InputMultiplexer → InputManager → InputMap / KeyManager
-       → each registered Controller's KeyCacheListener (bounded FIFO)
+       → each registered Controller's KeyListener (bounded FIFO)
        → ControllerSystem → Move.direction → MoveSystem → position
 ```
 
@@ -33,14 +33,14 @@ This lifecycle assumes the current single gameplay screen, Tiled creation path, 
 ## Event capture and release
 
 ```text
-key/button down → device mapping → capture action → enabled listener → callback or cache
-key/button up   → captured action → enabled listener → callback or cache
-scroll          → MouseManager → enabled listener → callback or cache
+key/button down → device mapping → capture action → enabled listener → queue
+key/button up   → captured action → enabled listener → queue
+scroll          → MouseManager → enabled listener → queue
 ```
 
-States are 1 for down and 0 for up. Unmapped keys and keyboard `Input.Keys.UNKNOWN` (0) are ignored by the adapter. There are no action groups or manager filter APIs; key listeners and cached mouse listeners retain their individual action lists.
+States are 1 for down and 0 for up. Unmapped keys and keyboard `Input.Keys.UNKNOWN` (0) are ignored by the adapter. There are no action groups or manager filter APIs; key and mouse listeners retain their individual action lists.
 
-`InputManager.releaseHeldInputs()` synchronously releases captured keys and buttons and is idempotent. Callback listeners receive releases immediately; cache listeners append them after pending presses, so callers must drain the caches. Call it on the main thread, outside callbacks; there is no callback-reentrant reset guarantee. It does not clear queues or block future input, except that an already-held physical slot cannot produce a fresh press until its actual up.
+`InputManager.releaseHeldInputs()` synchronously releases captured keys and buttons and is idempotent. Each balancing release is queued after pending presses for enabled listeners selecting that action, so callers must drain the queues. Call it on the main thread, outside event dispatch; there is no reentrant reset guarantee. It does not clear queues or block future input, except that an already-held physical slot cannot produce a fresh press until its actual up.
 
 Each physical slot tracks down state and its accepted action. Duplicate downs and unmatched or late ups are suppressed. Direct repeat state 2 is delivered only while the logical press remains held. A synthetic release leaves the physical slot down until its real up, so repeats cannot reactivate it. A release uses the original action even after rebinding. Separate bindings to the same action produce separate down/up pairs, not per-action aggregation; consumers must account for that binding policy.
 
@@ -59,13 +59,13 @@ Setters throw `IllegalArgumentException` for invalid codes. Invalid lookups retu
 
 ## Listeners and queues
 
-Managers broadcast mapped actions to all registered, enabled listeners. `KeyCacheListener(int, List<InputAction>)` queues selected actions for later `consume`; `KeyCallBackListener(List<InputAction>, int, consumer)` invokes its consumer for selected actions during broadcast, and its allocated `getQueue()` is not populated by that callback. `MouseCallBackListener()` delivers all mapped buttons, position and scroll immediately. `MouseCacheListener(int, List<InputAction>)` retains latest position and queues selected buttons and scroll through the same `MouseListener` registration API.
+Managers broadcast mapped actions to registered, enabled listeners. `KeyListener(int, List<InputAction>)` queues selected actions for later consumption. `MouseListener(int, List<InputAction>)` updates its latest position and queues selected buttons and scroll. Both are concrete caches, not listener interfaces. The former cache names and immediate-delivery callback listener implementations were removed without compatibility aliases; this is an intentional API break. LibGDX event callbacks remain, as do `KeyActionConsumer` and `MouseEventConsumer` for explicit queue consumption. Managers do not invoke those consumers directly; they run when the caller consumes or polls a queue.
 
-Both circular queues are bounded FIFO. A full queue overwrites the oldest entry by default; `setRejectIfFull(true)` rejects the incoming entry instead. Either policy can lose a release and leave movement held. Size and drain queues appropriately; release and listener disabling do not clear them. Cached `consume` works even when the listener is disabled. Register or unregister outside broadcast callbacks, on the single render thread. Listener arrays grow and avoid duplicate identity registration; volatile queue size does not make the queue thread-safe.
+Both circular queues are bounded FIFO. A full queue overwrites the oldest entry by default; `setRejectIfFull(true)` rejects the incoming entry instead. Either policy can lose a release and leave movement held. Size and drain queues appropriately; release and listener disabling do not clear them. Cached `consume` works even when the listener is disabled. Register or unregister outside event dispatch, on the single render thread. Listener arrays grow and avoid duplicate identity registration; volatile queue size does not make the queue thread-safe.
 
 ### Cached mouse library support
 
-Cached mouse input is available to applications but is not wired into the current gameplay controller. Register a `MouseCacheListener` through the shared manager's `regMousePosListener`, and unregister it when finished; no additional LibGDX processor is needed. Supply a positive capacity and the button actions to retain.
+Cached mouse input is available to applications but is not wired into the current gameplay controller. Register a `MouseListener` through the shared manager's `regMousePosListener`, and unregister it when finished; no additional LibGDX processor is needed. Supply a positive capacity and the button actions to retain.
 
 `MouseEventConsumer.accept` receives `BUTTON` with a mapped action and state 1/0, or `SCROLL` with a null action and direction 1 up/0 down. Both share one FIFO and preserve relative order. `getPos()` returns the mutable latest screen-coordinate `Vector2` (origin top-left); copy it for a snapshot and unproject for world coordinates. Movement updates position without occupying queue space. Each queued event snapshots scalar x/y coordinates, so use those coordinates for a click rather than the later cursor position. Pointer 0 down/up/cancel updates position before its button event; an unmatched up or cancel emits no button event. Pointer 0 dragging and mouse movement also update position. This is primary mouse emulation, not multitouch.
 
