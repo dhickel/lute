@@ -13,7 +13,7 @@ import static io.mindspice.lute.engine.input.InputSystemTest.equal;
 import static io.mindspice.lute.engine.input.InputSystemTest.near;
 import static io.mindspice.lute.engine.input.InputSystemTest.throwsType;
 
-final class MouseCacheListenerTest {
+final class MouseListenerTest {
     private record Event(Type type, InputAction action, int value, double x, double y) { }
 
     static void run() {
@@ -42,18 +42,18 @@ final class MouseCacheListenerTest {
         return events;
     }
 
-    private static List<Event> drain(MouseCacheListener listener) {
+    private static List<Event> drain(MouseListener listener) {
         List<Event> events = new ArrayList<>();
         listener.consume((type, action, value, x, y) -> events.add(new Event(type, action, value, x, y)));
         return events;
     }
 
-    private static MouseCacheListener cached(int capacity, InputAction... actions) {
-        return new MouseCacheListener(capacity, List.of(actions));
+    private static MouseListener cached(int capacity, InputAction... actions) {
+        return new MouseListener(capacity, List.of(actions));
     }
 
     private static void deferredSnapshots() {
-        MouseCacheListener mouse = cached(4, InputAction.GUI_LEFT_CLICK);
+        MouseListener mouse = cached(4, InputAction.GUI_LEFT_CLICK);
         check(mouse.isListening(), "cache initially listening");
         near(0, mouse.getPos().x, "initial position x");
         near(0, mouse.getPos().y, "initial position y");
@@ -81,7 +81,7 @@ final class MouseCacheListenerTest {
     }
 
     private static void listeningAndWhitelist() {
-        MouseCacheListener mouse = cached(4, InputAction.GUI_LEFT_CLICK);
+        MouseListener mouse = cached(4, InputAction.GUI_LEFT_CLICK);
         mouse.offerPos(3, 4);
         mouse.offerButton(InputAction.GUI_RIGHT_CLICK, 1);
         mouse.offerButton(InputAction.MOVE_UP, 1);
@@ -104,7 +104,7 @@ final class MouseCacheListenerTest {
         mouse.offerButton(InputAction.GUI_LEFT_CLICK, 0);
         equal(List.of(button(InputAction.GUI_LEFT_CLICK, 0, 3, 4)), drain(mouse),
             "reenabling retains last accepted position");
-        MouseCacheListener noButtons = cached(2);
+        MouseListener noButtons = cached(2);
         noButtons.offerButton(InputAction.GUI_LEFT_CLICK, 1);
         noButtons.offerScroll(0);
         equal(List.of(scroll(0, 0, 0)), drain(noButtons), "scroll is independent of button whitelist");
@@ -115,7 +115,7 @@ final class MouseCacheListenerTest {
         map.setButton(Input.Buttons.LEFT, InputAction.GUI_LEFT_CLICK);
         map.setButton(Input.Buttons.RIGHT, InputAction.GUI_RIGHT_CLICK);
         InputManager input = new InputManager(map);
-        MouseCacheListener mouse = cached(8, InputAction.GUI_LEFT_CLICK, InputAction.GUI_RIGHT_CLICK);
+        MouseListener mouse = cached(8, InputAction.GUI_LEFT_CLICK, InputAction.GUI_RIGHT_CLICK);
         input.regMousePosListener(mouse);
         check(!input.mouseMoved(10, 20), "cached move propagates");
         check(!input.touchDragged(11, 21, 0), "cached primary drag propagates");
@@ -162,25 +162,15 @@ final class MouseCacheListenerTest {
         near(28, mouse.getPos().y, "disabled managed offers retain y");
     }
 
-    private static MouseCallBackListener callback(List<Event> events) {
-        MouseCallBackListener listener = new MouseCallBackListener();
-        listener.setButtonConsumer((action, value) -> events.add(button(action, value,
-            listener.getPos().x, listener.getPos().y)));
-        listener.setScrollConsumer(value -> events.add(scroll(value, listener.getPos().x, listener.getPos().y)));
-        return listener;
-    }
-
     private static void fanoutAndPropagation() {
         InputMap map = new InputMap();
         map.setButton(Input.Buttons.LEFT, InputAction.GUI_LEFT_CLICK);
         map.setButton(Input.Buttons.RIGHT, InputAction.MOVE_RIGHT);
         InputManager input = new InputManager(map);
-        MouseCacheListener broad = cached(8, InputAction.GUI_LEFT_CLICK, InputAction.MOVE_RIGHT);
-        MouseCacheListener narrow = cached(8, InputAction.GUI_LEFT_CLICK);
-        List<Event> immediate = new ArrayList<>();
+        MouseListener broad = cached(8, InputAction.GUI_LEFT_CLICK, InputAction.MOVE_RIGHT);
+        MouseListener narrow = cached(8, InputAction.GUI_LEFT_CLICK);
         input.regMousePosListener(broad);
         input.regMousePosListener(narrow);
-        input.regMousePosListener(callback(immediate));
         List<String> downstream = new ArrayList<>();
         InputAdapter observer = new InputAdapter() {
             @Override public boolean mouseMoved(int x, int y) { downstream.add("move:" + x + ":" + y); return false; }
@@ -203,7 +193,6 @@ final class MouseCacheListenerTest {
             "drag:9:10:0", "scroll:2.0:-3.0"), downstream, "downstream arguments preserved");
         List<Event> all = List.of(button(InputAction.GUI_LEFT_CLICK, 1, 3, 4), button(InputAction.MOVE_RIGHT, 1, 4, 5),
             button(InputAction.MOVE_RIGHT, 0, 5, 6), button(InputAction.GUI_LEFT_CLICK, 0, 7, 8), scroll(1, 9, 10));
-        equal(all, immediate, "callback receives all button actions");
         equal(all, drain(broad), "broad cache receives all whitelisted actions");
         equal(List.of(all.get(0), all.get(3), all.get(4)), drain(narrow), "narrow cache applies whitelist but receives scroll");
         near(9, broad.getPos().x, "broad cache latest x");
@@ -212,28 +201,16 @@ final class MouseCacheListenerTest {
         near(10, narrow.getPos().y, "narrow cache latest y");
     }
 
-    private static final class CustomMouse implements MouseListener {
-        private boolean listening = true;
-        private double x;
-        private double y;
-        private final List<Event> events;
-
-        private CustomMouse(List<Event> events) { this.events = events; }
-        public boolean isListening() { return listening; }
-        public void setListening(boolean value) { listening = value; }
-        public void offerPos(double x, double y) { this.x = x; this.y = y; }
-        public void offerButton(InputAction action, int value) { events.add(button(action, value, x, y)); }
-        public void offerScroll(int value) { events.add(scroll(value, x, y)); }
+    private static final class CustomMouse extends MouseListener {
+        private CustomMouse() { super(4, List.of(InputAction.GUI_LEFT_CLICK)); }
         @Override public boolean equals(Object other) { return other instanceof CustomMouse; }
         @Override public int hashCode() { return 1; }
     }
 
     private static void collectCaches(List<MouseListener> listeners, List<List<Event>> recorded) {
         for (int i = 0; i < listeners.size(); i++) {
-            if (listeners.get(i) instanceof MouseCacheListener cache) {
-                check(recorded.get(i).isEmpty(), "cache registration remains deferred " + i);
-                recorded.get(i).addAll(drain(cache));
-            }
+            check(recorded.get(i).isEmpty(), "cache registration remains deferred " + i);
+            recorded.get(i).addAll(drain(listeners.get(i)));
         }
     }
 
@@ -246,11 +223,7 @@ final class MouseCacheListenerTest {
         for (int i = 0; i < 27; i++) {
             List<Event> events = new ArrayList<>();
             recorded.add(events);
-            MouseListener listener = switch (i % 3) {
-                case 0 -> cached(4, InputAction.GUI_LEFT_CLICK);
-                case 1 -> callback(events);
-                default -> new CustomMouse(events);
-            };
+            MouseListener listener = i % 3 == 2 ? new CustomMouse() : cached(4, InputAction.GUI_LEFT_CLICK);
             listeners.add(listener);
             input.regMousePosListener(listener);
             input.regMousePosListener(listener);
@@ -262,11 +235,11 @@ final class MouseCacheListenerTest {
         collectCaches(listeners, recorded);
         for (List<Event> events : recorded) {
             equal(List.of(button(InputAction.GUI_LEFT_CLICK, 1, 1, 2), scroll(1, 1, 2)), events,
-                "mixed and interface listeners grow beyond 20 and deduplicate only identical objects");
+                "listeners grow beyond 20 and deduplicate only identical objects");
             events.clear();
         }
         for (int index : new int[]{0, 13, 26}) { input.unRegMousePosListener(listeners.get(index)); }
-        input.unRegMousePosListener(new CustomMouse(new ArrayList<>()));
+        input.unRegMousePosListener(new CustomMouse());
         input.unRegMousePosListener(listeners.get(13));
         input.touchUp(3, 4, 0, Input.Buttons.LEFT);
         input.scrolled(0, 1);
@@ -285,7 +258,7 @@ final class MouseCacheListenerTest {
         collectCaches(listeners, recorded);
         for (int i = 0; i < listeners.size(); i++) {
             equal(i >= 3 && i <= 5 ? List.of() : List.of(button(InputAction.GUI_LEFT_CLICK, 1, 5, 6)),
-                recorded.get(i), "mixed re-registration and disabled cache/callback/interface listener " + i);
+                recorded.get(i), "re-registration and disabled listener " + i);
         }
     }
 
