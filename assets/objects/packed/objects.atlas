@@ -1,0 +1,20 @@
+
+objects.png
+size: 256, 256
+format: RGBA8888
+filter: Nearest, Nearest
+repeat: none
+house
+  rotate: false
+  xy: 2, 2
+  size: 160, 224
+  orig: 160, 224
+  offset: 0, 0
+  index: -1
+player
+  rotate: false
+  xy: 166, 162
+  size: 64, 64
+  orig: 64, 64
+  offset: 0, 0
+  index: -1

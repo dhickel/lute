@@ -1,0 +1,34 @@
+<?xml version="1.0" encoding="UTF-8"?>
+<map version="1.10" tiledversion="1.12.2" class="Teleport" orientation="orthogonal" renderorder="right-down" width="30" height="20" tilewidth="32" tileheight="32" infinite="0" nextlayerid="7" nextobjectid="8">
+ <properties>
+  <property name="target" value="cave"/>
+ </properties>
+ <tileset firstgid="1" source="../tilesets/ancient_forest/ancient-forest-main.tsx"/>
+ <tileset firstgid="2647" source="../tilesets/ancient_forest/old_tree1.tsx"/>
+ <tileset firstgid="2659" source="../objects/objects.tsx"/>
+ <layer id="1" name="Ground" width="30" height="20">
+  <data encoding="base64" compression="zlib">
+   eJxdVkmq20AULGiIWgNkkct8Caxpl8vYBkmWd7mM7X0GcoacIeQwoVEVXXghWup+Y733qrUE4InjqQPQB6AIwAXAHIApAGUAmgAsAYgBuHH/xr0XjjXp7gEYAjAG4B6Ak+l+4PhO6932G9otaTfpVrRf8nsJWWfk2gK44vCb5DvGPFA+5VQyn+QzyW8BeCDHOFLubu+bxb/bu2xeKDNYfsKpolzLuNYAnPle83yyJ8mmHITBxO+kM1JnJLbJZkG52uqwMI7NsFWcE/OvuT5o98qaTTxL/lbaaZH379SJpvNErsFOnyXlTrR1o26yM1OnMd2WsqqD4q/ZT6vlrn44m9+OMg31NtoURgvlL8h21pAxjTxXj6gPb4xXfmPIOA6s8Wp1nFkbx1T1nCjr8dQW+8lyV+8tlN8YT839wuJQjurnibIrY1F/1CHnf7f+27kvHDW3kfloLifTuxg/RKu95qagf8UnnK7IXPE5Al/iEbNyHYnrRB+a8xdneTOcW5537ANxxWa9+mGz3TBf+e2NR042V6rVZrYW6wH1r2atNPvCY6Cc9P58Ovx+jcfeA7mWm8XueD+Re6m3PhG/lVYL+ReX9SHPffL7LeZ+qymn/u6ZvzhoIG4jbe+MR7k8yEfiJs3aTrwiZZPf3xH4V+Tnb3HovcghO99lq2BMnfGd6tAb58/Wi63VItn7HoEfEfgVgZ9c0yPu7yivPIS1+mk3fq1D5p4U54scUhpXa44a4vUiJs6po/FIOld+o82mZl/cLC67Mwb14mB3ykBZzcTDajzTnmo3v626R2u7a6/IPeH3jfAVxzZW597O5KviueZKmJ0Nk9LuLdn5YPwnm0Hdu+JK5aD/jMXu3miyjWFXESdxU0V53dfOPyfjxMpy79/s+l1UvfGjzju7g9L+f9sNtq4=
+  </data>
+ </layer>
+ <layer id="2" name="Buildings" width="30" height="20">
+  <data encoding="base64" compression="zlib">
+   eJzdkrkuRWEUhb+1Q2PoSAzRcK9erTF0lBqFYr+CxvAIGoVerTE8AmK4nsMQQ7hXg+iEeyV/5B7OlhPESk7O2uvs/1/5knMruBNUBbWGT+dakldz+HTOyu8FgwZDBiWDcsOncznJSzl8OmflwwazRm5dCq4E18n7RtCa/4o3zRmsBnoHMnZHg71rwd6ZJrsjLTAf7I3yrvwh3vVf5N0I9kZ5dw32DLoE3ar7fYODwB18g/fB4NFgSjCtun8yeA72RnmLUpS3KBXJ2yl8Uviy8B3hF8L7DW+2WyRvh/AJ4UvCt4WfC+/L6C2St134uPBF4VvCz4T3/gBvm/Ax4QvCN4WfCu/5Ad6I/sP/HNEr76HBsUHF4KjxvM+VJP+YffXtszMnBi8bEW+w
+  </data>
+ </layer>
+ <objectgroup id="5" name="Triggers">
+  <object id="1" name="Teleport" x="432.667" y="275.333" width="34.6667" height="35.3333"/>
+ </objectgroup>
+ <objectgroup id="6" name="Objects">
+  <object id="3" gid="2663" x="87.658" y="565.354" width="64" height="64">
+   <properties>
+    <property name="controller" type="bool" value="true"/>
+    <property name="speed" type="float" value="4"/>
+   </properties>
+  </object>
+  <object id="4" gid="2656" x="95.1093" y="435.171" width="160" height="256"/>
+  <object id="5" gid="2656" x="651.811" y="313.324" width="160" height="256"/>
+  <object id="6" gid="2656" x="772.928" y="600.065" width="160" height="256"/>
+  <object id="7" gid="2665" x="248.33" y="562.177" width="160" height="224"/>
+ </objectgroup>
+</map>

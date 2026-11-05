@@ -1,0 +1,57 @@
+{
+    "activeFile": "",
+    "expandedProjectPaths": [
+        "tilesets",
+        "maps",
+        "tilesets/ancient_forest",
+        "."
+    ],
+    "file.lastUsedOpenFilter": "All Files (*)",
+    "fileStates": {
+        "/home/dhickel/Assets/tilesets/tilesets/collection-source/mp-dungeon1-psd-enemy1-idle-01.tsx": {
+            "scaleInDock": 1,
+            "scaleInEditor": 1
+        },
+        "/home/dhickel/Code/Assets/tilesets/tilesets/source/ancient-forest-main.tsx": {
+            "scaleInDock": 1
+        },
+        ":/automap-tiles.tsx": {
+            "scaleInDock": 1
+        },
+        "maps/test_tiled.tmx": {
+            "scale": 1.3705729166666665,
+            "selectedLayer": 0,
+            "viewCenter": {
+                "x": 361.1628348850466,
+                "y": 319.9391981759453
+            }
+        },
+        "objects/objects.tsx": {
+            "dynamicWrapping": false
+        },
+        "tilesets/ancient_forest/ancient-forest-main.tsx": {
+            "scaleInDock": 1,
+            "scaleInEditor": 1
+        },
+        "tilesets/ancient_forest/old_tree1.tsx": {
+            "dynamicWrapping": false,
+            "scaleInDock": 1,
+            "scaleInEditor": 1
+        }
+    },
+    "frame.defaultDuration": 90,
+    "last.externalTilesetPath": "/home/dhickel/Code/Java/lute/assets/tilesets/ancient_forest",
+    "last.imagePath": "/home/dhickel/Code/Java/lute/assets/objects",
+    "openFiles": [
+    ],
+    "project": "game.tiled-project",
+    "property.type": "float",
+    "recentFiles": [
+        "tilesets/ancient_forest/old_tree1.tsx",
+        "/home/dhickel/Assets/tilesets/tilesets/collection-source/mp-dungeon1-psd-enemy1-idle-01.tsx",
+        "tilesets/ancient_forest/ancient-forest-main.tsx",
+        "maps/test_tiled.tmx"
+    ],
+    "tileset.lastUsedFormat": "tsx",
+    "tileset.type": 1
+}

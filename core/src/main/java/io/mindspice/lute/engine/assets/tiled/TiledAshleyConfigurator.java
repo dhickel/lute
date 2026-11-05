@@ -1,0 +1,88 @@
+package io.mindspice.lute.engine.assets.tiled;
+
+import com.badlogic.ashley.core.Engine;
+import com.badlogic.ashley.core.Entity;
+import com.badlogic.gdx.Gdx;
+import com.badlogic.gdx.graphics.Color;
+import com.badlogic.gdx.graphics.g2d.TextureAtlas;
+import com.badlogic.gdx.graphics.g2d.TextureRegion;
+import com.badlogic.gdx.graphics.glutils.FileTextureData;
+import com.badlogic.gdx.maps.tiled.TiledMapTile;
+import com.badlogic.gdx.maps.tiled.objects.TiledMapTileMapObject;
+import com.badlogic.gdx.math.Vector2;
+import io.mindspice.lute.engine.assets.AssetService;
+import io.mindspice.lute.engine.assets.AtlasAsset;
+import io.mindspice.lute.engine.components.Controller;
+import io.mindspice.lute.engine.components.Graphic;
+import io.mindspice.lute.engine.components.Move;
+import io.mindspice.lute.engine.components.Transform;
+import io.mindspice.lute.engine.input.InputManager;
+
+public class TiledAshleyConfigurator {
+    private final Engine engine;
+    private final AssetService assetService;
+    private final InputManager inputManager;
+
+    public TiledAshleyConfigurator(Engine engine, AssetService assetService, InputManager inputManager) {
+        this.engine = engine;
+        this.assetService = assetService;
+        this.inputManager = inputManager;
+    }
+
+    public void onLoadObject(TiledMapTileMapObject tileMapObj) {
+        Entity entity = engine.createEntity();
+        TiledMapTile tile = tileMapObj.getTile();
+        TextureRegion texRegion = getTextureRegion(tile);
+
+        Transform objTransform = Transform.forTiledObject(tile, texRegion, tileMapObj);
+
+        entity.add(new Graphic(texRegion, Color.WHITE.cpy()));
+        entity.add(objTransform);
+        addEntityController(tileMapObj, entity);
+        addEntityMove(tile, entity);
+
+
+        engine.addEntity(entity);
+    }
+
+    private TextureRegion getTextureRegion(TiledMapTile tile) {
+        String atlasAsset = tile.getProperties().get("atlasAsset", AtlasAsset.OBJECTS.name(), String.class);
+
+        // Illegal Argument check, should be improved
+        AtlasAsset asset = AtlasAsset.valueOf(atlasAsset);
+
+        TextureAtlas texAtlas = assetService.get(asset);
+        FileTextureData texData = (FileTextureData) tile.getTextureRegion().getTexture().getTextureData();
+        String atlasKey = texData.getFileHandle().nameWithoutExtension();
+
+        TextureAtlas.AtlasRegion region = texAtlas.findRegion(atlasKey);
+        if (region != null) {
+            Gdx.app.debug("TiledAshleyConfigurator.getTextureRegion", "Loaded AtlasRegion for  key: " + atlasKey);
+            return region;
+        }
+
+        // Fallback if atlas lookup fails
+        Gdx.app.error("TiledAshleyConfigurator.Error", "Failed to find AtlasRegion for key: " + atlasKey);
+        return tile.getTextureRegion();
+    }
+
+    private void addEntityController(TiledMapTileMapObject mapObj, Entity entity) {
+        boolean controller = mapObj.getProperties().get("controller", false, Boolean.class);
+        if (!controller) { return; }
+
+        Gdx.app.debug("TiledAshleyConfigurator.addEntityController", "Added entity controller");
+        Controller inputController = new Controller();
+        entity.add(inputController);
+        inputManager.regKeyListener(inputController.getInputListener());
+    }
+
+    private void addEntityMove(TiledMapTile tile, Entity entity) {
+        float speed = tile.getProperties().get("speed", 0f, Float.class);
+        if (speed == 0.0) { return; }
+        Gdx.app.debug("TiledAshleyConfigurator.addMoveController", "Added Move COntroller");
+
+        entity.add(new Move(speed));
+
+    }
+
+}
