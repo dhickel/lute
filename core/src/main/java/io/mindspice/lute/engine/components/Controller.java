@@ -2,7 +2,6 @@ package io.mindspice.lute.engine.components;
 
 import com.badlogic.ashley.core.Component;
 import com.badlogic.ashley.core.ComponentMapper;
-import io.mindspice.lute.engine.input.ActionType;
 import io.mindspice.lute.engine.input.InputAction;
 import io.mindspice.lute.engine.input.KeyCacheListener;
 
@@ -14,7 +13,7 @@ public class Controller implements Component {
     private final KeyCacheListener inputListener;
 
     public Controller() {
-        this.inputListener = new KeyCacheListener(ActionType.GAME_INPUT, 32, List.of(
+        this.inputListener = new KeyCacheListener(32, List.of(
             InputAction.MOVE_UP,
             InputAction.MOVE_DOWN,
             InputAction.MOVE_LEFT,

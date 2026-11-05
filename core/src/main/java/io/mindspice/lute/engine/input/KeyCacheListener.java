@@ -7,18 +7,11 @@ import java.util.List;
 public class KeyCacheListener implements KeyListener {
     private boolean isListening = true;
     private final CircularKeyQueue inputQueue;
-    private final ActionType listeningFor;
     private final BitSet listeningForInputs = new BitSet(InputAction.values().length);
 
-    public KeyCacheListener(ActionType listeningFor, int queueSize, List<InputAction> inputs) {
-        this.listeningFor = listeningFor;
+    public KeyCacheListener(int queueSize, List<InputAction> inputs) {
         inputQueue = new CircularKeyQueue(queueSize);
         inputs.forEach(i -> listeningForInputs.set(i.ordinal()));
-    }
-
-    @Override
-    public boolean isListenerFor(ActionType actionType) {
-        return listeningFor == actionType;
     }
 
     @Override
@@ -36,11 +29,6 @@ public class KeyCacheListener implements KeyListener {
     @Override
     public boolean isListening() {
         return isListening;
-    }
-
-    @Override
-    public ActionType getListeningFor() {
-        return listeningFor;
     }
 
     public void consume(KeyActionConsumer consumer) {

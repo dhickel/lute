@@ -11,7 +11,6 @@ import com.badlogic.gdx.utils.GdxRuntimeException;
 import com.badlogic.gdx.utils.viewport.FitViewport;
 import com.badlogic.gdx.utils.viewport.Viewport;
 import io.mindspice.lute.engine.assets.AssetService;
-import io.mindspice.lute.engine.input.ActionType;
 import io.mindspice.lute.engine.input.InputAction;
 import io.mindspice.lute.engine.input.InputManager;
 import io.mindspice.lute.engine.input.InputMap;
@@ -48,7 +47,6 @@ public class GameCore extends Game {
         inputMap.setKey(Input.Keys.A, InputAction.MOVE_LEFT);
         inputMap.setKey(Input.Keys.D, InputAction.MOVE_RIGHT);
         this.inputManager = new InputManager(inputMap);
-        inputManager.setFilter(ActionType.WINDOW);
         this.inputMultiplexer = new InputMultiplexer(inputManager);
         Gdx.input.setInputProcessor(inputMultiplexer);
 

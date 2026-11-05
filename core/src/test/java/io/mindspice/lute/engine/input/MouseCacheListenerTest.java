@@ -20,7 +20,7 @@ final class MouseCacheListenerTest {
         deferredSnapshots();
         listeningAndWhitelist();
         adapterEvents();
-        filtersAndPropagation();
+        fanoutAndPropagation();
         mixedRegistrations();
         singleSlotQueue();
         wrappedQueue();
@@ -48,16 +48,13 @@ final class MouseCacheListenerTest {
         return events;
     }
 
-    private static MouseCacheListener cached(ActionType type, int capacity, InputAction... actions) {
-        return new MouseCacheListener(type, capacity, List.of(actions));
+    private static MouseCacheListener cached(int capacity, InputAction... actions) {
+        return new MouseCacheListener(capacity, List.of(actions));
     }
 
     private static void deferredSnapshots() {
-        MouseCacheListener mouse = cached(ActionType.GUI, 4, InputAction.GUI_LEFT_CLICK);
+        MouseCacheListener mouse = cached(4, InputAction.GUI_LEFT_CLICK);
         check(mouse.isListening(), "cache initially listening");
-        equal(ActionType.GUI, mouse.getListeningFor(), "cache category");
-        check(mouse.isListenerFor(ActionType.GUI) && !mouse.isListenerFor(ActionType.GAME_INPUT),
-            "cache category matching");
         near(0, mouse.getPos().x, "initial position x");
         near(0, mouse.getPos().y, "initial position y");
         mouse.offerPos(10.25, -20.5);
@@ -84,12 +81,12 @@ final class MouseCacheListenerTest {
     }
 
     private static void listeningAndWhitelist() {
-        MouseCacheListener mouse = cached(ActionType.GUI, 4, InputAction.GUI_LEFT_CLICK);
+        MouseCacheListener mouse = cached(4, InputAction.GUI_LEFT_CLICK);
         mouse.offerPos(3, 4);
         mouse.offerButton(InputAction.GUI_RIGHT_CLICK, 1);
         mouse.offerButton(InputAction.MOVE_UP, 1);
         mouse.offerButton(null, 1);
-        check(!mouse.hasInputs(), "own whitelist excludes unlisted same-category, foreign and null actions");
+        check(!mouse.hasInputs(), "own whitelist excludes unlisted and null actions");
         mouse.offerButton(InputAction.GUI_LEFT_CLICK, 1);
         mouse.offerScroll(1);
         mouse.setListening(false);
@@ -107,7 +104,7 @@ final class MouseCacheListenerTest {
         mouse.offerButton(InputAction.GUI_LEFT_CLICK, 0);
         equal(List.of(button(InputAction.GUI_LEFT_CLICK, 0, 3, 4)), drain(mouse),
             "reenabling retains last accepted position");
-        MouseCacheListener noButtons = cached(ActionType.GUI, 2);
+        MouseCacheListener noButtons = cached(2);
         noButtons.offerButton(InputAction.GUI_LEFT_CLICK, 1);
         noButtons.offerScroll(0);
         equal(List.of(scroll(0, 0, 0)), drain(noButtons), "scroll is independent of button whitelist");
@@ -118,7 +115,7 @@ final class MouseCacheListenerTest {
         map.setButton(Input.Buttons.LEFT, InputAction.GUI_LEFT_CLICK);
         map.setButton(Input.Buttons.RIGHT, InputAction.GUI_RIGHT_CLICK);
         InputManager input = new InputManager(map);
-        MouseCacheListener mouse = cached(ActionType.GUI, 8, InputAction.GUI_LEFT_CLICK, InputAction.GUI_RIGHT_CLICK);
+        MouseCacheListener mouse = cached(8, InputAction.GUI_LEFT_CLICK, InputAction.GUI_RIGHT_CLICK);
         input.regMousePosListener(mouse);
         check(!input.mouseMoved(10, 20), "cached move propagates");
         check(!input.touchDragged(11, 21, 0), "cached primary drag propagates");
@@ -165,29 +162,25 @@ final class MouseCacheListenerTest {
         near(28, mouse.getPos().y, "disabled managed offers retain y");
     }
 
-    private static MouseCallBackListener callback(ActionType type, List<Event> events) {
-        MouseCallBackListener listener = new MouseCallBackListener(type);
+    private static MouseCallBackListener callback(List<Event> events) {
+        MouseCallBackListener listener = new MouseCallBackListener();
         listener.setButtonConsumer((action, value) -> events.add(button(action, value,
             listener.getPos().x, listener.getPos().y)));
         listener.setScrollConsumer(value -> events.add(scroll(value, listener.getPos().x, listener.getPos().y)));
         return listener;
     }
 
-    private static void filtersAndPropagation() {
+    private static void fanoutAndPropagation() {
         InputMap map = new InputMap();
         map.setButton(Input.Buttons.LEFT, InputAction.GUI_LEFT_CLICK);
         map.setButton(Input.Buttons.RIGHT, InputAction.MOVE_RIGHT);
         InputManager input = new InputManager(map);
-        MouseCacheListener gui = cached(ActionType.GUI, 8, InputAction.GUI_LEFT_CLICK, InputAction.MOVE_RIGHT);
-        MouseCacheListener game = cached(ActionType.GAME_INPUT, 8, InputAction.GUI_LEFT_CLICK, InputAction.MOVE_RIGHT);
-        List<Event> guiImmediate = new ArrayList<>();
-        List<Event> gameImmediate = new ArrayList<>();
-        MouseCallBackListener guiCallback = callback(ActionType.GUI, guiImmediate);
-        MouseCallBackListener gameCallback = callback(ActionType.GAME_INPUT, gameImmediate);
-        input.regMousePosListener(gui);
-        input.regMousePosListener(gameCallback);
-        input.regMousePosListener(game);
-        input.regMousePosListener(guiCallback);
+        MouseCacheListener broad = cached(8, InputAction.GUI_LEFT_CLICK, InputAction.MOVE_RIGHT);
+        MouseCacheListener narrow = cached(8, InputAction.GUI_LEFT_CLICK);
+        List<Event> immediate = new ArrayList<>();
+        input.regMousePosListener(broad);
+        input.regMousePosListener(narrow);
+        input.regMousePosListener(callback(immediate));
         List<String> downstream = new ArrayList<>();
         InputAdapter observer = new InputAdapter() {
             @Override public boolean mouseMoved(int x, int y) { downstream.add("move:" + x + ":" + y); return false; }
@@ -198,55 +191,25 @@ final class MouseCacheListenerTest {
             @Override public boolean scrolled(float x, float y) { downstream.add("scroll:" + x + ":" + y); return false; }
         };
         InputMultiplexer mux = new InputMultiplexer(input, observer);
-        for (ActionType filter : new ActionType[]{null, ActionType.GUI, ActionType.GAME_INPUT, ActionType.WINDOW}) {
-            guiImmediate.clear();
-            gameImmediate.clear();
-            downstream.clear();
-            gui.offerPos(-1, -2);
-            game.offerPos(-1, -2);
-            guiCallback.offerPos(-1, -2);
-            gameCallback.offerPos(-1, -2);
-            if (filter == null) { input.disableFilter(); } else { input.setFilter(filter); }
-            check(!mux.mouseMoved(1, 2), "filtered move observer flag " + filter);
-            check(!mux.touchDown(3, 4, 0, Input.Buttons.LEFT), "filtered down observer flag " + filter);
-            check(!mux.touchDown(4, 5, 0, Input.Buttons.RIGHT), "filtered game down observer flag " + filter);
-            check(!mux.touchUp(5, 6, 0, Input.Buttons.RIGHT), "filtered up observer flag " + filter);
-            check(!mux.touchCancelled(7, 8, 0, Input.Buttons.LEFT), "filtered cancel observer flag " + filter);
-            check(!mux.touchDragged(9, 10, 0), "filtered drag observer flag " + filter);
-            check(!mux.scrolled(2, -3), "filtered scroll observer flag " + filter);
-            equal(List.of("move:1:2", "down:3:4:0:" + Input.Buttons.LEFT,
-                "down:4:5:0:" + Input.Buttons.RIGHT, "up:5:6:0:" + Input.Buttons.RIGHT,
-                "cancel:7:8:0:" + Input.Buttons.LEFT,
-                "drag:9:10:0", "scroll:2.0:-3.0"), downstream,
-                "cached/callback coexistence preserves all downstream arguments " + filter);
-            boolean allowGui = filter == null || filter == ActionType.GUI;
-            boolean allowGame = filter == null || filter == ActionType.GAME_INPUT;
-            List<Event> expectedGui = allowGui ? List.of(button(InputAction.GUI_LEFT_CLICK, 1, 3, 4),
-                button(InputAction.GUI_LEFT_CLICK, 0, 7, 8), scroll(1, 9, 10)) : List.of();
-            List<Event> expectedGame = allowGame ? List.of(button(InputAction.MOVE_RIGHT, 1, 4, 5),
-                button(InputAction.MOVE_RIGHT, 0, 5, 6), scroll(1, 9, 10)) : List.of();
-            equal(expectedGui, guiImmediate, "GUI callback immediate category/filter " + filter);
-            equal(expectedGame, gameImmediate, "game callback immediate category/filter " + filter);
-            equal(allowGui, gui.hasInputs(), "GUI deferred category/filter " + filter);
-            equal(allowGame, game.hasInputs(), "game deferred category/filter " + filter);
-            equal(expectedGui, drain(gui), "GUI cache category/filter despite broad whitelist " + filter);
-            equal(expectedGame, drain(game), "game cache category/filter despite broad whitelist " + filter);
-            near(allowGui ? 9 : -1, gui.getPos().x, "GUI filtered latest x " + filter);
-            near(allowGui ? 10 : -2, gui.getPos().y, "GUI filtered latest y " + filter);
-            near(allowGame ? 9 : -1, game.getPos().x, "game filtered latest x " + filter);
-            near(allowGame ? 10 : -2, game.getPos().y, "game filtered latest y " + filter);
-        }
-        input.disableFilter();
-        input.touchDown(11, 12, 0, Input.Buttons.LEFT);
-        equal(List.of(button(InputAction.GUI_LEFT_CLICK, 1, 11, 12)), drain(gui), "disableFilter restores cached delivery");
-        input.getMouseManager().setListenFilter(ActionType.GUI);
-        input.scrolled(0, 1);
-        equal(List.of(button(InputAction.GUI_LEFT_CLICK, 0, 11, 12), scroll(0, 11, 12)), drain(gui),
-            "manager filter releases held button then admits GUI cache");
-        check(!game.hasInputs(), "manager filter excludes game cache");
-        input.getMouseManager().disableListenFilter();
-        input.scrolled(0, 1);
-        equal(List.of(scroll(0, 11, 12)), drain(game), "manager filter disable restores game cache");
+        check(!mux.mouseMoved(1, 2), "move propagates");
+        check(!mux.touchDown(3, 4, 0, Input.Buttons.LEFT), "down propagates");
+        check(!mux.touchDown(4, 5, 0, Input.Buttons.RIGHT), "second down propagates");
+        check(!mux.touchUp(5, 6, 0, Input.Buttons.RIGHT), "up propagates");
+        check(!mux.touchCancelled(7, 8, 0, Input.Buttons.LEFT), "cancel propagates");
+        check(!mux.touchDragged(9, 10, 0), "drag propagates");
+        check(!mux.scrolled(2, -3), "scroll propagates");
+        equal(List.of("move:1:2", "down:3:4:0:" + Input.Buttons.LEFT, "down:4:5:0:" + Input.Buttons.RIGHT,
+            "up:5:6:0:" + Input.Buttons.RIGHT, "cancel:7:8:0:" + Input.Buttons.LEFT,
+            "drag:9:10:0", "scroll:2.0:-3.0"), downstream, "downstream arguments preserved");
+        List<Event> all = List.of(button(InputAction.GUI_LEFT_CLICK, 1, 3, 4), button(InputAction.MOVE_RIGHT, 1, 4, 5),
+            button(InputAction.MOVE_RIGHT, 0, 5, 6), button(InputAction.GUI_LEFT_CLICK, 0, 7, 8), scroll(1, 9, 10));
+        equal(all, immediate, "callback receives all button actions");
+        equal(all, drain(broad), "broad cache receives all whitelisted actions");
+        equal(List.of(all.get(0), all.get(3), all.get(4)), drain(narrow), "narrow cache applies whitelist but receives scroll");
+        near(9, broad.getPos().x, "broad cache latest x");
+        near(10, broad.getPos().y, "broad cache latest y");
+        near(9, narrow.getPos().x, "narrow cache latest x");
+        near(10, narrow.getPos().y, "narrow cache latest y");
     }
 
     private static final class CustomMouse implements MouseListener {
@@ -257,8 +220,6 @@ final class MouseCacheListenerTest {
 
         private CustomMouse(List<Event> events) { this.events = events; }
         public boolean isListening() { return listening; }
-        public boolean isListenerFor(ActionType type) { return type == ActionType.GUI; }
-        public ActionType getListeningFor() { return ActionType.GUI; }
         public void setListening(boolean value) { listening = value; }
         public void offerPos(double x, double y) { this.x = x; this.y = y; }
         public void offerButton(InputAction action, int value) { events.add(button(action, value, x, y)); }
@@ -286,8 +247,8 @@ final class MouseCacheListenerTest {
             List<Event> events = new ArrayList<>();
             recorded.add(events);
             MouseListener listener = switch (i % 3) {
-                case 0 -> cached(ActionType.GUI, 4, InputAction.GUI_LEFT_CLICK);
-                case 1 -> callback(ActionType.GUI, events);
+                case 0 -> cached(4, InputAction.GUI_LEFT_CLICK);
+                case 1 -> callback(events);
                 default -> new CustomMouse(events);
             };
             listeners.add(listener);
@@ -335,8 +296,8 @@ final class MouseCacheListenerTest {
     private static void singleSlotQueue() {
         throwsType(IllegalArgumentException.class, () -> new CircularMouseQueue(0), "zero mouse queue capacity");
         throwsType(IllegalArgumentException.class, () -> new CircularMouseQueue(-1), "negative mouse queue capacity");
-        throwsType(IllegalArgumentException.class, () -> cached(ActionType.GUI, 0), "listener zero capacity");
-        throwsType(IllegalArgumentException.class, () -> cached(ActionType.GUI, -3), "listener negative capacity");
+        throwsType(IllegalArgumentException.class, () -> cached(0), "listener zero capacity");
+        throwsType(IllegalArgumentException.class, () -> cached(-3), "listener negative capacity");
         CircularMouseQueue queue = new CircularMouseQueue(1);
         check(queue.isEmpty() && !queue.isFull(), "capacity one initially empty");
         MouseEventConsumer unexpected = (type, action, value, x, y) -> { throw new AssertionError("empty queue callback"); };

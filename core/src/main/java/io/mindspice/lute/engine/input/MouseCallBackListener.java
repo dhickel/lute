@@ -9,22 +9,13 @@ import java.util.function.IntConsumer;
 
 public class MouseCallBackListener implements MouseListener {
     private final Vector2 pos = new Vector2();
-    private final ActionType actionType;
     private boolean isListening = true;
     private KeyActionConsumer buttonConsumer;
     private BiDoubleConsumer posConsumer;
     private IntConsumer scrollConsumer;
 
-    public MouseCallBackListener(ActionType listeningFor) {
-        this.actionType = listeningFor;
-    }
-
     public boolean isListening() {
         return isListening;
-    }
-
-    public boolean isListenerFor(ActionType actionType) {
-        return this.actionType == actionType;
     }
 
     public void setPosConsumer(BiDoubleConsumer posConsumer) {
@@ -37,11 +28,6 @@ public class MouseCallBackListener implements MouseListener {
 
     public void setButtonConsumer(KeyActionConsumer buttonConsumer) {
         this.buttonConsumer = buttonConsumer;
-    }
-
-    @Override
-    public ActionType getListeningFor() {
-        return actionType;
     }
 
     @Override
@@ -85,7 +71,6 @@ public class MouseCallBackListener implements MouseListener {
     public String toString() {
         return new StringJoiner(", ", MouseCallBackListener.class.getSimpleName() + "[", "]")
                 .add("pos=" + pos)
-                .add("actionType=" + actionType)
                 .add("isListening=" + isListening)
                 .add("buttonConsumer=" + buttonConsumer)
                 .add("posConsumer=" + posConsumer)

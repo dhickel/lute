@@ -9,14 +9,9 @@ import java.util.Objects;
 public class KeyManager {
     private KeyListener[] keyListeners;
     private final InputMap inputMap;
-    private ActionType listenFilter = null;
     private int size = 0;
     private final boolean[] physicalDown = new boolean[Input.Keys.MAX_KEYCODE + 1];
     private final InputAction[] pressedActions = new InputAction[Input.Keys.MAX_KEYCODE + 1];
-    private int dispatchDepth;
-    private boolean applyingFilter;
-    private boolean filterPending;
-    private ActionType pendingFilter;
 
     public KeyManager(int size, InputMap inputMap) {
         if (size < 1) { throw new IllegalArgumentException("Listener capacity must be positive"); }
@@ -45,68 +40,39 @@ public class KeyManager {
         }
     }
 
-    public void setListenFilter(ActionType actionType) {
-        pendingFilter = actionType;
-        filterPending = true;
-        applyPendingFilter();
-    }
-
-    public void disableListenFilter() {
-        setListenFilter(null);
-    }
-
-    private void applyPendingFilter() {
-        if (dispatchDepth != 0 || applyingFilter) { return; }
-        applyingFilter = true;
-        try {
-            while (filterPending) {
-                ActionType target = pendingFilter;
-                filterPending = false;
-                if (listenFilter == target) { continue; }
-                for (int keyCode = 0; keyCode < pressedActions.length; keyCode++) {
-                    InputAction action = pressedActions[keyCode];
-                    pressedActions[keyCode] = null;
-                    if (action != null) { dispatch(action, 0); }
-                }
-                listenFilter = target;
-            }
-        } finally {
-            applyingFilter = false;
+    void releaseHeldInputs() {
+        for (int keyCode = 0; keyCode < pressedActions.length; keyCode++) {
+            InputAction action = pressedActions[keyCode];
+            pressedActions[keyCode] = null;
+            if (action != null) { dispatch(action, 0); }
         }
     }
 
     public void broadcast(int keyCode, int keyAction) {
         if (keyCode < 0 || keyCode >= physicalDown.length) { return; }
-        dispatchDepth++;
-        try {
-            InputAction inputAction;
-            if (keyAction == 1) {
-                if (physicalDown[keyCode]) { return; }
-                physicalDown[keyCode] = true;
-                inputAction = inputMap.getKey(keyCode);
-                if (inputAction == null || (listenFilter != null && inputAction.actionType != listenFilter)) { return; }
-                pressedActions[keyCode] = inputAction;
-            } else if (keyAction == 0) {
-                if (!physicalDown[keyCode]) { return; }
-                physicalDown[keyCode] = false;
-                inputAction = pressedActions[keyCode];
-                pressedActions[keyCode] = null;
-            } else if (keyAction == 2) {
-                inputAction = pressedActions[keyCode];
-            } else {
-                return;
-            }
-            if (inputAction != null) { dispatch(inputAction, keyAction); }
-        } finally {
-            dispatchDepth--;
-            applyPendingFilter();
+        InputAction inputAction;
+        if (keyAction == 1) {
+            if (physicalDown[keyCode]) { return; }
+            physicalDown[keyCode] = true;
+            inputAction = inputMap.getKey(keyCode);
+            pressedActions[keyCode] = inputAction;
+        } else if (keyAction == 0) {
+            if (!physicalDown[keyCode]) { return; }
+            physicalDown[keyCode] = false;
+            inputAction = pressedActions[keyCode];
+            pressedActions[keyCode] = null;
+        } else if (keyAction == 2) {
+            inputAction = pressedActions[keyCode];
+        } else {
+            return;
         }
+        if (inputAction != null) { dispatch(inputAction, keyAction); }
     }
 
     private void dispatch(InputAction inputAction, int keyAction) {
         for (int i = 0; i < size; i++) {
             KeyListener listener = keyListeners[i];
-            if (listener.isListening() && listener.isListenerFor(inputAction.actionType)) {
+            if (listener.isListening()) {
                 listener.offer(inputAction, keyAction);
             }
         }

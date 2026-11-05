@@ -10,10 +10,6 @@ public class InputManager extends InputAdapter implements Disposable {
     private final KeyManager keyManager;
     private final MouseManager mouseManager;
     private final InputMap inputMap;
-    private int dispatchDepth;
-    private boolean applyingFilter;
-    private boolean filterPending;
-    private ActionType pendingFilter;
 
     public InputManager(InputMap inputMap) {
         keyManager = new KeyManager(20, inputMap);
@@ -23,54 +19,34 @@ public class InputManager extends InputAdapter implements Disposable {
 
     @Override
     public boolean keyDown(int keycode) {
-        beginDispatch();
-        try {
-            if (keycode != Input.Keys.UNKNOWN) {
-                keyManager.broadcast(keycode, 1);
-            }
-        } finally {
-            endDispatch();
+        if (keycode != Input.Keys.UNKNOWN) {
+            keyManager.broadcast(keycode, 1);
         }
         return false;
     }
 
     @Override
     public boolean keyUp(int keycode) {
-        beginDispatch();
-        try {
-            if (keycode != Input.Keys.UNKNOWN) {
-                keyManager.broadcast(keycode, 0);
-            }
-        } finally {
-            endDispatch();
+        if (keycode != Input.Keys.UNKNOWN) {
+            keyManager.broadcast(keycode, 0);
         }
         return false;
     }
 
     @Override
     public boolean touchDown(int screenX, int screenY, int pointer, int button) {
-        beginDispatch();
-        try {
-            if (pointer == 0) {
-                mouseManager.broadcastPos(screenX, screenY);
-                mouseManager.broadcastButtons(button, inputMap.getButton(button), 1);
-            }
-        } finally {
-            endDispatch();
+        if (pointer == 0) {
+            mouseManager.broadcastPos(screenX, screenY);
+            mouseManager.broadcastButtons(button, inputMap.getButton(button), 1);
         }
         return false;
     }
 
     @Override
     public boolean touchUp(int screenX, int screenY, int pointer, int button) {
-        beginDispatch();
-        try {
-            if (pointer == 0) {
-                mouseManager.broadcastPos(screenX, screenY);
-                mouseManager.broadcastButtons(button, inputMap.getButton(button), 0);
-            }
-        } finally {
-            endDispatch();
+        if (pointer == 0) {
+            mouseManager.broadcastPos(screenX, screenY);
+            mouseManager.broadcastButtons(button, inputMap.getButton(button), 0);
         }
         return false;
     }
@@ -82,39 +58,24 @@ public class InputManager extends InputAdapter implements Disposable {
 
     @Override
     public boolean mouseMoved(int screenX, int screenY) {
-        beginDispatch();
-        try {
-            mouseManager.broadcastPos(screenX, screenY);
-        } finally {
-            endDispatch();
-        }
+        mouseManager.broadcastPos(screenX, screenY);
         return false;
     }
 
     @Override
     public boolean touchDragged(int screenX, int screenY, int pointer) {
-        beginDispatch();
-        try {
-            if (pointer == 0) {
-                mouseManager.broadcastPos(screenX, screenY);
-            }
-        } finally {
-            endDispatch();
+        if (pointer == 0) {
+            mouseManager.broadcastPos(screenX, screenY);
         }
         return false;
     }
 
     @Override
     public boolean scrolled(float amountX, float amountY) {
-        beginDispatch();
-        try {
-            if (amountY < 0) {
-                mouseManager.broadcastScroll(1);
-            } else if (amountY > 0) {
-                mouseManager.broadcastScroll(0);
-            }
-        } finally {
-            endDispatch();
+        if (amountY < 0) {
+            mouseManager.broadcastScroll(1);
+        } else if (amountY > 0) {
+            mouseManager.broadcastScroll(0);
         }
         return false;
     }
@@ -152,43 +113,9 @@ public class InputManager extends InputAdapter implements Disposable {
         return mouseManager;
     }
 
-    private void beginDispatch() {
-        dispatchDepth++;
-        mouseManager.beginDispatch();
-    }
-
-    private void endDispatch() {
-        try {
-            mouseManager.endDispatch();
-        } finally {
-            dispatchDepth--;
-            applyPendingFilter();
-        }
-    }
-
-    public void setFilter(ActionType actionType) {
-        pendingFilter = actionType;
-        filterPending = true;
-        applyPendingFilter();
-    }
-
-    private void applyPendingFilter() {
-        if (dispatchDepth != 0 || applyingFilter) { return; }
-        applyingFilter = true;
-        try {
-            while (filterPending) {
-                ActionType target = pendingFilter;
-                filterPending = false;
-                mouseManager.setListenFilter(target);
-                keyManager.setListenFilter(target);
-            }
-        } finally {
-            applyingFilter = false;
-        }
-    }
-
-    public void disableFilter() {
-        setFilter(null);
+    public void releaseHeldInputs() {
+        mouseManager.releaseHeldInputs();
+        keyManager.releaseHeldInputs();
     }
 
     public void regKeyListener(KeyListener listener) {

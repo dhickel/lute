@@ -7,7 +7,6 @@ import com.badlogic.gdx.maps.tiled.TiledMap;
 import com.badlogic.gdx.utils.Disposable;
 import io.mindspice.lute.engine.GameCore;
 import io.mindspice.lute.engine.components.Controller;
-import io.mindspice.lute.engine.input.ActionType;
 import io.mindspice.lute.engine.input.InputManager;
 import io.mindspice.lute.engine.assets.MapAsset;
 import io.mindspice.lute.engine.assets.tiled.TiledAshleyConfigurator;
@@ -44,6 +43,7 @@ public class GameScreen extends ScreenAdapter {
 
     @Override
     public void show() {
+        inputManager.releaseHeldInputs();
         game.setInputProcessors(inputManager);
         Consumer<TiledMap> renderConsumer = engine.getSystem(RenderSystem.class)::setMap;
         tiledService.setMapChangeConsumer(renderConsumer);
@@ -51,12 +51,11 @@ public class GameScreen extends ScreenAdapter {
 
         var tiledMap = this.tiledService.loadMap(MapAsset.MAIN);
         tiledService.setMap(tiledMap);
-        inputManager.setFilter(ActionType.GAME_INPUT);
     }
 
     @Override
     public void hide() {
-        inputManager.setFilter(ActionType.WINDOW);
+        inputManager.releaseHeldInputs();
         engine.getSystem(ControllerSystem.class).update(0f);
         for (var entity : engine.getEntitiesFor(Family.all(Controller.class).get())) {
             inputManager.unRegKeyListener(Controller.MAPPER.get(entity).getInputListener());
@@ -66,13 +65,14 @@ public class GameScreen extends ScreenAdapter {
 
     @Override
     public void pause() {
-        inputManager.setFilter(ActionType.WINDOW);
+        inputManager.releaseHeldInputs();
         engine.getSystem(ControllerSystem.class).update(0f);
     }
 
     @Override
     public void resume() {
-        inputManager.setFilter(ActionType.GAME_INPUT);
+        inputManager.releaseHeldInputs();
+        engine.getSystem(ControllerSystem.class).update(0f);
     }
 
     @Override

@@ -21,8 +21,8 @@ public final class InputSystemTest {
         run("adapter keys", InputSystemTest::adapterKeys);
         run("adapter mouse", InputSystemTest::adapterMouse);
         run("cached mouse", MouseCacheListenerTest::run);
-        run("filters and disabled listeners", InputSystemTest::filters);
-        run("filter transitions", FilterTransitionTest::run);
+        run("listener fanout", InputSystemTest::listenerFanout);
+        run("held inputs", HeldInputTest::run);
         run("key registrations", InputSystemTest::keyRegistrations);
         run("mouse registrations", InputSystemTest::mouseRegistrations);
         run("queue", InputSystemTest::queue);
@@ -68,8 +68,8 @@ public final class InputSystemTest {
         throw new AssertionError(message + ": did not throw " + type.getSimpleName());
     }
 
-    private static KeyCallBackListener key(ActionType type, List<Event> events, InputAction... actions) {
-        return new KeyCallBackListener(type, List.of(actions), 4,
+    private static KeyCallBackListener key(List<Event> events, InputAction... actions) {
+        return new KeyCallBackListener(List.of(actions), 4,
             (action, state) -> events.add(new Event(action, state)));
     }
 
@@ -80,8 +80,8 @@ public final class InputSystemTest {
         map.setKey(Input.Keys.UNKNOWN, InputAction.MOVE_LEFT);
         InputManager input = new InputManager(map);
         List<Event> immediate = new ArrayList<>();
-        KeyCallBackListener callback = key(ActionType.GAME_INPUT, immediate, InputAction.MOVE_UP);
-        KeyCacheListener cached = new KeyCacheListener(ActionType.GAME_INPUT, 4, List.of(InputAction.MOVE_UP));
+        KeyCallBackListener callback = key(immediate, InputAction.MOVE_UP);
+        KeyCacheListener cached = new KeyCacheListener(4, List.of(InputAction.MOVE_UP));
         input.regKeyListener(callback);
         input.regKeyListener(cached);
         for (int code : new int[]{-1, Integer.MIN_VALUE, Input.Keys.MAX_KEYCODE + 1,
@@ -114,8 +114,6 @@ public final class InputSystemTest {
         input.keyDown(Input.Keys.W);
         equal(expected, immediate, "disabled callback ignores direct and managed offers");
         check(!cached.hasInputs(), "disabled cache ignores direct and managed offers");
-        equal(ActionType.GAME_INPUT, callback.getListeningFor(), "callback category");
-        equal(ActionType.GAME_INPUT, cached.getListeningFor(), "cache category");
     }
 
     private static void adapterMouse() {
@@ -123,7 +121,7 @@ public final class InputSystemTest {
         map.setButton(Input.Buttons.LEFT, InputAction.GUI_LEFT_CLICK);
         map.setButton(Input.Buttons.RIGHT, InputAction.GUI_RIGHT_CLICK);
         InputManager input = new InputManager(map);
-        MouseCallBackListener mouse = new MouseCallBackListener(ActionType.GUI);
+        MouseCallBackListener mouse = new MouseCallBackListener();
         List<String> events = new ArrayList<>();
         mouse.setPosConsumer((x, y) -> events.add("pos:" + x + "," + y));
         mouse.setButtonConsumer((action, state) -> events.add(action + ":" + state));
@@ -160,7 +158,7 @@ public final class InputSystemTest {
         input.touchDown(17, 27, 0, Input.Buttons.MIDDLE);
         equal(List.of("pos:15.0,25.0", "pos:16.0,26.0", "pos:17.0,27.0"), events,
             "invalid/unmapped buttons still update primary position without button event");
-        MouseCallBackListener noConsumers = new MouseCallBackListener(ActionType.GUI);
+        MouseCallBackListener noConsumers = new MouseCallBackListener();
         noConsumers.offerPos(3, 4);
         noConsumers.offerButton(InputAction.GUI_LEFT_CLICK, 1);
         noConsumers.offerScroll(1);
@@ -177,85 +175,33 @@ public final class InputSystemTest {
         near(17, mouse.getPos().x, "disabled listener retains position");
     }
 
-    private static void filters() {
+    private static void listenerFanout() {
         InputMap map = new InputMap();
         map.setKey(Input.Keys.W, InputAction.MOVE_UP);
         map.setKey(Input.Keys.ENTER, InputAction.GUI_ENTER);
         map.setButton(Input.Buttons.LEFT, InputAction.GUI_LEFT_CLICK);
         map.setButton(Input.Buttons.RIGHT, InputAction.MOVE_RIGHT);
         InputManager input = new InputManager(map);
-        List<Event> gameKeys = new ArrayList<>();
-        List<Event> guiKeys = new ArrayList<>();
-        input.regKeyListener(key(ActionType.GAME_INPUT, gameKeys, InputAction.MOVE_UP, InputAction.GUI_ENTER));
-        input.regKeyListener(key(ActionType.GUI, guiKeys, InputAction.MOVE_UP, InputAction.GUI_ENTER));
-        List<String> gameMouse = new ArrayList<>();
-        List<String> guiMouse = new ArrayList<>();
-        MouseCallBackListener game = filteredMouse(ActionType.GAME_INPUT, gameMouse);
-        MouseCallBackListener gui = filteredMouse(ActionType.GUI, guiMouse);
-        input.regMousePosListener(game);
-        input.regMousePosListener(gui);
-        for (ActionType filter : new ActionType[]{null, ActionType.GUI, ActionType.GAME_INPUT, ActionType.WINDOW}) {
-            gameKeys.clear(); guiKeys.clear(); gameMouse.clear(); guiMouse.clear();
-            if (filter == null) { input.disableFilter(); } else { input.setFilter(filter); }
-            input.keyDown(Input.Keys.W);
-            input.keyDown(Input.Keys.ENTER);
-            input.touchDown(1, 2, 0, Input.Buttons.LEFT);
-            input.touchDown(3, 4, 0, Input.Buttons.RIGHT);
-            input.scrolled(0, -1);
-            boolean allowGame = filter == null || filter == ActionType.GAME_INPUT;
-            boolean allowGui = filter == null || filter == ActionType.GUI;
-            equal(allowGame ? List.of(new Event(InputAction.MOVE_UP, 1)) : List.of(), gameKeys, "game key category/filter " + filter);
-            equal(allowGui ? List.of(new Event(InputAction.GUI_ENTER, 1)) : List.of(), guiKeys, "GUI key category/filter " + filter);
-            equal(allowGame ? List.of("pos", "pos", "MOVE_RIGHT:1", "scroll:1") : List.of(), gameMouse,
-                "game mouse category/filter " + filter);
-            equal(allowGui ? List.of("pos", "GUI_LEFT_CLICK:1", "pos", "scroll:1") : List.of(), guiMouse,
-                "GUI mouse category/filter " + filter);
-            input.keyUp(Input.Keys.W);
-            input.keyUp(Input.Keys.ENTER);
-            input.touchUp(3, 4, 0, Input.Buttons.LEFT);
-            input.touchUp(3, 4, 0, Input.Buttons.RIGHT);
-        }
-        gameKeys.clear(); guiKeys.clear(); gameMouse.clear(); guiMouse.clear();
-        input.disableFilter();
-        game.setListening(false);
-        gui.setListening(false);
+        List<Event> first = new ArrayList<>(), second = new ArrayList<>();
+        input.regKeyListener(key(first, InputAction.MOVE_UP, InputAction.GUI_ENTER));
+        input.regKeyListener(key(second, InputAction.GUI_ENTER));
+        List<String> mouseEvents = new ArrayList<>();
+        MouseCallBackListener mouse = new MouseCallBackListener();
+        mouse.setButtonConsumer((action, value) -> mouseEvents.add(action + ":" + value));
+        input.regMousePosListener(mouse);
+        input.keyDown(Input.Keys.W);
+        input.keyDown(Input.Keys.ENTER);
         input.touchDown(1, 2, 0, Input.Buttons.LEFT);
-        input.scrolled(0, 1);
-        equal(List.of(), gameMouse, "disabled game mouse");
-        equal(List.of(), guiMouse, "disabled GUI mouse");
-        input.keyDown(Input.Keys.W);
-        equal(List.of(new Event(InputAction.MOVE_UP, 1)), gameKeys, "disableFilter restores delivery");
-        input.getKeyManager().setListenFilter(ActionType.GUI);
-        input.keyDown(Input.Keys.W);
-        equal(List.of(new Event(InputAction.MOVE_UP, 1), new Event(InputAction.MOVE_UP, 0)), gameKeys,
-            "key manager's own filter releases held key and blocks duplicate down");
-        input.keyUp(Input.Keys.W);
-        input.getKeyManager().disableListenFilter();
-        input.keyDown(Input.Keys.W);
-        equal(3, gameKeys.size(), "key manager filter disabled");
-        game.setListening(true);
-        input.getMouseManager().setListenFilter(ActionType.GUI);
-        input.mouseMoved(0, 0);
-        equal(List.of(), gameMouse, "mouse manager's own filter");
-        input.getMouseManager().disableListenFilter();
-        input.mouseMoved(0, 0);
-        equal(List.of("pos"), gameMouse, "mouse manager filter disabled");
-    }
-
-    private static MouseCallBackListener filteredMouse(ActionType type, List<String> events) {
-        MouseCallBackListener mouse = new MouseCallBackListener(type);
-        mouse.setPosConsumer((x, y) -> events.add("pos"));
-        mouse.setScrollConsumer(value -> events.add("scroll:" + value));
-        mouse.setButtonConsumer((action, value) -> events.add(action + ":" + value));
-        return mouse;
+        input.touchDown(3, 4, 0, Input.Buttons.RIGHT);
+        equal(List.of(new Event(InputAction.MOVE_UP, 1), new Event(InputAction.GUI_ENTER, 1)), first, "broad key whitelist");
+        equal(List.of(new Event(InputAction.GUI_ENTER, 1)), second, "narrow key whitelist");
+        equal(List.of("GUI_LEFT_CLICK:1", "MOVE_RIGHT:1"), mouseEvents, "mouse callback receives all actions");
     }
 
     private static final class CustomKey implements KeyListener {
         private boolean listening = true;
         private final List<Event> events = new ArrayList<>();
         public boolean isListening() { return listening; }
-        public boolean isListenerFor(ActionType type) { return type == ActionType.GAME_INPUT; }
-        public ActionType getListeningFor() { return ActionType.GAME_INPUT; }
         public void offer(InputAction action, int state) { events.add(new Event(action, state)); }
         public void setListening(boolean value) { listening = value; }
         @Override public boolean equals(Object other) { return other instanceof CustomKey; }
@@ -304,7 +250,7 @@ public final class InputSystemTest {
         for (int i = 0; i < 25; i++) {
             List<String> recorded = new ArrayList<>();
             events.add(recorded);
-            MouseCallBackListener listener = new MouseCallBackListener(ActionType.GUI) {
+            MouseCallBackListener listener = new MouseCallBackListener() {
                 @Override public boolean equals(Object other) { return other instanceof MouseCallBackListener; }
                 @Override public int hashCode() { return 1; }
             };
@@ -322,7 +268,7 @@ public final class InputSystemTest {
             recorded.clear();
         }
         for (int index : new int[]{0, 12, 24}) { input.unRegMousePosListener(listeners.get(index)); }
-        input.unRegMousePosListener(new MouseCallBackListener(ActionType.GUI));
+        input.unRegMousePosListener(new MouseCallBackListener());
         input.unRegMousePosListener(listeners.get(12));
         input.touchUp(1, 2, 0, Input.Buttons.LEFT);
         for (int i = 0; i < listeners.size(); i++) {
@@ -475,8 +421,8 @@ public final class InputSystemTest {
         InputManager input = new InputManager(map);
         List<Event> keys = new ArrayList<>();
         List<Event> buttons = new ArrayList<>();
-        input.regKeyListener(key(ActionType.GAME_INPUT, keys, InputAction.MOVE_UP, InputAction.MOVE_DOWN));
-        MouseCallBackListener mouse = new MouseCallBackListener(ActionType.GAME_INPUT);
+        input.regKeyListener(key(keys, InputAction.MOVE_UP, InputAction.MOVE_DOWN));
+        MouseCallBackListener mouse = new MouseCallBackListener();
         mouse.setButtonConsumer((action, state) -> buttons.add(new Event(action, state)));
         input.regMousePosListener(mouse);
         for (int code = Input.Buttons.LEFT; code <= Input.Buttons.FORWARD; code++) {
@@ -558,7 +504,7 @@ public final class InputSystemTest {
             InputAdapter downstream = new InputAdapter() {
                 @Override public boolean keyDown(int keycode) { trace.add("downstream"); return false; }
             };
-            input.regKeyListener(new KeyCallBackListener(ActionType.GAME_INPUT, List.of(InputAction.MOVE_UP), 1,
+            input.regKeyListener(new KeyCallBackListener(List.of(InputAction.MOVE_UP), 1,
                 (action, state) -> trace.add("adapter")));
             InputMultiplexer mux = new InputMultiplexer(upstream, input, downstream);
             Gdx.input.setInputProcessor(mux);

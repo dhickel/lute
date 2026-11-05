@@ -10,19 +10,12 @@ import java.util.List;
 public class MouseCacheListener implements MouseListener {
     private boolean isListening = true;
     private final CircularMouseQueue inputQueue;
-    private final ActionType listeningFor;
     private final BitSet listeningForInputs = new BitSet(InputAction.values().length);
     private final Vector2 pos = new Vector2();
 
-    public MouseCacheListener(ActionType listeningFor, int queueSize, List<InputAction> inputs) {
-        this.listeningFor = listeningFor;
+    public MouseCacheListener(int queueSize, List<InputAction> inputs) {
         inputQueue = new CircularMouseQueue(queueSize);
         inputs.forEach(i -> listeningForInputs.set(i.ordinal()));
-    }
-
-    @Override
-    public boolean isListenerFor(ActionType actionType) {
-        return listeningFor == actionType;
     }
 
     @Override
@@ -54,11 +47,6 @@ public class MouseCacheListener implements MouseListener {
     @Override
     public boolean isListening() {
         return isListening;
-    }
-
-    @Override
-    public ActionType getListeningFor() {
-        return listeningFor;
     }
 
     public void consume(MouseEventConsumer consumer) {
