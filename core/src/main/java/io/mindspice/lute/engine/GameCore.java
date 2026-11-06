@@ -14,7 +14,9 @@ import io.mindspice.lute.engine.assets.AssetService;
 import io.mindspice.lute.engine.input.InputAction;
 import io.mindspice.lute.engine.input.InputManager;
 import io.mindspice.lute.engine.input.InputMap;
+import io.mindspice.lute.engine.screen.GameScreen;
 import io.mindspice.lute.engine.screen.LoadingScreen;
+import io.mindspice.lute.engine.screen.ScreenManager;
 import io.mindspice.lute.engine.singletons.GameConsts;
 import io.mindspice.lute.engine.util.Pair;
 
@@ -34,9 +36,9 @@ public class GameCore extends Game {
     GLProfiler glProfiler;
     InputMultiplexer inputMultiplexer;
     private InputManager inputManager;
+    private ScreenManager screenManager;
 
 
-    private final Map<Class<? extends Screen>, Screen> screenCache = new HashMap<>();
 
     @Override
     public void create() {
@@ -63,34 +65,39 @@ public class GameCore extends Game {
         glProfiler.enable();
 
 
-        addScreen(new LoadingScreen(this, assetService));
-        setScreen(LoadingScreen.class);
+        Runnable switchToGameScreen = () -> {
+            screenManager.getSwitchScreenThunk("GameScreen").run();
+            screenManager.unloadScreen("InitialLoading");
+        };
+
+        this.screenManager = new ScreenManager(
+          Pair.of("InitialLoading", new LoadingScreen(assetService, switchToGameScreen)),
+          Pair.of("GameScreen", new GameScreen(this))
+        );
+
+        screenManager.switchScreens("InitialLoading");
+
+
+
 
     }
 
-
-    public void addScreen(Screen screen) {
-        screenCache.put(screen.getClass(), screen);
-    }
-
-    public void removeScreen(Screen screen) {
-        screenCache.remove(screen);
-    }
-
-
-    public void setScreen(Class<? extends Screen> screenClass) {
-        var screenInst = screenCache.get(screenClass);
-        if (screenInst == null) {
-            throw new GdxRuntimeException("No screen with class: " + screenClass + " in cache");
-        }
-        super.setScreen(screenInst);
-    }
 
 
     @Override
     public void resize(int width, int height) {
         viewport.update(width, height, true);
-        super.resize(width, height);
+        screenManager.resize(width, height);
+    }
+
+    @Override
+    public void pause() {
+        screenManager.pause();
+    }
+
+    @Override
+    public void resume() {
+        screenManager.resume();
     }
 
     @Override
@@ -114,15 +121,14 @@ public class GameCore extends Game {
     }
 
     private void draw() {
-        super.render();
+        screenManager.render(Gdx.graphics.getDeltaTime());
     }
 
 
     @Override
     public void dispose() {
+        screenManager.dispose();
         batch.dispose();
-        screenCache.values().forEach(Screen::dispose);
-        screenCache.clear();
         inputManager.dispose();
         this.assetService.debugDiagnostics();
         this.assetService.dispose();
