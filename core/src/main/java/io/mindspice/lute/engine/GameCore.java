@@ -16,6 +16,7 @@ import io.mindspice.lute.engine.input.InputManager;
 import io.mindspice.lute.engine.input.InputMap;
 import io.mindspice.lute.engine.screen.LoadingScreen;
 import io.mindspice.lute.engine.singletons.GameConsts;
+import io.mindspice.lute.engine.util.Pair;
 
 import java.util.Arrays;
 import java.util.HashMap;
@@ -41,11 +42,13 @@ public class GameCore extends Game {
     public void create() {
         Gdx.app.setLogLevel(Application.LOG_DEBUG);
 
-        InputMap inputMap = new InputMap();
-        inputMap.setKey(Input.Keys.W, InputAction.MOVE_UP);
-        inputMap.setKey(Input.Keys.S, InputAction.MOVE_DOWN);
-        inputMap.setKey(Input.Keys.A, InputAction.MOVE_LEFT);
-        inputMap.setKey(Input.Keys.D, InputAction.MOVE_RIGHT);
+        InputMap inputMap = InputMap.of(
+            Pair.of(Input.Keys.W, InputAction.MOVE_UP),
+            Pair.of(Input.Keys.S, InputAction.MOVE_DOWN),
+            Pair.of(Input.Keys.A, InputAction.MOVE_LEFT),
+            Pair.of(Input.Keys.D, InputAction.MOVE_RIGHT)
+        );
+
         this.inputManager = new InputManager(inputMap);
         this.inputMultiplexer = new InputMultiplexer(inputManager);
         Gdx.input.setInputProcessor(inputMultiplexer);

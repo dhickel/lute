@@ -3,6 +3,7 @@ package io.mindspice.lute.engine.components;
 import com.badlogic.ashley.core.Component;
 import com.badlogic.ashley.core.ComponentMapper;
 import io.mindspice.lute.engine.input.InputAction;
+import io.mindspice.lute.engine.input.InputManager;
 import io.mindspice.lute.engine.input.KeyListener;
 
 import java.util.List;
@@ -20,6 +21,13 @@ public class Controller implements Component {
             InputAction.MOVE_RIGHT
         ));
     }
+
+    public static Controller forInputManager(InputManager inputManager) {
+        var controller = new Controller();
+        inputManager.regKeyListener(controller.inputListener);
+        return controller;
+    }
+
 
     public KeyListener getInputListener() {
         return inputListener;

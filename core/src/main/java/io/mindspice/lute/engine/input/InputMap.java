@@ -1,11 +1,22 @@
 package io.mindspice.lute.engine.input;
 
 import com.badlogic.gdx.Input;
+import io.mindspice.lute.engine.util.Pair;
+
+import java.util.Arrays;
 
 
 public class InputMap {
     private final InputAction[] keyMap = new InputAction[Input.Keys.MAX_KEYCODE + 1];
     private final InputAction[] buttonMap = new InputAction[Input.Buttons.FORWARD + 1];
+
+
+    @SafeVarargs
+    public final static InputMap of(Pair<Integer, InputAction>... bindings) {
+        var inputMap = new InputMap();
+        Arrays.stream(bindings).forEach(b -> inputMap.setKey(b.first(), b.second()));
+        return inputMap;
+    }
 
     public void setKey(int keyCode, InputAction inputAction) {
         if (keyCode < 0 || keyCode >= keyMap.length) {

@@ -6,7 +6,9 @@
  </properties>
  <tile id="4">
   <properties>
-   <property name="assetAtlas" value="OBJECTS"/>
+   <property name="animation" value="IDLE"/>
+   <property name="animationSpeed" type="float" value="1"/>
+   <property name="atlasAsset" value="OBJECTS"/>
    <property name="speed" type="float" value="4"/>
   </properties>
   <image source="player.png" width="64" height="64"/>

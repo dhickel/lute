@@ -11,9 +11,7 @@ import io.mindspice.lute.engine.input.InputManager;
 import io.mindspice.lute.engine.assets.MapAsset;
 import io.mindspice.lute.engine.assets.tiled.TiledAshleyConfigurator;
 import io.mindspice.lute.engine.assets.tiled.TiledService;
-import io.mindspice.lute.engine.systems.ControllerSystem;
-import io.mindspice.lute.engine.systems.MoveSystem;
-import io.mindspice.lute.engine.systems.RenderSystem;
+import io.mindspice.lute.engine.systems.*;
 
 import java.util.function.Consumer;
 
@@ -26,7 +24,6 @@ public class GameScreen extends ScreenAdapter {
     private final GameCore game;
 
 
-
     public GameScreen(GameCore gameCore) {
         this.game = gameCore;
         this.tiledService = new TiledService(gameCore.getAssetService());
@@ -36,6 +33,9 @@ public class GameScreen extends ScreenAdapter {
 
         this.engine.addSystem(new ControllerSystem());
         this.engine.addSystem(new MoveSystem());
+        this.engine.addSystem(new AnimationPlayerSystem());
+        this.engine.addSystem(new FacingSystem());
+        this.engine.addSystem(new AnimationSystem(gameCore.getAssetService()));
         this.engine.addSystem(new RenderSystem(gameCore.getBatch(), gameCore.getViewport(), gameCore.getCamera()));
 
 

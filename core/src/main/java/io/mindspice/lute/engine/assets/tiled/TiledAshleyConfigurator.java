@@ -4,18 +4,15 @@ import com.badlogic.ashley.core.Engine;
 import com.badlogic.ashley.core.Entity;
 import com.badlogic.gdx.Gdx;
 import com.badlogic.gdx.graphics.Color;
+import com.badlogic.gdx.graphics.g2d.Animation;
 import com.badlogic.gdx.graphics.g2d.TextureAtlas;
 import com.badlogic.gdx.graphics.g2d.TextureRegion;
 import com.badlogic.gdx.graphics.glutils.FileTextureData;
 import com.badlogic.gdx.maps.tiled.TiledMapTile;
 import com.badlogic.gdx.maps.tiled.objects.TiledMapTileMapObject;
-import com.badlogic.gdx.math.Vector2;
 import io.mindspice.lute.engine.assets.AssetService;
 import io.mindspice.lute.engine.assets.AtlasAsset;
-import io.mindspice.lute.engine.components.Controller;
-import io.mindspice.lute.engine.components.Graphic;
-import io.mindspice.lute.engine.components.Move;
-import io.mindspice.lute.engine.components.Transform;
+import io.mindspice.lute.engine.components.*;
 import io.mindspice.lute.engine.input.InputManager;
 
 public class TiledAshleyConfigurator {
@@ -34,12 +31,18 @@ public class TiledAshleyConfigurator {
         TiledMapTile tile = tileMapObj.getTile();
         TextureRegion texRegion = getTextureRegion(tile);
 
-        Transform objTransform = Transform.forTiledObject(tile, texRegion, tileMapObj);
-
         entity.add(new Graphic(texRegion, Color.WHITE.cpy()));
+
+        Transform objTransform = Transform.forTiledObject(tile, texRegion, tileMapObj);
         entity.add(objTransform);
+
         addEntityController(tileMapObj, entity);
         addEntityMove(tile, entity);
+        addEntityAnimation(tile, entity);
+
+        entity.add(new Facing(Facing.Direction.DOWN));
+        entity.add(new AnimationPlayer(entity));
+
 
 
         engine.addEntity(entity);
@@ -71,18 +74,33 @@ public class TiledAshleyConfigurator {
         if (!controller) { return; }
 
         Gdx.app.debug("TiledAshleyConfigurator.addEntityController", "Added entity controller");
-        Controller inputController = new Controller();
+        Controller inputController = Controller.forInputManager(inputManager);
         entity.add(inputController);
-        inputManager.regKeyListener(inputController.getInputListener());
+
     }
 
     private void addEntityMove(TiledMapTile tile, Entity entity) {
         float speed = tile.getProperties().get("speed", 0f, Float.class);
         if (speed == 0.0) { return; }
+
         Gdx.app.debug("TiledAshleyConfigurator.addMoveController", "Added Move COntroller");
-
         entity.add(new Move(speed));
-
     }
+
+    private void addEntityAnimation(TiledMapTile tile, Entity entity) {
+        String animStr = tile.getProperties().get("animation", "", String.class);
+        if (animStr.isBlank()) { return; }
+
+        Animation2D.AnimationType animationType = Animation2D.AnimationType.valueOf(animStr);
+        String atlasAssetStr = tile.getProperties().get("atlasAsset", "", String.class);
+        AtlasAsset asset = AtlasAsset.valueOf(atlasAssetStr);
+
+        TextureAtlas texAtlas = assetService.get(asset);
+        FileTextureData texData = (FileTextureData) tile.getTextureRegion().getTexture().getTextureData();
+        String atlasKey = texData.getFileHandle().nameWithoutExtension();
+        float speed = tile.getProperties().get("animationSpeed", 0f, Float.class);
+        entity.add(new Animation2D(asset, atlasKey, animationType, Animation.PlayMode.LOOP, speed));
+    }
+
 
 }

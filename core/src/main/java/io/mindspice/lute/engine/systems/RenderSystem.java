@@ -59,6 +59,7 @@ public class RenderSystem extends SortedIteratingSystem implements Disposable {
 
 
         forceSort();
+        // Processes Entity
         super.update(deltaTime);
 
         this.batch.setColor(Color.WHITE);
