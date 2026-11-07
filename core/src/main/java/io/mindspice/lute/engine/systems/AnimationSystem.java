@@ -57,7 +57,9 @@ public class AnimationSystem extends IteratingSystem {
 
         Animation<TextureRegion> animation = animationCache.computeIfAbsent(cacheKey, k -> {
             TextureAtlas texAtlas = assetService.get(atlasAsset);
-            String combinedKey = atlasKey + "/" + type.atlasKey + "_" + fDir.atlasKey;
+            String combinedKey = type == Animation2D.AnimationType.DEFAULT
+                ? atlasKey
+                : atlasKey + "/" + type.atlasKey + "_" + fDir.atlasKey;
             Array<TextureAtlas.AtlasRegion> regions = texAtlas.findRegions(combinedKey);
 
             if (regions.isEmpty()) {
