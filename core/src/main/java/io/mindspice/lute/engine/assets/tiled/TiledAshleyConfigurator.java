@@ -38,23 +38,29 @@ public class TiledAshleyConfigurator {
 
         addEntityController(tileMapObj, entity);
         addEntityMove(tile, entity);
-        addEntityAnimation(tile, entity);
 
         entity.add(new Facing(Facing.Direction.DOWN));
-        entity.add(new AnimationPlayer(entity));
+
+        boolean isAnimated = tile.getProperties().get("isAnimated", false, Boolean.class);
+        if (isAnimated) {
+            addEntityAnimation(tile, entity);
+            entity.add(new AnimationPlayer(entity));
+        }
 
         engine.addEntity(entity);
     }
 
     private TextureRegion getTextureRegion(TiledMapTile tile) {
         String atlasAsset = tile.getProperties().get("atlasAsset", AtlasAsset.OBJECTS.name(), String.class);
+        String atlasKey = tile.getProperties().get("atlasKey", "NULL", String.class);
+
 
         // Illegal Argument check, should be improved
         AtlasAsset asset = AtlasAsset.valueOf(atlasAsset);
 
         TextureAtlas texAtlas = assetService.get(asset);
-        FileTextureData texData = (FileTextureData) tile.getTextureRegion().getTexture().getTextureData();
-        String atlasKey = texData.getFileHandle().nameWithoutExtension();
+        // FileTextureData texData = (FileTextureData) tile.getTextureRegion().getTexture().getTextureData();
+        //String atlasKey = texData.getFileHandle().nameWithoutExtension();
 
         TextureAtlas.AtlasRegion region = texAtlas.findRegion(atlasKey);
         if (region != null) {
@@ -91,11 +97,13 @@ public class TiledAshleyConfigurator {
 
         Animation2D.AnimationType animationType = Animation2D.AnimationType.valueOf(animStr);
         String atlasAssetStr = tile.getProperties().get("atlasAsset", "", String.class);
+        String atlasKey = tile.getProperties().get("atlasKey", "NULL", String.class);
+
         AtlasAsset asset = AtlasAsset.valueOf(atlasAssetStr);
 
-        TextureAtlas texAtlas = assetService.get(asset);
-        FileTextureData texData = (FileTextureData) tile.getTextureRegion().getTexture().getTextureData();
-        String atlasKey = texData.getFileHandle().nameWithoutExtension();
+        //       TextureAtlas texAtlas = assetService.get(asset);
+//        FileTextureData texData = (FileTextureData) tile.getTextureRegion().getTexture().getTextureData();
+//        String atlasKey = texData.getFileHandle().nameWithoutExtension();
         float speed = tile.getProperties().get("animationSpeed", 0f, Float.class);
         entity.add(new Animation2D(asset, atlasKey, animationType, Animation.PlayMode.LOOP, speed));
     }

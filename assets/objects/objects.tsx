@@ -9,6 +9,9 @@
    <property name="animation" value="IDLE"/>
    <property name="animationSpeed" type="float" value="1"/>
    <property name="atlasAsset" value="OBJECTS"/>
+   <property name="atlasKey" value="player"/>
+   <property name="isAnimated" type="bool" value="true"/>
+   <property name="keyFrames" type="int" value="8"/>
    <property name="speed" type="float" value="4"/>
   </properties>
   <image source="player.png" width="64" height="64"/>
@@ -16,12 +19,17 @@
  <tile id="6">
   <properties>
    <property name="atlasAsset" value="OBJECTS"/>
+   <property name="atlasKey" value="house"/>
   </properties>
   <image source="house.png" width="160" height="224"/>
  </tile>
  <tile id="7">
   <properties>
+   <property name="animationSpeed" type="float" value="0.5"/>
    <property name="atlasAsset" value="OBJECTS"/>
+   <property name="atlasKey" value="old_tree1/old_tree1"/>
+   <property name="isAnimated" type="bool" value="true"/>
+   <property name="keyFrames" type="int" value="10"/>
   </properties>
   <image source="old_tree1/old_tree1_00.png" width="160" height="256"/>
  </tile>
