@@ -92,12 +92,12 @@ public class TiledAshleyConfigurator {
     }
 
     private void addEntityAnimation(TiledMapTile tile, Entity entity) {
-        String animStr = tile.getProperties().get("animation", "", String.class);
-        if (animStr.isBlank()) { return; }
+        String animStr = tile.getProperties().get("animation", "DEFAULT", String.class);
 
         Animation2D.AnimationType animationType = Animation2D.AnimationType.valueOf(animStr);
         String atlasAssetStr = tile.getProperties().get("atlasAsset", "", String.class);
         String atlasKey = tile.getProperties().get("atlasKey", "NULL", String.class);
+        int keyFrames = tile.getProperties().get("keyFrames", 1, Integer.class); // Todo add checks for these
 
         AtlasAsset asset = AtlasAsset.valueOf(atlasAssetStr);
 
@@ -105,7 +105,7 @@ public class TiledAshleyConfigurator {
 //        FileTextureData texData = (FileTextureData) tile.getTextureRegion().getTexture().getTextureData();
 //        String atlasKey = texData.getFileHandle().nameWithoutExtension();
         float speed = tile.getProperties().get("animationSpeed", 0f, Float.class);
-        entity.add(new Animation2D(asset, atlasKey, animationType, Animation.PlayMode.LOOP, speed));
+        entity.add(new Animation2D(asset, atlasKey, animationType, Animation.PlayMode.LOOP, speed, keyFrames));
     }
 
 

@@ -19,7 +19,6 @@ import java.util.HashMap;
 import java.util.Map;
 
 public class AnimationSystem extends IteratingSystem {
-    private static final float FRAME_DURATION = 1 / 8f;
     private final AssetService assetService;
     private final Map<CacheKey, Animation<TextureRegion>> animationCache;
 
@@ -62,10 +61,11 @@ public class AnimationSystem extends IteratingSystem {
                 : atlasKey + "/" + type.atlasKey + "_" + fDir.atlasKey;
             Array<TextureAtlas.AtlasRegion> regions = texAtlas.findRegions(combinedKey);
 
+
             if (regions.isEmpty()) {
                 throw new GdxRuntimeException("No atlas regions found for key: " + combinedKey);
             }
-            return new Animation<>(FRAME_DURATION, regions);
+            return new Animation<>(anim2d.getFrameDuration(), regions);
 
         });
         anim2d.setAnimation(animation, fDir);

@@ -25,7 +25,8 @@
  </tile>
  <tile id="7">
   <properties>
-   <property name="animationSpeed" type="float" value="0.5"/>
+   <property name="animation" value="DEFAULT"/>
+   <property name="animationSpeed" type="float" value="0.35"/>
    <property name="atlasAsset" value="OBJECTS"/>
    <property name="atlasKey" value="old_tree1/old_tree1"/>
    <property name="isAnimated" type="bool" value="true"/>

@@ -15,6 +15,7 @@ public class Animation2D implements Component {
     private Facing.Direction fdirection;
     private Animation.PlayMode mode;
     private float speed;
+    private float frameDuration;
     private float stateTime;
     private Animation<TextureRegion> animation;
     boolean dirty;
@@ -23,7 +24,8 @@ public class Animation2D implements Component {
                        String atlasKey,
                        AnimationType type,
                        Animation.PlayMode mode,
-                       float speed
+                       float speed,
+                       int keyFrames
     ) {
         this.atlasAsset = atlasAsset;
         this.atlasKey = atlasKey;
@@ -31,6 +33,7 @@ public class Animation2D implements Component {
         this.fdirection = Facing.Direction.DOWN;
         this.mode = mode;
         this.speed = speed;
+        this.frameDuration = 1f / keyFrames;
         this.stateTime = 0f;
         this.animation = null;
         this.dirty = true;
@@ -72,6 +75,10 @@ public class Animation2D implements Component {
         return speed;
     }
 
+    public float getFrameDuration() {
+        return frameDuration;
+    }
+
     public void setType(AnimationType type) {
         this.type = type;
         this.dirty = true;
@@ -99,13 +106,13 @@ public class Animation2D implements Component {
     }
 
     public enum AnimationType {
-        IDLE, WALK;
+        IDLE("idle"), WALK("walk"), DEFAULT("");
 
         public final String atlasKey;
 
 
-        AnimationType() {
-            this.atlasKey = name().toLowerCase();
+        AnimationType(String s) {
+            this.atlasKey = s;
         }
     }
 }
