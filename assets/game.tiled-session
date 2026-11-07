@@ -41,11 +41,11 @@
     },
     "frame.defaultDuration": 90,
     "last.externalTilesetPath": "/home/dhickel/Code/Java/lute/assets/tilesets/ancient_forest",
-    "last.imagePath": "/home/dhickel/Code/Java/lute/assets/objects",
+    "last.imagePath": "/home/dhickel/Code/Java/lute/assets/objects/old_tree1",
     "openFiles": [
     ],
     "project": "game.tiled-project",
-    "property.type": "float",
+    "property.type": "string",
     "recentFiles": [
         "tilesets/ancient_forest/old_tree1.tsx",
         "/home/dhickel/Assets/tilesets/tilesets/collection-source/mp-dungeon1-psd-enemy1-idle-01.tsx",

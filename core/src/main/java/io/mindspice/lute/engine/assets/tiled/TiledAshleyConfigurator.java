@@ -43,8 +43,6 @@ public class TiledAshleyConfigurator {
         entity.add(new Facing(Facing.Direction.DOWN));
         entity.add(new AnimationPlayer(entity));
 
-
-
         engine.addEntity(entity);
     }
 
