@@ -4,6 +4,8 @@ import com.badlogic.ashley.core.Engine;
 import com.badlogic.ashley.core.Family;
 import com.badlogic.gdx.ScreenAdapter;
 import com.badlogic.gdx.maps.tiled.TiledMap;
+import com.badlogic.gdx.math.Vector2;
+import com.badlogic.gdx.physics.box2d.World;
 import com.badlogic.gdx.utils.Disposable;
 import io.mindspice.lute.engine.GameCore;
 import io.mindspice.lute.engine.components.Controller;
@@ -11,6 +13,7 @@ import io.mindspice.lute.engine.input.InputManager;
 import io.mindspice.lute.engine.assets.MapAsset;
 import io.mindspice.lute.engine.assets.tiled.TiledAshleyConfigurator;
 import io.mindspice.lute.engine.assets.tiled.TiledService;
+import io.mindspice.lute.engine.singletons.GameConsts;
 import io.mindspice.lute.engine.systems.*;
 
 import java.util.function.Consumer;
@@ -22,6 +25,7 @@ public class GameScreen extends ScreenAdapter {
     private final TiledAshleyConfigurator tiledAshleyConfigurator;
     private final InputManager inputManager;
     private final GameCore game;
+    private final World physicWorld;
 
 
     public GameScreen(GameCore gameCore) {
@@ -29,14 +33,20 @@ public class GameScreen extends ScreenAdapter {
         this.tiledService = new TiledService(gameCore.getAssetService());
         this.engine = new Engine();
         this.inputManager = gameCore.getInputManager();
-        this.tiledAshleyConfigurator = new TiledAshleyConfigurator(engine, gameCore.getAssetService(), inputManager);
+
+        this.physicWorld = new World(Vector2.Zero, true);
+        this.physicWorld.setAutoClearForces(false);
+        this.tiledAshleyConfigurator = new TiledAshleyConfigurator(engine, gameCore.getAssetService(), inputManager, this.physicWorld);
+
 
         this.engine.addSystem(new ControllerSystem());
-        this.engine.addSystem(new MoveSystem());
+        this.engine.addSystem(new PhysicMoveSystem());
         this.engine.addSystem(new AnimationPlayerSystem());
         this.engine.addSystem(new FacingSystem());
+        this.engine.addSystem(new PhysicSystem(physicWorld, GameConsts.PHYSIC_INTERVAL));
         this.engine.addSystem(new AnimationSystem(gameCore.getAssetService()));
         this.engine.addSystem(new RenderSystem(gameCore.getBatch(), gameCore.getViewport(), gameCore.getCamera()));
+        this.engine.addSystem(new PhysicDebugRenderSystem(physicWorld, game.getCamera()));
 
 
     }
@@ -48,6 +58,7 @@ public class GameScreen extends ScreenAdapter {
         Consumer<TiledMap> renderConsumer = engine.getSystem(RenderSystem.class)::setMap;
         tiledService.setMapChangeConsumer(renderConsumer);
         tiledService.setLoadObjectConsumer(tiledAshleyConfigurator::onLoadObject);
+        tiledService.setLoadTileConsumer(tiledAshleyConfigurator::onLoadTile);
 
         var tiledMap = this.tiledService.loadMap(MapAsset.MAIN);
         tiledService.setMap(tiledMap);
@@ -88,6 +99,7 @@ public class GameScreen extends ScreenAdapter {
                 dis.dispose();
             }
         }
+        this.physicWorld.dispose();
     }
 }
 

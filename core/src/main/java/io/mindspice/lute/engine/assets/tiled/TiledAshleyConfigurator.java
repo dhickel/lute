@@ -7,23 +7,34 @@ import com.badlogic.gdx.graphics.Color;
 import com.badlogic.gdx.graphics.g2d.Animation;
 import com.badlogic.gdx.graphics.g2d.TextureAtlas;
 import com.badlogic.gdx.graphics.g2d.TextureRegion;
-import com.badlogic.gdx.graphics.glutils.FileTextureData;
+import com.badlogic.gdx.maps.MapObjects;
 import com.badlogic.gdx.maps.tiled.TiledMapTile;
 import com.badlogic.gdx.maps.tiled.objects.TiledMapTileMapObject;
+import com.badlogic.gdx.math.Vector2;
+import com.badlogic.gdx.physics.box2d.*;
+import com.badlogic.gdx.utils.GdxRuntimeException;
 import io.mindspice.lute.engine.assets.AssetService;
 import io.mindspice.lute.engine.assets.AtlasAsset;
 import io.mindspice.lute.engine.components.*;
+import io.mindspice.lute.engine.components.Transform;
 import io.mindspice.lute.engine.input.InputManager;
+import io.mindspice.lute.engine.singletons.GameConsts;
 
 public class TiledAshleyConfigurator {
     private final Engine engine;
     private final AssetService assetService;
     private final InputManager inputManager;
+    private final World physicWorld;
 
-    public TiledAshleyConfigurator(Engine engine, AssetService assetService, InputManager inputManager) {
+    public TiledAshleyConfigurator(Engine engine,
+                                   AssetService assetService,
+                                   InputManager inputManager,
+                                   World physicWorld
+    ) {
         this.engine = engine;
         this.assetService = assetService;
         this.inputManager = inputManager;
+        this.physicWorld = physicWorld;
     }
 
     public void onLoadObject(TiledMapTileMapObject tileMapObj) {
@@ -36,8 +47,18 @@ public class TiledAshleyConfigurator {
         Transform objTransform = Transform.forTiledObject(tile, texRegion, tileMapObj);
         entity.add(objTransform);
 
+
+        // TODO, improve assignment not every entity needs move, or physics
         addEntityController(tileMapObj, entity);
         addEntityMove(tile, entity);
+
+        boolean isPhysics = tile.getProperties().get("isPhysics", false, Boolean.class);
+        if (isPhysics) {
+            BodyDef.BodyType bodyType = getPhysicBodyType(tile);
+            addEntityPhysic(tile.getObjects(), bodyType, Vector2.Zero, entity);
+
+        }
+
 
         entity.add(new Facing(Facing.Direction.DOWN));
 
@@ -48,6 +69,72 @@ public class TiledAshleyConfigurator {
         }
 
         engine.addEntity(entity);
+    }
+
+    private BodyDef.BodyType getPhysicBodyType(TiledMapTile tile) {
+        String bodyType = tile.getProperties().get("physicBodyType", "NULL", String.class);
+
+        return switch (bodyType) {
+            case "static" -> {
+                System.out.println("!!!!!!!!!!!!Detected static body");
+                yield BodyDef.BodyType.StaticBody;
+            }
+            case "dynamic" -> BodyDef.BodyType.DynamicBody;
+            default -> throw new GdxRuntimeException("Failed to map bodyType for value: " + bodyType);
+        };
+    }
+
+    private void addEntityPhysic(MapObjects mapObjs, BodyDef.BodyType bodyType, Vector2 relativeTo, Entity entity) {
+        if (mapObjs.getCount() == 0) { return; }
+
+        var transform = Transform.MAPPER.get(entity);
+        Body body = createBody(
+            mapObjs,
+            transform.getPosition(),
+            transform.getScaling(),
+            bodyType,
+            relativeTo,
+            entity
+        );
+
+        entity.add(new Physic(body, transform.getPosition().cpy()));
+    }
+
+
+    public void onLoadTile(TiledMapTile tile, float x, float y) {
+        createBody(
+            tile.getObjects(),
+            new Vector2(x, y),
+            GameConsts.PHYSIC_SCALING,
+            BodyDef.BodyType.StaticBody,
+            Vector2.Zero,
+            "environment"
+        );
+    }
+
+    private Body createBody(MapObjects mapObjs,
+                            Vector2 pos,
+                            Vector2 scaling,
+                            BodyDef.BodyType bodyType,
+                            Vector2 relativeTo,
+                            Object userData
+    ) {
+        var bodyDef = new BodyDef();
+        bodyDef.type = bodyType;
+        bodyDef.position.set(pos);
+        bodyDef.fixedRotation = true;
+
+        Body body = physicWorld.createBody(bodyDef);
+        body.setUserData(userData);
+
+        for (var mapObj : mapObjs) {
+            FixtureDef fixDef = TiledPhysics.fixtureDefOf(mapObj, scaling, relativeTo);
+            Fixture fixture = body.createFixture(fixDef);
+            fixture.setUserData(mapObj.getName());
+            fixDef.shape.dispose();
+
+        }
+        return body;
     }
 
     private TextureRegion getTextureRegion(TiledMapTile tile) {

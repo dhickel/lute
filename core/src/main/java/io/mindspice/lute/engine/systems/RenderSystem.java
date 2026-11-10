@@ -111,6 +111,7 @@ public class RenderSystem extends SortedIteratingSystem implements Disposable {
                     isBgLayer = false;
                     continue;
                 }
+
                 if (layer.getClass().equals(MapLayer.class)) {
                     Gdx.app.debug("RenderSystem.loadMapLayers", "Detected Map Layer: " + layer.getName());
                     continue;
@@ -119,7 +120,6 @@ public class RenderSystem extends SortedIteratingSystem implements Disposable {
                 if (isBgLayer) {
                     Gdx.app.debug("RenderSystem.loadMapLayers", "Loaded background Layer: " + layer.getName());
                     bgLayers.add(layer);
-                    ;
                 } else {
                     Gdx.app.debug("RenderSystem.loadMapLayers", "Loaded foreground Layer: " + layer.getName());
                     fgLayers.add(layer);

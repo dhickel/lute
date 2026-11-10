@@ -11,10 +11,17 @@
    <property name="atlasAsset" value="OBJECTS"/>
    <property name="atlasKey" value="player"/>
    <property name="isAnimated" type="bool" value="true"/>
+   <property name="isPhysics" type="bool" value="true"/>
    <property name="keyFrames" type="int" value="8"/>
+   <property name="physicBodyType" value="dynamic"/>
    <property name="speed" type="float" value="4"/>
   </properties>
   <image source="player.png" width="64" height="64"/>
+  <objectgroup draworder="index" id="7">
+   <object id="10" x="20.125" y="38.125" width="21.75" height="8.875">
+    <ellipse/>
+   </object>
+  </objectgroup>
  </tile>
  <tile id="6">
   <properties>
@@ -33,5 +40,14 @@
    <property name="keyFrames" type="int" value="10"/>
   </properties>
   <image source="old_tree1/old_tree1_00.png" width="160" height="256"/>
+  <objectgroup draworder="index" id="2">
+   <object id="1" x="62.3333" y="195.667" width="40" height="37.6667">
+    <properties>
+     <property name="isPhysics" type="bool" value="true"/>
+     <property name="physicBodyType" value="static"/>
+    </properties>
+    <ellipse/>
+   </object>
+  </objectgroup>
  </tile>
 </tileset>

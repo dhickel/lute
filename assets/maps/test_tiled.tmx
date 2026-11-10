@@ -1,5 +1,5 @@
 <?xml version="1.0" encoding="UTF-8"?>
-<map version="1.10" tiledversion="1.12.2" class="Teleport" orientation="orthogonal" renderorder="right-down" width="30" height="20" tilewidth="32" tileheight="32" infinite="0" nextlayerid="7" nextobjectid="15">
+<map version="1.10" tiledversion="1.12.2" class="Teleport" orientation="orthogonal" renderorder="right-down" width="30" height="20" tilewidth="32" tileheight="32" infinite="0" nextlayerid="8" nextobjectid="17">
  <properties>
   <property name="target" value="cave"/>
  </properties>
@@ -8,7 +8,7 @@
  <tileset firstgid="2659" source="../objects/objects.tsx"/>
  <layer id="1" name="Ground" width="30" height="20">
   <data encoding="base64" compression="zlib">
-   eJxdVkmq20AULGiIWgNkkct8Caxpl8vYBkmWd7mM7X0GcoacIeQwoVEVXXghWup+Y733qrUE4InjqQPQB6AIwAXAHIApAGUAmgAsAYgBuHH/xr0XjjXp7gEYAjAG4B6Ak+l+4PhO6932G9otaTfpVrRf8nsJWWfk2gK44vCb5DvGPFA+5VQyn+QzyW8BeCDHOFLubu+bxb/bu2xeKDNYfsKpolzLuNYAnPle83yyJ8mmHITBxO+kM1JnJLbJZkG52uqwMI7NsFWcE/OvuT5o98qaTTxL/lbaaZH379SJpvNErsFOnyXlTrR1o26yM1OnMd2WsqqD4q/ZT6vlrn44m9+OMg31NtoURgvlL8h21pAxjTxXj6gPb4xXfmPIOA6s8Wp1nFkbx1T1nCjr8dQW+8lyV+8tlN8YT839wuJQjurnibIrY1F/1CHnf7f+27kvHDW3kfloLifTuxg/RKu95qagf8UnnK7IXPE5Al/iEbNyHYnrRB+a8xdneTOcW5537ANxxWa9+mGz3TBf+e2NR042V6rVZrYW6wH1r2atNPvCY6Cc9P58Ovx+jcfeA7mWm8XueD+Re6m3PhG/lVYL+ReX9SHPffL7LeZ+qymn/u6ZvzhoIG4jbe+MR7k8yEfiJs3aTrwiZZPf3xH4V+Tnb3HovcghO99lq2BMnfGd6tAb58/Wi63VItn7HoEfEfgVgZ9c0yPu7yivPIS1+mk3fq1D5p4U54scUhpXa44a4vUiJs6po/FIOld+o82mZl/cLC67Mwb14mB3ykBZzcTDajzTnmo3v626R2u7a6/IPeH3jfAVxzZW597O5KviueZKmJ0Nk9LuLdn5YPwnm0Hdu+JK5aD/jMXu3miyjWFXESdxU0V53dfOPyfjxMpy79/s+l1UvfGjzju7g9L+f9sNtq4=
+   eJxdVkuO00AULKkluh1bYsElAHGASaT4kx2XQMABJpEcx9lxmUz2fMQKEEvOgDgFINao5Sp1zSystrvft9571R4DcIflqQPQBiAGYA9gF4AhAFUAmgCMAUgBOHH/xL0rljXrzgHoAtAH4ByAreneYPnO69n2G9qtaDfrrmi/4vcYik7PdQ3ggMVvlt8w5o7yOaeK+WSfWX4KwAUlxp5yZ3ufLP7Z3mVzT5nO8hNOK8qtGdcxALd8r3k+2JNlcw7CYOB31ump0xPbbDNSrrY6jIxjMmwV58D8a64X2j2wZgPPsr8j7axR9s/USaZzh1KDmT4rym1p60TdbGdHncZ015RVHRR/zX46Wu7qh1vzu6FMQ72JNoXRSPk9ip1jKJgmnqtH1Icnxiu/KRQcO9b4aHXcsTaOqeo5UNbjqS32reWu3hspPzGemvvR4lCO6ueBskfGov6oQ8n/bP03c184am4T89FcDqa3N35IVnvNTaR/xSecDihc8TgBT9ISs3LtietAH5rzK2d5MpzXPN+wD8QVk/Xqjc12w3zltzUe2dpcqVaT2RqtB9S/mrXK7AuPjnLS+/Fo8fsyLXsXlFpOFrvjfYfSS631ifitslrIv7isDWXus993qfRbTTn1d8v8xUEdcetpe2Y8yuVCPhI3adZm4pUom/1+TsCvWJ6fcdG7kkNmvstWZEwb4zvVoTXO31kvrq0W2d77BHxIwKcEfOSaH3H/hvLKQ1irn7KNLxH4GoFvEfgeCw9dySGVcbXmqCFeV2LinNobj+Rz5dfbbOb33xH4E4G/EfgXFztnzo56sbM7pWNOmomL1XjHuqp2uwer7tGafp8l4HkCXqTSd4pL+IpjG6tza2fyteK55kqY3Rom+fspfcrvDePf2gzq3hVXKgf9Z4x29yaTbQy7FXESN71KwOsEvEnA23Sff7bGiSvLvX1g1++i1QN+1PnG7qC8/x+48L0s
   </data>
  </layer>
  <layer id="2" name="Buildings" width="30" height="20">
@@ -16,11 +16,8 @@
    eJzdkrkuRWEUhb+1Q2PoSAzRcK9erTF0lBqFYr+CxvAIGoVerTE8AmK4nsMQQ7hXg+iEeyV/5B7OlhPESk7O2uvs/1/5knMruBNUBbWGT+dakldz+HTOyu8FgwZDBiWDcsOncznJSzl8OmflwwazRm5dCq4E18n7RtCa/4o3zRmsBnoHMnZHg71rwd6ZJrsjLTAf7I3yrvwh3vVf5N0I9kZ5dw32DLoE3ar7fYODwB18g/fB4NFgSjCtun8yeA72RnmLUpS3KBXJ2yl8Uviy8B3hF8L7DW+2WyRvh/AJ4UvCt4WfC+/L6C2St134uPBF4VvCz4T3/gBvm/Ax4QvCN4WfCu/5Ad6I/sP/HNEr76HBsUHF4KjxvM+VJP+YffXtszMnBi8bEW+w
   </data>
  </layer>
- <objectgroup id="5" name="Triggers">
-  <object id="1" name="Teleport" x="432.667" y="275.333" width="34.6667" height="35.3333"/>
- </objectgroup>
  <objectgroup id="6" name="Objects">
-  <object id="3" gid="2663" x="87.658" y="565.354" width="64" height="64">
+  <object id="3" gid="2663" x="127.787" y="568.272" width="64" height="64">
    <properties>
     <property name="controller" type="bool" value="true"/>
     <property name="speed" type="float" value="4"/>
@@ -33,4 +30,8 @@
   <object id="13" gid="2666" x="765.632" y="584.014" width="160" height="256"/>
   <object id="14" gid="2666" x="430.735" y="591.31" width="160" height="256"/>
  </objectgroup>
+ <objectgroup id="5" name="Triggers">
+  <object id="1" name="Teleport" x="432.667" y="275.333" width="34.6667" height="35.3333"/>
+ </objectgroup>
+ <objectgroup id="7" name="Collisions" offsetx="-8.33333" offsety="-54"/>
 </map>
