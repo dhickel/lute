@@ -59,6 +59,12 @@ public class TiledAshleyConfigurator {
 
         }
 
+        boolean hasCamera = tile.getProperties().get("hasCamera", false, Boolean.class);
+        if (hasCamera) {
+            // addEntityCameraFollow(tileMapObj, entity)
+            Gdx.app.debug("TiledAshleyConfigurator", "Added Camera to entity");
+            entity.add(new CameraFollow());
+        }
 
         entity.add(new Facing(Facing.Direction.DOWN));
 
@@ -71,12 +77,15 @@ public class TiledAshleyConfigurator {
         engine.addEntity(entity);
     }
 
+    private void addEntityCameraFollow(TiledMapTileMapObject tileMapObj, Entity entity) {
+
+    }
+
     private BodyDef.BodyType getPhysicBodyType(TiledMapTile tile) {
         String bodyType = tile.getProperties().get("physicBodyType", "NULL", String.class);
 
         return switch (bodyType) {
             case "static" -> {
-                System.out.println("!!!!!!!!!!!!Detected static body");
                 yield BodyDef.BodyType.StaticBody;
             }
             case "dynamic" -> BodyDef.BodyType.DynamicBody;
@@ -151,7 +160,7 @@ public class TiledAshleyConfigurator {
 
         TextureAtlas.AtlasRegion region = texAtlas.findRegion(atlasKey);
         if (region != null) {
-            Gdx.app.debug("TiledAshleyConfigurator.getTextureRegion", "Loaded AtlasRegion for  key: " + atlasKey);
+            Gdx.app.debug("TiledAshleyConfigurator.getTextureRegion", "Loaded AtlasRegion for key: " + atlasKey);
             return region;
         }
 

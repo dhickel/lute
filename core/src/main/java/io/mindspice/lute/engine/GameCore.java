@@ -1,5 +1,6 @@
 package io.mindspice.lute.engine;
 
+import com.badlogic.ashley.core.Engine;
 import com.badlogic.gdx.*;
 import com.badlogic.gdx.assets.loaders.resolvers.InternalFileHandleResolver;
 import com.badlogic.gdx.graphics.FPSLogger;
@@ -29,6 +30,7 @@ import java.util.Map;
  * {@link com.badlogic.gdx.ApplicationListener} implementation shared by all platforms.
  */
 public class GameCore extends Game {
+    public static final GameCore INSTANCE = new GameCore();
     private Batch batch;
     private OrthographicCamera camera;
     private Viewport viewport;
@@ -38,6 +40,7 @@ public class GameCore extends Game {
     InputMultiplexer inputMultiplexer;
     private InputManager inputManager;
     private ScreenManager screenManager;
+    private Engine engine;
 
 
 
@@ -55,6 +58,8 @@ public class GameCore extends Game {
         this.inputManager = new InputManager(inputMap);
         this.inputMultiplexer = new InputMultiplexer(inputManager);
         Gdx.input.setInputProcessor(inputMultiplexer);
+
+        this.engine = new Engine();
 
         this.batch = new SpriteBatch();
         this.camera = new OrthographicCamera();
@@ -160,6 +165,9 @@ public class GameCore extends Game {
     }
 
 
+    public Engine getEngine() {
+        return engine;
+    }
 }
 
 

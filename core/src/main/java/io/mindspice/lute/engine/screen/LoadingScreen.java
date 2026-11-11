@@ -35,6 +35,4 @@ public class LoadingScreen extends ScreenAdapter {
 
 
 
-    private void createScreens() {
-    }
 }

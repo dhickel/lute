@@ -20,31 +20,34 @@ import java.util.function.Consumer;
 
 public class GameScreen extends ScreenAdapter {
 
-    private final Engine engine;
+
     private final TiledService tiledService;
     private final TiledAshleyConfigurator tiledAshleyConfigurator;
     private final InputManager inputManager;
     private final GameCore game;
     private final World physicWorld;
+    private final Engine engine;
 
 
     public GameScreen(GameCore gameCore) {
         this.game = gameCore;
         this.tiledService = new TiledService(gameCore.getAssetService());
-        this.engine = new Engine();
         this.inputManager = gameCore.getInputManager();
+        this.engine = gameCore.getEngine();
 
         this.physicWorld = new World(Vector2.Zero, true);
         this.physicWorld.setAutoClearForces(false);
         this.tiledAshleyConfigurator = new TiledAshleyConfigurator(engine, gameCore.getAssetService(), inputManager, this.physicWorld);
 
 
+        this.engine.addSystem(new EventSystem());
         this.engine.addSystem(new ControllerSystem());
         this.engine.addSystem(new PhysicMoveSystem());
         this.engine.addSystem(new AnimationPlayerSystem());
         this.engine.addSystem(new FacingSystem());
         this.engine.addSystem(new PhysicSystem(physicWorld, GameConsts.PHYSIC_INTERVAL));
         this.engine.addSystem(new AnimationSystem(gameCore.getAssetService()));
+        this.engine.addSystem(new CameraSystem(game.getCamera()));
         this.engine.addSystem(new RenderSystem(gameCore.getBatch(), gameCore.getViewport(), gameCore.getCamera()));
         this.engine.addSystem(new PhysicDebugRenderSystem(physicWorld, game.getCamera()));
 
@@ -55,10 +58,16 @@ public class GameScreen extends ScreenAdapter {
     public void show() {
         inputManager.releaseHeldInputs();
         game.setInputProcessors(inputManager);
-        Consumer<TiledMap> renderConsumer = engine.getSystem(RenderSystem.class)::setMap;
-        tiledService.setMapChangeConsumer(renderConsumer);
+
+        //Consumer<TiledMap> renderConsumer = engine.getSystem(RenderSystem.class)::setMap;
+        //Consumer<TiledMap> cameraConsumer = engine.getSystem(CameraSystem.class)::setMap;
+
+
+
+
         tiledService.setLoadObjectConsumer(tiledAshleyConfigurator::onLoadObject);
         tiledService.setLoadTileConsumer(tiledAshleyConfigurator::onLoadTile);
+
 
         var tiledMap = this.tiledService.loadMap(MapAsset.MAIN);
         tiledService.setMap(tiledMap);

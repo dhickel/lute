@@ -8,13 +8,14 @@ import com.badlogic.gdx.maps.tiled.objects.TiledMapTileMapObject;
 import com.badlogic.gdx.utils.GdxRuntimeException;
 import io.mindspice.lute.engine.assets.AssetService;
 import io.mindspice.lute.engine.assets.MapAsset;
+import io.mindspice.lute.engine.events.Event;
+import io.mindspice.lute.engine.events.EventEmitter;
 
 import java.util.function.Consumer;
 
-public class TiledService {
+public class TiledService implements EventEmitter {
     private final AssetService assetService;
 
-    private Consumer<TiledMap> mapChangeConsumer;
     private Consumer<TiledMapTileMapObject> loadObjectConsumer;
     private LoadTileConsumer loadTileConsumer;
     private TiledMap currMap;
@@ -22,7 +23,6 @@ public class TiledService {
 
     public TiledService(AssetService assetService) {
         this.assetService = assetService;
-        this.mapChangeConsumer = null;
         this.loadObjectConsumer = null;
         this.currMap = null;
         this.loadTileConsumer = null;
@@ -41,16 +41,17 @@ public class TiledService {
         }
         currMap = map;
         loadMapObjects(map);
-        if (mapChangeConsumer != null) {
-            mapChangeConsumer.accept(map);
-        }
+//        if (mapChangeConsumer != null) {
+//            mapChangeConsumer.accept(map);
+//        }
+        eventEmitter.accept(Event.Map.Loaded.of(map));
     }
 
     private void loadMapObjects(TiledMap map) {
         for (var layer : map.getLayers()) {
             switch (layer) {
                 case MapLayer l when l.getName().equals("Objects") -> loadObjectLayer(layer);
-              //  case MapLayer l when l.getName().equals("Collisions") -> loadObjectLayer(layer);
+                //  case MapLayer l when l.getName().equals("Collisions") -> loadObjectLayer(layer);
                 case TiledMapTileLayer t -> loadTileLayer(t);
                 default -> {// DO nothing}
                 }
@@ -90,9 +91,7 @@ public class TiledService {
 
     }
 
-    public void setMapChangeConsumer(Consumer<TiledMap> mapChangeConsumer) {
-        this.mapChangeConsumer = mapChangeConsumer;
-    }
+
 
     public void setLoadObjectConsumer(Consumer<TiledMapTileMapObject> loadObjectConsumer) {
         this.loadObjectConsumer = loadObjectConsumer;

@@ -17,13 +17,15 @@ import com.badlogic.gdx.utils.Disposable;
 import com.badlogic.gdx.utils.viewport.Viewport;
 import io.mindspice.lute.engine.components.Graphic;
 import io.mindspice.lute.engine.components.Transform;
+import io.mindspice.lute.engine.events.Event;
+import io.mindspice.lute.engine.events.EventListener;
 import io.mindspice.lute.engine.singletons.GameConsts;
 
 import java.util.ArrayList;
 import java.util.Comparator;
 import java.util.List;
 
-public class RenderSystem extends SortedIteratingSystem implements Disposable {
+public class RenderSystem extends SortedIteratingSystem implements Disposable, EventListener {
     private final Batch batch;
     private final Viewport viewport;
     private final OrthographicCamera camera;
@@ -45,6 +47,8 @@ public class RenderSystem extends SortedIteratingSystem implements Disposable {
         this.bgLayers = new ArrayList<>(4);
 
         this.mapRenderer = new OrthogonalTiledMapRenderer(null, GameConsts.UNIT_SCALE, this.batch);
+
+        eventSubscriber.accept(Event.Map.Loaded.class, (event) -> this.setMap(event.map()));
     }
 
     @Override
@@ -90,6 +94,7 @@ public class RenderSystem extends SortedIteratingSystem implements Disposable {
             transform.getRotationDeg()
         );
     }
+
 
     public void setMap(TiledMap map) {
         mapRenderer.setMap(map);

@@ -45,7 +45,7 @@
     "openFiles": [
     ],
     "project": "game.tiled-project",
-    "property.type": "string",
+    "property.type": "bool",
     "recentFiles": [
         "tilesets/ancient_forest/old_tree1.tsx",
         "/home/dhickel/Assets/tilesets/tilesets/collection-source/mp-dungeon1-psd-enemy1-idle-01.tsx",

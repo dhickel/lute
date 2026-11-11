@@ -10,6 +10,7 @@
    <property name="animationSpeed" type="float" value="1"/>
    <property name="atlasAsset" value="OBJECTS"/>
    <property name="atlasKey" value="player"/>
+   <property name="hasCamera" type="bool" value="true"/>
    <property name="isAnimated" type="bool" value="true"/>
    <property name="isPhysics" type="bool" value="true"/>
    <property name="keyFrames" type="int" value="8"/>
