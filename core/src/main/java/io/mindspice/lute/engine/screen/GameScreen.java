@@ -45,8 +45,10 @@ public class GameScreen extends ScreenAdapter implements EventEmitter {
         this.engine.addSystem(new AnimationSystem(gameCore.getAssetService()));
         this.engine.addSystem(new CameraSystem(game.getCamera()));
         this.engine.addSystem(new RenderSystem(gameCore.getBatch(), gameCore.getViewport(), gameCore.getCamera()));
-        this.engine.addSystem(new TiledSystem(game.getAssetService(), tiledAshleyLoader));
+        this.engine.addSystem(new TiledSystem(game.getAssetService(), tiledAshleyLoader, physicWorld));
         this.engine.addSystem(new PhysicDebugRenderSystem(physicWorld, game.getCamera()));
+
+        //game.getCamera().zoom = 2;
 
 
     }
