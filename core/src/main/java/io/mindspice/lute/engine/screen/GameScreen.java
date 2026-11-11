@@ -3,7 +3,6 @@ package io.mindspice.lute.engine.screen;
 import com.badlogic.ashley.core.Engine;
 import com.badlogic.ashley.core.Family;
 import com.badlogic.gdx.ScreenAdapter;
-import com.badlogic.gdx.maps.tiled.TiledMap;
 import com.badlogic.gdx.math.Vector2;
 import com.badlogic.gdx.physics.box2d.World;
 import com.badlogic.gdx.utils.Disposable;
@@ -14,14 +13,12 @@ import io.mindspice.lute.engine.events.EventEmitter;
 import io.mindspice.lute.engine.input.InputManager;
 import io.mindspice.lute.engine.assets.MapAsset;
 import io.mindspice.lute.engine.assets.tiled.TiledAshleyLoader;
-import io.mindspice.lute.engine.assets.tiled.TiledService;
 import io.mindspice.lute.engine.singletons.GameConsts;
 import io.mindspice.lute.engine.systems.*;
 
 public class GameScreen extends ScreenAdapter implements EventEmitter {
 
 
-    private final TiledService tiledService;
     private final TiledAshleyLoader tiledAshleyLoader;
     private final InputManager inputManager;
     private final GameCore game;
@@ -31,7 +28,6 @@ public class GameScreen extends ScreenAdapter implements EventEmitter {
 
     public GameScreen(GameCore gameCore) {
         this.game = gameCore;
-        this.tiledService = new TiledService(gameCore.getAssetService());
         this.inputManager = gameCore.getInputManager();
         this.engine = gameCore.getEngine();
 
