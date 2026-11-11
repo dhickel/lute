@@ -70,12 +70,6 @@ public class CameraSystem extends IteratingSystem implements EventListener {
         mapW = width * tileWidth * GameConsts.UNIT_SCALE;
         mapH = height * tileHeight * GameConsts.UNIT_SCALE;
 
-        // TODO this gets the first we may later want to calc which camera to switch to
-        Entity camEnt = getEntities().first();
-        if (camEnt == null) { return; }
-
-        processEntity(camEnt, 0f);
-
 
     }
 }
