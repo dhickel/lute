@@ -2,6 +2,7 @@
 eclipse.project.name = appName + '-core'
 
 dependencies {
+  implementation "tools.jackson.core:jackson-databind:3.3.0"
   api "com.badlogicgames.ashley:ashley:1.7.4"
   api "com.badlogicgames.gdx-controllers:gdx-controllers-core:$gdxControllersVersion"
   api "com.badlogicgames.gdx:gdx-box2d:$gdxVersion"
