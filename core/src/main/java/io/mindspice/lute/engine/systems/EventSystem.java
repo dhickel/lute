@@ -14,14 +14,11 @@ public class EventSystem extends EntitySystem {
     List<Pair<Class<? extends Event>, Consumer<? extends Event>>> unSubscriptions;
 
     private final Event[] eventQueue;
-    private final Event[] delayedEventQueue;
     private int eventCount = 0;
-    private int delayedEventCount = 0;
 
     public EventSystem() {
         this.listeners = new HashMap<>(20);
         this.eventQueue = new Event[1000];
-        this.delayedEventQueue = new Event[1000];
         this.subscriptions = new ArrayList<>(20);
         this.unSubscriptions = new ArrayList<>(20);
     }
@@ -62,14 +59,6 @@ public class EventSystem extends EntitySystem {
         eventCount++;
     }
 
-    public void emitDelayedEvent(Event event) {
-        if (delayedEventCount == delayedEventQueue.length) {
-            Gdx.app.error("EventSystem.emitDelayedEvent", "Overflow detected, dropping event: " + event.getClass());
-            return;
-        }
-        delayedEventQueue[delayedEventCount] = event;
-        delayedEventCount++;
-    }
 
 
     @SuppressWarnings("unchecked")
