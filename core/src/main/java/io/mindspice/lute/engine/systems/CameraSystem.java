@@ -24,7 +24,7 @@ public class CameraSystem extends IteratingSystem implements EventListener {
         this.camera = camera;
         this.targetPos = new Vector2();
 
-        eventSubscriber.accept(Event.Map.Loaded.class, (event) -> this.setMap(event.map()));
+        eventSubscriber.accept(Event.Map.Changed.class, (event) -> this.setMap(event.map()));
     }
 
     @Override

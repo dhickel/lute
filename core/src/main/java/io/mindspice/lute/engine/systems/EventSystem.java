@@ -14,11 +14,14 @@ public class EventSystem extends EntitySystem {
     List<Pair<Class<? extends Event>, Consumer<? extends Event>>> unSubscriptions;
 
     private final Event[] eventQueue;
+    private final Event[] delayedEventQueue;
     private int eventCount = 0;
+    private int delayedEventCount = 0;
 
     public EventSystem() {
         this.listeners = new HashMap<>(20);
         this.eventQueue = new Event[1000];
+        this.delayedEventQueue = new Event[1000];
         this.subscriptions = new ArrayList<>(20);
         this.unSubscriptions = new ArrayList<>(20);
     }
@@ -52,11 +55,20 @@ public class EventSystem extends EntitySystem {
 
     public void emitEvent(Event event) {
         if (eventCount == eventQueue.length) {
-            Gdx.app.error("EventSystem", "Overflow detected, dropping event: " + event.getClass());
+            Gdx.app.error("EventSystem.emitEvent", "Overflow detected, dropping event: " + event.getClass());
             return;
         }
         eventQueue[eventCount] = event;
         eventCount++;
+    }
+
+    public void emitDelayedEvent(Event event) {
+        if (delayedEventCount == delayedEventQueue.length) {
+            Gdx.app.error("EventSystem.emitDelayedEvent", "Overflow detected, dropping event: " + event.getClass());
+            return;
+        }
+        delayedEventQueue[delayedEventCount] = event;
+        delayedEventCount++;
     }
 
 
@@ -77,9 +89,8 @@ public class EventSystem extends EntitySystem {
             Event event = eventQueue[i];
 
             var listenerList = listeners.get(event.getClass());
-            Gdx.app.debug("EventQueue", "Dispatch Event: " + event +" to listeners: " + listenerList.size());
             if (listenerList == null || listenerList.isEmpty()) { continue; }
-
+            Gdx.app.debug("EventQueue", "Dispatch Event: " + event +" to listeners: " + listenerList.size());
             listenerList.forEach(l -> invoke(event, l));
         }
         Arrays.fill(eventQueue, 0, eventCount, null);

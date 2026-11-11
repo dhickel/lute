@@ -20,16 +20,16 @@ import io.mindspice.lute.engine.components.Transform;
 import io.mindspice.lute.engine.input.InputManager;
 import io.mindspice.lute.engine.singletons.GameConsts;
 
-public class TiledAshleyConfigurator {
+public class TiledAshleyLoader {
     private final Engine engine;
     private final AssetService assetService;
     private final InputManager inputManager;
     private final World physicWorld;
 
-    public TiledAshleyConfigurator(Engine engine,
-                                   AssetService assetService,
-                                   InputManager inputManager,
-                                   World physicWorld
+    public TiledAshleyLoader(Engine engine,
+                             AssetService assetService,
+                             InputManager inputManager,
+                             World physicWorld
     ) {
         this.engine = engine;
         this.assetService = assetService;
@@ -37,7 +37,7 @@ public class TiledAshleyConfigurator {
         this.physicWorld = physicWorld;
     }
 
-    public void onLoadObject(TiledMapTileMapObject tileMapObj) {
+    public void loadObject(TiledMapTileMapObject tileMapObj) {
         Entity entity = engine.createEntity();
         TiledMapTile tile = tileMapObj.getTile();
         TextureRegion texRegion = getTextureRegion(tile);
@@ -110,7 +110,7 @@ public class TiledAshleyConfigurator {
     }
 
 
-    public void onLoadTile(TiledMapTile tile, float x, float y) {
+    public void loadTile(TiledMapTile tile, float x, float y) {
         createBody(
             tile.getObjects(),
             new Vector2(x, y),

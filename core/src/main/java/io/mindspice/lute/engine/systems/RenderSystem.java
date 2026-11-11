@@ -8,9 +8,7 @@ import com.badlogic.gdx.graphics.Color;
 import com.badlogic.gdx.graphics.OrthographicCamera;
 import com.badlogic.gdx.graphics.g2d.Batch;
 import com.badlogic.gdx.maps.MapLayer;
-import com.badlogic.gdx.maps.MapRenderer;
 import com.badlogic.gdx.maps.tiled.TiledMap;
-import com.badlogic.gdx.maps.tiled.TiledMapTile;
 import com.badlogic.gdx.maps.tiled.renderers.OrthogonalTiledMapRenderer;
 import com.badlogic.gdx.maps.tiled.tiles.AnimatedTiledMapTile;
 import com.badlogic.gdx.utils.Disposable;
@@ -48,7 +46,7 @@ public class RenderSystem extends SortedIteratingSystem implements Disposable, E
 
         this.mapRenderer = new OrthogonalTiledMapRenderer(null, GameConsts.UNIT_SCALE, this.batch);
 
-        eventSubscriber.accept(Event.Map.Loaded.class, (event) -> this.setMap(event.map()));
+        eventSubscriber.accept(Event.Map.Changed.class, (event) -> this.setMap(event.map()));
     }
 
     @Override

@@ -9,20 +9,20 @@ import com.badlogic.gdx.physics.box2d.World;
 import com.badlogic.gdx.utils.Disposable;
 import io.mindspice.lute.engine.GameCore;
 import io.mindspice.lute.engine.components.Controller;
+import io.mindspice.lute.engine.events.Event;
+import io.mindspice.lute.engine.events.EventEmitter;
 import io.mindspice.lute.engine.input.InputManager;
 import io.mindspice.lute.engine.assets.MapAsset;
-import io.mindspice.lute.engine.assets.tiled.TiledAshleyConfigurator;
+import io.mindspice.lute.engine.assets.tiled.TiledAshleyLoader;
 import io.mindspice.lute.engine.assets.tiled.TiledService;
 import io.mindspice.lute.engine.singletons.GameConsts;
 import io.mindspice.lute.engine.systems.*;
 
-import java.util.function.Consumer;
-
-public class GameScreen extends ScreenAdapter {
+public class GameScreen extends ScreenAdapter implements EventEmitter {
 
 
     private final TiledService tiledService;
-    private final TiledAshleyConfigurator tiledAshleyConfigurator;
+    private final TiledAshleyLoader tiledAshleyLoader;
     private final InputManager inputManager;
     private final GameCore game;
     private final World physicWorld;
@@ -37,7 +37,7 @@ public class GameScreen extends ScreenAdapter {
 
         this.physicWorld = new World(Vector2.Zero, true);
         this.physicWorld.setAutoClearForces(false);
-        this.tiledAshleyConfigurator = new TiledAshleyConfigurator(engine, gameCore.getAssetService(), inputManager, this.physicWorld);
+        this.tiledAshleyLoader = new TiledAshleyLoader(engine, gameCore.getAssetService(), inputManager, this.physicWorld);
 
 
         this.engine.addSystem(new EventSystem());
@@ -49,6 +49,7 @@ public class GameScreen extends ScreenAdapter {
         this.engine.addSystem(new AnimationSystem(gameCore.getAssetService()));
         this.engine.addSystem(new CameraSystem(game.getCamera()));
         this.engine.addSystem(new RenderSystem(gameCore.getBatch(), gameCore.getViewport(), gameCore.getCamera()));
+        this.engine.addSystem(new TiledSystem(game.getAssetService(), tiledAshleyLoader));
         this.engine.addSystem(new PhysicDebugRenderSystem(physicWorld, game.getCamera()));
 
 
@@ -59,18 +60,8 @@ public class GameScreen extends ScreenAdapter {
         inputManager.releaseHeldInputs();
         game.setInputProcessors(inputManager);
 
-        //Consumer<TiledMap> renderConsumer = engine.getSystem(RenderSystem.class)::setMap;
-        //Consumer<TiledMap> cameraConsumer = engine.getSystem(CameraSystem.class)::setMap;
 
-
-
-
-        tiledService.setLoadObjectConsumer(tiledAshleyConfigurator::onLoadObject);
-        tiledService.setLoadTileConsumer(tiledAshleyConfigurator::onLoadTile);
-
-
-        var tiledMap = this.tiledService.loadMap(MapAsset.MAIN);
-        tiledService.setMap(tiledMap);
+        eventEmitter.accept(new Event.Map.Load(MapAsset.MAIN));
     }
 
     @Override
