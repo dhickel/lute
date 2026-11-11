@@ -38,15 +38,13 @@
    <property name="atlasAsset" value="OBJECTS"/>
    <property name="atlasKey" value="old_tree1/old_tree1"/>
    <property name="isAnimated" type="bool" value="true"/>
+   <property name="isPhysics" type="bool" value="true"/>
    <property name="keyFrames" type="int" value="10"/>
+   <property name="physicBodyType" value="static"/>
   </properties>
   <image source="old_tree1/old_tree1_00.png" width="160" height="256"/>
   <objectgroup draworder="index" id="2">
    <object id="1" x="62.3333" y="195.667" width="40" height="37.6667">
-    <properties>
-     <property name="isPhysics" type="bool" value="true"/>
-     <property name="physicBodyType" value="static"/>
-    </properties>
     <ellipse/>
    </object>
   </objectgroup>

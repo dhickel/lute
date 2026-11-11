@@ -1,6 +1,7 @@
 package io.mindspice.lute.engine.systems;
 
 import com.badlogic.ashley.core.EntitySystem;
+import com.badlogic.gdx.Gdx;
 import com.badlogic.gdx.maps.MapLayer;
 import com.badlogic.gdx.maps.tiled.TiledMap;
 import com.badlogic.gdx.maps.tiled.TiledMapTileLayer;
@@ -55,10 +56,9 @@ public class TiledSystem extends EntitySystem implements EventListener, EventEmi
         for (var layer : map.getLayers()) {
             switch (layer) {
                 case MapLayer l when l.getName().equals("Objects") -> loadObjectLayer(layer);
-                //  case MapLayer l when l.getName().equals("Collisions") -> loadObjectLayer(layer);
+                  case MapLayer l when l.getName().equals("Collisions") -> loadObjectLayer(layer);
                 case TiledMapTileLayer t -> loadTileLayer(t);
-                default -> {// DO nothing}
-                }
+                default -> { Gdx.app.debug("TiledSystem", " Skipping load for layer: " + layer.getName()); }
             }
         }
         initMapBoundary(map);

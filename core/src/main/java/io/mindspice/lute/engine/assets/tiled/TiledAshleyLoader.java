@@ -61,7 +61,6 @@ public class TiledAshleyLoader {
 
         boolean hasCamera = tile.getProperties().get("hasCamera", false, Boolean.class);
         if (hasCamera) {
-            // addEntityCameraFollow(tileMapObj, entity)
             Gdx.app.debug("TiledAshleyConfigurator", "Added Camera to entity");
             entity.add(new CameraFollow());
         }
@@ -77,9 +76,7 @@ public class TiledAshleyLoader {
         engine.addEntity(entity);
     }
 
-    private void addEntityCameraFollow(TiledMapTileMapObject tileMapObj, Entity entity) {
 
-    }
 
     private BodyDef.BodyType getPhysicBodyType(TiledMapTile tile) {
         String bodyType = tile.getProperties().get("physicBodyType", "NULL", String.class);
