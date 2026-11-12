@@ -26,6 +26,7 @@ public class GameScreen extends ScreenAdapter implements EventEmitter {
     private final World physicWorld;
     private final Engine engine;
     private final MapAssets mapAssets;
+    private boolean visible;
 
 
     public GameScreen(MapAssets mapAssets) {
@@ -58,6 +59,7 @@ public class GameScreen extends ScreenAdapter implements EventEmitter {
 
     @Override
     public void show() {
+        visible = true;
         inputManager.releaseHeldInputs();
         game.setInputProcessors(inputManager);
 
@@ -67,6 +69,8 @@ public class GameScreen extends ScreenAdapter implements EventEmitter {
 
     @Override
     public void hide() {
+        if (!visible) { return; }
+        visible = false;
         inputManager.releaseHeldInputs();
         engine.getSystem(ControllerSystem.class).update(0f);
         for (var entity : engine.getEntitiesFor(Family.all(Controller.class).get())) {

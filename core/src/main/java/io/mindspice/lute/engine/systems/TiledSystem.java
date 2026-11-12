@@ -44,7 +44,7 @@ public class TiledSystem extends EntitySystem implements EventListener, EventEmi
     }
 
     public void setMap(TiledMap map, MapAssets assets) {
-        if (currMap != null) { unloadCurrentMap(); }
+        if (currMap != null) { unloadCurrentMap(currMap != map); }
 
         currMap = map;
         currMapAssets = assets;
@@ -54,8 +54,8 @@ public class TiledSystem extends EntitySystem implements EventListener, EventEmi
     }
 
 
-    private void unloadCurrentMap() {
-        assetService.unload(currMapAssets.mapAsset());
+    private void unloadCurrentMap(boolean unloadAsset) {
+        if (unloadAsset) { assetService.unload(currMapAssets.mapAsset()); }
         Array<Body> bodies = new Array<>();
         physicsWorld.getBodies(bodies);
         for (Body body : bodies) {

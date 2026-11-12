@@ -134,7 +134,7 @@ public class RenderSystem extends SortedIteratingSystem implements Disposable, E
 
     @Override
     public void dispose() {
-
+        mapRenderer.dispose();
     }
 
 
