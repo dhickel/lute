@@ -31,3 +31,11 @@ tasks.register('inputSystemTest', JavaExec) {
   mainClass = 'io.mindspice.lute.engine.input.InputSystemTest'
 }
 check.dependsOn inputSystemTest
+
+tasks.register('manifestLoaderTest', JavaExec) {
+  dependsOn testClasses
+  classpath = sourceSets.test.runtimeClasspath
+  mainClass = 'io.mindspice.lute.engine.assets.tiled.ManifestLoaderTest'
+  workingDir = rootProject.projectDir
+}
+check.dependsOn manifestLoaderTest
