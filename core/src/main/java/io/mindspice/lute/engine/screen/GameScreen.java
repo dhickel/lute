@@ -7,11 +7,12 @@ import com.badlogic.gdx.math.Vector2;
 import com.badlogic.gdx.physics.box2d.World;
 import com.badlogic.gdx.utils.Disposable;
 import io.mindspice.lute.engine.GameCore;
+import io.mindspice.lute.engine.assets.MapAssets;
 import io.mindspice.lute.engine.components.Controller;
 import io.mindspice.lute.engine.events.Event;
 import io.mindspice.lute.engine.events.EventEmitter;
 import io.mindspice.lute.engine.input.InputManager;
-import io.mindspice.lute.engine.assets.MapAsset;
+import io.mindspice.lute.engine.assets.tiled.ManifestLoader;
 import io.mindspice.lute.engine.assets.tiled.TiledAshleyLoader;
 import io.mindspice.lute.engine.singletons.GameConsts;
 import io.mindspice.lute.engine.systems.*;
@@ -58,8 +59,9 @@ public class GameScreen extends ScreenAdapter implements EventEmitter {
         inputManager.releaseHeldInputs();
         game.setInputProcessors(inputManager);
 
+        MapAssets mapAsset = ManifestLoader.parseAssetManifest("test_tiled");
 
-        eventEmitter.accept(new Event.Map.Load(MapAsset.MAIN));
+        eventEmitter.accept(new Event.Map.Load(mapAsset));
     }
 
     @Override

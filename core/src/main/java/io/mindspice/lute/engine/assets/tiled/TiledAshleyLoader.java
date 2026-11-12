@@ -13,8 +13,9 @@ import com.badlogic.gdx.maps.tiled.objects.TiledMapTileMapObject;
 import com.badlogic.gdx.math.Vector2;
 import com.badlogic.gdx.physics.box2d.*;
 import com.badlogic.gdx.utils.GdxRuntimeException;
+import io.mindspice.lute.engine.assets.Asset;
 import io.mindspice.lute.engine.assets.AssetService;
-import io.mindspice.lute.engine.assets.AtlasAsset;
+import io.mindspice.lute.engine.assets.MapAssets;
 import io.mindspice.lute.engine.components.*;
 import io.mindspice.lute.engine.components.Transform;
 import io.mindspice.lute.engine.input.InputManager;
@@ -37,10 +38,11 @@ public class TiledAshleyLoader {
         this.physicWorld = physicWorld;
     }
 
-    public void loadObject(TiledMapTileMapObject tileMapObj) {
+    public void loadObject(TiledMapTileMapObject tileMapObj, MapAssets mapAssets) {
         Entity entity = engine.createEntity();
         TiledMapTile tile = tileMapObj.getTile();
-        TextureRegion texRegion = getTextureRegion(tile);
+        Asset.Atlas atlas = getAtlas(tile, mapAssets);
+        TextureRegion texRegion = getTextureRegion(tile, atlas);
 
         entity.add(new Graphic(texRegion, Color.WHITE.cpy()));
 
@@ -69,7 +71,7 @@ public class TiledAshleyLoader {
 
         boolean isAnimated = tile.getProperties().get("isAnimated", false, Boolean.class);
         if (isAnimated) {
-            addEntityAnimation(tile, entity);
+            addEntityAnimation(tile, entity, atlas);
             entity.add(new AnimationPlayer(entity));
         }
 
@@ -143,15 +145,18 @@ public class TiledAshleyLoader {
         return body;
     }
 
-    private TextureRegion getTextureRegion(TiledMapTile tile) {
-        String atlasAsset = tile.getProperties().get("atlasAsset", AtlasAsset.OBJECTS.name(), String.class);
+    private Asset.Atlas getAtlas(TiledMapTile tile, MapAssets mapAssets) {
+        String atlasId = tile.getProperties().get("atlasAsset", "OBJECTS", String.class);
+        Asset.Atlas atlas = mapAssets.atlasAssets().get(atlasId);
+        if (atlas == null) {
+            throw new GdxRuntimeException("Unknown atlas asset ID: " + atlasId);
+        }
+        return atlas;
+    }
+
+    private TextureRegion getTextureRegion(TiledMapTile tile, Asset.Atlas atlas) {
         String atlasKey = tile.getProperties().get("atlasKey", "NULL", String.class);
-
-
-        // Illegal Argument check, should be improved
-        AtlasAsset asset = AtlasAsset.valueOf(atlasAsset);
-
-        TextureAtlas texAtlas = assetService.get(asset);
+        TextureAtlas texAtlas = assetService.get(atlas);
         // FileTextureData texData = (FileTextureData) tile.getTextureRegion().getTexture().getTextureData();
         //String atlasKey = texData.getFileHandle().nameWithoutExtension();
 
@@ -184,15 +189,12 @@ public class TiledAshleyLoader {
         entity.add(new Move(speed));
     }
 
-    private void addEntityAnimation(TiledMapTile tile, Entity entity) {
+    private void addEntityAnimation(TiledMapTile tile, Entity entity, Asset.Atlas asset) {
         String animStr = tile.getProperties().get("animation", "DEFAULT", String.class);
 
         Animation2D.AnimationType animationType = Animation2D.AnimationType.valueOf(animStr);
-        String atlasAssetStr = tile.getProperties().get("atlasAsset", "", String.class);
         String atlasKey = tile.getProperties().get("atlasKey", "NULL", String.class);
         int keyFrames = tile.getProperties().get("keyFrames", 1, Integer.class); // Todo add checks for these
-
-        AtlasAsset asset = AtlasAsset.valueOf(atlasAssetStr);
 
         //       TextureAtlas texAtlas = assetService.get(asset);
 //        FileTextureData texData = (FileTextureData) tile.getTextureRegion().getTexture().getTextureData();

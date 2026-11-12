@@ -17,21 +17,21 @@ public class AssetService implements Disposable {
 
 
     public <T> T load(Asset<T> asset) {
-        this.assetManager.load(asset.getDescriptor());
+        this.assetManager.load(asset.descriptor());
         this.assetManager.finishLoading();
-        return this.assetManager.get(asset.getDescriptor());
+        return this.assetManager.get(asset.descriptor());
     }
 
     public <T> void unload(Asset<T> asset) {
-        assetManager.unload(asset.getDescriptor().fileName);
+        assetManager.unload(asset.descriptor().fileName);
     }
 
     public <T> void queue(Asset<T> asset) {
-        assetManager.load(asset.getDescriptor());
+        assetManager.load(asset.descriptor());
     }
 
     public <T> T get(Asset<T> asset) {
-        return assetManager.get(asset.getDescriptor());
+        return assetManager.get(asset.descriptor());
     }
 
     public boolean update() {

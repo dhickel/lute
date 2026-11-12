@@ -11,9 +11,10 @@ import com.badlogic.gdx.physics.box2d.Body;
 import com.badlogic.gdx.physics.box2d.BodyDef;
 import com.badlogic.gdx.physics.box2d.PolygonShape;
 import com.badlogic.gdx.physics.box2d.World;
+import com.badlogic.gdx.utils.Array;
 import com.badlogic.gdx.utils.GdxRuntimeException;
 import io.mindspice.lute.engine.assets.AssetService;
-import io.mindspice.lute.engine.assets.MapAsset;
+import io.mindspice.lute.engine.assets.MapAssets;
 import io.mindspice.lute.engine.assets.tiled.TiledAshleyLoader;
 import io.mindspice.lute.engine.events.Event;
 import io.mindspice.lute.engine.events.EventEmitter;
@@ -25,38 +26,48 @@ public class TiledSystem extends EntitySystem implements EventListener, EventEmi
     private final TiledAshleyLoader loader;
     private final World physicsWorld;
     private TiledMap currMap;
+    private MapAssets currMapAssets;
 
     public TiledSystem(AssetService assetService, TiledAshleyLoader loader, World physicsWorld) {
         this.assetService = assetService;
         this.loader = loader;
         this.physicsWorld = physicsWorld;
 
-        eventSubscriber.accept(Event.Map.Load.class, (load) -> this.loadMap(load.mapAsset()));
+        eventSubscriber.accept(Event.Map.Load.class, (load) -> this.loadMap(load.mapAssets()));
     }
 
 
-    public TiledMap loadMap(MapAsset map) {
-        var tiledMap = assetService.load(map);
-        tiledMap.getProperties().put("mapAsset", tiledMap);
-        setMap(tiledMap);
+    public TiledMap loadMap(MapAssets assets) {
+        var tiledMap = assetService.load(assets.mapAsset());
+        setMap(tiledMap, assets);
         return tiledMap;
     }
 
-    public void setMap(TiledMap map) {
-        if (currMap != null) {
-            assetService.unload(currMap.getProperties().get("mapAsset", MapAsset.class));
-        }
+    public void setMap(TiledMap map, MapAssets assets) {
+        if (currMap != null) { unloadCurrentMap(); }
+
         currMap = map;
+        currMapAssets = assets;
         loadMapObjects(map);
+
         eventEmitter.accept(new Event.Map.Changed(map));
     }
 
+
+    private void unloadCurrentMap() {
+        assetService.unload(currMapAssets.mapAsset());
+        Array<Body> bodies = new Array<>();
+        physicsWorld.getBodies(bodies);
+        for (Body body : bodies) {
+            if ("environment".equals(body.getUserData())) { physicsWorld.destroyBody(body); }
+        }
+    }
 
     private void loadMapObjects(TiledMap map) {
         for (var layer : map.getLayers()) {
             switch (layer) {
                 case MapLayer l when l.getName().equals("Objects") -> loadObjectLayer(layer);
-                  case MapLayer l when l.getName().equals("Collisions") -> loadObjectLayer(layer);
+                case MapLayer l when l.getName().equals("Collisions") -> loadObjectLayer(layer);
                 case TiledMapTileLayer t -> loadTileLayer(t);
                 default -> { Gdx.app.debug("TiledSystem", " Skipping load for layer: " + layer.getName()); }
             }
@@ -81,6 +92,7 @@ public class TiledSystem extends EntitySystem implements EventListener, EventEmi
         bodyDef.position.setZero();
         bodyDef.fixedRotation = true;
         Body body = physicsWorld.createBody(bodyDef);
+        body.setUserData("environment");
 
         // Left Edge
         PolygonShape shape = new PolygonShape();
@@ -120,7 +132,7 @@ public class TiledSystem extends EntitySystem implements EventListener, EventEmi
     private void loadObjectLayer(MapLayer layer) {
         for (var mapObj : layer.getObjects()) {
             if (mapObj instanceof TiledMapTileMapObject tmObj) {
-                loader.loadObject(tmObj);
+                loader.loadObject(tmObj, currMapAssets);
             } else { throw new GdxRuntimeException("Unsupported Obj: " + mapObj.getClass().getSimpleName()); }
         }
 

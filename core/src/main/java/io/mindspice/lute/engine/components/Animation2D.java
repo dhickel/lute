@@ -4,12 +4,12 @@ import com.badlogic.ashley.core.Component;
 import com.badlogic.ashley.core.ComponentMapper;
 import com.badlogic.gdx.graphics.g2d.Animation;
 import com.badlogic.gdx.graphics.g2d.TextureRegion;
-import io.mindspice.lute.engine.assets.AtlasAsset;
+import io.mindspice.lute.engine.assets.Asset;
 
 public class Animation2D implements Component {
     public static final ComponentMapper<Animation2D> MAPPER = ComponentMapper.getFor(Animation2D.class);
 
-    private final AtlasAsset atlasAsset;
+    private final Asset.Atlas atlasAsset;
     private final String atlasKey;
     private AnimationType type;
     private Facing.Direction fdirection;
@@ -20,7 +20,7 @@ public class Animation2D implements Component {
     private Animation<TextureRegion> animation;
     boolean dirty;
 
-    public Animation2D(AtlasAsset atlasAsset,
+    public Animation2D(Asset.Atlas atlasAsset,
                        String atlasKey,
                        AnimationType type,
                        Animation.PlayMode mode,
@@ -54,7 +54,7 @@ public class Animation2D implements Component {
         return animation;
     }
 
-    public AtlasAsset getAtlasAsset() {
+    public Asset.Atlas getAtlasAsset() {
         return atlasAsset;
     }
 

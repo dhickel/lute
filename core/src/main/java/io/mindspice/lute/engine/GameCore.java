@@ -12,7 +12,7 @@ import com.badlogic.gdx.utils.GdxRuntimeException;
 import com.badlogic.gdx.utils.viewport.FitViewport;
 import com.badlogic.gdx.utils.viewport.Viewport;
 import io.mindspice.lute.engine.assets.AssetService;
-import io.mindspice.lute.engine.assets.AtlasAsset;
+import io.mindspice.lute.engine.assets.Asset;
 import io.mindspice.lute.engine.input.InputAction;
 import io.mindspice.lute.engine.input.InputManager;
 import io.mindspice.lute.engine.input.InputMap;
@@ -77,7 +77,7 @@ public class GameCore extends Game {
         };
 
         this.screenManager = new ScreenManager(
-          Pair.of("InitialLoading", new LoadingScreen(assetService, switchToGameScreen, AtlasAsset.OBJECTS)),
+          Pair.of("InitialLoading", new LoadingScreen(assetService, switchToGameScreen, Asset.Atlas.of("objects.atlas"))),
           Pair.of("GameScreen", new GameScreen(this))
         );
 

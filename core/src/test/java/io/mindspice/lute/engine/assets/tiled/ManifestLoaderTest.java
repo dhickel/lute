@@ -6,7 +6,7 @@ import com.badlogic.gdx.files.FileHandle;
 import io.mindspice.lute.engine.assets.Asset;
 
 import java.lang.reflect.Proxy;
-import java.util.List;
+import java.util.Map;
 
 public final class ManifestLoaderTest {
     public static void main(String[] args) {
@@ -25,17 +25,25 @@ public final class ManifestLoaderTest {
             checkAssets(assets.atlasAssets(), "atlases");
             checkAssets(assets.musicAssets(), "music");
             checkAssets(assets.soundAssets(), "sounds");
+            checkAsset(assets.atlasAssets().get("OBJECTS"), "OBJECTS atlas");
+            checkAsset(assets.musicAssets().get("TOWN"), "TOWN music");
+            checkAsset(assets.soundAssets().get("SWORD_HIT"), "SWORD_HIT sound");
             System.out.println("ManifestLoaderTest: passed");
         } finally {
             Gdx.files = previousFiles;
         }
     }
 
-    private static void checkAssets(List<? extends Asset<?>> assets, String field) {
+    private static void checkAssets(Map<String, ? extends Asset<?>> assets, String field) {
         if (assets == null || assets.isEmpty()) {
             throw new AssertionError(field + " must contain at least one asset");
         }
-        assets.forEach(asset -> checkAsset(asset, field));
+        assets.forEach((key, asset) -> {
+            if (key == null || key.isBlank()) {
+                throw new AssertionError(field + " must have a nonempty key");
+            }
+            checkAsset(asset, field);
+        });
     }
 
     private static void checkAsset(Asset<?> asset, String field) {

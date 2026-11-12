@@ -9,7 +9,7 @@ import com.badlogic.gdx.graphics.g2d.TextureRegion;
 import com.badlogic.gdx.utils.Array;
 import com.badlogic.gdx.utils.GdxRuntimeException;
 import io.mindspice.lute.engine.assets.AssetService;
-import io.mindspice.lute.engine.assets.AtlasAsset;
+import io.mindspice.lute.engine.assets.Asset;
 import io.mindspice.lute.engine.components.Animation2D;
 import io.mindspice.lute.engine.components.Facing;
 import io.mindspice.lute.engine.components.Graphic;
@@ -49,7 +49,7 @@ public class AnimationSystem extends IteratingSystem {
     }
 
     public void updateAnimation(Animation2D anim2d, Facing.Direction fDir) {
-        AtlasAsset atlasAsset = anim2d.getAtlasAsset();
+        Asset.Atlas atlasAsset = anim2d.getAtlasAsset();
         String atlasKey = anim2d.getAtlasKey();
         Animation2D.AnimationType type = anim2d.getType();
         var cacheKey = new CacheKey(atlasAsset, atlasKey, type, fDir);
@@ -73,7 +73,7 @@ public class AnimationSystem extends IteratingSystem {
 
 
     public record CacheKey(
-        AtlasAsset asset,
+        Asset.Atlas asset,
         String atlasKey,
         Animation2D.AnimationType type,
         Facing.Direction FDirection

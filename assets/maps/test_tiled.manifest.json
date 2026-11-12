@@ -1,0 +1,6 @@
+{
+  "map_asset": "test_tiled.tmx",
+  "atlas_assets": {"OBJECTS": "objects.atlas"},
+  "music_assets": {"TOWN": "town.ogg"},
+  "sound_assets": {"SWORD_HIT": "sword_hit.wav"}
+}

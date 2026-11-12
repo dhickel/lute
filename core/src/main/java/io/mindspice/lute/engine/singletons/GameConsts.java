@@ -7,6 +7,8 @@ public class GameConsts {
     public static final float VIEW_HEIGHT = 12f;
     public static final float VIEW_WIDTH = 21.3f;
     public static final float PHYSIC_INTERVAL = 1 / 60f;
-    public static final Vector2 PHYSIC_SCALING = new Vector2(1f,1f);
+    public static final Vector2 PHYSIC_SCALING = new Vector2(1f, 1f);
     public static final float CAMERA_SMOOTH_FACTOR = 4f;
+    public static final String PROJECT_PATH = "game.tiled-project";
+    public static final String MAPS_PATH = "maps/";
 }
