@@ -8,11 +8,12 @@ import com.badlogic.gdx.graphics.OrthographicCamera;
 import com.badlogic.gdx.graphics.g2d.Batch;
 import com.badlogic.gdx.graphics.g2d.SpriteBatch;
 import com.badlogic.gdx.graphics.profiling.GLProfiler;
-import com.badlogic.gdx.utils.GdxRuntimeException;
 import com.badlogic.gdx.utils.viewport.FitViewport;
 import com.badlogic.gdx.utils.viewport.Viewport;
 import io.mindspice.lute.engine.assets.AssetService;
 import io.mindspice.lute.engine.assets.Asset;
+import io.mindspice.lute.engine.assets.MapAssets;
+import io.mindspice.lute.engine.assets.tiled.ManifestLoader;
 import io.mindspice.lute.engine.input.InputAction;
 import io.mindspice.lute.engine.input.InputManager;
 import io.mindspice.lute.engine.input.InputMap;
@@ -23,8 +24,6 @@ import io.mindspice.lute.engine.singletons.GameConsts;
 import io.mindspice.lute.engine.util.Pair;
 
 import java.util.Arrays;
-import java.util.HashMap;
-import java.util.Map;
 
 /**
  * {@link com.badlogic.gdx.ApplicationListener} implementation shared by all platforms.
@@ -76,9 +75,11 @@ public class GameCore extends Game {
             screenManager.unloadScreen("InitialLoading");
         };
 
+        MapAssets assets = ManifestLoader.parseMapManifest("test_tiled");
+
         this.screenManager = new ScreenManager(
-          Pair.of("InitialLoading", new LoadingScreen(assetService, switchToGameScreen, Asset.Atlas.of("objects.atlas"))),
-          Pair.of("GameScreen", new GameScreen(this))
+          Pair.of("InitialLoading", new LoadingScreen(assetService, switchToGameScreen, assets.all())),
+          Pair.of("GameScreen", new GameScreen(assets))
         );
 
         screenManager.switchScreens("InitialLoading");

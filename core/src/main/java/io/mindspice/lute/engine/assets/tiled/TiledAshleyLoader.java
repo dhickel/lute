@@ -146,7 +146,7 @@ public class TiledAshleyLoader {
     }
 
     private Asset.Atlas getAtlas(TiledMapTile tile, MapAssets mapAssets) {
-        String atlasId = tile.getProperties().get("atlasAsset", "OBJECTS", String.class);
+        String atlasId = tile.getProperties().get("atlasAsset", "", String.class);
         Asset.Atlas atlas = mapAssets.atlasAssets().get(atlasId);
         if (atlas == null) {
             throw new GdxRuntimeException("Unknown atlas asset ID: " + atlasId);

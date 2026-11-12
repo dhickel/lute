@@ -20,7 +20,7 @@ public final class ManifestLoaderTest {
                     throw new UnsupportedOperationException(method.getName());
                 });
 
-            var assets = ManifestLoader.parseAssetManifest("test_tiled");
+            var assets = ManifestLoader.parseMapManifest("test_tiled");
             checkAsset(assets.mapAsset(), "map");
             checkAssets(assets.atlasAssets(), "atlases");
             checkAssets(assets.musicAssets(), "music");

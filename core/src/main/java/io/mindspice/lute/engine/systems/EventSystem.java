@@ -60,7 +60,6 @@ public class EventSystem extends EntitySystem {
     }
 
 
-
     @SuppressWarnings("unchecked")
     private <T extends Event> void invoke(T event, Consumer<? extends Event> consumer) {
         ((Consumer<T>) consumer).accept(event);

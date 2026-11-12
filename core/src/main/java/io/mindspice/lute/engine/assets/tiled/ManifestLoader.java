@@ -15,7 +15,7 @@ import java.util.stream.Collectors;
 public class ManifestLoader {
     public static final JsonMapper mapper = JsonMapper.builder().build();
 
-    public static MapAssets parseAssetManifest(String mapName) {
+    public static MapAssets parseMapManifest(String mapName) {
         String filePath = GameConsts.MAPS_PATH + mapName + ".manifest.json";
 
         AssetManifest manifest = null;

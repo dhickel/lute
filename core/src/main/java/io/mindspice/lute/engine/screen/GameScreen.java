@@ -25,16 +25,18 @@ public class GameScreen extends ScreenAdapter implements EventEmitter {
     private final GameCore game;
     private final World physicWorld;
     private final Engine engine;
+    private final MapAssets mapAssets;
 
 
-    public GameScreen(GameCore gameCore) {
-        this.game = gameCore;
-        this.inputManager = gameCore.getInputManager();
-        this.engine = gameCore.getEngine();
+    public GameScreen(MapAssets mapAssets) {
+        this.game = GameCore.INSTANCE;
+        this.inputManager = this.game.getInputManager();
+        this.engine = this.game.getEngine();
+        this.mapAssets = mapAssets;
 
         this.physicWorld = new World(Vector2.Zero, true);
         this.physicWorld.setAutoClearForces(false);
-        this.tiledAshleyLoader = new TiledAshleyLoader(engine, gameCore.getAssetService(), inputManager, this.physicWorld);
+        this.tiledAshleyLoader = new TiledAshleyLoader(engine, this.game.getAssetService(), inputManager, this.physicWorld);
 
 
         this.engine.addSystem(new EventSystem());
@@ -43,9 +45,9 @@ public class GameScreen extends ScreenAdapter implements EventEmitter {
         this.engine.addSystem(new AnimationPlayerSystem());
         this.engine.addSystem(new FacingSystem());
         this.engine.addSystem(new PhysicSystem(physicWorld, GameConsts.PHYSIC_INTERVAL));
-        this.engine.addSystem(new AnimationSystem(gameCore.getAssetService()));
+        this.engine.addSystem(new AnimationSystem(this.game.getAssetService()));
         this.engine.addSystem(new CameraSystem(game.getCamera()));
-        this.engine.addSystem(new RenderSystem(gameCore.getBatch(), gameCore.getViewport(), gameCore.getCamera()));
+        this.engine.addSystem(new RenderSystem(this.game.getBatch(), this.game.getViewport(), this.game.getCamera()));
         this.engine.addSystem(new TiledSystem(game.getAssetService(), tiledAshleyLoader, physicWorld));
         this.engine.addSystem(new PhysicDebugRenderSystem(physicWorld, game.getCamera()));
 
@@ -59,9 +61,8 @@ public class GameScreen extends ScreenAdapter implements EventEmitter {
         inputManager.releaseHeldInputs();
         game.setInputProcessors(inputManager);
 
-        MapAssets mapAsset = ManifestLoader.parseAssetManifest("test_tiled");
 
-        eventEmitter.accept(new Event.Map.Load(mapAsset));
+        eventEmitter.accept(new Event.Map.Load(mapAssets));
     }
 
     @Override

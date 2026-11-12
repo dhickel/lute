@@ -38,7 +38,7 @@ public class TiledSystem extends EntitySystem implements EventListener, EventEmi
 
 
     public TiledMap loadMap(MapAssets assets) {
-        var tiledMap = assetService.load(assets.mapAsset());
+        var tiledMap = assetService.get(assets.mapAsset());
         setMap(tiledMap, assets);
         return tiledMap;
     }

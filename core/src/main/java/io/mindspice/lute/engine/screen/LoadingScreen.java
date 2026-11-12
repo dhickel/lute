@@ -8,21 +8,22 @@ import io.mindspice.lute.engine.assets.AssetService;
 import io.mindspice.lute.engine.assets.Asset;
 
 import java.util.Arrays;
+import java.util.List;
 
 public class LoadingScreen extends ScreenAdapter {
     private final Runnable afterLoadScreen;
     private final AssetService assetService;
-    private final Asset.Atlas[] assetsToLoad;
+    private final List<Asset<?>> assetsToLoad;
 
-    public LoadingScreen(AssetService assetService, Runnable afterLoadScreen, Asset.Atlas... assetToLoad) {
+    public LoadingScreen(AssetService assetService, Runnable afterLoadScreen, List<Asset<?>> assetsToLoad) {
         this.afterLoadScreen = afterLoadScreen;
         this.assetService = assetService;
-        this.assetsToLoad = assetToLoad;
+        this.assetsToLoad = assetsToLoad;
     }
 
     @Override
     public void show() {
-        Arrays.stream(assetsToLoad).forEach(assetService::queue);
+        assetsToLoad.forEach(assetService::queue);
     }
 
     @Override
