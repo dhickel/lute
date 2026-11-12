@@ -11,7 +11,6 @@ import com.badlogic.gdx.graphics.profiling.GLProfiler;
 import com.badlogic.gdx.utils.viewport.FitViewport;
 import com.badlogic.gdx.utils.viewport.Viewport;
 import io.mindspice.lute.engine.assets.AssetService;
-import io.mindspice.lute.engine.assets.Asset;
 import io.mindspice.lute.engine.assets.MapAssets;
 import io.mindspice.lute.engine.assets.tiled.ManifestLoader;
 import io.mindspice.lute.engine.input.InputAction;

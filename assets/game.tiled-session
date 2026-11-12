@@ -1,9 +1,9 @@
 {
     "activeFile": "",
     "expandedProjectPaths": [
-        "tilesets/ancient_forest",
-        "tilesets",
         ".",
+        "tilesets",
+        "tilesets/ancient_forest",
         "maps"
     ],
     "file.lastUsedOpenFilter": "All Files (*)",

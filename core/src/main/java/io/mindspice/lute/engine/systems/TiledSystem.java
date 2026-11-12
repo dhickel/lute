@@ -13,6 +13,7 @@ import com.badlogic.gdx.physics.box2d.PolygonShape;
 import com.badlogic.gdx.physics.box2d.World;
 import com.badlogic.gdx.utils.Array;
 import com.badlogic.gdx.utils.GdxRuntimeException;
+import io.mindspice.lute.engine.assets.Asset;
 import io.mindspice.lute.engine.assets.AssetService;
 import io.mindspice.lute.engine.assets.MapAssets;
 import io.mindspice.lute.engine.assets.tiled.TiledAshleyLoader;
@@ -20,6 +21,8 @@ import io.mindspice.lute.engine.events.Event;
 import io.mindspice.lute.engine.events.EventEmitter;
 import io.mindspice.lute.engine.events.EventListener;
 import io.mindspice.lute.engine.singletons.GameConsts;
+
+import java.util.concurrent.ThreadLocalRandom;
 
 public class TiledSystem extends EntitySystem implements EventListener, EventEmitter {
     private final AssetService assetService;
@@ -51,6 +54,21 @@ public class TiledSystem extends EntitySystem implements EventListener, EventEmi
         loadMapObjects(map);
 
         eventEmitter.accept(new Event.Map.Changed(map));
+
+
+        // Play selected music asset from tiled map properties, fallback to random.
+        String mapMusic = map.getProperties().get("music", "RANDOM", String.class);
+        if (mapMusic.equals("RANDOM")) {
+            currMapAssets.musicAssets().values().stream()
+                .skip(ThreadLocalRandom.current().nextInt(currMapAssets.musicAssets().size()))
+                .findFirst()
+                .ifPresent(ma -> eventEmitter.accept(new Event.Music.Changed(ma)));
+        } else {
+            Asset.Music music = currMapAssets.musicAssets().get(mapMusic);
+            if (music == null) {
+                throw new GdxRuntimeException("Failed to find music asset for key: " + mapMusic);
+            }
+        }
     }
 
 

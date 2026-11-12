@@ -1,6 +1,7 @@
 package io.mindspice.lute.engine.events;
 
 import com.badlogic.gdx.maps.tiled.TiledMap;
+import io.mindspice.lute.engine.assets.Asset;
 import io.mindspice.lute.engine.assets.MapAssets;
 
 public sealed interface Event {
@@ -10,6 +11,9 @@ public sealed interface Event {
 
         record Changed(TiledMap map) implements Map { }
 
+    }
 
+    sealed interface Music extends Event {
+        record Changed(Asset.Music musicAsset) implements Music {}
     }
 }

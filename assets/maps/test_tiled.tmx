@@ -1,7 +1,7 @@
 <?xml version="1.0" encoding="UTF-8"?>
 <map version="1.10" tiledversion="1.12.2" class="Teleport" orientation="orthogonal" renderorder="right-down" width="30" height="20" tilewidth="32" tileheight="32" infinite="0" nextlayerid="8" nextobjectid="17">
  <properties>
-  <property name="target" value="cave"/>
+  <property name="music" value="TOWN"/>
  </properties>
  <tileset firstgid="1" source="../tilesets/ancient_forest/ancient-forest-main.tsx"/>
  <tileset firstgid="2647" source="../tilesets/ancient_forest/old_tree1.tsx"/>
