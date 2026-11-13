@@ -4,6 +4,7 @@ import com.badlogic.ashley.core.Entity;
 import com.badlogic.ashley.core.EntitySystem;
 import com.badlogic.gdx.Gdx;
 import com.badlogic.gdx.maps.MapLayer;
+import com.badlogic.gdx.maps.MapObjects;
 import com.badlogic.gdx.maps.objects.PointMapObject;
 import com.badlogic.gdx.maps.tiled.TiledMap;
 import com.badlogic.gdx.maps.tiled.TiledMapTileLayer;
@@ -17,25 +18,24 @@ import com.badlogic.gdx.utils.Array;
 import com.badlogic.gdx.utils.GdxRuntimeException;
 import io.mindspice.lute.engine.assets.AssetService;
 import io.mindspice.lute.engine.assets.MapAssets;
-import io.mindspice.lute.engine.tiled.TiledAshleyLoader;
 import io.mindspice.lute.engine.events.Event;
 import io.mindspice.lute.engine.events.EventEmitter;
 import io.mindspice.lute.engine.events.EventListener;
 import io.mindspice.lute.engine.singletons.GameConsts;
+import io.mindspice.lute.engine.tiled.TiledPhysics;
 import io.mindspice.lute.engine.tiled.properties.PlayerCharProps;
 import io.mindspice.lute.engine.tiled.properties.PhysicObjectProps;
 import io.mindspice.lute.engine.tiled.properties.AnimatedPhysicObjectProps;
 
 public class TiledSystem extends EntitySystem implements EventListener, EventEmitter {
     private final AssetService assetService;
-    private final TiledAshleyLoader loader;
+
     private final World physicsWorld;
     private TiledMap currMap;
     private MapAssets currMapAssets;
 
-    public TiledSystem(AssetService assetService, TiledAshleyLoader loader, World physicsWorld) {
+    public TiledSystem(AssetService assetService, World physicsWorld) {
         this.assetService = assetService;
-        this.loader = loader;
         this.physicsWorld = physicsWorld;
 
         eventSubscriber.accept(Event.Map.Load.class, (load) -> this.loadMap(load.mapAssets()));
@@ -86,16 +86,19 @@ public class TiledSystem extends EntitySystem implements EventListener, EventEmi
             switch (obj) {
                 case PointMapObject point -> {
                     String objClass = obj.getProperties().get("type", String.class);
-                    if ("PlayerCharacter".equals(objClass)) {
-                        var props = PlayerCharProps.fromMapObj(point);
-                        Entity entity = getEngine().getSystem(EntityFactory.class)
-                            .getPlayerEntity(props, point.getPoint(), currMapAssets);
-                        getEngine().addEntity(entity);
-                    }
+                    if ("PlayerCharacter".equals(objClass)) { spawnPlayerEntity(point); }
                 }
                 default -> Gdx.app.error("TiledSystem.loadTriggerLayers", "Unsupported Object Type: " + obj.getClass());
             }
         }
+    }
+
+    public void spawnPlayerEntity(PointMapObject spawnPoint) {
+        var props = PlayerCharProps.fromMapObj(spawnPoint);
+        Entity entity = getEngine()
+            .getSystem(EntityFactory.class)
+            .getPlayerEntity(props, spawnPoint.getPoint(), currMapAssets);
+        getEngine().addEntity(entity);
     }
 
     public void initMapBoundary(TiledMap map) {
@@ -146,11 +149,34 @@ public class TiledSystem extends EntitySystem implements EventListener, EventEmi
         for (int y = 0; y < tileLayer.getHeight(); y++) {
             for (int x = 0; x < tileLayer.getWidth(); x++) {
                 TiledMapTileLayer.Cell cell = tileLayer.getCell(x, y);
-                if (cell == null) { continue; }
-                loader.loadTile(cell.getTile(), x, y);
+                if (cell == null || cell.getTile().getObjects().getCount() == 0) {
+                    continue;
+                }
+                createBody(cell.getTile().getObjects(), new Vector2(x, y));
+
             }
         }
     }
+
+
+    // create tile collisions
+    private void createBody(MapObjects mapObjects, Vector2 position) {
+        var bodyDef = new BodyDef();
+        bodyDef.type = BodyDef.BodyType.StaticBody;
+        bodyDef.position.set(position);
+        bodyDef.fixedRotation = true;
+
+        var body = physicsWorld.createBody(bodyDef);
+        body.setUserData("environment");
+
+        for (var mapObject : mapObjects) {
+            var fixtureDef = TiledPhysics.fixtureDefOf(mapObject, GameConsts.PHYSIC_SCALING, Vector2.Zero);
+            var fixture = body.createFixture(fixtureDef);
+            fixture.setUserData(mapObject.getName());
+            fixtureDef.shape.dispose();
+        }
+    }
+
 
     private void loadObjectLayer(MapLayer layer) {
         for (var mapObj : layer.getObjects()) {
