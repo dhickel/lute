@@ -51,27 +51,24 @@ public class EntityFactory extends EntitySystem {
     }
 
     private Animation2D createAnimation(PlayerCharProps props, MapAssets mapAssets, Facing.Direction facing) {
-        if (props.keyframes() <= 0) {
-            throw new GdxRuntimeException("Player keyFrames must be positive: " + props.keyframes());
-        }
         var atlasAsset = mapAssets.atlasAssets().get(props.atlasAsset());
         if (atlasAsset == null) {
             throw new GdxRuntimeException("Unknown player atlas asset ID: " + props.atlasAsset());
         }
 
-        var type = Animation2D.AnimationType.valueOf(props.animation());
+        var animType = Animation2D.AnimationType.valueOf(props.animation());
         String animationKey;
-        if (type == Animation2D.AnimationType.DEFAULT) {
+        if (animType == Animation2D.AnimationType.DEFAULT) {
             animationKey = props.atlasKey();
         } else {
-            animationKey = props.atlasKey() + "/" + type.atlasKey + "_" + facing.atlasKey;
+            animationKey = props.atlasKey() + "/" + animType.atlasKey + "_" + facing.atlasKey;
         }
         var regions = assetService.get(atlasAsset).findRegions(animationKey);
         if (regions.isEmpty()) {
             throw new GdxRuntimeException("No player atlas regions found for key: " + animationKey);
         }
         Animation<TextureRegion> animation = new Animation<>(1f / props.keyframes(), regions, Animation.PlayMode.LOOP);
-        var anim2d = new Animation2D(atlasAsset, props.atlasKey(), type,
+        var anim2d = new Animation2D(atlasAsset, props.atlasKey(), animType,
             Animation.PlayMode.LOOP, props.animationSpeed(), props.keyframes());
         anim2d.setAnimation(animation, facing);
         return anim2d;

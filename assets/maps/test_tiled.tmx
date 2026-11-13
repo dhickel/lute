@@ -1,8 +1,5 @@
 <?xml version="1.0" encoding="UTF-8"?>
 <map version="1.10" tiledversion="1.12.2" class="Teleport" orientation="orthogonal" renderorder="right-down" width="30" height="20" tilewidth="32" tileheight="32" infinite="0" nextlayerid="8" nextobjectid="19">
- <properties>
-  <property name="music" value="TOWN"/>
- </properties>
  <tileset firstgid="1" source="../tilesets/ancient_forest/ancient-forest-main.tsx"/>
  <tileset firstgid="2647" source="../tilesets/ancient_forest/old_tree1.tsx"/>
  <tileset firstgid="2659" source="../objects/objects.tsx"/>
@@ -17,7 +14,7 @@
   </data>
  </layer>
  <objectgroup id="6" name="Objects">
-  <object id="3" gid="2663" x="127.787" y="568.272" width="64" height="64">
+  <object id="3" gid="2663" x="127.057" y="578.487" width="64" height="64">
    <properties>
     <property name="controller" type="bool" value="false"/>
     <property name="hasCamera" type="bool" value="false"/>

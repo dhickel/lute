@@ -38,7 +38,5 @@ public class ControllerSystem extends IteratingSystem implements EventEmitter {
 
         move.getDirection().x += dirX;
         move.getDirection().y += dirY;
-        if (pressed) { eventEmitter.accept(new Event.Player.Moved()); }
-
     }
 }
