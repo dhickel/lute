@@ -4,6 +4,8 @@ import com.badlogic.gdx.math.Vector2;
 
 public class GameConsts {
     public static final float UNIT_SCALE = 1f / 32f;
+    public static final float ATTACK_PIVOT_X_PIXELS = 32f;
+    public static final float ATTACK_PIVOT_Y_PIXELS = 32f;
     public static final float VIEW_HEIGHT = 12f;
     public static final float VIEW_WIDTH = 21.3f;
     public static final float PHYSIC_INTERVAL = 1 / 60f;

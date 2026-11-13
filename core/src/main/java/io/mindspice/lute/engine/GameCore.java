@@ -11,6 +11,7 @@ import com.badlogic.gdx.graphics.profiling.GLProfiler;
 import com.badlogic.gdx.utils.viewport.FitViewport;
 import com.badlogic.gdx.utils.viewport.Viewport;
 import io.mindspice.lute.engine.assets.AssetService;
+import io.mindspice.lute.engine.assets.GameData;
 import io.mindspice.lute.engine.assets.MapAssets;
 import io.mindspice.lute.engine.tiled.ManifestLoader;
 import io.mindspice.lute.engine.input.InputAction;
@@ -39,12 +40,16 @@ public class GameCore extends Game {
     private InputManager inputManager;
     private ScreenManager screenManager;
     private Engine engine;
+    private GameData.Player playerData;
+    private GameData.Weapon playerWeapon;
 
 
 
     @Override
     public void create() {
         Gdx.app.setLogLevel(Application.LOG_DEBUG);
+        playerData = GameData.readPlayer(Gdx.files.internal("data/player.json"));
+        playerWeapon = GameData.readWeapon(Gdx.files.internal("data/weapons/" + playerData.loadout().weapon()));
 
         InputMap inputMap = InputMap.of(
             Pair.of(Input.Keys.W, InputAction.MOVE_UP),
@@ -137,6 +142,10 @@ public class GameCore extends Game {
         this.assetService.dispose();
     }
 
+
+    public GameData.Player getPlayerData() { return playerData; }
+
+    public GameData.Weapon getPlayerWeapon() { return playerWeapon; }
 
     public Batch getBatch() {
         return batch;

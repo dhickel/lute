@@ -13,7 +13,7 @@ import tools.jackson.databind.json.JsonMapper;
 import java.io.IOException;
 import java.util.Objects;
 
-public final class CombatData {
+public final class GameData {
     private static final JsonMapper MAPPER = JsonMapper.builder()
         .enable(DeserializationFeature.FAIL_ON_MISSING_CREATOR_PROPERTIES,
             DeserializationFeature.FAIL_ON_NULL_CREATOR_PROPERTIES,
@@ -22,7 +22,7 @@ public final class CombatData {
         .disable(MapperFeature.ALLOW_COERCION_OF_SCALARS)
         .build();
 
-    private CombatData() { }
+    private GameData() { }
 
     public static Player readPlayer(FileHandle file) {
         return read(file, Player.class);
@@ -34,16 +34,28 @@ public final class CombatData {
 
     private static <T> T read(FileHandle file, Class<T> type) {
         try (var input = file.read()) {
-            return Objects.requireNonNull(MAPPER.readValue(input, type), "Empty combat data: " + file.path());
+            return Objects.requireNonNull(MAPPER.readValue(input, type), "Empty game data: " + file.path());
         } catch (IOException | RuntimeException failure) {
-            throw new GdxRuntimeException("Invalid combat data at: " + file.path(), failure);
+            throw new GdxRuntimeException("Invalid game data at: " + file.path(), failure);
         }
     }
 
-    public record Player(float maxHealth, float moveSpeed, String weapon) {
+    public record Player(Stats stats, Loadout loadout) {
         public Player {
+            Objects.requireNonNull(stats, "stats");
+            Objects.requireNonNull(loadout, "loadout");
+        }
+    }
+
+    public record Stats(float maxHealth, float moveSpeed) {
+        public Stats {
             positive(maxHealth, "maxHealth");
             positive(moveSpeed, "moveSpeed");
+        }
+    }
+
+    public record Loadout(String weapon) {
+        public Loadout {
             if (weapon == null || !weapon.matches("[A-Za-z0-9_-]+\\.json")) {
                 throw new IllegalArgumentException("weapon must be a JSON filename in weapons/");
             }
@@ -61,11 +73,14 @@ public final class CombatData {
         }
     }
 
-    public record Weapon(String id, float damage, float attackSpeed, Shape shape, Bounds bounds) {
+    public record Weapon(String id, float damage, float attackSpeed, float hitDelay, Shape shape, Bounds bounds) {
         public Weapon {
             if (id == null || id.isBlank()) { throw new IllegalArgumentException("Weapon id is required"); }
-            positive(damage, "damage");
+            if (!Float.isFinite(damage)) { throw new IllegalArgumentException("damage must be finite"); }
             positive(attackSpeed, "attackSpeed");
+            if (!Float.isFinite(hitDelay) || hitDelay < 0f) {
+                throw new IllegalArgumentException("hitDelay must be finite and nonnegative");
+            }
             Objects.requireNonNull(shape, "shape");
             Objects.requireNonNull(bounds, "bounds");
             validatePolygon(localVertices(shape, bounds));

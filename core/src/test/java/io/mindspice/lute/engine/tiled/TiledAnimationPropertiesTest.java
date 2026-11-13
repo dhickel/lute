@@ -52,7 +52,7 @@ public final class TiledAnimationPropertiesTest {
 
             var atlas = Asset.Atlas.of("objects.atlas");
             var assets = new MapAssets(mapAsset, null, Map.of("OBJECTS", atlas), Map.of(), Map.of());
-            var factory = new EntityFactory(null, null, null);
+            var factory = new EntityFactory(null, null, null, null, null);
             checkPlayerPrecedence(mapAsset, parameters, factory, assets, atlas);
             for (int invalid : new int[]{0, -1}) {
                 tree.getProperties().put("keyFrames", invalid);

@@ -2,6 +2,7 @@ package io.mindspice.lute.engine.combat;
 
 import com.badlogic.ashley.core.Engine;
 import com.badlogic.ashley.core.Entity;
+import com.badlogic.gdx.Application;
 import com.badlogic.gdx.Files;
 import com.badlogic.gdx.Gdx;
 import com.badlogic.gdx.Input;
@@ -15,9 +16,10 @@ import com.badlogic.gdx.math.Vector2;
 import com.badlogic.gdx.physics.box2d.*;
 import com.badlogic.gdx.utils.GdxRuntimeException;
 import com.badlogic.gdx.utils.GdxNativesLoader;
+import io.mindspice.lute.engine.GameCore;
 import io.mindspice.lute.engine.animation.AnimationState;
 import io.mindspice.lute.engine.assets.Asset;
-import io.mindspice.lute.engine.assets.CombatData;
+import io.mindspice.lute.engine.assets.GameData;
 import io.mindspice.lute.engine.assets.AssetService;
 import io.mindspice.lute.engine.assets.MapAssets;
 import io.mindspice.lute.engine.components.*;
@@ -47,7 +49,8 @@ public final class CombatSystemTest {
         GdxNativesLoader.load();
         Box2D.init();
         run("actual combat JSON", CombatSystemTest::actualJson);
-        run("factory internal JSON and real atlas animation integration", CombatSystemTest::factoryIntegration);
+        run("startup loadout resolution before graphics initialization", CombatSystemTest::startupData);
+        run("factory startup-data reuse and real atlas animation integration", CombatSystemTest::factoryIntegration);
         run("invalid combat data", CombatSystemTest::invalidData);
         run("required JSON fields and strict values", CombatSystemTest::strictJson);
         run("native-unsafe bounds rejected before JNI", CombatSystemTest::unsafeGeometry);
@@ -66,31 +69,114 @@ public final class CombatSystemTest {
         run("dead attacker cannot attack and death cancels attack", CombatSystemTest::deadAttacker);
         run("dead attacker cannot apply queued damage", CombatSystemTest::deadAttackerQueuedHit);
         run("combat removal clears native sensor", CombatSystemTest::combatRemoval);
+        run("combat replacement clears original sensor and delayed hit", CombatSystemTest::combatReplacement);
+        run("contact-relative delay at fixed-step deadline", CombatSystemTest::delayTiming);
+        run("independent per-target contact deadlines", CombatSystemTest::perTargetDelay);
+        run("overlapping swings retain independent delayed hits", CombatSystemTest::overlappingDelayedHits);
+        run("delayed hits survive sensor expiry and deduplicate", CombatSystemTest::delayedHits);
+        run("signed damage does not change health", CombatSystemTest::signedDamage);
+        run("delayed hit invalidation", CombatSystemTest::delayedInvalidation);
+        run("invalidated delayed hits never revive", CombatSystemTest::invalidatedHitsStayCancelled);
         System.out.println("CombatSystemTest: " + checks + " checks, " + failures.size()
             + " failed groups (native Box2D; no graphics context)");
         if (!failures.isEmpty()) { throw new AssertionError(String.join("\n", failures)); }
     }
 
     private static void actualJson() {
-        var player = CombatData.readPlayer(new FileHandle("assets/data/player.json"));
-        near(100f, player.maxHealth(), "Saved player maxHealth");
-        near(4f, player.moveSpeed(), "Saved player moveSpeed");
-        equal("sword.json", player.weapon(), "Saved player weapon reference");
-        var weapon = CombatData.readWeapon(new FileHandle("assets/data/weapons/" + player.weapon()));
+        var player = GameData.readPlayer(new FileHandle("assets/data/player.json"));
+        near(100f, player.stats().maxHealth(), "Saved player maxHealth");
+        near(4f, player.stats().moveSpeed(), "Saved player moveSpeed");
+        equal("sword.json", player.loadout().weapon(), "Saved player weapon reference");
+        var weapon = GameData.readWeapon(new FileHandle("assets/data/weapons/" + player.loadout().weapon()));
         equal("sword", weapon.id(), "Saved weapon id");
         near(10f, weapon.damage(), "Saved weapon damage");
         near(1f, weapon.attackSpeed(), "Saved weapon speed");
-        equal(CombatData.Shape.SEMICIRCLE, weapon.shape(), "Saved weapon shape");
-        equal(new CombatData.Bounds(32, -8, 72, 72), weapon.bounds(), "Saved sprite-local bounds");
+        near(.1f, weapon.hitDelay(), "Saved contact delay in seconds");
+        equal(GameData.Shape.SEMICIRCLE, weapon.shape(), "Saved weapon shape");
+        equal(new GameData.Bounds(32, -8, 72, 72), weapon.bounds(), "Saved sprite-local bounds");
+    }
+
+    private static void startupData() {
+        var previousFiles = Gdx.files;
+        var reads = new ArrayList<String>();
+        String playerJson = "{\"stats\":{\"maxHealth\":175,\"moveSpeed\":6.5},"
+            + "\"loadout\":{\"weapon\":\"training-blade.json\"}}";
+        String weaponJson = "{\"id\":\"training\",\"damage\":-5,\"attackSpeed\":2,\"hitDelay\":0.25,"
+            + "\"shape\":\"BOX\",\"bounds\":{\"x1\":32,\"y1\":0,\"x2\":72,\"y2\":64}}";
+        Gdx.files = (Files) Proxy.newProxyInstance(Files.class.getClassLoader(), new Class<?>[]{Files.class},
+            (proxy, method, args) -> {
+                if (!method.getName().equals("internal")) { throw new AssertionError(method.getName()); }
+                String path = (String) args[0];
+                String json = switch (path) {
+                    case "data/player.json" -> playerJson;
+                    case "data/weapons/training-blade.json" -> weaponJson;
+                    default -> throw new AssertionError("Unexpected startup resource: " + path);
+                };
+                return new FileHandle(path, Files.FileType.Internal) {
+                    @Override public InputStream read() {
+                        reads.add(path);
+                        return new ByteArrayInputStream(json.getBytes(StandardCharsets.UTF_8));
+                    }
+                };
+            });
+        try {
+            loadStartupData();
+            equal(List.of("data/player.json", "data/weapons/training-blade.json"), reads,
+                "Startup opens player then its selected weapon exactly once");
+            var game = GameCore.INSTANCE;
+            near(175, game.getPlayerData().stats().maxHealth(), "Global player health uses loaded stats");
+            near(6.5f, game.getPlayerData().stats().moveSpeed(), "Global player speed uses loaded stats");
+            equal("training-blade.json", game.getPlayerData().loadout().weapon(), "Global loadout retained");
+            equal("training", game.getPlayerWeapon().id(), "Startup follows loadout, not a hard-coded weapon");
+            near(-5, game.getPlayerWeapon().damage(), "Startup accepts finite negative JSON damage");
+            near(.25f, game.getPlayerWeapon().hitDelay(), "Startup retains contact delay in seconds");
+        } finally {
+            Gdx.files = previousFiles;
+        }
+    }
+
+    private static void loadStartupData() {
+        var previousApp = Gdx.app;
+        var previousInput = Gdx.input;
+        var boundary = new RuntimeException("Stop before graphics initialization");
+        Gdx.app = (Application) Proxy.newProxyInstance(Application.class.getClassLoader(), new Class<?>[]{Application.class},
+            (proxy, method, args) -> {
+                if (method.getName().equals("setLogLevel")) { return null; }
+                throw new AssertionError("Unexpected startup application call: " + method.getName());
+            });
+        Gdx.input = (Input) Proxy.newProxyInstance(Input.class.getClassLoader(), new Class<?>[]{Input.class},
+            (proxy, method, args) -> {
+                if (method.getName().equals("setInputProcessor")) {
+                    check(GameCore.INSTANCE.getPlayerData() != null && GameCore.INSTANCE.getPlayerWeapon() != null,
+                        "Global game data exists before input binding and graphics startup");
+                    throw boundary;
+                }
+                throw new AssertionError("Unexpected startup input call: " + method.getName());
+            });
+        try {
+            GameCore.INSTANCE.create();
+            throw new AssertionError("Startup did not reach the pre-graphics boundary");
+        } catch (RuntimeException stopped) {
+            if (stopped != boundary) { throw stopped; }
+        } finally {
+            Gdx.app = previousApp;
+            Gdx.input = previousInput;
+        }
     }
 
     private static void factoryIntegration() {
         var previousFiles = Gdx.files;
+        int[] fileReads = {0};
         // Exercise FileHandle's real internal-resource fallback: data/ is not a cwd directory.
         Gdx.files = (Files) Proxy.newProxyInstance(Files.class.getClassLoader(), new Class<?>[]{Files.class},
             (proxy, method, args) -> {
                 if (method.getName().equals("internal")) {
-                    return new FileHandle((String) args[0], Files.FileType.Internal) { };
+                    return new FileHandle((String) args[0], Files.FileType.Internal) {
+                        @Override public InputStream read() {
+                            fileReads[0]++;
+                            return super.read();
+                        }
+                    };
                 }
                 throw new UnsupportedOperationException(method.getName());
             });
@@ -116,7 +202,12 @@ public final class CombatSystemTest {
             engine.addSystem(new AnimationPlayerSystem());
             engine.addSystem(new PhysicSystem(world, STEP));
             engine.addSystem(new AnimationSystem(assets));
-            var factory = new EntityFactory(world, assets, input);
+            loadStartupData();
+            var startupPlayer = GameCore.INSTANCE.getPlayerData();
+            var startupWeapon = GameCore.INSTANCE.getPlayerWeapon();
+            equal(2, fileReads[0], "GameCore opens each startup data file once");
+            var factory = new EntityFactory(world, assets, input, startupPlayer, startupWeapon);
+            int startupReads = fileReads[0];
             engine.addSystem(factory);
             var atlasAsset = Asset.Atlas.of("objects.atlas");
             var mapAssets = new MapAssets(Asset.Map.of("test_tiled.tmx"), null,
@@ -124,6 +215,16 @@ public final class CombatSystemTest {
             var player = factory.getPlayerEntity(new PlayerCharProps("IDLE", 1, 8, "OBJECTS", "player"),
                 new Vector2(320, 640), mapAssets);
             engine.addEntity(player);
+            var otherPlayer = factory.getPlayerEntity(new PlayerCharProps("IDLE", 1, 8, "OBJECTS", "player"),
+                new Vector2(640, 640), mapAssets);
+            engine.addEntity(otherPlayer);
+            equal(startupReads, fileReads[0], "Repeated spawns do not reload startup data");
+            check(Combat.MAPPER.get(player).getCurrentWeapon() == startupWeapon, "First spawn uses globally loaded weapon");
+            check(Combat.MAPPER.get(otherPlayer).getCurrentWeapon() == startupWeapon, "Spawn reuses loaded weapon");
+            Health.MAPPER.get(otherPlayer).damage(25);
+            near(100, Health.MAPPER.get(player).getCurrent(), "Shared startup stats do not share mutable health");
+            near(startupPlayer.stats().moveSpeed(), Move.MAPPER.get(otherPlayer).getMaxSpeed(), "Respawn reuses startup stats");
+            engine.removeEntity(otherPlayer);
             near(100, Health.MAPPER.get(player).getCurrent(), "Factory initializes health from internal JSON");
             equal("sword", Combat.MAPPER.get(player).getCurrentWeapon().id(), "Factory resolves weapon JSON");
             vector(new Vector2(9, 19), Physic.MAPPER.get(player).getBody().getPosition(), "Factory sprite body origin");
@@ -147,6 +248,16 @@ public final class CombatSystemTest {
                 equal(6, animation.getAnimation().getKeyFrames().length, "Real idle animation restored");
                 equal(Animation.PlayMode.LOOP, animation.getAnimation().getPlayMode(), "Real idle loops again");
             }
+            var variedPlayer = new GameData.Player(new GameData.Stats(175, 6.5f), startupPlayer.loadout());
+            var recreatedFactory = new EntityFactory(world, assets, input, variedPlayer, startupWeapon);
+            engine.addSystem(recreatedFactory);
+            var respawn = recreatedFactory.getPlayerEntity(new PlayerCharProps("IDLE", 1, 8, "OBJECTS", "player"),
+                new Vector2(960, 640), mapAssets);
+            engine.addEntity(respawn);
+            near(175, Health.MAPPER.get(respawn).getCurrent(), "Factory uses injected health, not a saved default");
+            near(6.5f, Move.MAPPER.get(respawn).getMaxSpeed(), "Factory uses injected speed, not a saved default");
+            check(Combat.MAPPER.get(respawn).getCurrentWeapon() == startupWeapon, "Recreated factory reuses loaded weapon");
+            equal(startupReads, fileReads[0], "Recreating a factory does not reload startup data");
         } finally {
             engine.removeAllEntities();
             engine.removeSystem(combat);
@@ -159,63 +270,75 @@ public final class CombatSystemTest {
 
     private static void invalidData() {
         for (float value : new float[]{0f, -1f, Float.NaN, Float.POSITIVE_INFINITY, Float.NEGATIVE_INFINITY}) {
-            rejects(() -> new CombatData.Player(value, 4, "sword.json"), "Invalid maxHealth " + value);
-            rejects(() -> new CombatData.Player(100, value, "sword.json"), "Invalid moveSpeed " + value);
-            rejects(() -> new CombatData.Weapon("sword", value, 1, CombatData.Shape.BOX, bounds()), "Invalid damage " + value);
-            rejects(() -> new CombatData.Weapon("sword", 10, value, CombatData.Shape.BOX, bounds()), "Invalid attackSpeed " + value);
+            rejects(() -> new GameData.Stats(value, 4), "Invalid maxHealth " + value);
+            rejects(() -> new GameData.Stats(100, value), "Invalid moveSpeed " + value);
+            rejects(() -> new GameData.Weapon("sword", 10, value, 0f, GameData.Shape.BOX, bounds()), "Invalid attackSpeed " + value);
         }
         for (String name : new String[]{null, "", "../sword.json", "weapons/sword.json", "sword", "sword.JSON"}) {
-            rejects(() -> new CombatData.Player(100, 4, name), "Unsafe weapon filename " + name);
+            rejects(() -> new GameData.Loadout(name), "Unsafe weapon filename " + name);
         }
         for (String id : new String[]{null, "", "  "}) {
-            rejects(() -> new CombatData.Weapon(id, 10, 1, CombatData.Shape.BOX, bounds()), "Invalid weapon id");
+            rejects(() -> new GameData.Weapon(id, 10, 1, 0f, GameData.Shape.BOX, bounds()), "Invalid weapon id");
         }
-        rejects(() -> new CombatData.Weapon("sword", 10, 1, null, bounds()), "Missing shape");
-        rejects(() -> new CombatData.Weapon("sword", 10, 1, CombatData.Shape.BOX, null), "Missing bounds");
+        rejects(() -> new GameData.Weapon("sword", 10, 1, 0f, null, bounds()), "Missing shape");
+        rejects(() -> new GameData.Weapon("sword", 10, 1, 0f, GameData.Shape.BOX, null), "Missing bounds");
         for (float[] values : new float[][]{{1, 0, 1, 2}, {2, 0, 1, 2}, {0, 1, 2, 1}, {0, 2, 2, 1}}) {
-            rejects(() -> new CombatData.Bounds(values[0], values[1], values[2], values[3]), "Degenerate/reversed bounds");
+            rejects(() -> new GameData.Bounds(values[0], values[1], values[2], values[3]), "Degenerate/reversed bounds");
         }
         for (float value : new float[]{Float.NaN, Float.POSITIVE_INFINITY, Float.NEGATIVE_INFINITY}) {
-            rejects(() -> new CombatData.Bounds(value, 0, 72, 64), "Nonfinite x1");
-            rejects(() -> new CombatData.Bounds(32, value, 72, 64), "Nonfinite y1");
-            rejects(() -> new CombatData.Bounds(32, 0, value, 64), "Nonfinite x2");
-            rejects(() -> new CombatData.Bounds(32, 0, 72, value), "Nonfinite y2");
+            rejects(() -> new GameData.Bounds(value, 0, 72, 64), "Nonfinite x1");
+            rejects(() -> new GameData.Bounds(32, value, 72, 64), "Nonfinite y1");
+            rejects(() -> new GameData.Bounds(32, 0, value, 64), "Nonfinite x2");
+            rejects(() -> new GameData.Bounds(32, 0, 72, value), "Nonfinite y2");
         }
-        String valid = "{\"id\":\"sword\",\"damage\":10,\"attackSpeed\":1,\"shape\":\"BOX\","
+        String valid = "{\"id\":\"sword\",\"damage\":10,\"attackSpeed\":1,\"hitDelay\":0,\"shape\":\"BOX\","
             + "\"bounds\":{\"x1\":32,\"y1\":0,\"x2\":72,\"y2\":64}}";
         for (String json : new String[]{"null", "{", "{}", valid.replace("BOX", "CIRCLE"),
             valid.replace("\"x2\":72", "\"x2\":32"), valid.replace("\"y2\":64", "\"y2\":-1"),
-            valid.replace("\"damage\":10", "\"damage\":0"), valid.replace("\"attackSpeed\":1", "\"attackSpeed\":-1"),
+            valid.replace("\"attackSpeed\":1", "\"attackSpeed\":-1"),
             valid.replace("\"shape\":\"BOX\"", "\"shape\":null"), valid.replace("\"x2\":72", "\"x2\":1e100")}) {
-            rejectsJson(() -> CombatData.readWeapon(jsonFile(json)), "Malformed/invalid weapon JSON");
+            rejectsJson(() -> GameData.readWeapon(jsonFile(json)), "Malformed/invalid weapon JSON");
         }
         for (String json : new String[]{"null", "{", "{}", "{\"maxHealth\":0,\"moveSpeed\":4,\"weapon\":\"sword.json\"}",
             "{\"maxHealth\":100,\"moveSpeed\":-1,\"weapon\":\"sword.json\"}",
             "{\"maxHealth\":100,\"moveSpeed\":4,\"weapon\":\"../sword.json\"}"}) {
-            rejectsJson(() -> CombatData.readPlayer(jsonFile(json)), "Malformed/invalid player JSON");
+            rejectsJson(() -> GameData.readPlayer(jsonFile(json)), "Malformed/invalid player JSON");
         }
-        rejectsJson(() -> CombatData.readWeapon(new FileHandle("assets/data/weapons/does-not-exist.json")), "Missing weapon file");
+        rejectsJson(() -> GameData.readWeapon(new FileHandle("assets/data/weapons/does-not-exist.json")), "Missing weapon file");
     }
 
     private static void strictJson() {
-        String valid = "{\"id\":\"sword\",\"damage\":10,\"attackSpeed\":1,\"shape\":\"BOX\","
+        String valid = "{\"id\":\"sword\",\"damage\":10,\"attackSpeed\":1,\"hitDelay\":0,\"shape\":\"BOX\","
             + "\"bounds\":{\"x1\":32,\"y1\":0,\"x2\":72,\"y2\":64}}";
-        for (String json : new String[]{valid.replace("\"x1\":32,", ""), valid.replace("\"y1\":0,", ""),
+        for (String json : new String[]{valid.replace("\"hitDelay\":0,", ""),
+            valid.replace("\"hitDelay\":0", "\"hitDelay\":null"), valid.replace("\"hitDelay\":0", "\"hitDelay\":\"0\""),
+            valid.replace("\"x1\":32,", ""), valid.replace("\"y1\":0,", ""),
             valid.replace("\"y1\":0", "\"y1\":null"), valid.replace("\"damage\":10", "\"damage\":\"10\""),
             valid + " {}"}) {
-            rejectsJson(() -> CombatData.readWeapon(jsonFile(json)), "Missing/null/coerced/trailing weapon data");
+            rejectsJson(() -> GameData.readWeapon(jsonFile(json)), "Missing/null/coerced/trailing weapon data");
+        }
+        String player = "{\"stats\":{\"maxHealth\":100,\"moveSpeed\":4},\"loadout\":{\"weapon\":\"sword.json\"}}";
+        for (String json : new String[]{"{\"stats\":{\"maxHealth\":100,\"moveSpeed\":4}}",
+            "{\"loadout\":{\"weapon\":\"sword.json\"}}", player.replace("\"maxHealth\":100,", ""),
+            player.replace("\"maxHealth\":100", "\"maxHealth\":null"),
+            player.replace("\"maxHealth\":100", "\"maxHealth\":0"),
+            player.replace("\"moveSpeed\":4", "\"moveSpeed\":-1"),
+            player.replace("\"moveSpeed\":4", "\"moveSpeed\":\"4\""),
+            player.replace("\"weapon\":\"sword.json\"", "\"weapon\":\"../sword.json\""),
+            player.replace("{\"weapon\":\"sword.json\"}", "null"), player + " {}"}) {
+            rejectsJson(() -> GameData.readPlayer(jsonFile(json)), "Missing/null/coerced/unsafe/trailing player data");
         }
     }
 
     private static void unsafeGeometry() {
-        for (var type : CombatData.Shape.values()) {
-            for (var invalid : new CombatData.Bounds[]{
-                new CombatData.Bounds(0, 0, .001f, .001f),
-                new CombatData.Bounds(0, 0, Float.MIN_NORMAL, 64),
-                new CombatData.Bounds(0, 0, 1e24f, 64),
-                new CombatData.Bounds(0, 0, 1e15f, 1e15f),
-                new CombatData.Bounds(-Float.MAX_VALUE, -Float.MAX_VALUE, Float.MAX_VALUE, Float.MAX_VALUE)}) {
-                rejects(() -> new CombatData.Weapon("unsafe", 10, 1, type, invalid),
+        for (var type : GameData.Shape.values()) {
+            for (var invalid : new GameData.Bounds[]{
+                new GameData.Bounds(0, 0, .001f, .001f),
+                new GameData.Bounds(0, 0, Float.MIN_NORMAL, 64),
+                new GameData.Bounds(0, 0, 1e24f, 64),
+                new GameData.Bounds(0, 0, 1e15f, 1e15f),
+                new GameData.Bounds(-Float.MAX_VALUE, -Float.MAX_VALUE, Float.MAX_VALUE, Float.MAX_VALUE)}) {
+                rejects(() -> new GameData.Weapon("unsafe", 10, 1, 0f, type, invalid),
                     "Unsafe native geometry rejected for " + type + " " + invalid);
             }
             var weapon = weapon(type);
@@ -223,16 +346,16 @@ public final class CombatSystemTest {
             rejects(() -> weapon.vertices(new Vector2(Float.MAX_VALUE, Float.MAX_VALUE), Facing.Direction.UP),
                 "Unrepresentable rotated geometry");
         }
-        String tiny = "{\"id\":\"unsafe\",\"damage\":10,\"attackSpeed\":1,\"shape\":\"BOX\","
+        String tiny = "{\"id\":\"unsafe\",\"damage\":10,\"attackSpeed\":1,\"hitDelay\":0,\"shape\":\"BOX\","
             + "\"bounds\":{\"x1\":0,\"y1\":0,\"x2\":0.001,\"y2\":0.001}}";
-        rejectsJson(() -> CombatData.readWeapon(jsonFile(tiny)), "Unsafe geometry fails during data loading");
+        rejectsJson(() -> GameData.readWeapon(jsonFile(tiny)), "Unsafe geometry fails during data loading");
     }
 
     private static void shapeGeometry() {
         var anchor = new Vector2(32, 32).scl(GameConsts.UNIT_SCALE);
         var world = new World(Vector2.Zero, true);
         try {
-            for (var type : CombatData.Shape.values()) {
+            for (var type : GameData.Shape.values()) {
                 var weapon = weapon(type);
                 var right = weapon.vertices(anchor, Facing.Direction.RIGHT);
                 equal(switch (type) { case BOX -> 4; case TRIANGLE -> 3; case SEMICIRCLE -> 7; },
@@ -307,29 +430,33 @@ public final class CombatSystemTest {
     }
 
     private static void sensorPlacement() {
-        for (var shape : CombatData.Shape.values()) {
+        for (var shape : GameData.Shape.values()) {
             for (var facing : Facing.Direction.values()) {
-                try (var game = new Harness(weapon(shape), facing, new Vector2(10, 20))) {
-                    int initial = game.body().getFixtureList().size;
-                    game.attack();
-                    var sensor = game.combat().getSensor();
-                    check(sensor != null && sensor.isSensor(), "Attack creates a sensor");
-                    check(sensor.getBody() == game.body(), "Sensor is attached to owner, not a separate body");
-                    equal(initial + 1, game.body().getFixtureList().size, "Exactly one attack fixture");
-                    var expected = game.combat().getCurrentWeapon().vertices(new Vector2(1, 1), facing);
-                    var polygon = (PolygonShape) sensor.getShape();
-                    equal(expected.length, polygon.getVertexCount(), "Sensor polygon vertex count");
-                    for (var vertex : expected) {
-                        boolean found = false;
-                        for (int i = 0; i < polygon.getVertexCount(); i++) {
-                            var actual = new Vector2();
-                            polygon.getVertex(i, actual);
-                            found |= vertex.epsilonEquals(actual, .0002f);
+                for (var spritePixels : new Vector2[]{new Vector2(64, 64), new Vector2(96, 40)}) {
+                    try (var game = new Harness(weapon(shape), facing, new Vector2(10, 20))) {
+                        Transform.MAPPER.get(game.player).getSize().set(spritePixels).scl(GameConsts.UNIT_SCALE);
+                        int initial = game.body().getFixtureList().size;
+                        game.attack();
+                        var sensor = game.combat().getSensor();
+                        check(sensor != null && sensor.isSensor(), "Attack creates a sensor");
+                        check(sensor.getBody() == game.body(), "Sensor is attached to owner, not a separate body");
+                        equal(initial + 1, game.body().getFixtureList().size, "Exactly one attack fixture");
+                        var expected = game.combat().getCurrentWeapon().vertices(new Vector2(1, 1), facing);
+                        var polygon = (PolygonShape) sensor.getShape();
+                        equal(expected.length, polygon.getVertexCount(), "Sensor polygon vertex count");
+                        for (var vertex : expected) {
+                            boolean found = false;
+                            for (int i = 0; i < polygon.getVertexCount(); i++) {
+                                var actual = new Vector2();
+                                polygon.getVertex(i, actual);
+                                found |= vertex.epsilonEquals(actual, .0002f);
+                            }
+                            check(found, "Sensor uses fixed (32,32) pivot independent of sprite size " + spritePixels
+                                + ", feet and world position: " + vertex);
                         }
-                        check(found, "Sensor uses sprite-center anchor rather than feet/world-position: " + vertex);
+                        game.finish();
+                        equal(initial, game.body().getFixtureList().size, "Completion removes only sensor");
                     }
-                    game.finish();
-                    equal(initial, game.body().getFixtureList().size, "Completion removes only sensor");
                 }
             }
         }
@@ -404,7 +531,7 @@ public final class CombatSystemTest {
     }
 
     private static void attackSpeed() {
-        var weapon = new CombatData.Weapon("fast-sword", 10, 2, CombatData.Shape.BOX, bounds());
+        var weapon = new GameData.Weapon("fast-sword", 10, 2, 0f, GameData.Shape.BOX, bounds());
         try (var game = new Harness(weapon, Facing.Direction.RIGHT, new Vector2())) {
             game.attack();
             near(2, game.animation().getSpeed(), "Configured weapon speed applied");
@@ -477,7 +604,7 @@ public final class CombatSystemTest {
     }
 
     private static void outsideSpriteContacts() {
-        var weapon = CombatData.readWeapon(new FileHandle("assets/data/weapons/sword.json"));
+        var weapon = GameData.readWeapon(new FileHandle("assets/data/weapons/sword.json"));
         for (var facing : Facing.Direction.values()) {
             try (var game = new Harness(weapon, facing, new Vector2())) {
                 var target = game.target(100, 1, false);
@@ -488,7 +615,7 @@ public final class CombatSystemTest {
                     case DOWN -> new Vector2(1, -.125f);
                 };
                 Physic.MAPPER.get(target).getBody().setTransform(center, 0);
-                game.attack(); game.step(); game.combatSystem.update(0);
+                game.attack(); game.step(); game.combatSystem.update(.1f);
                 near(90, Health.MAPPER.get(target).getCurrent(), "Native sensor reaches beyond sprite " + facing);
             }
         }
@@ -574,9 +701,187 @@ public final class CombatSystemTest {
         }
     }
 
-    private static CombatData.Bounds bounds() { return new CombatData.Bounds(32, 0, 72, 64); }
-    private static CombatData.Weapon weapon(CombatData.Shape shape) {
-        return new CombatData.Weapon("sword", 10, 1, shape, bounds());
+    private static void combatReplacement() {
+        var weapon = new GameData.Weapon("delayed", 10, 1, 2f, GameData.Shape.BOX, bounds());
+        try (var game = new Harness(weapon, Facing.Direction.RIGHT, new Vector2())) {
+            var target = game.target(100, 1, false);
+            var original = game.combat();
+            int initial = game.body().getFixtureList().size;
+            game.animation().setSpeed(.75f);
+            game.attack(); game.step();
+            var replacement = new Combat(weapon);
+            game.player.add(replacement);
+            game.update(0);
+            check(!original.isAttacking() && original.getSensor() == null, "Replaced combat cannot retain its native sensor");
+            equal(initial, game.body().getFixtureList().size, "Replacement destroys the original attack fixture");
+            near(.75f, game.animation().getSpeed(), "Replacement restores original animation speed");
+            game.combatSystem.update(2f);
+            near(100, Health.MAPPER.get(target).getCurrent(), "Replacement cancels the original pending hit");
+            game.attack(); game.step(); game.combatSystem.update(2f);
+            near(90, Health.MAPPER.get(target).getCurrent(), "Replacement combat can start a fresh attack");
+        }
+    }
+
+    private static void delayTiming() {
+        var weapon = new GameData.Weapon("delayed", 10, 1, .1f, GameData.Shape.BOX, bounds());
+        try (var game = new Harness(weapon, Facing.Direction.RIGHT, new Vector2())) {
+            var target = game.target(100, 2, false);
+            var body = Physic.MAPPER.get(target).getBody();
+            body.setTransform(10, 10, 0);
+            game.attack(); game.update(.25f);
+            body.setTransform(1.7f, 1, 0); game.step(); game.step();
+            game.combatSystem.update(0);
+            near(100, Health.MAPPER.get(target).getCurrent(), "Time before contact does not count toward hitDelay");
+            for (int i = 0; i < 5; i++) { game.combatSystem.update(STEP); }
+            near(100, Health.MAPPER.get(target).getCurrent(), "No damage before the contact-relative deadline");
+            game.combatSystem.update(STEP);
+            near(90, Health.MAPPER.get(target).getCurrent(), "Six 1/60-second ticks satisfy a 0.1-second delay");
+            game.combatSystem.update(1);
+            near(90, Health.MAPPER.get(target).getCurrent(), "Elapsed hit is drained exactly once");
+        }
+    }
+
+    private static void perTargetDelay() {
+        var weapon = new GameData.Weapon("delayed", 10, 1, .5f, GameData.Shape.BOX, bounds());
+        try (var game = new Harness(weapon, Facing.Direction.RIGHT, new Vector2())) {
+            var first = game.target(100, 2, false);
+            var second = game.target(100, 2, false);
+            var secondBody = Physic.MAPPER.get(second).getBody();
+            secondBody.setTransform(10, 10, 0);
+            game.attack(); game.step(); game.combatSystem.update(.25f);
+            secondBody.setTransform(1.7f, 1, 0); game.step(); game.step();
+            game.combatSystem.update(.25f);
+            near(90, Health.MAPPER.get(first).getCurrent(), "First target hits exactly at its deadline");
+            near(100, Health.MAPPER.get(second).getCurrent(), "Later contact gets its own full delay");
+            game.combatSystem.update(.25f);
+            near(90, Health.MAPPER.get(second).getCurrent(), "Second target hits at its later deadline");
+            near(90, Health.MAPPER.get(first).getCurrent(), "Multiple fixtures do not schedule duplicate delayed hits");
+        }
+    }
+
+    private static void overlappingDelayedHits() {
+        var weapon = new GameData.Weapon("delayed", 10, 1, 2f, GameData.Shape.BOX, bounds());
+        try (var game = new Harness(weapon, Facing.Direction.RIGHT, new Vector2())) {
+            var target = game.target(100, 2, false);
+            var health = Health.MAPPER.get(target);
+            game.attack(); game.step(); game.finish();
+            near(100, health.getCurrent(), "First delayed hit remains pending after its swing");
+            game.attack(); game.step(); game.finish();
+            near(100, health.getCurrent(), "Second swing does not accelerate the first hit");
+            game.combatSystem.update(1f);
+            near(90, health.getCurrent(), "First swing hits while second swing remains pending");
+            game.combatSystem.update(.25f);
+            near(90, health.getCurrent(), "Second swing keeps its original contact deadline");
+            game.combatSystem.update(.25f);
+            near(80, health.getCurrent(), "Second swing can independently hit the same target");
+            game.combatSystem.update(2f);
+            near(80, health.getCurrent(), "Both swings deduplicate multiple fixtures");
+        }
+    }
+
+    private static void delayedHits() {
+        var weapon = new GameData.Weapon("delayed", 10, 1, 2f, GameData.Shape.BOX, bounds());
+        try (var game = new Harness(weapon, Facing.Direction.RIGHT, new Vector2())) {
+            var target = game.target(100, 2, false);
+            game.attack(); game.step();
+            game.combatSystem.update(.2f);
+            near(100, Health.MAPPER.get(target).getCurrent(), "Delay starts at contact");
+            var body = Physic.MAPPER.get(target).getBody();
+            body.setTransform(10, 10, 0); game.step();
+            body.setTransform(1.7f, 1, 0); game.step();
+            game.finish();
+            check(!game.combat().isAttacking(), "Sensor expired before impact");
+            near(100, Health.MAPPER.get(target).getCurrent(), "No early impact");
+            game.combatSystem.update(1.29f);
+            near(100, Health.MAPPER.get(target).getCurrent(), "Still before delay");
+            game.combatSystem.update(.02f);
+            near(90, Health.MAPPER.get(target).getCurrent(), "One hit after expiry despite repeated contacts");
+            game.combatSystem.update(2f);
+            near(90, Health.MAPPER.get(target).getCurrent(), "No duplicate delayed hit");
+        }
+    }
+
+    private static void delayedInvalidation() {
+        var weapon = new GameData.Weapon("delayed", 10, 1, 2f, GameData.Shape.BOX, bounds());
+        for (int scenario = 0; scenario < 9; scenario++) {
+            try (var game = new Harness(weapon, Facing.Direction.RIGHT, new Vector2())) {
+                var target = game.target(100, 1, false);
+                var targetHealth = Health.MAPPER.get(target);
+                game.attack(); game.step(); game.finish();
+                switch (scenario) {
+                    case 0 -> game.engine.removeEntity(game.player);
+                    case 1 -> game.engine.removeEntity(target);
+                    case 2 -> Health.MAPPER.get(game.player).damage(100);
+                    case 3 -> targetHealth.damage(100);
+                    case 4 -> game.player.remove(Combat.class);
+                    case 5 -> {
+                        game.engine.removeSystem(game.combatSystem);
+                        game.engine.addSystem(game.combatSystem);
+                    }
+                    case 6 -> {
+                        game.engine.removeEntity(target);
+                        target.remove(Physic.class); // Removal already destroyed the body.
+                        game.engine.addEntity(target);
+                    }
+                    case 7 -> {
+                        game.engine.removeEntity(game.player);
+                        game.player.remove(Physic.class);
+                        game.engine.addEntity(game.player);
+                    }
+                    case 8 -> {
+                        var combat = game.player.remove(Combat.class);
+                        game.player.add(combat);
+                    }
+                }
+                game.combatSystem.update(2f);
+                near(scenario == 3 ? 0 : 100, targetHealth.getCurrent(), "Invalid delayed hit discarded " + scenario);
+            }
+        }
+    }
+
+    private static void invalidatedHitsStayCancelled() {
+        var weapon = new GameData.Weapon("delayed", 10, 1, 2f, GameData.Shape.BOX, bounds());
+        for (int scenario = 0; scenario < 3; scenario++) {
+            try (var game = new Harness(weapon, Facing.Direction.RIGHT, new Vector2())) {
+                var target = game.target(100, 1, false);
+                game.attack(); game.step(); game.finish();
+                switch (scenario) {
+                    case 0 -> Health.MAPPER.get(game.player).damage(100);
+                    case 1 -> Health.MAPPER.get(target).damage(100);
+                    case 2 -> target.remove(Health.class);
+                }
+                game.combatSystem.update(.25f);
+                game.player.add(new Health(100));
+                target.add(new Health(100));
+                game.combatSystem.update(2f);
+                near(100, Health.MAPPER.get(target).getCurrent(), "Restored health cannot revive discarded hit " + scenario);
+            }
+        }
+    }
+
+    private static void signedDamage() {
+        for (float damage : new float[]{-Float.MAX_VALUE, -10f, -0f, 0f}) {
+            var weapon = GameData.readWeapon(jsonFile("{\"id\":\"signed\",\"damage\":" + damage
+                + ",\"attackSpeed\":1,\"hitDelay\":0.1,\"shape\":\"BOX\","
+                + "\"bounds\":{\"x1\":32,\"y1\":0,\"x2\":72,\"y2\":64}}"));
+            near(damage, weapon.damage(), "JSON accepts finite nonpositive damage");
+            try (var game = new Harness(weapon, Facing.Direction.RIGHT, new Vector2())) {
+                var target = game.target(100, 1, false);
+                Health.MAPPER.get(target).damage(25);
+                game.attack(); game.step(); game.combatSystem.update(.2f);
+                near(75, Health.MAPPER.get(target).getCurrent(), "Nonpositive damage never heals or damages an injured target");
+            }
+        }
+        for (float value : new float[]{Float.NaN, Float.POSITIVE_INFINITY, Float.NEGATIVE_INFINITY}) {
+            rejects(() -> new GameData.Weapon("bad", value, 1, 0, GameData.Shape.BOX, bounds()), "Nonfinite damage");
+            rejects(() -> new GameData.Weapon("bad", 1, 1, value, GameData.Shape.BOX, bounds()), "Nonfinite delay");
+        }
+        rejects(() -> new GameData.Weapon("bad", 1, 1, -1, GameData.Shape.BOX, bounds()), "Negative delay");
+    }
+
+    private static GameData.Bounds bounds() { return new GameData.Bounds(32, 0, 72, 64); }
+    private static GameData.Weapon weapon(GameData.Shape shape) {
+        return new GameData.Weapon("sword", 10, 1, 0f, shape, bounds());
     }
 
     private static FileHandle jsonFile(String json) {
@@ -671,10 +976,10 @@ public final class CombatSystemTest {
         final Entity player = new Entity();
 
         Harness() {
-            this(CombatData.readWeapon(new FileHandle("assets/data/weapons/sword.json")), Facing.Direction.RIGHT, new Vector2());
+            this(weapon(GameData.Shape.SEMICIRCLE), Facing.Direction.RIGHT, new Vector2());
         }
 
-        Harness(CombatData.Weapon weapon, Facing.Direction facing, Vector2 position) {
+        Harness(GameData.Weapon weapon, Facing.Direction facing, Vector2 position) {
             engine.addSystem(new ControllerSystem());
             engine.addSystem(new FacingSystem());
             engine.addSystem(combatSystem);

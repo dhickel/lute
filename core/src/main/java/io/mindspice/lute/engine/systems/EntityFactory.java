@@ -2,7 +2,6 @@ package io.mindspice.lute.engine.systems;
 
 import com.badlogic.ashley.core.Entity;
 import com.badlogic.ashley.core.EntitySystem;
-import com.badlogic.gdx.Gdx;
 import com.badlogic.gdx.graphics.Color;
 import com.badlogic.gdx.graphics.g2d.Animation;
 import com.badlogic.gdx.graphics.g2d.TextureRegion;
@@ -17,7 +16,7 @@ import com.badlogic.gdx.utils.GdxRuntimeException;
 import io.mindspice.lute.engine.assets.Asset;
 import io.mindspice.lute.engine.assets.AssetService;
 import io.mindspice.lute.engine.assets.MapAssets;
-import io.mindspice.lute.engine.assets.CombatData;
+import io.mindspice.lute.engine.assets.GameData;
 import io.mindspice.lute.engine.components.*;
 import io.mindspice.lute.engine.components.Transform;
 import io.mindspice.lute.engine.input.InputManager;
@@ -31,11 +30,16 @@ public class EntityFactory extends EntitySystem {
     private final World world;
     private final AssetService assetService;
     private final InputManager inputManager;
+    private final GameData.Player player;
+    private final GameData.Weapon weapon;
 
-    public EntityFactory(World world, AssetService assetService, InputManager inputManager) {
+    public EntityFactory(World world, AssetService assetService, InputManager inputManager,
+                         GameData.Player player, GameData.Weapon weapon) {
         this.world = world;
         this.assetService = assetService;
         this.inputManager = inputManager;
+        this.player = player;
+        this.weapon = weapon;
     }
 
     public Entity getPlayerEntity(PlayerCharProps props, Vector2 pixelPosition, MapAssets mapAssets) {
@@ -43,15 +47,13 @@ public class EntityFactory extends EntitySystem {
         var animation = createPlayerAnimation(props, mapAssets, facing);
         var region = animation.getAnimation().getKeyFrame(0f);
         var transform = createTransform(pixelPosition, region);
-        var player = CombatData.readPlayer(Gdx.files.internal("data/player.json"));
-        var weapon = CombatData.readWeapon(Gdx.files.internal("data/weapons/" + player.weapon()));
 
         Entity entity = getEngine().createEntity();
         entity.add(new Graphic(region, Color.WHITE.cpy()));
         entity.add(transform);
         entity.add(new Facing(facing));
-        entity.add(new Move(player.moveSpeed()));
-        entity.add(new Health(player.maxHealth()));
+        entity.add(new Move(player.stats().moveSpeed()));
+        entity.add(new Health(player.stats().maxHealth()));
         entity.add(new Combat(weapon));
         entity.add(animation);
         entity.add(new AnimationPlayer(entity));

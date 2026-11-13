@@ -1,5 +1,9 @@
 {
-  "maxHealth": 100,
-  "moveSpeed": 4,
-  "weapon": "sword.json"
+  "stats": {
+    "maxHealth": 100,
+    "moveSpeed": 4
+  },
+  "loadout": {
+    "weapon": "sword.json"
+  }
 }

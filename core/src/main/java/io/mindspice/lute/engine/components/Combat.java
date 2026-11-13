@@ -4,7 +4,7 @@ import com.badlogic.ashley.core.Component;
 import com.badlogic.ashley.core.ComponentMapper;
 import com.badlogic.ashley.core.Entity;
 import com.badlogic.gdx.physics.box2d.Fixture;
-import io.mindspice.lute.engine.assets.CombatData;
+import io.mindspice.lute.engine.assets.GameData;
 
 import java.util.Collections;
 import java.util.IdentityHashMap;
@@ -13,18 +13,18 @@ import java.util.Set;
 
 public class Combat implements Component {
     public static final ComponentMapper<Combat> MAPPER = ComponentMapper.getFor(Combat.class);
-    private final CombatData.Weapon currentWeapon;
+    private final GameData.Weapon currentWeapon;
     private boolean attackRequested;
     private Fixture sensor;
     private long attackId;
     private float previousAnimationSpeed;
     private final Set<Entity> hitTargets = Collections.newSetFromMap(new IdentityHashMap<>());
 
-    public Combat(CombatData.Weapon currentWeapon) {
+    public Combat(GameData.Weapon currentWeapon) {
         this.currentWeapon = Objects.requireNonNull(currentWeapon, "currentWeapon");
     }
 
-    public CombatData.Weapon getCurrentWeapon() { return currentWeapon; }
+    public GameData.Weapon getCurrentWeapon() { return currentWeapon; }
     public boolean isAttacking() { return sensor != null; }
     public Fixture getSensor() { return sensor; }
     public long getAttackId() { return attackId; }
