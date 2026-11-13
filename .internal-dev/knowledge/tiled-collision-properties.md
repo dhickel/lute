@@ -26,6 +26,8 @@ On 2026-11-10 all five placed trees resolve to `objects.tsx` tile 7. The tile ha
 - Placement properties override tile properties, including the object class (`type`). PhysicObject uses the class's `assetKey` property; AnimatedPhysicObject uses `atlasKey` and animation settings.
 - Animated scenery has Animation2D, Graphic, and Facing, but no player movement state machine, controller, Move, or camera component.
 - animationSpeed can arrive as either an Integer (project default) or Float (explicit tile value); parse it as Number.
+- PhysicObjectProps and AnimatedPhysicObjectProps expose fromMapObj helpers that merge tile and placement properties, require every declared field with Objects.requireNonNull, and provide typed record values to EntityFactory. Unlike PlayerCharProps, these parsers intentionally do not supply defaults, per the user's fail-fast requirement.
+- A textureless TextureRegion cannot construct TiledMapTileMapObject: its constructor copies region UVs and dereferences the texture. A parser-only harness must supply an appropriate texture fixture; an empty region is not sufficient.
 - Unclassified objects still use the legacy TiledAshleyLoader path described above. The historical flag diagnosis only applies to that path.
 
 ## Open Questions

@@ -23,6 +23,8 @@ import io.mindspice.lute.engine.events.EventEmitter;
 import io.mindspice.lute.engine.events.EventListener;
 import io.mindspice.lute.engine.singletons.GameConsts;
 import io.mindspice.lute.engine.tiled.properties.PlayerCharProps;
+import io.mindspice.lute.engine.tiled.properties.PhysicObjectProps;
+import io.mindspice.lute.engine.tiled.properties.AnimatedPhysicObjectProps;
 
 public class TiledSystem extends EntitySystem implements EventListener, EventEmitter {
     private final AssetService assetService;
@@ -157,8 +159,14 @@ public class TiledSystem extends EntitySystem implements EventListener, EventEmi
                     tmObj.getTile().getProperties().get("type", "", String.class), String.class);
                 var factory = getEngine().getSystem(EntityFactory.class);
                 switch (objectClass) {
-                    case "PhysicObject" -> getEngine().addEntity(factory.getPhysicObjectEntity(tmObj, currMapAssets));
-                    case "AnimatedPhysicObject" -> getEngine().addEntity(factory.getAnimatedPhysicObjectEntity(tmObj, currMapAssets));
+                    case "PhysicObject" -> {
+                        var props = PhysicObjectProps.fromMapObj(tmObj);
+                        getEngine().addEntity(factory.getPhysicObjectEntity(props, tmObj, currMapAssets));
+                    }
+                    case "AnimatedPhysicObject" -> {
+                        var props = AnimatedPhysicObjectProps.fromMapObj(tmObj);
+                        getEngine().addEntity(factory.getAnimatedPhysicObjectEntity(props, tmObj, currMapAssets));
+                    }
                     default -> loader.loadObject(tmObj, currMapAssets);
                 }
             } else if (!(mapObj instanceof PointMapObject)) {

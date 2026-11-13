@@ -5,7 +5,6 @@ import com.badlogic.ashley.core.EntitySystem;
 import com.badlogic.gdx.graphics.Color;
 import com.badlogic.gdx.graphics.g2d.Animation;
 import com.badlogic.gdx.graphics.g2d.TextureRegion;
-import com.badlogic.gdx.maps.MapProperties;
 import com.badlogic.gdx.maps.tiled.objects.TiledMapTileMapObject;
 import com.badlogic.gdx.math.MathUtils;
 import com.badlogic.gdx.math.Vector2;
@@ -22,6 +21,8 @@ import io.mindspice.lute.engine.components.Transform;
 import io.mindspice.lute.engine.input.InputManager;
 import io.mindspice.lute.engine.singletons.GameConsts;
 import io.mindspice.lute.engine.tiled.properties.PlayerCharProps;
+import io.mindspice.lute.engine.tiled.properties.PhysicObjectProps;
+import io.mindspice.lute.engine.tiled.properties.AnimatedPhysicObjectProps;
 import io.mindspice.lute.engine.tiled.TiledPhysics;
 
 public class EntityFactory extends EntitySystem {
@@ -54,10 +55,9 @@ public class EntityFactory extends EntitySystem {
         return entity;
     }
 
-    public Entity getPhysicObjectEntity(TiledMapTileMapObject object, MapAssets mapAssets) {
-        var props = getObjectProperties(object);
-        var atlas = resolveAtlas(props.get("atlasAsset", "NULL", String.class), mapAssets);
-        String assetKey = props.get("assetKey", "NULL", String.class);
+    public Entity getPhysicObjectEntity(PhysicObjectProps props, TiledMapTileMapObject object, MapAssets mapAssets) {
+        var atlas = resolveAtlas(props.atlasAsset(), mapAssets);
+        String assetKey = props.assetKey();
         var region = assetService.get(atlas).findRegion(assetKey);
         if (region == null) {
             throw new GdxRuntimeException("No atlas region found for key: " + assetKey);
@@ -65,27 +65,17 @@ public class EntityFactory extends EntitySystem {
         return createPhysicObject(object, region);
     }
 
-    public Entity getAnimatedPhysicObjectEntity(TiledMapTileMapObject object, MapAssets mapAssets) {
-        var props = getObjectProperties(object);
-        var atlas = resolveAtlas(props.get("atlasAsset", "NULL", String.class), mapAssets);
-        var type = Animation2D.AnimationType.valueOf(props.get("animation", "DEFAULT", String.class));
-        float speed = props.get("animationSpeed", 1, Number.class).floatValue();
-        int keyFrames = props.get("keyFrames", 0, Integer.class);
+    public Entity getAnimatedPhysicObjectEntity(AnimatedPhysicObjectProps props, TiledMapTileMapObject object, MapAssets mapAssets) {
+        var atlas = resolveAtlas(props.atlasAsset(), mapAssets);
+        var type = Animation2D.AnimationType.valueOf(props.animation());
         var facing = Facing.Direction.DOWN;
-        var animation = createAnimation(atlas, props.get("atlasKey", "NULL", String.class),
-            type, speed, keyFrames, facing);
+        var animation = createAnimation(atlas, props.atlasKey(), type,
+            props.animationSpeed(), props.keyframes(), facing);
 
         Entity entity = createPhysicObject(object, animation.getAnimation().getKeyFrame(0f));
         entity.add(new Facing(facing));
         entity.add(animation);
         return entity;
-    }
-
-    private MapProperties getObjectProperties(TiledMapTileMapObject object) {
-        var props = new MapProperties();
-        props.putAll(object.getTile().getProperties());
-        props.putAll(object.getProperties());
-        return props;
     }
 
     private Asset.Atlas resolveAtlas(String atlasId, MapAssets mapAssets) {
