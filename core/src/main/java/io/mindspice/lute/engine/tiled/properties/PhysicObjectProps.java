@@ -19,7 +19,7 @@ public record PhysicObjectProps(
         var props = new MapProperties();
         props.putAll(obj.getTile().getProperties());
         props.putAll(obj.getProperties());
-        String assetKey = Objects.requireNonNull(props.get("assetKey", String.class), "assetKey");
+        String assetKey = Objects.requireNonNull(props.get("atlasKey", String.class), "atlasKey");
         String atlasAsset = Objects.requireNonNull(props.get("atlasAsset", String.class), "atlasAsset");
 
         return new PhysicObjectProps(assetKey, atlasAsset);

@@ -14,13 +14,6 @@
   </data>
  </layer>
  <objectgroup id="6" name="Objects">
-  <object id="3" gid="2663" x="127.057" y="578.487" width="64" height="64">
-   <properties>
-    <property name="controller" type="bool" value="false"/>
-    <property name="hasCamera" type="bool" value="false"/>
-    <property name="speed" type="float" value="4"/>
-   </properties>
-  </object>
   <object id="7" gid="2665" x="248.33" y="562.177" width="160" height="224"/>
   <object id="8" gid="2666" x="73.9502" y="476.759" width="160" height="256"/>
   <object id="9" gid="2666" x="691.94" y="337.401" width="160" height="256"/>
@@ -30,7 +23,7 @@
  </objectgroup>
  <objectgroup id="5" name="Triggers">
   <object id="1" name="Teleport" x="432.667" y="275.333" width="34.6667" height="35.3333"/>
-  <object id="18" type="PlayerCharacter" x="211.59" y="521.68">
+  <object id="18" name="PlayerSpawn" type="PlayerCharacter" x="302.248" y="561.672">
    <properties>
     <property name="keyFrames" type="int" value="8"/>
    </properties>

@@ -24,23 +24,23 @@
    </object>
   </objectgroup>
  </tile>
- <tile id="6">
+ <tile id="6" type="PhysicObject">
   <properties>
    <property name="atlasAsset" value="OBJECTS"/>
    <property name="atlasKey" value="house"/>
   </properties>
   <image source="house.png" width="160" height="224"/>
+  <objectgroup draworder="index" id="3">
+   <object id="2" x="24.6667" y="72.6667" width="113.333" height="138"/>
+  </objectgroup>
  </tile>
- <tile id="7">
+ <tile id="7" type="AnimatedPhysicObject">
   <properties>
    <property name="animation" value="DEFAULT"/>
    <property name="animationSpeed" type="float" value="0.35"/>
    <property name="atlasAsset" value="OBJECTS"/>
    <property name="atlasKey" value="old_tree1/old_tree1"/>
-   <property name="isAnimated" type="bool" value="true"/>
-   <property name="isPhysics" type="bool" value="true"/>
    <property name="keyFrames" type="int" value="10"/>
-   <property name="physicBodyType" value="static"/>
   </properties>
   <image source="old_tree1/old_tree1_00.png" width="160" height="256"/>
   <objectgroup draworder="index" id="2">

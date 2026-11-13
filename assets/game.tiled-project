@@ -13,6 +13,81 @@
         {
             "color": "#ffa0a0a4",
             "drawFill": true,
+            "id": 4,
+            "members": [
+                {
+                    "name": "animation",
+                    "type": "string",
+                    "value": "DEFAULT"
+                },
+                {
+                    "name": "animationSpeed",
+                    "type": "int",
+                    "value": 1
+                },
+                {
+                    "name": "atlasAsset",
+                    "type": "string",
+                    "value": "NULL"
+                },
+                {
+                    "name": "atlasKey",
+                    "type": "string",
+                    "value": "NULL"
+                },
+                {
+                    "name": "keyFrames",
+                    "type": "int",
+                    "value": 0
+                }
+            ],
+            "name": "AnimatedPhysicObject",
+            "type": "class",
+            "useAs": [
+                "property",
+                "map",
+                "layer",
+                "object",
+                "tile",
+                "tileset",
+                "wangcolor",
+                "wangset",
+                "project"
+            ]
+        },
+        {
+            "color": "#ffa0a0a4",
+            "drawFill": true,
+            "id": 5,
+            "members": [
+                {
+                    "name": "atlasAsset",
+                    "type": "string",
+                    "value": "NULL"
+                },
+                {
+                    "name": "atlasKey",
+                    "type": "string",
+                    "value": "NULL"
+                }
+            ],
+            "name": "PhysicObject",
+            "type": "class",
+            "useAs": [
+                "property",
+                "map",
+                "layer",
+                "object",
+                "tile",
+                "tileset",
+                "wangcolor",
+                "wangset",
+                "project"
+            ]
+        },
+        {
+            "color": "#ffa0a0a4",
+            "drawFill": true,
             "id": 3,
             "members": [
                 {
@@ -38,7 +113,7 @@
                 {
                     "name": "keyFrames",
                     "type": "int",
-                    "value": 8
+                    "value": 10
                 }
             ],
             "name": "PlayerCharacter",
