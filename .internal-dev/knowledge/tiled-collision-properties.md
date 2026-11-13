@@ -20,6 +20,14 @@ Tiled tile-object physics configuration and embedded collision shapes.
 
 On 2026-11-10 all five placed trees resolve to `objects.tsx` tile 7. The tile has a collision ellipse but both body-enabling properties are incorrectly nested inside that ellipse. The separate map `Collisions` layer has no objects, so enabling its dispatch cannot repair these trees. Set `isPhysics=true` (Boolean) and `physicBodyType=static` (String) on the parent tree tile to satisfy the current loader.
 
+## Class-based Factory Update
+
+- TiledSystem now dispatches `PhysicObject` and `AnimatedPhysicObject` tile objects to dedicated EntityFactory methods. These variants always create static collision bodies from the tile's embedded shapes; they do not read isPhysics, isAnimated, or physicBodyType.
+- Placement properties override tile properties, including the object class (`type`). PhysicObject uses the class's `assetKey` property; AnimatedPhysicObject uses `atlasKey` and animation settings.
+- Animated scenery has Animation2D, Graphic, and Facing, but no player movement state machine, controller, Move, or camera component.
+- animationSpeed can arrive as either an Integer (project default) or Float (explicit tile value); parse it as Number.
+- Unclassified objects still use the legacy TiledAshleyLoader path described above. The historical flag diagnosis only applies to that path.
+
 ## Open Questions
 
-A repair was not requested or applied during the investigation. In-game collision behavior after correcting the asset remains to be validated.
+Runtime collision behavior after class-based migration was not exercised; validation used compilation and configuration inspection without smoke runs.

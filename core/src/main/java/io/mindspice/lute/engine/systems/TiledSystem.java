@@ -153,7 +153,14 @@ public class TiledSystem extends EntitySystem implements EventListener, EventEmi
     private void loadObjectLayer(MapLayer layer) {
         for (var mapObj : layer.getObjects()) {
             if (mapObj instanceof TiledMapTileMapObject tmObj) {
-                loader.loadObject(tmObj, currMapAssets);
+                String objectClass = tmObj.getProperties().get("type",
+                    tmObj.getTile().getProperties().get("type", "", String.class), String.class);
+                var factory = getEngine().getSystem(EntityFactory.class);
+                switch (objectClass) {
+                    case "PhysicObject" -> getEngine().addEntity(factory.getPhysicObjectEntity(tmObj, currMapAssets));
+                    case "AnimatedPhysicObject" -> getEngine().addEntity(factory.getAnimatedPhysicObjectEntity(tmObj, currMapAssets));
+                    default -> loader.loadObject(tmObj, currMapAssets);
+                }
             } else if (!(mapObj instanceof PointMapObject)) {
                 throw new GdxRuntimeException("Unsupported Obj: " + mapObj.getClass().getSimpleName());
             }

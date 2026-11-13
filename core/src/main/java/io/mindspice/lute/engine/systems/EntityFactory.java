@@ -5,6 +5,8 @@ import com.badlogic.ashley.core.EntitySystem;
 import com.badlogic.gdx.graphics.Color;
 import com.badlogic.gdx.graphics.g2d.Animation;
 import com.badlogic.gdx.graphics.g2d.TextureRegion;
+import com.badlogic.gdx.maps.MapProperties;
+import com.badlogic.gdx.maps.tiled.objects.TiledMapTileMapObject;
 import com.badlogic.gdx.math.MathUtils;
 import com.badlogic.gdx.math.Vector2;
 import com.badlogic.gdx.physics.box2d.Body;
@@ -12,6 +14,7 @@ import com.badlogic.gdx.physics.box2d.BodyDef;
 import com.badlogic.gdx.physics.box2d.PolygonShape;
 import com.badlogic.gdx.physics.box2d.World;
 import com.badlogic.gdx.utils.GdxRuntimeException;
+import io.mindspice.lute.engine.assets.Asset;
 import io.mindspice.lute.engine.assets.AssetService;
 import io.mindspice.lute.engine.assets.MapAssets;
 import io.mindspice.lute.engine.components.*;
@@ -19,6 +22,7 @@ import io.mindspice.lute.engine.components.Transform;
 import io.mindspice.lute.engine.input.InputManager;
 import io.mindspice.lute.engine.singletons.GameConsts;
 import io.mindspice.lute.engine.tiled.properties.PlayerCharProps;
+import io.mindspice.lute.engine.tiled.TiledPhysics;
 
 public class EntityFactory extends EntitySystem {
     private final World world;
@@ -33,7 +37,7 @@ public class EntityFactory extends EntitySystem {
 
     public Entity getPlayerEntity(PlayerCharProps props, Vector2 pixelPosition, MapAssets mapAssets) {
         var facing = Facing.Direction.DOWN;
-        var animation = createAnimation(props, mapAssets, facing);
+        var animation = createPlayerAnimation(props, mapAssets, facing);
         var region = animation.getAnimation().getKeyFrame(0f);
         var transform = createTransform(pixelPosition, region);
 
@@ -50,26 +54,108 @@ public class EntityFactory extends EntitySystem {
         return entity;
     }
 
-    private Animation2D createAnimation(PlayerCharProps props, MapAssets mapAssets, Facing.Direction facing) {
-        var atlasAsset = mapAssets.atlasAssets().get(props.atlasAsset());
-        if (atlasAsset == null) {
-            throw new GdxRuntimeException("Unknown player atlas asset ID: " + props.atlasAsset());
+    public Entity getPhysicObjectEntity(TiledMapTileMapObject object, MapAssets mapAssets) {
+        var props = getObjectProperties(object);
+        var atlas = resolveAtlas(props.get("atlasAsset", "NULL", String.class), mapAssets);
+        String assetKey = props.get("assetKey", "NULL", String.class);
+        var region = assetService.get(atlas).findRegion(assetKey);
+        if (region == null) {
+            throw new GdxRuntimeException("No atlas region found for key: " + assetKey);
         }
+        return createPhysicObject(object, region);
+    }
 
-        var animType = Animation2D.AnimationType.valueOf(props.animation());
+    public Entity getAnimatedPhysicObjectEntity(TiledMapTileMapObject object, MapAssets mapAssets) {
+        var props = getObjectProperties(object);
+        var atlas = resolveAtlas(props.get("atlasAsset", "NULL", String.class), mapAssets);
+        var type = Animation2D.AnimationType.valueOf(props.get("animation", "DEFAULT", String.class));
+        float speed = props.get("animationSpeed", 1, Number.class).floatValue();
+        int keyFrames = props.get("keyFrames", 0, Integer.class);
+        var facing = Facing.Direction.DOWN;
+        var animation = createAnimation(atlas, props.get("atlasKey", "NULL", String.class),
+            type, speed, keyFrames, facing);
+
+        Entity entity = createPhysicObject(object, animation.getAnimation().getKeyFrame(0f));
+        entity.add(new Facing(facing));
+        entity.add(animation);
+        return entity;
+    }
+
+    private MapProperties getObjectProperties(TiledMapTileMapObject object) {
+        var props = new MapProperties();
+        props.putAll(object.getTile().getProperties());
+        props.putAll(object.getProperties());
+        return props;
+    }
+
+    private Asset.Atlas resolveAtlas(String atlasId, MapAssets mapAssets) {
+        var atlas = mapAssets.atlasAssets().get(atlasId);
+        if (atlas == null) {
+            throw new GdxRuntimeException("Unknown atlas asset ID: " + atlasId);
+        }
+        return atlas;
+    }
+
+    private Entity createPhysicObject(TiledMapTileMapObject object, TextureRegion region) {
+        var collisionObjects = object.getTile().getObjects();
+        if (collisionObjects.getCount() == 0) {
+            throw new GdxRuntimeException("Physics object has no collision shapes: " + object.getName());
+        }
+        var transform = Transform.forTiledObject(object.getTile(), region, object);
+        Entity entity = getEngine().createEntity();
+        entity.add(new Graphic(region, Color.WHITE.cpy()));
+        entity.add(transform);
+        entity.add(createObjectPhysics(object, transform, entity));
+        return entity;
+    }
+
+    private Physic createObjectPhysics(TiledMapTileMapObject object, Transform transform, Entity entity) {
+        var bodyDef = new BodyDef();
+        bodyDef.type = BodyDef.BodyType.StaticBody;
+        bodyDef.position.set(transform.getPosition());
+        bodyDef.fixedRotation = true;
+        Body body = world.createBody(bodyDef);
+        body.setUserData(entity);
+
+        try {
+            for (var collision : object.getTile().getObjects()) {
+                var fixtureDef = TiledPhysics.fixtureDefOf(collision, transform.getScaling(), Vector2.Zero);
+                try {
+                    body.createFixture(fixtureDef).setUserData(collision.getName());
+                } finally {
+                    fixtureDef.shape.dispose();
+                }
+            }
+        } catch (RuntimeException | Error failure) {
+            world.destroyBody(body);
+            throw failure;
+        }
+        return new Physic(body, transform.getPosition().cpy());
+    }
+
+    private Animation2D createPlayerAnimation(PlayerCharProps props, MapAssets mapAssets, Facing.Direction facing) {
+        var atlas = resolveAtlas(props.atlasAsset(), mapAssets);
+        var type = Animation2D.AnimationType.valueOf(props.animation());
+        return createAnimation(atlas, props.atlasKey(), type, props.animationSpeed(), props.keyframes(), facing);
+    }
+
+    private Animation2D createAnimation(Asset.Atlas atlas, String atlasKey, Animation2D.AnimationType animType,
+                                      float speed, int keyFrames, Facing.Direction facing) {
+        if (keyFrames <= 0) {
+            throw new GdxRuntimeException("Animation keyFrames must be positive: " + keyFrames);
+        }
         String animationKey;
         if (animType == Animation2D.AnimationType.DEFAULT) {
-            animationKey = props.atlasKey();
+            animationKey = atlasKey;
         } else {
-            animationKey = props.atlasKey() + "/" + animType.atlasKey + "_" + facing.atlasKey;
+            animationKey = atlasKey + "/" + animType.atlasKey + "_" + facing.atlasKey;
         }
-        var regions = assetService.get(atlasAsset).findRegions(animationKey);
+        var regions = assetService.get(atlas).findRegions(animationKey);
         if (regions.isEmpty()) {
-            throw new GdxRuntimeException("No player atlas regions found for key: " + animationKey);
+            throw new GdxRuntimeException("No atlas regions found for key: " + animationKey);
         }
-        Animation<TextureRegion> animation = new Animation<>(1f / props.keyframes(), regions, Animation.PlayMode.LOOP);
-        var anim2d = new Animation2D(atlasAsset, props.atlasKey(), animType,
-            Animation.PlayMode.LOOP, props.animationSpeed(), props.keyframes());
+        Animation<TextureRegion> animation = new Animation<>(1f / keyFrames, regions, Animation.PlayMode.LOOP);
+        var anim2d = new Animation2D(atlas, atlasKey, animType, Animation.PlayMode.LOOP, speed, keyFrames);
         anim2d.setAnimation(animation, facing);
         return anim2d;
     }
