@@ -32,6 +32,25 @@ public class EntityFactory extends EntitySystem {
     }
 
     public Entity getPlayerEntity(PlayerCharProps props, Vector2 pixelPosition, MapAssets mapAssets) {
+        var facing = Facing.Direction.DOWN;
+        var animation = createAnimation(props, mapAssets, facing);
+        var region = animation.getAnimation().getKeyFrame(0f);
+        var transform = createTransform(pixelPosition, region);
+
+        Entity entity = getEngine().createEntity();
+        entity.add(new Graphic(region, Color.WHITE.cpy()));
+        entity.add(transform);
+        entity.add(new Facing(facing));
+        entity.add(new Move(4f));
+        entity.add(animation);
+        entity.add(new AnimationPlayer(entity));
+        entity.add(createPhysics(transform.getPosition(), entity));
+        entity.add(new CameraFollow());
+        entity.add(Controller.forInputManager(inputManager));
+        return entity;
+    }
+
+    private Animation2D createAnimation(PlayerCharProps props, MapAssets mapAssets, Facing.Direction facing) {
         if (props.keyframes() <= 0) {
             throw new GdxRuntimeException("Player keyFrames must be positive: " + props.keyframes());
         }
@@ -39,8 +58,8 @@ public class EntityFactory extends EntitySystem {
         if (atlasAsset == null) {
             throw new GdxRuntimeException("Unknown player atlas asset ID: " + props.atlasAsset());
         }
+
         var type = Animation2D.AnimationType.valueOf(props.animation());
-        var facing = Facing.Direction.DOWN;
         String animationKey = type == Animation2D.AnimationType.DEFAULT
             ? props.atlasKey()
             : props.atlasKey() + "/" + type.atlasKey + "_" + facing.atlasKey;
@@ -52,21 +71,17 @@ public class EntityFactory extends EntitySystem {
         var anim2d = new Animation2D(atlasAsset, props.atlasKey(), type,
             Animation.PlayMode.LOOP, props.animationSpeed(), props.keyframes());
         anim2d.setAnimation(animation, facing);
-        var region = animation.getKeyFrame(0f);
+        return anim2d;
+    }
+
+    private Transform createTransform(Vector2 pixelPosition, TextureRegion region) {
         var position = pixelPosition.cpy().scl(GameConsts.UNIT_SCALE);
         var size = new Vector2(region.getRegionWidth(), region.getRegionHeight()).scl(GameConsts.UNIT_SCALE);
+        return new Transform(position, 2, size, new Vector2(1f, 1f), 0f, 0f);
+    }
 
-        Entity entity = getEngine().createEntity();
-        entity.add(new Graphic(region, Color.WHITE.cpy()));
-        entity.add(new Transform(position, 2, size, new Vector2(1f, 1f), 0f, 0f));
-        entity.add(new Facing(facing));
-        entity.add(new Move(4f));
-        entity.add(anim2d);
-        entity.add(new AnimationPlayer(entity));
-        entity.add(new Physic(createPlayerBody(position, entity), position.cpy()));
-        entity.add(new CameraFollow());
-        entity.add(Controller.forInputManager(inputManager));
-        return entity;
+    private Physic createPhysics(Vector2 position, Entity entity) {
+        return new Physic(createPlayerBody(position, entity), position.cpy());
     }
 
     private Body createPlayerBody(Vector2 position, Entity entity) {
