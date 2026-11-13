@@ -1,5 +1,13 @@
 package io.mindspice.lute.engine.input;
+import com.badlogic.ashley.core.Engine;
+import com.badlogic.ashley.core.Entity;
+import com.badlogic.gdx.Application;
 import com.badlogic.gdx.Gdx;
+import io.mindspice.lute.engine.GameCore;
+import io.mindspice.lute.engine.components.Controller;
+import io.mindspice.lute.engine.components.Move;
+import io.mindspice.lute.engine.systems.ControllerSystem;
+import io.mindspice.lute.engine.systems.EventSystem;
 import com.badlogic.gdx.Input;
 import com.badlogic.gdx.InputAdapter;
 import com.badlogic.gdx.InputMultiplexer;
@@ -17,6 +25,7 @@ public final class InputSystemTest {
     private record Event(InputAction action, int state) { }
 
     public static void main(String[] args) {
+        run("controller movement event", InputSystemTest::controllerMovementEvent);
         run("adapter keys", InputSystemTest::adapterKeys);
         run("adapter mouse", InputSystemTest::adapterMouse);
         run("cached mouse", MouseListenerTest::run);
@@ -77,6 +86,66 @@ public final class InputSystemTest {
         List<Event> events = new ArrayList<>();
         listener.consume((type, action, state, x, y) -> events.add(new Event(action, state)));
         return events;
+    }
+
+    private static void controllerMovementEvent() {
+        var previousApp = Gdx.app;
+        try {
+            var field = GameCore.class.getDeclaredField("engine");
+            field.setAccessible(true);
+            var previousEngine = field.get(GameCore.INSTANCE);
+            try {
+                Gdx.app = (Application) Proxy.newProxyInstance(Application.class.getClassLoader(),
+                    new Class<?>[]{Application.class}, (proxy, method, args) -> null);
+                Engine engine = new Engine();
+                field.set(GameCore.INSTANCE, engine);
+                EventSystem events = new EventSystem();
+                engine.addSystem(events);
+                engine.addSystem(new ControllerSystem());
+                int[] count = {0};
+                events.subscribe(io.mindspice.lute.engine.events.Event.Player.Moved.class, event -> count[0]++);
+                InputMap map = new InputMap();
+                int[] keys = {Input.Keys.W, Input.Keys.S, Input.Keys.A, Input.Keys.D};
+                InputAction[] actions = {InputAction.MOVE_UP, InputAction.MOVE_DOWN,
+                    InputAction.MOVE_LEFT, InputAction.MOVE_RIGHT};
+                InputManager input = new InputManager(map);
+                Move move = new Move(1);
+                engine.addEntity(new Entity().add(Controller.forInputManager(input)).add(move));
+                for (int i = 0; i < keys.length; i++) {
+                    map.setKey(keys[i], actions[i]);
+                    input.keyDown(keys[i]);
+                    engine.update(0);
+                    engine.update(0);
+                    equal(i + 1, count[0], "press emits once");
+                    input.keyUp(keys[i]);
+                    engine.update(0);
+                    engine.update(0);
+                    equal(i + 1, count[0], "release emits nothing");
+                    near(0, move.getDirection().x, "release clears x");
+                    near(0, move.getDirection().y, "release clears y");
+                }
+                input.keyDown(Input.Keys.W);
+                engine.update(0);
+                input.releaseHeldInputs();
+                engine.update(0);
+                engine.update(0);
+                equal(5, count[0], "synthetic release emits nothing");
+                near(0, move.getDirection().y, "synthetic release stops movement");
+                engine.removeAllEntities();
+                engine.addEntity(new Entity().add(Controller.forInputManager(input)));
+                input.keyUp(Input.Keys.W);
+                input.keyDown(Input.Keys.W);
+                engine.update(0);
+                engine.update(0);
+                equal(5, count[0], "entity without Move emits nothing");
+            } finally {
+                field.set(GameCore.INSTANCE, previousEngine);
+            }
+        } catch (ReflectiveOperationException e) {
+            throw new AssertionError(e);
+        } finally {
+            Gdx.app = previousApp;
+        }
     }
 
     private static void adapterKeys() {
