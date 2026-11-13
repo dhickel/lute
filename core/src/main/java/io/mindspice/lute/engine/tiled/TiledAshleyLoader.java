@@ -1,4 +1,4 @@
-package io.mindspice.lute.engine.assets.tiled;
+package io.mindspice.lute.engine.tiled;
 
 import com.badlogic.ashley.core.Engine;
 import com.badlogic.ashley.core.Entity;
@@ -61,7 +61,8 @@ public class TiledAshleyLoader {
 
         }
 
-        boolean hasCamera = tile.getProperties().get("hasCamera", false, Boolean.class);
+        boolean hasCamera = tileMapObj.getProperties().get("hasCamera",
+            tile.getProperties().get("hasCamera", false, Boolean.class), Boolean.class);
         if (hasCamera) {
             Gdx.app.debug("TiledAshleyConfigurator", "Added Camera to entity");
             entity.add(new CameraFollow());

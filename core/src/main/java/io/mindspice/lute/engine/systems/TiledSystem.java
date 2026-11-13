@@ -1,5 +1,6 @@
 package io.mindspice.lute.engine.systems;
 
+import com.badlogic.ashley.core.Entity;
 import com.badlogic.ashley.core.EntitySystem;
 import com.badlogic.gdx.Gdx;
 import com.badlogic.gdx.maps.MapLayer;
@@ -14,16 +15,14 @@ import com.badlogic.gdx.physics.box2d.PolygonShape;
 import com.badlogic.gdx.physics.box2d.World;
 import com.badlogic.gdx.utils.Array;
 import com.badlogic.gdx.utils.GdxRuntimeException;
-import io.mindspice.lute.engine.assets.Asset;
 import io.mindspice.lute.engine.assets.AssetService;
 import io.mindspice.lute.engine.assets.MapAssets;
-import io.mindspice.lute.engine.assets.tiled.TiledAshleyLoader;
+import io.mindspice.lute.engine.tiled.TiledAshleyLoader;
 import io.mindspice.lute.engine.events.Event;
 import io.mindspice.lute.engine.events.EventEmitter;
 import io.mindspice.lute.engine.events.EventListener;
 import io.mindspice.lute.engine.singletons.GameConsts;
-
-import java.util.concurrent.ThreadLocalRandom;
+import io.mindspice.lute.engine.tiled.properties.PlayerCharProps;
 
 public class TiledSystem extends EntitySystem implements EventListener, EventEmitter {
     private final AssetService assetService;
@@ -72,11 +71,29 @@ public class TiledSystem extends EntitySystem implements EventListener, EventEmi
             switch (layer) {
                 case MapLayer l when l.getName().equals("Objects") -> loadObjectLayer(layer);
                 case MapLayer l when l.getName().equals("Collisions") -> loadObjectLayer(layer);
+                case MapLayer l when l.getName().equals("Triggers") -> loadTriggerLayer(layer);
                 case TiledMapTileLayer t -> loadTileLayer(t);
-                default -> { Gdx.app.debug("TiledSystem", " Skipping load for layer: " + layer.getName()); }
+                default -> Gdx.app.debug("TiledSystem", " Skipping load for layer: " + layer.getName());
             }
         }
         initMapBoundary(map);
+    }
+
+    private void loadTriggerLayer(MapLayer layer) {
+        for (var obj : layer.getObjects()) {
+            switch (obj) {
+                case PointMapObject point -> {
+                    String objClass = obj.getProperties().get("type", String.class);
+                    if ("PlayerCharacter".equals(objClass)) {
+                        var props = PlayerCharProps.fromMapObj(point);
+                        Entity entity = getEngine().getSystem(EntityFactory.class)
+                            .getPlayerEntity(props, point.getPoint(), currMapAssets);
+                        getEngine().addEntity(entity);
+                    }
+                }
+                default -> Gdx.app.error("TiledSystem.loadTriggerLayers", "Unsupported Object Type: " + obj.getClass());
+            }
+        }
     }
 
     public void initMapBoundary(TiledMap map) {

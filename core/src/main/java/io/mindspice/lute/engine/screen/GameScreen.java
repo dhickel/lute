@@ -12,8 +12,7 @@ import io.mindspice.lute.engine.components.Controller;
 import io.mindspice.lute.engine.events.Event;
 import io.mindspice.lute.engine.events.EventEmitter;
 import io.mindspice.lute.engine.input.InputManager;
-import io.mindspice.lute.engine.assets.tiled.ManifestLoader;
-import io.mindspice.lute.engine.assets.tiled.TiledAshleyLoader;
+import io.mindspice.lute.engine.tiled.TiledAshleyLoader;
 import io.mindspice.lute.engine.singletons.GameConsts;
 import io.mindspice.lute.engine.systems.*;
 
@@ -50,6 +49,7 @@ public class GameScreen extends ScreenAdapter implements EventEmitter {
         this.engine.addSystem(new AudioSystem(game.getAssetService()));
         this.engine.addSystem(new CameraSystem(game.getCamera()));
         this.engine.addSystem(new RenderSystem(this.game.getBatch(), this.game.getViewport(), this.game.getCamera()));
+        this.engine.addSystem(new EntityFactory(physicWorld, game.getAssetService(), inputManager));
         this.engine.addSystem(new TiledSystem(game.getAssetService(), tiledAshleyLoader, physicWorld));
         this.engine.addSystem(new PhysicDebugRenderSystem(physicWorld, game.getCamera()));
 

@@ -5,7 +5,7 @@ import com.badlogic.gdx.assets.AssetManager;
 import com.badlogic.gdx.assets.loaders.FileHandleResolver;
 import com.badlogic.gdx.maps.tiled.TiledMap;
 import com.badlogic.gdx.utils.Disposable;
-import io.mindspice.lute.engine.assets.tiled.FixedTmxMapLoader;
+import io.mindspice.lute.engine.tiled.FixedTmxMapLoader;
 
 public class AssetService implements Disposable {
     private final AssetManager assetManager;

@@ -1,4 +1,4 @@
-package io.mindspice.lute.engine.assets.tiled;
+package io.mindspice.lute.engine.tiled;
 
 import com.badlogic.gdx.Gdx;
 import com.badlogic.gdx.utils.GdxRuntimeException;

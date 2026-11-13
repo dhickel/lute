@@ -13,15 +13,35 @@
         {
             "color": "#ffa0a0a4",
             "drawFill": true,
-            "id": 1,
+            "id": 3,
             "members": [
                 {
-                    "name": "target",
+                    "name": "animation",
                     "type": "string",
-                    "value": ""
+                    "value": "IDLE"
+                },
+                {
+                    "name": "animationSpeed",
+                    "type": "float",
+                    "value": 1
+                },
+                {
+                    "name": "atlasAsset",
+                    "type": "string",
+                    "value": "OBJECTS"
+                },
+                {
+                    "name": "atlasKey",
+                    "type": "string",
+                    "value": "player"
+                },
+                {
+                    "name": "keyFrames",
+                    "type": "int",
+                    "value": 8
                 }
             ],
-            "name": "Teleport",
+            "name": "PlayerCharacter",
             "type": "class",
             "useAs": [
                 "property",
