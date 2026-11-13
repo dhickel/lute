@@ -14,6 +14,14 @@ public sealed interface Event {
     }
 
     sealed interface Music extends Event {
-        record Changed(Asset.Music musicAsset) implements Music {}
+        record Changed(Asset.Music musicAsset) implements Music { }
+
+        record Volume(float level) implements Music { }
+    }
+
+    sealed interface Sound extends Event {
+        record Play(Asset.Sound sound) implements Sound { }
+
+        record PlayAtVolume(Asset.Sound sound, float volume) implements Sound { }
     }
 }

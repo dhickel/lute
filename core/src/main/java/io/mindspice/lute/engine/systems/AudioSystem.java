@@ -24,6 +24,10 @@ public class AudioSystem extends EntitySystem implements EventListener {
         this.currMusicAsset = null;
 
         eventSubscriber.accept(Event.Music.Changed.class, changed -> this.playMusic(changed.musicAsset()));
+
+        eventSubscriber.accept(Event.Sound.Play.class, play -> this.playSound(play.sound()));
+        eventSubscriber.accept(Event.Sound.PlayAtVolume.class, pav -> this.playSoundAtVol(pav.sound(), pav.volume()));
+
     }
 
 
@@ -63,5 +67,10 @@ public class AudioSystem extends EntitySystem implements EventListener {
 
     public void playSound(Asset.Sound soundAsset) {
         assetService.get(soundAsset).play(soundVolume);
+    }
+
+    public void playSoundAtVol(Asset.Sound soundAsset, float volume) {
+        float scaledVolume = soundVolume * Math.clamp(volume, 0f, 1f);
+        assetService.get(soundAsset).play(scaledVolume);
     }
 }

@@ -27,3 +27,4 @@ public class PhysicDebugRenderSystem extends EntitySystem implements Disposable 
         debugRenderer.dispose();
     }
 }
+

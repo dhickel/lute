@@ -65,10 +65,14 @@ public class TiledSystem extends EntitySystem implements EventListener, EventEmi
                 .ifPresent(ma -> eventEmitter.accept(new Event.Music.Changed(ma)));
         } else {
             Asset.Music music = currMapAssets.musicAssets().get(mapMusic);
+            eventEmitter.accept(new Event.Music.Changed(music));
             if (music == null) {
                 throw new GdxRuntimeException("Failed to find music asset for key: " + mapMusic);
             }
         }
+
+
+
     }
 
 
