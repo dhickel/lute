@@ -11,6 +11,8 @@ Tiled tile-object physics configuration and embedded collision shapes.
 
 ## Key Takeaways
 
+The following flag-based behavior describes the former entity loader, removed after class-based factories replaced it.
+
 - For map tile objects, `isPhysics` and `physicBodyType` are read from `tile.getProperties()`, not the placed map object's properties or embedded collision shape properties.
 - An embedded collision ellipse alone does not enable physics: missing tile-level `isPhysics` defaults to false and skips body creation.
 - Shape properties configure fixture friction, restitution, density, and sensor behavior; shape-level `isPhysics` and `physicBodyType` are not consumed.
@@ -27,8 +29,9 @@ On 2026-11-10 all five placed trees resolve to `objects.tsx` tile 7. The tile ha
 - Animated scenery has Animation2D, Graphic, and Facing, but no player movement state machine, controller, Move, or camera component.
 - animationSpeed can arrive as either an Integer (project default) or Float (explicit tile value); parse it as Number.
 - PhysicObjectProps and AnimatedPhysicObjectProps expose fromMapObj helpers that merge tile and placement properties, require every declared field with Objects.requireNonNull, and provide typed record values to EntityFactory. These parsers intentionally do not supply defaults, but the configured libGDX loader already supplies project-class defaults before parsing; requireNonNull therefore does not detect an inherited zero keyFrames. Keep positive-value validation in the factory and identify the animation key and atlas in the error.
+- Standalone non-graphics Box2D checks must load both GdxNativesLoader.load() and Box2D.init(); Box2D alone leaves BufferUtils.getBufferAddress unresolved when constructing bodies.
 - A textureless TextureRegion cannot construct TiledMapTileMapObject: its constructor copies region UVs and dereferences the texture. A parser-only harness must supply an appropriate texture fixture; an empty region is not sufficient.
-- Unclassified objects still use the legacy TiledAshleyLoader path described above. The historical flag diagnosis only applies to that path.
+- The legacy entity path has been removed. Unclassified or unsupported tile objects fail in TiledSystem with the class and object ID; all supported entities use EntityFactory. TiledAshleyLoader retains only static tile-layer collision loading and depends solely on World. The historical flag diagnosis above no longer applies to current entity creation.
 
 ## Open Questions
 

@@ -167,7 +167,8 @@ public class TiledSystem extends EntitySystem implements EventListener, EventEmi
                         var props = AnimatedPhysicObjectProps.fromMapObj(tmObj);
                         getEngine().addEntity(factory.getAnimatedPhysicObjectEntity(props, tmObj, currMapAssets));
                     }
-                    default -> loader.loadObject(tmObj, currMapAssets);
+                    default -> throw new GdxRuntimeException("Unsupported tile object class: '" + objectClass
+                        + "' (object ID: " + tmObj.getProperties().get("id") + ")");
                 }
             } else if (!(mapObj instanceof PointMapObject)) {
                 throw new GdxRuntimeException("Unsupported Obj: " + mapObj.getClass().getSimpleName());

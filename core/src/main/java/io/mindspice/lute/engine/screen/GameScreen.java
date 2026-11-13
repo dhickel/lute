@@ -36,7 +36,7 @@ public class GameScreen extends ScreenAdapter implements EventEmitter {
 
         this.physicWorld = new World(Vector2.Zero, true);
         this.physicWorld.setAutoClearForces(false);
-        this.tiledAshleyLoader = new TiledAshleyLoader(engine, this.game.getAssetService(), inputManager, this.physicWorld);
+        this.tiledAshleyLoader = new TiledAshleyLoader(this.physicWorld);
 
 
         this.engine.addSystem(new EventSystem());
