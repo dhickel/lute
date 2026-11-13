@@ -77,6 +77,7 @@ public class EntityFactory extends EntitySystem {
     private Transform createTransform(Vector2 pixelPosition, TextureRegion region) {
         var position = pixelPosition.cpy().scl(GameConsts.UNIT_SCALE);
         var size = new Vector2(region.getRegionWidth(), region.getRegionHeight()).scl(GameConsts.UNIT_SCALE);
+        position.sub(size.x * 0.5f, size.y * 0.5f);
         return new Transform(position, 2, size, new Vector2(1f, 1f), 0f, 0f);
     }
 

@@ -12,6 +12,7 @@ Tile-independent player creation from a classed Tiled point.
 ## Key Takeaways
 - TMX can omit inherited project-class defaults. The point parser supplies matching defaults; keyFrames must be positive (the player uses eight).
 - The map loader already flips point Y into libGDX coordinates. The factory receives pixel coordinates and applies UNIT_SCALE once; do not flip Y again.
+- RenderSystem treats Transform.position as the sprite's bottom-left corner. Center point-spawned sprites by subtracting half the world-space sprite size before creating both Transform and the physics body; changing only the graphic position would desynchronize physics.
 - The factory returns an uninserted entity. TiledSystem inserts it exactly once; Ashley family visibility follows the current system update boundary.
 - AnimationPlayer is not a unique player marker: animated trees also have it. Runtime validation identifies player sprites by Animation2D atlasKey.
 - A temporary desktop harness verified two player sprites, one controller and camera target, movement/release, walk-to-idle and same-facing restart, old-player immobility, collider footprint parity, boundary collision, camera following, and invalid asset/frame rejection.
