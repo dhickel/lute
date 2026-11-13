@@ -3,6 +3,7 @@ package io.mindspice.lute.engine.systems;
 import com.badlogic.ashley.core.EntitySystem;
 import com.badlogic.gdx.Gdx;
 import com.badlogic.gdx.maps.MapLayer;
+import com.badlogic.gdx.maps.objects.PointMapObject;
 import com.badlogic.gdx.maps.tiled.TiledMap;
 import com.badlogic.gdx.maps.tiled.TiledMapTileLayer;
 import com.badlogic.gdx.maps.tiled.objects.TiledMapTileMapObject;
@@ -136,7 +137,9 @@ public class TiledSystem extends EntitySystem implements EventListener, EventEmi
         for (var mapObj : layer.getObjects()) {
             if (mapObj instanceof TiledMapTileMapObject tmObj) {
                 loader.loadObject(tmObj, currMapAssets);
-            } else { throw new GdxRuntimeException("Unsupported Obj: " + mapObj.getClass().getSimpleName()); }
+            } else if (!(mapObj instanceof PointMapObject)) {
+                throw new GdxRuntimeException("Unsupported Obj: " + mapObj.getClass().getSimpleName());
+            }
         }
 
     }
