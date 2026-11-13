@@ -54,25 +54,6 @@ public class TiledSystem extends EntitySystem implements EventListener, EventEmi
         loadMapObjects(map);
 
         eventEmitter.accept(new Event.Map.Changed(map));
-
-
-        // Play selected music asset from tiled map properties, fallback to random.
-        String mapMusic = map.getProperties().get("music", "RANDOM", String.class);
-        if (mapMusic.equals("RANDOM")) {
-            currMapAssets.musicAssets().values().stream()
-                .skip(ThreadLocalRandom.current().nextInt(currMapAssets.musicAssets().size()))
-                .findFirst()
-                .ifPresent(ma -> eventEmitter.accept(new Event.Music.Changed(ma)));
-        } else {
-            Asset.Music music = currMapAssets.musicAssets().get(mapMusic);
-            eventEmitter.accept(new Event.Music.Changed(music));
-            if (music == null) {
-                throw new GdxRuntimeException("Failed to find music asset for key: " + mapMusic);
-            }
-        }
-
-
-
     }
 
 

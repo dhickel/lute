@@ -5,16 +5,20 @@ import com.badlogic.ashley.core.Family;
 import com.badlogic.ashley.systems.IteratingSystem;
 import io.mindspice.lute.engine.components.Controller;
 import io.mindspice.lute.engine.components.Move;
+import io.mindspice.lute.engine.events.Event;
+import io.mindspice.lute.engine.events.EventEmitter;
+import io.mindspice.lute.engine.events.EventListener;
 
-public class ControllerSystem extends IteratingSystem {
+public class ControllerSystem extends IteratingSystem implements EventEmitter {
 
     public ControllerSystem() {
         super(Family.all(Controller.class).get());
     }
+
     @Override
     protected void processEntity(Entity entity, float deltaTime) {
         Controller controller = Controller.MAPPER.get(entity);
-        if(!controller.getInputListener().hasInputs()) { return; }
+        if (!controller.getInputListener().hasInputs()) { return; }
 
         controller.getInputListener().consume((action, state) -> {
             if (state != 0 && state != 1) { return; }

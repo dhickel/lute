@@ -6,6 +6,7 @@ import java.util.Map;
 
 public record MapAssets(
     Asset.Map mapAsset,
+    String startMusic,
     Map<String, Asset.Atlas> atlasAssets,
     Map<String, Asset.Music> musicAssets,
     Map<String, Asset.Sound> soundAssets

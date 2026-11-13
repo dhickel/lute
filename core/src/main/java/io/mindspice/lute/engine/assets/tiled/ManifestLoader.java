@@ -37,6 +37,6 @@ public class ManifestLoader {
         Map<String, Asset.Sound> soundAsset = manifest.soundAssets().entrySet().stream()
             .collect(Collectors.toMap(Map.Entry::getKey, entry -> Asset.Sound.of(entry.getValue())));
 
-        return new MapAssets(mapAsset, atlasAssets, musicAssets, soundAsset);
+        return new MapAssets(mapAsset, manifest.startMusic(), atlasAssets, musicAssets, soundAsset);
     }
 }
