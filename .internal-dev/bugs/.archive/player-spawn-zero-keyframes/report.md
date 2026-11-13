@@ -22,7 +22,7 @@ Non-graphics loader reproduction confirmed player zero and five trees ten before
 Game startup failed while constructing the player, not while constructing a tree.
 
 ## Status
-Resolved locally; corrected PlayerCharacter default to eight while preserving other dirty asset changes. Mirror: https://github.com/dhickel/lute/issues/2 . Archived as a resolved report.
+Resolved locally after recurrence. The prior class-default-only fix did not persist: PlayerCharacter again supplied zero in the working project file. Added explicit integer keyFrames=8 to PlayerSpawn object 18 so its configuration wins over the class default. The source of the external default change is unproven. Preserved other dirty asset changes. Mirror: https://github.com/dhickel/lute/issues/2 . Archived as a resolved report.
 
 ## Next Action
-Keep project defaults valid and preserve strict factory validation. Close the mirrored issue after recording the fix commit.
+Preserve the explicit spawn value and strict validation. Focused tests cover the saved point against zero/eight class defaults plus eight property precedence cases. Close the reopened mirrored issue after recording the fix commit.

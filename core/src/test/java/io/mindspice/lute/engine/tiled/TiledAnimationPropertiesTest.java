@@ -8,6 +8,7 @@ import com.badlogic.gdx.maps.tiled.BaseTiledMapLoader;
 import com.badlogic.gdx.maps.tiled.TiledMap;
 import com.badlogic.gdx.maps.tiled.objects.TiledMapTileMapObject;
 import com.badlogic.gdx.utils.GdxRuntimeException;
+import com.badlogic.gdx.utils.XmlReader.Element;
 import io.mindspice.lute.engine.assets.Asset;
 import io.mindspice.lute.engine.assets.MapAssets;
 import io.mindspice.lute.engine.systems.EntityFactory;
@@ -38,39 +39,28 @@ public final class TiledAnimationPropertiesTest {
             }
             check(trees == 5, "Expected five animated trees");
 
-            PointMapObject point = null;
-            for (var object : map.getLayers().get("Triggers").getObjects()) {
-                if (object instanceof PointMapObject spawn
-                        && "PlayerCharacter".equals(object.getProperties().get("type"))) {
-                    point = spawn;
-                    break;
-                }
-            }
-            check(point != null, "Expected a PlayerCharacter spawn point");
+            var point = playerSpawn(map);
             var player = PlayerCharProps.fromMapObj(point);
             System.out.println("PlayerSpawn id=" + point.getProperties().get("id")
                 + " loaded keyFrames=" + point.getProperties().get("keyFrames")
                 + ", parsed keyFrames=" + player.keyframes() + "; animated trees=" + trees);
             check(Integer.valueOf(8).equals(point.getProperties().get("keyFrames")),
-                "PlayerSpawn must inherit keyFrames=8 from the project, not rely on a parser fallback");
-            check(player.keyframes() == 8, "Player parser must preserve the inherited frame rate");
+                "PlayerSpawn id=18 must load keyFrames=8 from its explicit map property");
+            check(player.keyframes() == 8, "Player parser must preserve the explicit frame rate");
+            check(map.getTileSets().getTile(2663).getProperties().get("keyFrames", Integer.class) == 8,
+                "The unused player tile has an independent keyFrames=8");
 
             var atlas = Asset.Atlas.of("objects.atlas");
             var assets = new MapAssets(mapAsset, null, Map.of("OBJECTS", atlas), Map.of(), Map.of());
             var factory = new EntityFactory(null, null, null);
-            var spawnPosition = point.getPoint();
+            checkPlayerPrecedence(mapAsset, parameters, factory, assets, atlas);
             for (int invalid : new int[]{0, -1}) {
-                point.getProperties().put("keyFrames", invalid);
-                var invalidPlayer = PlayerCharProps.fromMapObj(point);
-                check(invalidPlayer.keyframes() == invalid, "An explicit invalid player value must not be replaced");
-                rejectsFrames(() -> factory.getPlayerEntity(invalidPlayer, spawnPosition, assets), "player", atlas.file());
-
                 tree.getProperties().put("keyFrames", invalid);
                 var invalidTree = AnimatedPhysicObjectProps.fromMapObj(tree);
                 check(invalidTree.keyframes() == invalid, "An explicit placement value must override its tile");
                 TiledMapTileMapObject loadedTree = tree;
                 rejectsFrames(() -> factory.getAnimatedPhysicObjectEntity(invalidTree, loadedTree, assets),
-                    "old_tree1/old_tree1", atlas.file());
+                    invalid, "old_tree1/old_tree1", atlas.descriptor().fileName);
             }
             tree.getProperties().remove("keyFrames");
             check(AnimatedPhysicObjectProps.fromMapObj(tree).keyframes() == 10, "Placement overrides must not mutate the tile");
@@ -87,14 +77,62 @@ public final class TiledAnimationPropertiesTest {
         }
     }
 
-    private static void rejectsFrames(Runnable action, String atlasKey, String atlasFile) {
+    private static PointMapObject playerSpawn(TiledMap map) {
+        for (var object : map.getLayers().get("Triggers").getObjects()) {
+            if (Integer.valueOf(18).equals(object.getProperties().get("id"))) {
+                check(object instanceof PointMapObject, "PlayerSpawn must remain a point, not a tile object");
+                check("PlayerCharacter".equals(object.getProperties().get("type")), "Expected PlayerCharacter class");
+                return (PointMapObject) object;
+            }
+        }
+        throw new AssertionError("Expected PlayerSpawn id=18");
+    }
+
+    private static void checkPlayerPrecedence(Asset.Map mapAsset, BaseTiledMapLoader.Parameters parameters,
+                                              EntityFactory factory, MapAssets assets, Asset.Atlas atlas) {
+        String path = mapAsset.descriptor().fileName;
+        for (int classFrames : new int[]{0, 8}) {
+            // Load the saved point unchanged: a class-default-only repair must not satisfy this regression.
+            var savedMap = new PropertyLoader(classFrames).loadProperties(path, parameters);
+            try {
+                check(PlayerCharProps.fromMapObj(playerSpawn(savedMap)).keyframes() == 8,
+                    "Saved PlayerSpawn must explicitly override project keyFrames=" + classFrames);
+            } finally {
+                savedMap.dispose();
+            }
+            for (Integer explicitFrames : new Integer[]{null, 0, -1, 8}) {
+                var fixture = new PropertyLoader(classFrames).loadProperties(path, parameters, explicitFrames);
+                try {
+                    var point = playerSpawn(fixture);
+                    int expected = explicitFrames == null ? classFrames : explicitFrames;
+                    String source = "PlayerSpawn id=18: class keyFrames=" + classFrames + ", explicit=" + explicitFrames;
+                    check(Integer.valueOf(expected).equals(point.getProperties().get("keyFrames")),
+                        source + " must obey explicit-over-class precedence");
+                    var props = PlayerCharProps.fromMapObj(point);
+                    check(props.keyframes() == expected, source + " must not be silently replaced by the parser");
+                    if (expected <= 0) {
+                        rejectsFrames(() -> factory.getPlayerEntity(props, point.getPoint(), assets),
+                            expected, "player/idle_down", atlas.descriptor().fileName);
+                    }
+                    check(fixture.getTileSets().getTile(2663).getProperties().get("keyFrames", Integer.class) == 8,
+                        source + " must be independent of the unused player's tile keyFrames=8");
+                } finally {
+                    fixture.dispose();
+                }
+            }
+        }
+        System.out.println("Player precedence: saved override against class defaults 0/8; eight loaded fixture cases passed");
+    }
+
+    private static void rejectsFrames(Runnable action, int keyFrames, String animationKey, String atlasFile) {
         try {
             action.run();
-            throw new AssertionError("Invalid keyFrames must fail");
+            throw new AssertionError("Invalid keyFrames must fail for " + animationKey);
         } catch (GdxRuntimeException expected) {
-            check(expected.getMessage().contains("keyFrames must be positive"), "Frame validation must remain strict");
-            check(expected.getMessage().contains(atlasKey), "Frame validation must identify the animation key");
-            check(expected.getMessage().contains(atlasFile), "Frame validation must identify the atlas asset");
+            check(expected.getMessage().contains("keyFrames must be positive: " + keyFrames),
+                "Frame validation must reject the actual invalid value: " + expected.getMessage());
+            check(expected.getMessage().contains("key: " + animationKey + ", atlas: " + atlasFile),
+                "Frame validation must identify the actual animation and atlas: " + expected.getMessage());
         }
     }
 
@@ -103,13 +141,63 @@ public final class TiledAnimationPropertiesTest {
     }
 
     private static final class PropertyLoader extends FixedTmxMapLoader {
+        private final Integer classFrames;
+
         PropertyLoader() {
+            this(null);
+        }
+
+        PropertyLoader(Integer classFrames) {
             super(path -> new FileHandle("assets/" + path));
+            this.classFrames = classFrames;
+        }
+
+        @Override
+        protected void loadProjectFile(String path) {
+            super.loadProjectFile(path);
+            if (classFrames != null) {
+                for (var member : projectClassInfo.get("PlayerCharacter")) {
+                    if ("keyFrames".equals(member.name)) {
+                        member.defaultValue.set(classFrames.longValue(), null);
+                    }
+                }
+            }
+        }
+
+        TiledMap loadProperties(String path, BaseTiledMapLoader.Parameters parameters, Integer explicitFrames) {
+            return loadProperties(path, parameters, true, explicitFrames);
         }
 
         TiledMap loadProperties(String path, BaseTiledMapLoader.Parameters parameters) {
+            return loadProperties(path, parameters, false, null);
+        }
+
+        private TiledMap loadProperties(String path, BaseTiledMapLoader.Parameters parameters,
+                                       boolean replaceSpawnFrames, Integer explicitFrames) {
             var file = resolve(path);
             root = xml.parse(file);
+            if (replaceSpawnFrames) {
+                for (var object : root.getChildrenByNameRecursively("object")) {
+                    if (!"18".equals(object.getAttribute("id", null))) { continue; }
+                    var properties = object.getChildByName("properties");
+                    if (properties == null) {
+                        properties = new Element("properties", object);
+                        object.addChild(properties);
+                    }
+                    for (var property : properties.getChildrenByName("property")) {
+                        if ("keyFrames".equals(property.getAttribute("name"))) {
+                            properties.removeChild(property);
+                        }
+                    }
+                    if (explicitFrames != null) {
+                        var property = new Element("property", properties);
+                        property.setAttribute("name", "keyFrames");
+                        property.setAttribute("type", "int");
+                        property.setAttribute("value", explicitFrames.toString());
+                        properties.addChild(property);
+                    }
+                }
+            }
             return loadTiledMap(file, parameters, imagePath -> {
                 try {
                     var image = ImageIO.read(new java.io.File(imagePath));
