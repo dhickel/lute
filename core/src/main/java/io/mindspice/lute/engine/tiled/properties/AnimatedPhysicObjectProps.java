@@ -8,15 +8,15 @@ import java.util.Objects;
 public record AnimatedPhysicObjectProps(
     String animation,
     float animationSpeed,
-    int keyframes,
+    int keyFrames,
     String atlasAsset,
     String atlasKey
 ) {
 
-    public AnimatedPhysicObjectProps(String animation, float animationSpeed, int keyframes, String atlasAsset, String atlasKey) {
+    public AnimatedPhysicObjectProps(String animation, float animationSpeed, int keyFrames, String atlasAsset, String atlasKey) {
         this.animation = animation;
         this.animationSpeed = animationSpeed;
-        this.keyframes = keyframes;
+        this.keyFrames = keyFrames;
         this.atlasAsset = atlasAsset;
         this.atlasKey = atlasKey;
     }

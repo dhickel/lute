@@ -5,16 +5,16 @@ import com.badlogic.gdx.maps.MapObject;
 public record PlayerCharProps(
     String animation,
     float animationSpeed,
-    int keyframes,
+    int keyFrames,
     String atlasAsset,
     String atlasKey
 ) {
 
-    public PlayerCharProps(String animation, float animationSpeed, int keyframes, String atlasAsset, String atlasKey) {
+    public PlayerCharProps(String animation, float animationSpeed, int keyFrames, String atlasAsset, String atlasKey) {
 
         this.animation = animation;
         this.animationSpeed = animationSpeed;
-        this.keyframes = keyframes;
+        this.keyFrames = keyFrames;
         this.atlasAsset = atlasAsset;
         this.atlasKey = atlasKey;
     }

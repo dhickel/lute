@@ -32,7 +32,7 @@ public final class TiledAnimationPropertiesTest {
                         && "old_tree1/old_tree1".equals(tileObject.getTile().getProperties().get("atlasKey"))) {
                     tree = tileObject;
                     var props = AnimatedPhysicObjectProps.fromMapObj(tree);
-                    check(props.keyframes() == 10, "Tree " + object.getProperties().get("id") + " must retain tile keyFrames=10");
+                    check(props.keyFrames() == 10, "Tree " + object.getProperties().get("id") + " must retain tile keyFrames=10");
                     check(props.animationSpeed() == 0.35f, "Explicit tile animationSpeed must override the integer class default");
                     trees++;
                 }
@@ -43,10 +43,10 @@ public final class TiledAnimationPropertiesTest {
             var player = PlayerCharProps.fromMapObj(point);
             System.out.println("PlayerSpawn id=" + point.getProperties().get("id")
                 + " loaded keyFrames=" + point.getProperties().get("keyFrames")
-                + ", parsed keyFrames=" + player.keyframes() + "; animated trees=" + trees);
+                + ", parsed keyFrames=" + player.keyFrames() + "; animated trees=" + trees);
             check(Integer.valueOf(8).equals(point.getProperties().get("keyFrames")),
                 "PlayerSpawn id=18 must load keyFrames=8 from its explicit map property");
-            check(player.keyframes() == 8, "Player parser must preserve the explicit frame rate");
+            check(player.keyFrames() == 8, "Player parser must preserve the explicit frame rate");
             check(map.getTileSets().getTile(2663).getProperties().get("keyFrames", Integer.class) == 8,
                 "The unused player tile has an independent keyFrames=8");
 
@@ -57,13 +57,13 @@ public final class TiledAnimationPropertiesTest {
             for (int invalid : new int[]{0, -1}) {
                 tree.getProperties().put("keyFrames", invalid);
                 var invalidTree = AnimatedPhysicObjectProps.fromMapObj(tree);
-                check(invalidTree.keyframes() == invalid, "An explicit placement value must override its tile");
+                check(invalidTree.keyFrames() == invalid, "An explicit placement value must override its tile");
                 TiledMapTileMapObject loadedTree = tree;
                 rejectsFrames(() -> factory.getAnimatedPhysicObjectEntity(invalidTree, loadedTree, assets),
                     invalid, "old_tree1/old_tree1", atlas.descriptor().fileName);
             }
             tree.getProperties().remove("keyFrames");
-            check(AnimatedPhysicObjectProps.fromMapObj(tree).keyframes() == 10, "Placement overrides must not mutate the tile");
+            check(AnimatedPhysicObjectProps.fromMapObj(tree).keyFrames() == 10, "Placement overrides must not mutate the tile");
             tree.getTile().getProperties().remove("keyFrames");
             try {
                 AnimatedPhysicObjectProps.fromMapObj(tree);
@@ -95,7 +95,7 @@ public final class TiledAnimationPropertiesTest {
             // Load the saved point unchanged: a class-default-only repair must not satisfy this regression.
             var savedMap = new PropertyLoader(classFrames).loadProperties(path, parameters);
             try {
-                check(PlayerCharProps.fromMapObj(playerSpawn(savedMap)).keyframes() == 8,
+                check(PlayerCharProps.fromMapObj(playerSpawn(savedMap)).keyFrames() == 8,
                     "Saved PlayerSpawn must explicitly override project keyFrames=" + classFrames);
             } finally {
                 savedMap.dispose();
@@ -109,7 +109,7 @@ public final class TiledAnimationPropertiesTest {
                     check(Integer.valueOf(expected).equals(point.getProperties().get("keyFrames")),
                         source + " must obey explicit-over-class precedence");
                     var props = PlayerCharProps.fromMapObj(point);
-                    check(props.keyframes() == expected, source + " must not be silently replaced by the parser");
+                    check(props.keyFrames() == expected, source + " must not be silently replaced by the parser");
                     if (expected <= 0) {
                         rejectsFrames(() -> factory.getPlayerEntity(props, point.getPoint(), assets),
                             expected, "player/idle_down", atlas.descriptor().fileName);

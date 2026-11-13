@@ -70,7 +70,7 @@ public class EntityFactory extends EntitySystem {
         var type = Animation2D.AnimationType.valueOf(props.animation());
         var facing = Facing.Direction.DOWN;
         var animation = createAnimation(atlas, props.atlasKey(), type,
-            props.animationSpeed(), props.keyframes(), facing);
+            props.animationSpeed(), props.keyFrames(), facing);
 
         Entity entity = createPhysicObject(object, animation.getAnimation().getKeyFrame(0f));
         entity.add(new Facing(facing));
@@ -126,7 +126,7 @@ public class EntityFactory extends EntitySystem {
     private Animation2D createPlayerAnimation(PlayerCharProps props, MapAssets mapAssets, Facing.Direction facing) {
         var atlas = resolveAtlas(props.atlasAsset(), mapAssets);
         var type = Animation2D.AnimationType.valueOf(props.animation());
-        return createAnimation(atlas, props.atlasKey(), type, props.animationSpeed(), props.keyframes(), facing);
+        return createAnimation(atlas, props.atlasKey(), type, props.animationSpeed(), props.keyFrames(), facing);
     }
 
     private Animation2D createAnimation(Asset.Atlas atlas, String atlasKey, Animation2D.AnimationType animType,
