@@ -106,7 +106,7 @@ public class Animation2D implements Component {
     }
 
     public enum AnimationType {
-        IDLE("idle"), WALK("walk"), DEFAULT("");
+        IDLE("idle"), WALK("walk"), ATTACK("attack"), DEFAULT("");
 
         public final String atlasKey;
 

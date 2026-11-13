@@ -1,0 +1,5 @@
+{
+  "maxHealth": 100,
+  "moveSpeed": 4,
+  "weapon": "sword.json"
+}

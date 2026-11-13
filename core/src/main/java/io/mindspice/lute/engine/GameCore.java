@@ -50,7 +50,8 @@ public class GameCore extends Game {
             Pair.of(Input.Keys.W, InputAction.MOVE_UP),
             Pair.of(Input.Keys.S, InputAction.MOVE_DOWN),
             Pair.of(Input.Keys.A, InputAction.MOVE_LEFT),
-            Pair.of(Input.Keys.D, InputAction.MOVE_RIGHT)
+            Pair.of(Input.Keys.D, InputAction.MOVE_RIGHT),
+            Pair.of(Input.Keys.SPACE, InputAction.ATTACK)
         );
 
         this.inputManager = new InputManager(inputMap);

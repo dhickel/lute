@@ -12,6 +12,9 @@ dependencies {
   api "com.crashinvaders.vfx:gdx-vfx-effects:$gdxVfxEffectsVersion"
   api "com.github.libgdx:box2dlights:$box2dlightsVersion"
 
+  testRuntimeOnly "com.badlogicgames.gdx:gdx-platform:$gdxVersion:natives-desktop"
+  testRuntimeOnly "com.badlogicgames.gdx:gdx-box2d-platform:$gdxVersion:natives-desktop"
+
   if(enableGraalNative == 'true') {
     implementation "io.github.berstanio:gdx-svmhelper-annotations:$graalHelperVersion"
   }
@@ -47,3 +50,19 @@ tasks.register('tiledAnimationPropertiesTest', JavaExec) {
   workingDir = rootProject.projectDir
 }
 check.dependsOn tiledAnimationPropertiesTest
+
+tasks.register('combatSystemTest', JavaExec) {
+  dependsOn testClasses
+  classpath = sourceSets.test.runtimeClasspath + files(rootProject.file('assets'))
+  mainClass = 'io.mindspice.lute.engine.combat.CombatSystemTest'
+  workingDir = rootProject.projectDir
+}
+check.dependsOn combatSystemTest
+
+tasks.register('triggerDebugRenderSystemTest', JavaExec) {
+  dependsOn testClasses
+  classpath = sourceSets.test.runtimeClasspath
+  mainClass = 'io.mindspice.lute.engine.systems.TriggerDebugRenderSystemTest'
+  workingDir = rootProject.projectDir
+}
+check.dependsOn triggerDebugRenderSystemTest

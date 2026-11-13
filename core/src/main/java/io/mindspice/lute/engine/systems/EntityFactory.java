@@ -2,6 +2,7 @@ package io.mindspice.lute.engine.systems;
 
 import com.badlogic.ashley.core.Entity;
 import com.badlogic.ashley.core.EntitySystem;
+import com.badlogic.gdx.Gdx;
 import com.badlogic.gdx.graphics.Color;
 import com.badlogic.gdx.graphics.g2d.Animation;
 import com.badlogic.gdx.graphics.g2d.TextureRegion;
@@ -16,6 +17,7 @@ import com.badlogic.gdx.utils.GdxRuntimeException;
 import io.mindspice.lute.engine.assets.Asset;
 import io.mindspice.lute.engine.assets.AssetService;
 import io.mindspice.lute.engine.assets.MapAssets;
+import io.mindspice.lute.engine.assets.CombatData;
 import io.mindspice.lute.engine.components.*;
 import io.mindspice.lute.engine.components.Transform;
 import io.mindspice.lute.engine.input.InputManager;
@@ -37,16 +39,20 @@ public class EntityFactory extends EntitySystem {
     }
 
     public Entity getPlayerEntity(PlayerCharProps props, Vector2 pixelPosition, MapAssets mapAssets) {
-        var facing = Facing.Direction.DOWN;
+        var facing = Facing.Direction.RIGHT;
         var animation = createPlayerAnimation(props, mapAssets, facing);
         var region = animation.getAnimation().getKeyFrame(0f);
         var transform = createTransform(pixelPosition, region);
+        var player = CombatData.readPlayer(Gdx.files.internal("data/player.json"));
+        var weapon = CombatData.readWeapon(Gdx.files.internal("data/weapons/" + player.weapon()));
 
         Entity entity = getEngine().createEntity();
         entity.add(new Graphic(region, Color.WHITE.cpy()));
         entity.add(transform);
         entity.add(new Facing(facing));
-        entity.add(new Move(4f));
+        entity.add(new Move(player.moveSpeed()));
+        entity.add(new Health(player.maxHealth()));
+        entity.add(new Combat(weapon));
         entity.add(animation);
         entity.add(new AnimationPlayer(entity));
         entity.add(createPhysics(transform.getPosition(), entity));
