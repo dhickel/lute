@@ -8,6 +8,7 @@ public enum InputAction {
     MOVE_DOWN,
     MOVE_LEFT,
     MOVE_RIGHT,
+    ATTACK,
     SCROLL_UP,
     SCROLL_DOWN,
     GUI_UP,
