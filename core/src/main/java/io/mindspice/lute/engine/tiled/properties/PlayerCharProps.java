@@ -21,7 +21,7 @@ public record PlayerCharProps(
 
     public static PlayerCharProps fromMapObj(MapObject obj) {
         var props = obj.getProperties();
-        // TMX omits inherited class defaults; keep these aligned with PlayerCharacter in game.tiled-project.
+        // The map loader supplies project defaults; these fallbacks apply only when a property is absent.
         String animation = props.get("animation", "IDLE", String.class);
         float animationSpeed = props.get("animationSpeed", 1f, Float.class);
         int keyFrames = props.get("keyFrames", 8, Integer.class);

@@ -131,18 +131,20 @@ public class EntityFactory extends EntitySystem {
 
     private Animation2D createAnimation(Asset.Atlas atlas, String atlasKey, Animation2D.AnimationType animType,
                                       float speed, int keyFrames, Facing.Direction facing) {
-        if (keyFrames <= 0) {
-            throw new GdxRuntimeException("Animation keyFrames must be positive: " + keyFrames);
-        }
         String animationKey;
         if (animType == Animation2D.AnimationType.DEFAULT) {
             animationKey = atlasKey;
         } else {
             animationKey = atlasKey + "/" + animType.atlasKey + "_" + facing.atlasKey;
         }
+        if (keyFrames <= 0) {
+            throw new GdxRuntimeException("Animation keyFrames must be positive: " + keyFrames
+                + " (key: " + animationKey + ", atlas: " + atlas.descriptor().fileName + ")");
+        }
         var regions = assetService.get(atlas).findRegions(animationKey);
         if (regions.isEmpty()) {
-            throw new GdxRuntimeException("No atlas regions found for key: " + animationKey);
+            throw new GdxRuntimeException("No atlas regions found for key: " + animationKey
+                + " (atlas: " + atlas.descriptor().fileName + ")");
         }
         Animation<TextureRegion> animation = new Animation<>(1f / keyFrames, regions, Animation.PlayMode.LOOP);
         var anim2d = new Animation2D(atlas, atlasKey, animType, Animation.PlayMode.LOOP, speed, keyFrames);

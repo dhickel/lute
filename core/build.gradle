@@ -39,3 +39,11 @@ tasks.register('manifestLoaderTest', JavaExec) {
   workingDir = rootProject.projectDir
 }
 check.dependsOn manifestLoaderTest
+
+tasks.register('tiledAnimationPropertiesTest', JavaExec) {
+  dependsOn testClasses
+  classpath = sourceSets.test.runtimeClasspath
+  mainClass = 'io.mindspice.lute.engine.tiled.TiledAnimationPropertiesTest'
+  workingDir = rootProject.projectDir
+}
+check.dependsOn tiledAnimationPropertiesTest

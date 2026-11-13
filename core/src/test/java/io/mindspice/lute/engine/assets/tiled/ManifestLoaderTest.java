@@ -4,6 +4,7 @@ import com.badlogic.gdx.Files;
 import com.badlogic.gdx.Gdx;
 import com.badlogic.gdx.files.FileHandle;
 import io.mindspice.lute.engine.assets.Asset;
+import io.mindspice.lute.engine.tiled.ManifestLoader;
 
 import java.lang.reflect.Proxy;
 import java.util.Map;
