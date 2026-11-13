@@ -60,9 +60,12 @@ public class EntityFactory extends EntitySystem {
         }
 
         var type = Animation2D.AnimationType.valueOf(props.animation());
-        String animationKey = type == Animation2D.AnimationType.DEFAULT
-            ? props.atlasKey()
-            : props.atlasKey() + "/" + type.atlasKey + "_" + facing.atlasKey;
+        String animationKey;
+        if (type == Animation2D.AnimationType.DEFAULT) {
+            animationKey = props.atlasKey();
+        } else {
+            animationKey = props.atlasKey() + "/" + type.atlasKey + "_" + facing.atlasKey;
+        }
         var regions = assetService.get(atlasAsset).findRegions(animationKey);
         if (regions.isEmpty()) {
             throw new GdxRuntimeException("No player atlas regions found for key: " + animationKey);
