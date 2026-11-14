@@ -16,3 +16,12 @@
 - **Affected specifications and sources:** This decision establishes the combat lifetime contract. Affected source paths are `assets/data/weapons.json`, `core/src/main/java/io/mindspice/lute/engine/data/json/WeaponsData.java`, `core/src/main/java/io/mindspice/lute/engine/components/Combat.java`, `core/src/main/java/io/mindspice/lute/engine/components/CombatWeapon.java`, `core/src/main/java/io/mindspice/lute/engine/systems/CombatSystem.java`, and `core/src/main/java/io/mindspice/lute/engine/systems/EntityFactory.java`.
 - **Source:** User request for explicit combat attack duration and acceptance of the physics-tick caveat.
 - **Review timing:** Revisit if attack timing, animation ownership, or physics contact guarantees change.
+
+## Custom asset service and logical keys
+
+- **Decision:** Replace the AssetManager-backed service with a directly owning service keyed globally by resource class and logical ID. Asset records define loads; runtime audio events and animation components carry IDs. Manifest keys remain IDs, and the manifest name is the map ID. The service supports sounds, music, atlases, and tiled maps.
+- **Justification and tradeoff:** Explicit keys separate runtime identity from file paths and make ownership and unloading direct. Unlike AssetManager, the service has no background loading or reference counting: queue updates synchronously load at most one entry, while an explicit load handles only its requested entry. Repeating the same key and path is idempotent; conflicting paths fail while the key exists.
+- **Caveats:** Load on the render thread. Failed loads remove their entries for explicit retry; a `LoadingScreen` update failure is propagated and latched until `show()` resets the screen and queues its definitions again. Unloading cancels queued work or disposes the loaded resource; users must stop using it and its dependents first. Different keys for the same path own independent loads. Direct atlas and map loaders retain their textures until ownership transfers to the completed resource and dispose already-created textures on runtime failure; `DirectTexture` disposes its GL handle if loading fails during construction. Service disposal is idempotent.
+- **Affected specifications:** This decision establishes the asset identity, loading, and ownership contract; `docs/asset-service.md` describes usage and migration.
+- **Source:** User-directed replacement of AssetManager-backed asset handling.
+- **Review timing:** Revisit if asset identity, loading, or ownership contracts change.

@@ -47,7 +47,7 @@ public class TiledSystem extends EntitySystem implements EventListener, EventEmi
     }
 
     public TiledMap loadMap(MapAssets assets) {
-        var tiledMap = assetService.get(assets.mapAsset());
+        var tiledMap = assetService.get(TiledMap.class, assets.mapAsset().id());
         setMap(tiledMap, assets);
         return tiledMap;
     }
@@ -64,7 +64,7 @@ public class TiledSystem extends EntitySystem implements EventListener, EventEmi
 
 
     private void unloadCurrentMap(boolean unloadAsset) {
-        if (unloadAsset) { assetService.unload(currMapAssets.mapAsset()); }
+        if (unloadAsset) { assetService.unload(TiledMap.class, currMapAssets.mapAsset().id()); }
         Array<Body> bodies = new Array<>();
         physicsWorld.getBodies(bodies);
         for (Body body : bodies) {

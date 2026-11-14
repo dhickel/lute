@@ -23,6 +23,9 @@ public final class ManifestLoaderTest {
 
             var assets = ManifestLoader.parseMapManifest("test_tiled");
             checkAsset(assets.mapAsset(), "map");
+            if (!assets.mapAsset().id().equals("test_tiled")) {
+                throw new AssertionError("Map key must derive from the manifest name");
+            }
             checkAssets(assets.atlasAssets(), "atlases");
             checkAssets(assets.musicAssets(), "music");
             checkAssets(assets.soundAssets(), "sounds");
@@ -44,14 +47,16 @@ public final class ManifestLoaderTest {
                 throw new AssertionError(field + " must have a nonempty key");
             }
             checkAsset(asset, field);
+            if (!key.equals(asset.id())) {
+                throw new AssertionError(field + " must retain manifest logical IDs");
+            }
         });
     }
 
     private static void checkAsset(Asset<?> asset, String field) {
-        if (asset == null || asset.file() == null || asset.file().isBlank()
-                || asset.descriptor() == null || asset.descriptor().fileName == null
-                || asset.descriptor().fileName.isBlank()) {
-            throw new AssertionError(field + " must have a file and descriptor");
+        if (asset == null || asset.id() == null || asset.id().isBlank()
+                || asset.path() == null || asset.path().isBlank() || asset.type() == null) {
+            throw new AssertionError(field + " must have a logical ID, path, and type");
         }
     }
 }

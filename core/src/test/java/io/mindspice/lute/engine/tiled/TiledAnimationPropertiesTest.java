@@ -12,6 +12,7 @@ import com.badlogic.gdx.utils.XmlReader.Element;
 import io.mindspice.lute.engine.assets.Asset;
 import io.mindspice.lute.engine.assets.MapAssets;
 import io.mindspice.lute.engine.systems.EntityFactory;
+import io.mindspice.lute.engine.singletons.GameConsts;
 import io.mindspice.lute.engine.tiled.properties.AnimatedPhysicObjectProps;
 import io.mindspice.lute.engine.tiled.properties.PlayerCharProps;
 
@@ -21,9 +22,10 @@ import java.util.Map;
 
 public final class TiledAnimationPropertiesTest {
     public static void main(String[] args) {
-        var mapAsset = Asset.Map.of("test_tiled.tmx");
-        var parameters = (BaseTiledMapLoader.Parameters) mapAsset.descriptor().params;
-        TiledMap map = new PropertyLoader().loadProperties(mapAsset.descriptor().fileName, parameters);
+        var mapAsset = Asset.Map.of("TEST", "test_tiled.tmx");
+        var parameters = new BaseTiledMapLoader.Parameters();
+        parameters.projectFilePath = GameConsts.PROJECT_PATH;
+        TiledMap map = new PropertyLoader().loadProperties(mapAsset.path(), parameters);
         try {
             int trees = 0;
             TiledMapTileMapObject tree = null;
@@ -50,7 +52,7 @@ public final class TiledAnimationPropertiesTest {
             check(map.getTileSets().getTile(2663).getProperties().get("keyFrames", Integer.class) == 8,
                 "The unused player tile has an independent keyFrames=8");
 
-            var atlas = Asset.Atlas.of("objects.atlas");
+            var atlas = Asset.Atlas.of("OBJECTS", "objects.atlas");
             var assets = new MapAssets(mapAsset, null, Map.of("OBJECTS", atlas), Map.of(), Map.of());
             var factory = new EntityFactory(null, null, null);
             checkPlayerPrecedence(mapAsset, parameters, factory, assets, atlas);
@@ -60,7 +62,7 @@ public final class TiledAnimationPropertiesTest {
                 check(invalidTree.keyFrames() == invalid, "An explicit placement value must override its tile");
                 TiledMapTileMapObject loadedTree = tree;
                 rejectsFrames(() -> factory.getAnimatedPhysicObjectEntity(invalidTree, loadedTree, assets),
-                    invalid, "old_tree1/old_tree1", atlas.descriptor().fileName);
+                    invalid, "old_tree1/old_tree1", atlas.path());
             }
             tree.getProperties().remove("keyFrames");
             check(AnimatedPhysicObjectProps.fromMapObj(tree).keyFrames() == 10, "Placement overrides must not mutate the tile");
@@ -90,7 +92,7 @@ public final class TiledAnimationPropertiesTest {
 
     private static void checkPlayerPrecedence(Asset.Map mapAsset, BaseTiledMapLoader.Parameters parameters,
                                               EntityFactory factory, MapAssets assets, Asset.Atlas atlas) {
-        String path = mapAsset.descriptor().fileName;
+        String path = mapAsset.path();
         for (int classFrames : new int[]{0, 8}) {
             // Load the saved point unchanged: a class-default-only repair must not satisfy this regression.
             var savedMap = new PropertyLoader(classFrames).loadProperties(path, parameters);
@@ -112,7 +114,7 @@ public final class TiledAnimationPropertiesTest {
                     check(props.keyFrames() == expected, source + " must not be silently replaced by the parser");
                     if (expected <= 0) {
                         rejectsFrames(() -> factory.getPlayerEntity(props, point.getPoint(), assets),
-                            expected, "player/idle_right", atlas.descriptor().fileName);
+                            expected, "player/idle_right", atlas.path());
                     }
                     check(fixture.getTileSets().getTile(2663).getProperties().get("keyFrames", Integer.class) == 8,
                         source + " must be independent of the unused player's tile keyFrames=8");

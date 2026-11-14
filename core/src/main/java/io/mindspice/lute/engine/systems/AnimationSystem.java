@@ -9,18 +9,18 @@ import com.badlogic.gdx.graphics.g2d.TextureRegion;
 import com.badlogic.gdx.utils.Array;
 import com.badlogic.gdx.utils.GdxRuntimeException;
 import io.mindspice.lute.engine.assets.AssetService;
-import io.mindspice.lute.engine.assets.Asset;
 import io.mindspice.lute.engine.components.Animation2D;
 import io.mindspice.lute.engine.components.Facing;
 import io.mindspice.lute.engine.components.Graphic;
 
-import java.awt.*;
 import java.util.HashMap;
 import java.util.Map;
+import java.util.WeakHashMap;
 
 public class AnimationSystem extends IteratingSystem {
     private final AssetService assetService;
     private final Map<CacheKey, Animation<TextureRegion>> animationCache;
+    private final Map<Animation2D, TextureAtlas> currentAtlases = new WeakHashMap<>();
 
     public AnimationSystem(AssetService assetService) {
         super(Family.all(Animation2D.class, Graphic.class, Facing.class).get());
@@ -32,10 +32,13 @@ public class AnimationSystem extends IteratingSystem {
     protected void processEntity(Entity entity, float deltaTime) {
         Animation2D anim2d = Animation2D.MAPPER.get(entity);
         Facing.Direction fDirection = Facing.MAPPER.get(entity).getDirection();
+        TextureAtlas atlas = assetService.get(TextureAtlas.class, anim2d.getAtlasId());
+        animationCache.keySet().removeIf(key -> key.atlasId().equals(anim2d.getAtlasId()) && key.atlas() != atlas);
 
         final float stateTime;
-        if (anim2d.isDirty() || fDirection != anim2d.getFdirection()) {
+        if (anim2d.isDirty() || fDirection != anim2d.getFdirection() || currentAtlases.get(anim2d) != atlas) {
             updateAnimation(anim2d, fDirection);
+            currentAtlases.put(anim2d, atlas);
             stateTime = 0;
         } else { stateTime = anim2d.incAndGetStateTime(deltaTime); }
 
@@ -49,17 +52,16 @@ public class AnimationSystem extends IteratingSystem {
     }
 
     public void updateAnimation(Animation2D anim2d, Facing.Direction fDir) {
-        Asset.Atlas atlasAsset = anim2d.getAtlasAsset();
+        TextureAtlas atlas = assetService.get(TextureAtlas.class, anim2d.getAtlasId());
         String atlasKey = anim2d.getAtlasKey();
         Animation2D.AnimationType type = anim2d.getType();
-        var cacheKey = new CacheKey(atlasAsset, atlasKey, type, fDir);
+        var cacheKey = new CacheKey(atlas, anim2d.getAtlasId(), atlasKey, type, fDir, anim2d.getFrameDuration());
 
         Animation<TextureRegion> animation = animationCache.computeIfAbsent(cacheKey, k -> {
-            TextureAtlas texAtlas = assetService.get(atlasAsset);
             String combinedKey = type == Animation2D.AnimationType.DEFAULT
                 ? atlasKey
                 : atlasKey + "/" + type.atlasKey + "_" + fDir.atlasKey;
-            Array<TextureAtlas.AtlasRegion> regions = texAtlas.findRegions(combinedKey);
+            Array<TextureAtlas.AtlasRegion> regions = atlas.findRegions(combinedKey);
 
 
             if (regions.isEmpty()) {
@@ -73,10 +75,12 @@ public class AnimationSystem extends IteratingSystem {
 
 
     public record CacheKey(
-        Asset.Atlas asset,
+        TextureAtlas atlas,
+        String atlasId,
         String atlasKey,
         Animation2D.AnimationType type,
-        Facing.Direction FDirection
+        Facing.Direction fDirection,
+        float frameDuration
     ) {
     }
 
