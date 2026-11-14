@@ -45,6 +45,19 @@ public final class AssetServiceTest {
         return AssetStorage.create(perType, resolver);
     }
 
+    private static void storageWiring(FileHandleResolver resolver) {
+        var composite = AssetStorage.create(false, resolver);
+        var perTypeStorage = AssetStorage.create(true, resolver);
+        if (!(composite instanceof AssetStorage.Composite original)
+            || original.service().getClass() != CompositeAssetService.class
+            || !(perTypeStorage instanceof AssetStorage.PerType production)
+            || production.service().getClass() != AssetService.class) {
+            throw new AssertionError("Storage adapters must select the original composite and production per-type services");
+        }
+        composite.dispose();
+        perTypeStorage.dispose();
+    }
+
     public static void main(String[] args) {
         var application = Gdx.app;
         var audio = Gdx.audio;
@@ -57,6 +70,7 @@ public final class AssetServiceTest {
             var backend = new Backend();
             backend.install();
             assetValues();
+            storageWiring(backend.resolver());
             for (boolean candidate : new boolean[]{false, true}) {
                 perType = candidate;
                 validation(backend);
@@ -70,7 +84,7 @@ public final class AssetServiceTest {
                 terminalDisposal(backend);
                 disposalFailures(backend);
                 backend.checkAllDisposed();
-                System.out.println("Asset lifecycle contract passed: " + (candidate ? "per-type" : "production composite"));
+                System.out.println("Asset lifecycle contract passed: " + (candidate ? "production per-type" : "original composite"));
             }
             animationReload(backend);
             loadingScreen(backend);

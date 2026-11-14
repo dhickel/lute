@@ -14,6 +14,8 @@ Call resource-loading operations on the render thread. `queue(definition)` regis
 
 Repeating a definition with the same type, ID, and path is idempotent. A different path for an existing type and ID fails until that entry is unloaded or a failed load removes it. Load failures are reported and remove the failed entry; explicitly queue or load it again to retry. `get(type, id)` fails if the entry is absent or still queued. `isLoaded(type, id)` reports whether it has a loaded value; `debugDiagnostics()` logs queued and loaded entries and their paths.
 
+Internally, four typed maps store entries by ID, with direct class selection and a separate ordered pending queue. The public logical identity remains `(Class, ID)`; this storage change does not alter the service interface or lifetime rules. Generic `get` uses an unchecked cast backed by validation against the resource class at the load boundary. See [the storage benchmark](asset-storage-benchmark.md) for the comparison and its limits.
+
 For example, after loading a sound, look it up by type and ID, or pass the ID to the audio event consumer:
 
 ```java

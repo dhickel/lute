@@ -14,10 +14,10 @@ interface AssetStorage extends Disposable {
     void debugDiagnostics();
 
     static AssetStorage create(boolean perType, FileHandleResolver resolver) {
-        return perType ? new PerType(new PerTypeAssetService(resolver)) : new Composite(new AssetService(resolver));
+        return perType ? new PerType(new AssetService(resolver)) : new Composite(new CompositeAssetService(resolver));
     }
 
-    record Composite(AssetService service) implements AssetStorage {
+    record Composite(CompositeAssetService service) implements AssetStorage {
         public <T> T load(Asset<T> asset) { return service.load(asset); }
         public void queue(Asset<?> asset) { service.queue(asset); }
         public <T> T get(Class<T> type, String id) { return service.get(type, id); }
@@ -28,7 +28,7 @@ interface AssetStorage extends Disposable {
         public void dispose() { service.dispose(); }
     }
 
-    record PerType(PerTypeAssetService service) implements AssetStorage {
+    record PerType(AssetService service) implements AssetStorage {
         public <T> T load(Asset<T> asset) { return service.load(asset); }
         public void queue(Asset<?> asset) { service.queue(asset); }
         public <T> T get(Class<T> type, String id) { return service.get(type, id); }
