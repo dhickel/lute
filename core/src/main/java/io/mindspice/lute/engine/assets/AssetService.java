@@ -16,6 +16,7 @@ import java.util.HashMap;
 import java.util.LinkedHashSet;
 import java.util.Map;
 import java.util.Objects;
+import java.util.stream.Stream;
 
 public class AssetService implements Disposable {
     private static final class Entry<T> {
@@ -29,9 +30,7 @@ public class AssetService implements Disposable {
     private final Map<String, Entry<Music>> music = new HashMap<>();
     private final Map<String, Entry<TextureAtlas>> atlases = new HashMap<>();
     private final Map<String, Entry<TiledMap>> maps = new HashMap<>();
-    // Preserve ownership/diagnostic order independently of the lookup representation.
-    private final LinkedHashSet<Entry<?>> owned = new LinkedHashSet<>();
-    private final LinkedHashSet<Entry<?>> pending = new LinkedHashSet<>();
+    private final LinkedHashSet<Entry<?>> queue = new LinkedHashSet<>();
     private boolean disposed;
 
     public AssetService(FileHandleResolver resolver) {
@@ -77,8 +76,7 @@ public class AssetService implements Disposable {
         }
         var entry = new Entry<>(asset);
         table.put(asset.id(), entry);
-        owned.add(entry);
-        pending.add(entry);
+        queue.add(entry);
     }
 
     @SuppressWarnings("unchecked")
@@ -100,15 +98,14 @@ public class AssetService implements Disposable {
         requireOpen();
         var entry = entries(type, id).remove(id);
         if (entry == null) { return; }
-        pending.remove(entry);
-        owned.remove(entry);
+        queue.remove(entry);
         if (entry.value != null) { ((Disposable) entry.value).dispose(); }
     }
 
     public boolean update() {
         requireOpen();
-        if (!pending.isEmpty()) { loadEntry(pending.iterator().next()); }
-        return pending.isEmpty();
+        if (!queue.isEmpty()) { loadEntry(queue.iterator().next()); }
+        return queue.isEmpty();
     }
 
     private <T> void loadEntry(Entry<T> entry) {
@@ -117,11 +114,10 @@ public class AssetService implements Disposable {
         try {
             value = loadDirect(asset);
             entry.value = asset.type().cast(Objects.requireNonNull(value, "Loader returned null"));
-            pending.remove(entry);
+            queue.remove(entry);
         } catch (RuntimeException failure) {
             entries(asset.type(), asset.id()).remove(asset.id());
-            pending.remove(entry);
-            owned.remove(entry);
+            queue.remove(entry);
             if (value instanceof Disposable resource) {
                 try { resource.dispose(); }
                 catch (RuntimeException cleanup) { failure.addSuppressed(cleanup); }
@@ -146,10 +142,14 @@ public class AssetService implements Disposable {
     public void debugDiagnostics() {
         requireOpen();
         var diagnostics = new StringBuilder();
-        owned.forEach(entry -> diagnostics.append(key(entry.definition)).append(" ")
+        allEntries().forEach(entry -> diagnostics.append(key(entry.definition)).append(" ")
             .append(entry.value == null ? "queued" : "loaded").append(" ")
             .append(entry.definition.path()).append('\n'));
         Gdx.app.debug("AssetService", diagnostics.toString());
+    }
+
+    private Stream<Entry<?>> allEntries() {
+        return Stream.of(sounds, music, atlases, maps).flatMap(table -> table.values().stream());
     }
 
     private static String key(Asset<?> asset) { return asset.type().getSimpleName() + "[" + asset.id() + "]"; }
@@ -161,13 +161,12 @@ public class AssetService implements Disposable {
     @Override public void dispose() {
         if (disposed) { return; }
         disposed = true;
-        var resources = owned.stream().map(entry -> entry.value).filter(Objects::nonNull).toList();
+        var resources = allEntries().map(entry -> entry.value).filter(Objects::nonNull).toList();
         sounds.clear();
         music.clear();
         atlases.clear();
         maps.clear();
-        pending.clear();
-        owned.clear();
+        queue.clear();
         RuntimeException failure = null;
         for (Object resource : resources) {
             try { ((Disposable) resource).dispose(); }

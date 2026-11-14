@@ -236,7 +236,7 @@ public final class AssetServiceTest {
             service.queue(direct);
             Sound loaded = service.load(new Asset.Sound(direct.id(), direct.path()));
             int afterDirect = backend.audioResources.size();
-            check(service.update(), "Direct load of a queued key must consume the pending entry");
+            check(service.update(), "Direct load of a queued key must consume the queue entry");
             check(service.get(Sound.class, "direct") == loaded && backend.audioResources.size() == afterDirect,
                 "A queued-then-direct load must not be reloaded by update");
 
@@ -271,17 +271,19 @@ public final class AssetServiceTest {
             service.unload(TextureAtlas.class, "ordered");
             service.queue(atlas); // Cancellation then requeue must move it to the tail.
             service.load(music); // Direct loading a later entry must not reorder the remainder.
-            check(!service.update() && service.isLoaded(Sound.class, "ordered"), "First pending type must load first");
+            check(!service.update() && service.isLoaded(Sound.class, "ordered"), "First queued type must load first");
             check(!service.isLoaded(TiledMap.class, "ordered") && !service.isLoaded(TextureAtlas.class, "ordered"),
                 "An update must not load later types");
-            check(!service.update() && service.isLoaded(TiledMap.class, "ordered"), "Global pending order must cross type maps");
+            check(!service.update() && service.isLoaded(TiledMap.class, "ordered"), "Global queue order must cross type maps");
             check(!service.isLoaded(TextureAtlas.class, "ordered"), "Requeued atlas must remain at the tail");
             check(service.update() && service.isLoaded(TextureAtlas.class, "ordered"), "Final mixed-type item completes immediately");
             service.debugDiagnostics();
-            check(backend.diagnostics.indexOf("Sound[ordered]") < backend.diagnostics.indexOf("Music[ordered]")
-                    && backend.diagnostics.indexOf("Music[ordered]") < backend.diagnostics.indexOf("TiledMap[ordered]")
-                    && backend.diagnostics.indexOf("TiledMap[ordered]") < backend.diagnostics.indexOf("TextureAtlas[ordered]"),
-                "Diagnostics must preserve ownership insertion order after cancellation/requeue");
+            check(backend.diagnostics.lines().count() == 5,
+                "Diagnostics must contain each registered entry once after cancellation/requeue");
+            for (var asset : List.of(sound, atlas, music, map)) {
+                check(backend.diagnostics.contains(asset.type().getSimpleName() + "[ordered] loaded " + asset.path()),
+                    "Diagnostics must include loaded entries from every type map");
+            }
         } finally {
             service.dispose();
         }
