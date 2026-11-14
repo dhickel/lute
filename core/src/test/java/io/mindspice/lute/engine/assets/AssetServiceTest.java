@@ -39,6 +39,25 @@ import java.util.Set;
 import java.util.function.BiFunction;
 
 public final class AssetServiceTest {
+    private static boolean perType;
+
+    private static AssetStorage newService(FileHandleResolver resolver) {
+        return AssetStorage.create(perType, resolver);
+    }
+
+    private static void storageWiring(FileHandleResolver resolver) {
+        var composite = AssetStorage.create(false, resolver);
+        var perTypeStorage = AssetStorage.create(true, resolver);
+        if (!(composite instanceof AssetStorage.Composite original)
+            || original.service().getClass() != CompositeAssetService.class
+            || !(perTypeStorage instanceof AssetStorage.PerType production)
+            || production.service().getClass() != AssetService.class) {
+            throw new AssertionError("Storage adapters must select the original composite and production per-type services");
+        }
+        composite.dispose();
+        perTypeStorage.dispose();
+    }
+
     public static void main(String[] args) {
         var application = Gdx.app;
         var audio = Gdx.audio;
@@ -51,17 +70,25 @@ public final class AssetServiceTest {
             var backend = new Backend();
             backend.install();
             assetValues();
-            validation(backend);
-            directAudioAndCompositeKeys(backend);
-            queueAndConflicts(backend);
-            failuresAndRetry(backend);
-            atlasReloadAndMapOwnership(backend);
-            partialLoadTextureFailures(backend);
+            storageWiring(backend.resolver());
+            for (boolean candidate : new boolean[]{false, true}) {
+                perType = candidate;
+                validation(backend);
+                directAudioAndCompositeKeys(backend);
+                queueAndConflicts(backend);
+                queueOrdering(backend);
+                failuresAndRetry(backend);
+                nullLoaderAndMissingErrors(backend);
+                atlasReloadAndMapOwnership(backend);
+                partialLoadTextureFailures(backend);
+                terminalDisposal(backend);
+                disposalFailures(backend);
+                backend.checkAllDisposed();
+                System.out.println("Asset lifecycle contract passed: " + (candidate ? "production per-type" : "original composite"));
+            }
             animationReload(backend);
             loadingScreen(backend);
             audioEvents(backend);
-            terminalDisposal(backend);
-            disposalFailures(backend);
             backend.checkAllDisposed();
             System.out.println("AssetServiceTest: passed (direct loaders; no graphics context or game launch)");
         } finally {
@@ -93,8 +120,8 @@ public final class AssetServiceTest {
     }
 
     private static void validation(Backend backend) {
-        rejectsArgument(() -> new AssetService(null), "Null resolver");
-        var service = new AssetService(backend.resolver());
+        rejectsArgument(() -> newService(null), "Null resolver");
+        var service = newService(backend.resolver());
         try {
             List<BiFunction<String, String, Asset<?>>> constructors = List.of(
                 Asset.Map::new, Asset.Atlas::new, Asset.Music::new, Asset.Sound::new);
@@ -136,7 +163,7 @@ public final class AssetServiceTest {
     }
 
     private static void directAudioAndCompositeKeys(Backend backend) {
-        var service = new AssetService(backend.resolver());
+        var service = newService(backend.resolver());
         int before = backend.audioResources.size();
         try {
             var soundAsset = Asset.Sound.of("shared", "same.audio");
@@ -178,7 +205,7 @@ public final class AssetServiceTest {
     }
 
     private static void queueAndConflicts(Backend backend) {
-        var service = new AssetService(backend.resolver());
+        var service = newService(backend.resolver());
         int before = backend.audioResources.size();
         try {
             var first = Asset.Sound.of("first", "first.wav");
@@ -228,8 +255,40 @@ public final class AssetServiceTest {
         }
     }
 
+    private static void queueOrdering(Backend backend) {
+        var service = newService(backend.resolver());
+        try {
+            service.load(Asset.Sound.of("prefix", "prefix.wav"));
+            var sound = Asset.Sound.of("ordered", "ordered.wav");
+            var atlas = Asset.Atlas.of("ordered", "objects.atlas");
+            var music = Asset.Music.of("ordered", "ordered.ogg");
+            var map = Asset.Map.of("ordered", "test_tiled.tmx");
+            service.queue(sound);
+            service.queue(atlas);
+            service.queue(music);
+            service.queue(map);
+            service.queue(sound);
+            service.unload(TextureAtlas.class, "ordered");
+            service.queue(atlas); // Cancellation then requeue must move it to the tail.
+            service.load(music); // Direct loading a later entry must not reorder the remainder.
+            check(!service.update() && service.isLoaded(Sound.class, "ordered"), "First pending type must load first");
+            check(!service.isLoaded(TiledMap.class, "ordered") && !service.isLoaded(TextureAtlas.class, "ordered"),
+                "An update must not load later types");
+            check(!service.update() && service.isLoaded(TiledMap.class, "ordered"), "Global pending order must cross type maps");
+            check(!service.isLoaded(TextureAtlas.class, "ordered"), "Requeued atlas must remain at the tail");
+            check(service.update() && service.isLoaded(TextureAtlas.class, "ordered"), "Final mixed-type item completes immediately");
+            service.debugDiagnostics();
+            check(backend.diagnostics.indexOf("Sound[ordered]") < backend.diagnostics.indexOf("Music[ordered]")
+                    && backend.diagnostics.indexOf("Music[ordered]") < backend.diagnostics.indexOf("TiledMap[ordered]")
+                    && backend.diagnostics.indexOf("TiledMap[ordered]") < backend.diagnostics.indexOf("TextureAtlas[ordered]"),
+                "Diagnostics must preserve ownership insertion order after cancellation/requeue");
+        } finally {
+            service.dispose();
+        }
+    }
+
     private static void failuresAndRetry(Backend backend) {
-        var service = new AssetService(backend.resolver());
+        var service = newService(backend.resolver());
         var failed = Asset.Sound.of("retry", "retry.wav");
         String failedPath = "assets/" + failed.path();
         backend.failAudio.add(failedPath);
@@ -282,8 +341,33 @@ public final class AssetServiceTest {
         }
     }
 
+    private static void nullLoaderAndMissingErrors(Backend backend) {
+        var service = newService(backend.resolver());
+        var sound = Asset.Sound.of("null-loader", "null.wav");
+        String path = "assets/" + sound.path();
+        backend.nullAudio.add(path);
+        try {
+            service.queue(sound);
+            service.queue(Asset.Music.of("after-null", "next.ogg"));
+            RuntimeException failure = captureRuntime(service::update, "Null loader result must fail");
+            check(failure.getCause() instanceof NullPointerException, "Null must be rejected at the load boundary");
+            check(failure.getMessage().contains("Sound[null-loader]") && failure.getMessage().contains(sound.path()),
+                "Load errors must identify type, logical ID, and source path");
+            RuntimeException missing = captureRuntime(() -> service.get(Sound.class, sound.id()), "Missing get must fail");
+            check(missing instanceof IllegalStateException && missing.getMessage().contains("Asset is not loaded: Sound[null-loader]"),
+                "Missing get must clearly identify the unloaded logical key");
+            check(service.update() && service.isLoaded(Music.class, "after-null"), "Null result must not block subsequent work");
+            backend.nullAudio.remove(path);
+            service.load(sound);
+            check(service.update() && service.isLoaded(Sound.class, sound.id()), "Null-loader failure must permit an explicit retry");
+        } finally {
+            backend.nullAudio.remove(path);
+            service.dispose();
+        }
+    }
+
     private static void atlasReloadAndMapOwnership(Backend backend) {
-        var service = new AssetService(backend.resolver());
+        var service = newService(backend.resolver());
         try {
             var atlasAsset = Asset.Atlas.of("shared", "objects.atlas");
             TextureAtlas first = service.load(atlasAsset);
@@ -393,7 +477,7 @@ public final class AssetServiceTest {
         Asset<?> asset = atlas
             ? new Asset.Atlas("partial-atlas", directory.child("partial.atlas").path())
             : new Asset.Map("partial-map", directory.child("partial.tmx").path());
-        var service = new AssetService(path -> new java.io.File(path).isAbsolute()
+        var service = newService(path -> new java.io.File(path).isAbsolute()
             ? new FileHandle(path) : backend.resolver().resolve(path));
         String operation = (atlas ? "Atlas " : "TMX ") + phase;
         int firstHandle = backend.nextTexture;
@@ -466,7 +550,7 @@ public final class AssetServiceTest {
         writePartialMap(directory, false);
         FileHandle file = directory.child("partial.tmx");
         file.writeString(file.readString().replace("source=\"second.png\"", "source=\"first.png\""), false);
-        var service = new AssetService(path -> new java.io.File(path).isAbsolute()
+        var service = newService(path -> new java.io.File(path).isAbsolute()
             ? new FileHandle(path) : backend.resolver().resolve(path));
         int firstHandle = backend.nextTexture;
         try {
@@ -652,7 +736,7 @@ public final class AssetServiceTest {
     }
 
     private static void terminalDisposal(Backend backend) {
-        var service = new AssetService(backend.resolver());
+        var service = newService(backend.resolver());
         Sound sound = service.load(Asset.Sound.of("loaded", "loaded.wav"));
         Music music = service.load(Asset.Music.of("loaded", "loaded.ogg"));
         service.queue(Asset.Sound.of("pending", "pending.wav"));
@@ -675,13 +759,15 @@ public final class AssetServiceTest {
     }
 
     private static void disposalFailures(Backend backend) {
-        var service = new AssetService(backend.resolver());
+        var service = newService(backend.resolver());
         Sound first = service.load(Asset.Sound.of("dispose-failure", "dispose-failure.wav"));
         Music second = service.load(Asset.Music.of("dispose-next", "dispose-next.ogg"));
         String failingPath = backend.resource(first).path;
         backend.failDisposal.add(failingPath);
         try {
-            rejectsRuntime(service::dispose, "A disposal failure must propagate");
+            backend.failDisposal.add(backend.resource(second).path);
+            RuntimeException failure = captureRuntime(service::dispose, "A disposal failure must propagate");
+            check(failure.getSuppressed().length == 1, "Later disposal failures must be suppressed on the first failure");
             check(backend.resource(first).disposals == 1 && backend.resource(second).disposals == 1,
                 "A failed disposal must not prevent cleanup of the other owned resources");
             check(!service.isLoaded(Sound.class, "dispose-failure"), "Disposal failure must not leave loaded entries");
@@ -689,10 +775,11 @@ public final class AssetServiceTest {
             check(backend.resource(first).disposals == 1, "Terminal disposal must not retry an already disposed resource");
         } finally {
             backend.failDisposal.remove(failingPath);
+            backend.failDisposal.remove(backend.resource(second).path);
             service.dispose();
         }
 
-        var unloading = new AssetService(backend.resolver());
+        var unloading = newService(backend.resolver());
         Sound resource = unloading.load(Asset.Sound.of("unload-failure", "unload-failure.wav"));
         String unloadPath = backend.resource(resource).path;
         backend.failDisposal.add(unloadPath);
@@ -749,9 +836,10 @@ public final class AssetServiceTest {
         private AudioResource(String path) { this.path = path; }
     }
 
-    private static final class Backend {
+    static final class Backend {
         private final Map<Object, AudioResource> audioResources = new IdentityHashMap<>();
         private final Set<String> failAudio = new HashSet<>();
+        private final Set<String> nullAudio = new HashSet<>();
         private final Set<String> failDisposal = new HashSet<>();
         private String diagnostics = "";
         private final Map<Integer, Integer> textureDisposals = new HashMap<>();
@@ -774,7 +862,7 @@ public final class AssetServiceTest {
             textureParameterFailure = null;
         }
 
-        private FileHandleResolver resolver() {
+        FileHandleResolver resolver() {
             return path -> new FileHandle("assets/" + path);
         }
 
@@ -784,7 +872,7 @@ public final class AssetServiceTest {
             return resource;
         }
 
-        private void install() {
+        void install() {
             Gdx.app = proxy(Application.class, (object, method, arguments) -> switch (method.getName()) {
                 case "getType" -> Application.ApplicationType.Desktop;
                 case "debug" -> {
@@ -831,6 +919,7 @@ public final class AssetServiceTest {
         }
 
         private <T> T newAudio(Class<T> type, FileHandle file) {
+            if (nullAudio.contains(file.path())) { return null; }
             if (failAudio.contains(file.path())) {
                 throw new IllegalStateException("Injected audio load failure: " + file.path());
             }
@@ -865,7 +954,7 @@ public final class AssetServiceTest {
             }
         }
 
-        private void checkAllDisposed() {
+        void checkAllDisposed() {
             for (var resource : audioResources.values()) {
                 check(resource.disposals == 1, "Audio resource must be disposed exactly once: " + resource.path);
             }
