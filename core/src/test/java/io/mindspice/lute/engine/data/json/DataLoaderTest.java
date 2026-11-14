@@ -31,6 +31,7 @@ public final class DataLoaderTest {
             check(weapon != null, "sword weapon");
             check(weapon.damage() == 10, "weapon damage");
             check(weapon.attackSpeed() == 1.0f, "weapon attack speed");
+            check(weapon.attackDuration() == 0.5f, "weapon attack_duration");
             check(weapon.hitDelay() == 0.1f, "weapon hit delay");
             check(weapon.boundsType() == WeaponsData.WeaponData.BoundsType.SEMICIRCLE, "weapon bounds_type");
             check(weapon.bounds() != null, "weapon bounds");

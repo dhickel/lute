@@ -8,3 +8,11 @@
 - **Affected specifications:** This decision is the current input-listener contract; `docs/input-system.md` describes its application and lifecycle.
 - **Source:** User-directed input listener simplification.
 - **Review timing:** Revisit if the input delivery contract changes.
+
+## Explicit combat attack lifetime
+
+- **Decision:** GameData weapon `attack_duration` is a required, positive finite duration in seconds for a runtime weapon; the sword uses 0.5 seconds. Combat owns explicit active state and an elapsed timer. `AttackSpeed` affects animation playback only, not attack duration; animation follows combat state and does not end an attack. The attack sensor is a consequence of active combat, not the state itself. Existing `hitDelay` remains unchanged and unused.
+- **Justification and tradeoff:** An explicit duration decouples gameplay timing from animation and fixture lifetime. Ordinary 60 Hz physics ticks are accepted without an extra contact refresh: an attack shorter than a tick can expire without a physics hit.
+- **Affected specifications and sources:** This decision establishes the combat lifetime contract. Affected source paths are `assets/data/weapons.json`, `core/src/main/java/io/mindspice/lute/engine/data/json/WeaponsData.java`, `core/src/main/java/io/mindspice/lute/engine/components/Combat.java`, `core/src/main/java/io/mindspice/lute/engine/components/CombatWeapon.java`, `core/src/main/java/io/mindspice/lute/engine/systems/CombatSystem.java`, and `core/src/main/java/io/mindspice/lute/engine/systems/EntityFactory.java`.
+- **Source:** User request for explicit combat attack duration and acceptance of the physics-tick caveat.
+- **Review timing:** Revisit if attack timing, animation ownership, or physics contact guarantees change.

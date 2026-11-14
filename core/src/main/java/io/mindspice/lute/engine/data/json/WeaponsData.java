@@ -11,6 +11,7 @@ public record WeaponsData(
     public record WeaponData(
         int damage,
         @JsonAlias("attack_speed") float attackSpeed,
+        @JsonAlias("attack_duration") float attackDuration,
         @JsonAlias("hit_delay") float hitDelay,
         @JsonAlias("bounds_type") BoundsType boundsType,
         Bounds bounds

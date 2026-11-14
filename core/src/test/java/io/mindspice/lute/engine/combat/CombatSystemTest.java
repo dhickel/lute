@@ -56,7 +56,11 @@ public final class CombatSystemTest {
         run("sensor placement for all shapes and facings", CombatSystemTest::sensorPlacement);
         run("input edges and attack to idle", CombatSystemTest::inputAndIdle);
         run("movement/facing lock and attack to walk", CombatSystemTest::movementAndWalk);
-        run("weapon attack speed scales completion", CombatSystemTest::attackSpeed);
+        run("weapon attack speed affects animation, not duration", CombatSystemTest::attackSpeed);
+        run("combat duration independent of animation", CombatSystemTest::durationIndependent);
+        run("short attack can expire before an overlapping contact", CombatSystemTest::shortAttackOverlap);
+        run("short attacks preserve fixed stepping and expire exactly", CombatSystemTest::shortAttackFixedStep);
+        run("short attack death and removal discard pending hits", CombatSystemTest::shortAttackCleanup);
         run("queued contacts, exclusions, reentry and reattack", CombatSystemTest::contacts);
         run("sleeping owner can attack stationary target", CombatSystemTest::sleepingOwner);
         run("saved semicircle hits beyond sprite in every direction", CombatSystemTest::outsideSpriteContacts);
@@ -79,6 +83,7 @@ public final class CombatSystemTest {
         near(100, player.maxHealth(), "Player health");
         near(4, player.moveSpeed(), "Player speed");
         equal(BoundsType.SEMICIRCLE, weapon.boundsType(), "Weapon shape");
+        near(.5f, weapon.attackDuration(), "Loaded weapon duration");
     }
 
     private static void factoryIntegration() {
@@ -136,6 +141,19 @@ public final class CombatSystemTest {
                 dataField.set(io.mindspice.lute.engine.GameCore.INSTANCE, new io.mindspice.lute.engine.data.json.GameData(
                     new io.mindspice.lute.engine.data.json.PlayerData(originalPlayer.name(), originalPlayer.moveSpeed(), originalPlayer.maxHealth(), "missing"), originalData.weaponsData()));
                 rejects(() -> factory.getPlayerEntity(props, new Vector2(320, 640), mapAssets), "Factory rejects unknown weapon");
+                var originalWeapon = originalData.weaponsData().weapons().get(originalPlayer.equippedWeapon());
+                var customWeapon = new io.mindspice.lute.engine.data.json.WeaponsData.WeaponData(
+                    originalWeapon.damage(), 2f, 1.25f, originalWeapon.hitDelay(), originalWeapon.boundsType(), originalWeapon.bounds());
+                dataField.set(io.mindspice.lute.engine.GameCore.INSTANCE, new io.mindspice.lute.engine.data.json.GameData(
+                    originalPlayer, new io.mindspice.lute.engine.data.json.WeaponsData(Map.of(originalPlayer.equippedWeapon(), customWeapon))));
+                var customPlayer = factory.getPlayerEntity(props, new Vector2(320, 640), mapAssets);
+                near(1.25f, Combat.MAPPER.get(customPlayer).getCurrentWeapon().attackDuration(), "Factory uses supplied GameData duration");
+                world.destroyBody(Physic.MAPPER.get(customPlayer).getBody());
+                var missingDuration = new io.mindspice.lute.engine.data.json.WeaponsData.WeaponData(
+                    originalWeapon.damage(), originalWeapon.attackSpeed(), 0, originalWeapon.hitDelay(), originalWeapon.boundsType(), originalWeapon.bounds());
+                dataField.set(io.mindspice.lute.engine.GameCore.INSTANCE, new io.mindspice.lute.engine.data.json.GameData(
+                    originalPlayer, new io.mindspice.lute.engine.data.json.WeaponsData(Map.of(originalPlayer.equippedWeapon(), missingDuration))));
+                rejects(() -> factory.getPlayerEntity(props, new Vector2(320, 640), mapAssets), "Factory rejects missing duration");
             } finally {
                 dataField.set(io.mindspice.lute.engine.GameCore.INSTANCE, originalData);
             }
@@ -143,6 +161,7 @@ public final class CombatSystemTest {
             engine.addEntity(player);
             near(100, Health.MAPPER.get(player).getCurrent(), "Factory initializes health from internal JSON");
             equal("sword", Combat.MAPPER.get(player).getCurrentWeapon().id(), "Factory resolves weapon JSON");
+            near(.5f, Combat.MAPPER.get(player).getCurrentWeapon().attackDuration(), "Factory propagates duration");
             vector(new Vector2(9, 19), Physic.MAPPER.get(player).getBody().getPosition(), "Factory sprite body origin");
             near(4, Move.MAPPER.get(player).getMaxSpeed(), "Factory loads player movement speed");
             var animation = Animation2D.MAPPER.get(player);
@@ -159,7 +178,7 @@ public final class CombatSystemTest {
                 input.keyUp(Input.Keys.SPACE);
                 engine.update(.5f);
                 engine.update(0);
-                check(!Combat.MAPPER.get(player).isAttacking(), "Real animation completion removes sensor");
+                check(!Combat.MAPPER.get(player).isAttacking(), "Combat duration completion removes sensor");
                 equal(Animation2D.AnimationType.IDLE, animation.getType(), "Real atlas returns to idle " + facing);
                 equal(6, animation.getAnimation().getKeyFrames().length, "Real idle animation restored");
                 equal(Animation.PlayMode.LOOP, animation.getAnimation().getPlayMode(), "Real idle loops again");
@@ -177,8 +196,11 @@ public final class CombatSystemTest {
     }
 
     private static void invalidData() {
-        rejects(() -> new CombatWeapon.Weapon("sword", 0, 1, BoundsType.RECT, bounds()), "Invalid damage");
-        rejects(() -> new CombatWeapon.Weapon("sword", 1, 0, BoundsType.RECT, bounds()), "Invalid speed");
+        rejects(() -> new CombatWeapon.Weapon("sword", 0, 1, .5f, BoundsType.RECT, bounds()), "Invalid damage");
+        rejects(() -> new CombatWeapon.Weapon("sword", 1, 0, .5f, BoundsType.RECT, bounds()), "Invalid speed");
+        for (float duration : new float[]{0, -1, Float.NaN, Float.POSITIVE_INFINITY, Float.NEGATIVE_INFINITY}) {
+            rejects(() -> new CombatWeapon.Weapon("sword", 1, 1, duration, BoundsType.RECT, bounds()), "Invalid duration");
+        }
         rejects(() -> new CombatWeapon.Bounds(1, 0, 1, 2), "Invalid bounds");
     }
 
@@ -190,7 +212,7 @@ public final class CombatSystemTest {
                 new CombatWeapon.Bounds(0, 0, 1e24f, 64),
                 new CombatWeapon.Bounds(0, 0, 1e15f, 1e15f),
                 new CombatWeapon.Bounds(-Float.MAX_VALUE, -Float.MAX_VALUE, Float.MAX_VALUE, Float.MAX_VALUE)}) {
-                rejects(() -> new CombatWeapon.Weapon("unsafe", 10, 1, type, invalid),
+                rejects(() -> new CombatWeapon.Weapon("unsafe", 10, 1, .5f, type, invalid),
                     "Unsafe native geometry rejected for " + type + " " + invalid);
             }
             var weapon = weapon(type);
@@ -330,10 +352,9 @@ public final class CombatSystemTest {
             equal(id, game.combat().getAttackId(), "Busy presses do not create another attack");
             check(!game.animation().isFinished(), "Attack not finished at .375 seconds");
             game.update(.125f);
-            check(game.animation().isFinished(), "Four frames finish at .5 seconds");
-            game.input(InputAction.ATTACK, 1);
+            check(!game.combat().isAttacking(), "Combat ends exactly at .5 seconds");
             game.update(0);
-            check(!game.combat().isAttacking() && game.combat().getSensor() == null, "Next combat pass removes completed sensor");
+            check(!game.combat().isAttacking() && game.combat().getSensor() == null, "Completion removes sensor");
             equal(AnimationState.IDLE, game.fsm().getCurrentState(), "Clean return to idle");
             equal(Animation.PlayMode.LOOP, game.animation().getPlayMode(), "Idle restores looping");
             near(.75f, game.animation().getSpeed(), "Previous animation speed restored");
@@ -376,17 +397,161 @@ public final class CombatSystemTest {
     }
 
     private static void attackSpeed() {
-        var weapon = new CombatWeapon.Weapon("fast-sword", 10, 2, BoundsType.RECT, bounds());
+        for (float speed : new float[]{.5f, 2f}) {
+            var weapon = new CombatWeapon.Weapon("sword", 10, speed, .5f, BoundsType.RECT, bounds());
+            try (var game = new Harness(weapon, Facing.Direction.RIGHT, new Vector2())) {
+                game.attack();
+                near(speed, game.animation().getSpeed(), "Configured weapon speed applied");
+                game.update(.25f);
+                check(game.combat().isAttacking(), "Combat remains active at half duration regardless of speed");
+                if (speed == 2f) {
+                    check(game.animation().isFinished(), "Early animation completion leaves combat active");
+                } else {
+                    check(!game.animation().isFinished(), "Slow animation remains unfinished");
+                }
+                game.combatSystem.update(.25f);
+                check(!game.combat().isAttacking() && game.combat().getSensor() == null,
+                    "Equal duration weapons end at the same time regardless of speed");
+                if (speed == .5f) {
+                    check(!game.animation().isFinished(), "Combat ends before slow animation finishes");
+                }
+                game.update(0);
+                near(1, game.animation().getSpeed(), "Normal speed restored after attack");
+            }
+        }
+    }
+
+    private static void durationIndependent() {
+        try (var game = new Harness()) {
+            game.player.remove(AnimationPlayer.class);
+            game.player.remove(Animation2D.class);
+            game.combat().requestAttack();
+            game.combatSystem.update(0);
+            check(game.combat().isAttacking(), "Combat starts without animation components");
+            game.combatSystem.update(.5f);
+            check(!game.combat().isAttacking() && game.combat().getSensor() == null,
+                "Combat completes and cleans up without animation components");
+        }
+        for (float duration : new float[]{.25f, 1f}) {
+            var weapon = new CombatWeapon.Weapon("sword", 10, 1, duration, BoundsType.RECT, bounds());
+            try (var game = new Harness(weapon, Facing.Direction.RIGHT, new Vector2())) {
+                game.input(InputAction.ATTACK, 1);
+                game.update(.2f); // Time before the request starts is not charged to the attack.
+                check(game.combat().isAttacking(), "Attack starts without consuming start frame delta");
+                var sensor = game.combat().getSensor();
+                long id = game.combat().getAttackId();
+                game.update(0);
+                check(game.combat().getSensor() == sensor, "Zero delta keeps attack alive");
+                game.update(duration / 2);
+                game.input(InputAction.ATTACK, 0); game.update(0);
+                game.input(InputAction.ATTACK, 1); game.update(0);
+                check(game.combat().isAttacking() && game.combat().getAttackId() == id, "Busy input does not restart");
+                if (duration == 1f) { check(game.animation().isFinished(), "Finished animation does not end combat"); }
+                game.combatSystem.update(duration / 2);
+                if (duration == .25f) { check(!game.animation().isFinished(), "Combat can finish before animation"); }
+                check(!game.combat().isAttacking() && game.combat().getSensor() == null, "Duration threshold cleans up sensor");
+                game.update(0);
+                check(game.combat().getAttackId() == id, "Busy input was not buffered");
+            }
+        }
+    }
+
+    private static void shortAttackOverlap() {
+        float duration = STEP / 4;
+        var weapon = new CombatWeapon.Weapon("short", 10, 1, duration, BoundsType.RECT, bounds());
         try (var game = new Harness(weapon, Facing.Direction.RIGHT, new Vector2())) {
+            var target = game.target(100, 2, false);
+            var probe = new ContactProbe(game, target);
+            game.world.setContactListener(probe);
+            game.body().setAwake(false);
+            int fixtures = game.body().getFixtureList().size;
             game.attack();
-            near(2, game.animation().getSpeed(), "Configured weapon speed applied");
-            game.update(.125f);
-            check(!game.animation().isFinished(), "Double-speed attack still active at .125 seconds");
-            game.update(.125f);
-            check(game.animation().isFinished(), "Double-speed attack completes at .25 seconds");
+            equal(0, probe.begins, "Creating a sensor does not step the world");
+            near(100, Health.MAPPER.get(target).getCurrent(), "No fixed step means no contact yet");
+            game.update(duration);
+            near(100, Health.MAPPER.get(target).getCurrent(), "Substep attack may expire before an overlapping contact is discovered");
+            check(!game.combat().isAttacking() && game.combat().getSensor() == null,
+                "Short attack ends at its literal duration, not the next physics step");
+            equal(fixtures, game.body().getFixtureList().size, "Exact expiry destroys short attack sensor");
+            game.update(STEP);
             game.update(0);
-            check(!game.combat().isAttacking(), "Double-speed completion removes sensor");
-            near(1, game.animation().getSpeed(), "Normal speed restored after fast attack");
+            near(100, Health.MAPPER.get(target).getCurrent(), "Later fixed step cannot recover the expired attack");
+        }
+    }
+
+    private static void shortAttackFixedStep() {
+        float duration = STEP / 4;
+        var weapon = new CombatWeapon.Weapon("short", 10, 1, duration, BoundsType.RECT, bounds());
+        try (var game = new Harness(weapon, Facing.Direction.RIGHT, new Vector2())) {
+            var target = game.target(100, 1, false);
+            var moving = Physic.MAPPER.get(target).getBody();
+            moving.setType(BodyDef.BodyType.DynamicBody);
+            moving.setTransform(10, 10, 0);
+            moving.setLinearVelocity(2, 0);
+            game.input(InputAction.ATTACK, 1);
+            game.update(STEP / 2);
+            check(game.combat().isAttacking(), "Start frame does not consume the short duration");
+            vector(new Vector2(10, 10), moving.getPosition(), "No fixed step means bodies do not move");
+            game.update(duration / 2);
+            check(game.combat().isAttacking(), "Short sensor exists just before expiry");
+            game.update(0);
+            check(game.combat().isAttacking(), "Zero delta does not expire short attack");
+            game.update(duration / 2);
+            check(!game.combat().isAttacking() && game.combat().getSensor() == null,
+                "Short sensor removed exactly at duration before a fixed step");
+            vector(new Vector2(10, 10), moving.getPosition(), "Subinterval frames do not advance physics");
+            game.update(STEP / 4);
+            vector(new Vector2(10 + 2 * STEP, 10), moving.getPosition(),
+                "Accumulator still advances exactly one normal fixed step");
+            moving.setType(BodyDef.BodyType.StaticBody);
+            moving.setTransform(1.7f, 1, 0);
+            game.update(STEP);
+            game.update(0);
+            near(100, Health.MAPPER.get(target).getCurrent(), "Target entering after expiry cannot be hit");
+        }
+        try (var game = new Harness(weapon, Facing.Direction.RIGHT, new Vector2())) {
+            var target = game.target(100, 1, false);
+            game.input(InputAction.ATTACK, 1);
+            game.update(STEP);
+            near(100, Health.MAPPER.get(target).getCurrent(), "Start-frame fixed step still only queues damage");
+            game.update(duration);
+            near(90, Health.MAPPER.get(target).getCurrent(), "Fixed-step contact applies once");
+            check(!game.combat().isAttacking(), "Start-frame fixed step does not change duration");
+        }
+    }
+
+    private static void shortAttackCleanup() {
+        var weapon = new CombatWeapon.Weapon("short", 10, 1, STEP / 4, BoundsType.RECT, bounds());
+        for (String removal : new String[]{"death", "attacker", "target", "combat", "system"}) {
+            try (var game = new Harness(weapon, Facing.Direction.RIGHT, new Vector2())) {
+                var target = game.target(100, 1, false);
+                var health = Health.MAPPER.get(target);
+                var combat = game.combat();
+                int fixtures = game.body().getFixtureList().size;
+                int bodies = game.world.getBodyCount();
+                game.attack(); game.step(); // A normal physics step queues the overlap.
+                near(100, health.getCurrent(), "Short attack has not drained pending hit before " + removal);
+                switch (removal) {
+                    case "death" -> Health.MAPPER.get(game.player).damage(100);
+                    case "attacker" -> game.engine.removeEntity(game.player);
+                    case "target" -> game.engine.removeEntity(target);
+                    case "combat" -> game.player.remove(Combat.class);
+                    case "system" -> game.engine.removeSystem(game.combatSystem);
+                    default -> throw new AssertionError(removal);
+                }
+                game.update(STEP / 4);
+                near(100, health.getCurrent(), "Pending short hit discarded after " + removal);
+                check(!combat.isAttacking() && combat.getSensor() == null,
+                    "Short attack state cleared after " + removal);
+                if (removal.equals("attacker")) {
+                    equal(bodies - 1, game.world.getBodyCount(), "Removed short attacker body is destroyed");
+                } else {
+                    equal(fixtures, game.body().getFixtureList().size, "Short sensor destroyed after " + removal);
+                }
+                game.update(STEP);
+                game.update(0);
+                near(100, health.getCurrent(), "No stale short hit at later fixed step after " + removal);
+            }
         }
     }
 
@@ -550,7 +715,7 @@ public final class CombatSystemTest {
 
     private static CombatWeapon.Bounds bounds() { return new CombatWeapon.Bounds(32, 0, 72, 64); }
     private static CombatWeapon.Weapon weapon(BoundsType shape) {
-        return new CombatWeapon.Weapon("sword", 10, 1, shape, bounds());
+        return new CombatWeapon.Weapon("sword", 10, 1, .5f, shape, bounds());
     }
 
     private static FileHandle jsonFile(String json) {
