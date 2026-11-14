@@ -15,6 +15,7 @@ public class Animation2D implements Component {
     private Facing.Direction fdirection;
     private Animation.PlayMode mode;
     private float speed;
+    private float previousSpeed;
     private float frameDuration;
     private float stateTime;
     private Animation<TextureRegion> animation;
@@ -94,6 +95,15 @@ public class Animation2D implements Component {
 
     public void setSpeed(float speed) {
         this.speed = speed;
+    }
+
+    public void beginAttack(float attackSpeed) {
+        previousSpeed = speed;
+        speed = attackSpeed;
+    }
+
+    public void endAttack() {
+        speed = previousSpeed;
     }
 
     public boolean isFinished() {

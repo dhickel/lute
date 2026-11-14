@@ -503,7 +503,8 @@ public final class CombatSystemTest {
             game.engine.removeSystem(game.combatSystem);
             check(!game.combat().isAttacking() && game.combat().getSensor() == null, "System removal stops active attacks");
             equal(fixtures, game.body().getFixtureList().size, "System removal destroys attack fixture");
-            near(.5f, game.animation().getSpeed(), "System removal restores animation speed");
+            game.update(0);
+            near(.5f, game.animation().getSpeed(), "Animation state restores speed after system removal");
             game.engine.addSystem(game.combatSystem);
             game.combatSystem.update(0);
             near(100, Health.MAPPER.get(target).getCurrent(), "Reattached system has no stale hit queue");
@@ -542,7 +543,8 @@ public final class CombatSystemTest {
             game.player.remove(Combat.class);
             check(!combat.isAttacking() && combat.getSensor() == null, "Removed component drops sensor reference");
             equal(initial, game.body().getFixtureList().size, "Removed component destroys native fixture");
-            near(.75f, game.animation().getSpeed(), "Removed component restores animation speed");
+            game.update(0);
+            near(.75f, game.animation().getSpeed(), "Animation state restores speed after component removal");
         }
     }
 

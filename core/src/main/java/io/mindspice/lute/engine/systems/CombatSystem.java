@@ -89,10 +89,9 @@ public class CombatSystem extends IteratingSystem implements ContactListener, En
             definition.isSensor = true;
             var sensor = body.createFixture(definition);
             body.setAwake(true);
-            combat.beginAttack(sensor, animation.getSpeed());
+            combat.beginAttack(sensor);
             activeAttacks.put(entity, combat);
             sensor.setUserData(new AttackSensor(entity, combat.getAttackId()));
-            animation.setSpeed(combat.getCurrentWeapon().attackSpeed());
         } finally {
             shape.dispose();
         }
@@ -104,8 +103,6 @@ public class CombatSystem extends IteratingSystem implements ContactListener, En
         if (combat == null || !combat.isAttacking()) { return; }
         var sensor = combat.getSensor();
         sensor.getBody().destroyFixture(sensor);
-        var animation = Animation2D.MAPPER.get(entity);
-        if (animation != null) { animation.setSpeed(combat.getPreviousAnimationSpeed()); }
         combat.endAttack();
     }
 

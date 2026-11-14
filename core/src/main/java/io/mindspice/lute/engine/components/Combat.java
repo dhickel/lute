@@ -18,7 +18,6 @@ public class Combat implements Component {
     private boolean attackRequested;
     private Fixture sensor;
     private long attackId;
-    private float previousAnimationSpeed;
     private final Set<Entity> hitTargets = Collections.newSetFromMap(new IdentityHashMap<>());
 
     public Combat(CombatWeapon.Weapon currentWeapon) {
@@ -29,7 +28,6 @@ public class Combat implements Component {
     public boolean isAttacking() { return sensor != null; }
     public Fixture getSensor() { return sensor; }
     public long getAttackId() { return attackId; }
-    public float getPreviousAnimationSpeed() { return previousAnimationSpeed; }
 
     public void requestAttack() {
         if (!isAttacking()) { attackRequested = true; }
@@ -41,9 +39,8 @@ public class Combat implements Component {
         return requested;
     }
 
-    public void beginAttack(Fixture sensor, float previousAnimationSpeed) {
+    public void beginAttack(Fixture sensor) {
         this.sensor = Objects.requireNonNull(sensor, "sensor");
-        this.previousAnimationSpeed = previousAnimationSpeed;
         attackId++;
         hitTargets.clear();
     }
