@@ -54,7 +54,7 @@ public class EntityFactory extends EntitySystem {
             "Unknown equipped weapon: " + player.equippedWeapon());
         var bounds = Objects.requireNonNull(weaponData.bounds(), "weapon bounds");
         var weapon = new CombatWeapon.Weapon(player.equippedWeapon(), weaponData.damage(), weaponData.attackSpeed(),
-            weaponData.boundsType(), new CombatWeapon.Bounds(bounds.x1(), bounds.y1(), bounds.x2(), bounds.y2()));
+            weaponData.attackDuration(), weaponData.boundsType(), new CombatWeapon.Bounds(bounds.x1(), bounds.y1(), bounds.x2(), bounds.y2()));
 
         Entity entity = getEngine().createEntity();
         entity.add(new Graphic(region, Color.WHITE.cpy()));

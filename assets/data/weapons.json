@@ -2,6 +2,7 @@
   "sword": {
     "damage": 10,
     "attackSpeed": 1,
+    "attack_duration": 0.5,
     "hitDelay": 0.1,
     "bounds_type": "SEMICIRCLE",
     "bounds": {

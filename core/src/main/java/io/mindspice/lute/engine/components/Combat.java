@@ -16,6 +16,8 @@ public class Combat implements Component {
     public static final ComponentMapper<Combat> MAPPER = ComponentMapper.getFor(Combat.class);
     private final CombatWeapon.Weapon currentWeapon;
     private boolean attackRequested;
+    private boolean attacking;
+    private double attackElapsed;
     private Fixture sensor;
     private long attackId;
     private final Set<Entity> hitTargets = Collections.newSetFromMap(new IdentityHashMap<>());
@@ -25,7 +27,7 @@ public class Combat implements Component {
     }
 
     public CombatWeapon.Weapon getCurrentWeapon() { return currentWeapon; }
-    public boolean isAttacking() { return sensor != null; }
+    public boolean isAttacking() { return attacking; }
     public Fixture getSensor() { return sensor; }
     public long getAttackId() { return attackId; }
 
@@ -41,11 +43,20 @@ public class Combat implements Component {
 
     public void beginAttack(Fixture sensor) {
         this.sensor = Objects.requireNonNull(sensor, "sensor");
+        attacking = true;
+        attackElapsed = 0;
         attackId++;
         hitTargets.clear();
     }
 
+    public boolean advanceAttack(float deltaTime) {
+        attackElapsed += deltaTime;
+        return attackElapsed >= currentWeapon.attackDuration();
+    }
+
     public void endAttack() {
+        attacking = false;
+        attackElapsed = 0;
         sensor = null;
         attackRequested = false;
         hitTargets.clear();

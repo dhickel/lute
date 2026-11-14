@@ -21,7 +21,7 @@ public class CombatSystem extends IteratingSystem implements ContactListener, En
     private final Map<Entity, Combat> activeAttacks = new IdentityHashMap<>();
 
     public CombatSystem(World world) {
-        super(Family.all(Combat.class, Physic.class, Transform.class, Facing.class, Animation2D.class, AnimationPlayer.class).get());
+        super(Family.all(Combat.class, Physic.class, Transform.class, Facing.class).get());
         this.world = world;
     }
 
@@ -65,13 +65,11 @@ public class CombatSystem extends IteratingSystem implements ContactListener, En
     @Override
     protected void processEntity(Entity entity, float deltaTime) {
         var combat = Combat.MAPPER.get(entity);
-        var animation = Animation2D.MAPPER.get(entity);
         var health = Health.MAPPER.get(entity);
         boolean alive = health == null || health.isAlive();
         boolean requested = combat.consumeAttackRequest();
         if (combat.isAttacking()) {
-            if (!alive || (animation.getType() == Animation2D.AnimationType.ATTACK
-                && !animation.isDirty() && animation.isFinished())) {
+            if (!alive || combat.advanceAttack(deltaTime)) {
                 stopAttack(entity);
             }
             return;

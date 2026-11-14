@@ -17,11 +17,12 @@ public final class CombatWeapon {
         }
     }
 
-    public record Weapon(String id, float damage, float attackSpeed, BoundsType shape, Bounds bounds) {
+    public record Weapon(String id, float damage, float attackSpeed, float attackDuration, BoundsType shape, Bounds bounds) {
         public Weapon {
             if (id == null || id.isBlank()) { throw new IllegalArgumentException("Weapon id is required"); }
             positive(damage, "damage");
             positive(attackSpeed, "attackSpeed");
+            positive(attackDuration, "attackDuration");
             Objects.requireNonNull(shape, "shape");
             Objects.requireNonNull(bounds, "bounds");
             validatePolygon(localVertices(shape, bounds));
