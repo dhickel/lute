@@ -1,0 +1,6 @@
+{
+  "name": "player",
+  "max_health": 100,
+  "move_speed": 4.0,
+  "equipped_weapon" : "sword"
+}

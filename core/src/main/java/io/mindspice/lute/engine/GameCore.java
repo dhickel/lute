@@ -12,6 +12,8 @@ import com.badlogic.gdx.utils.viewport.FitViewport;
 import com.badlogic.gdx.utils.viewport.Viewport;
 import io.mindspice.lute.engine.assets.AssetService;
 import io.mindspice.lute.engine.assets.MapAssets;
+import io.mindspice.lute.engine.data.json.DataLoader;
+import io.mindspice.lute.engine.data.json.GameData;
 import io.mindspice.lute.engine.tiled.ManifestLoader;
 import io.mindspice.lute.engine.input.InputAction;
 import io.mindspice.lute.engine.input.InputManager;
@@ -39,7 +41,7 @@ public class GameCore extends Game {
     private InputManager inputManager;
     private ScreenManager screenManager;
     private Engine engine;
-
+    private GameData gameData;
 
 
     @Override
@@ -50,7 +52,8 @@ public class GameCore extends Game {
             Pair.of(Input.Keys.W, InputAction.MOVE_UP),
             Pair.of(Input.Keys.S, InputAction.MOVE_DOWN),
             Pair.of(Input.Keys.A, InputAction.MOVE_LEFT),
-            Pair.of(Input.Keys.D, InputAction.MOVE_RIGHT)
+            Pair.of(Input.Keys.D, InputAction.MOVE_RIGHT),
+            Pair.of(Input.Keys.SPACE, InputAction.ATTACK)
         );
 
         this.inputManager = new InputManager(inputMap);
@@ -69,21 +72,21 @@ public class GameCore extends Game {
         glProfiler.enable();
 
 
+        this.gameData = DataLoader.loadGameData();
+
         Runnable switchToGameScreen = () -> {
             screenManager.getSwitchScreenThunk("GameScreen").run();
             screenManager.unloadScreen("InitialLoading");
         };
 
         MapAssets assets = ManifestLoader.parseMapManifest("test_tiled");
-
         this.screenManager = new ScreenManager(
-          Pair.of("InitialLoading", new LoadingScreen(assetService, switchToGameScreen, assets.all())),
-          Pair.of("GameScreen", new GameScreen(assets))
+            Pair.of("InitialLoading", new LoadingScreen(assetService, switchToGameScreen, assets.all())),
+            Pair.of("GameScreen", new GameScreen(assets))
         );
 
         screenManager.switchScreens("InitialLoading");
     }
-
 
 
     @Override
@@ -164,6 +167,10 @@ public class GameCore extends Game {
         Arrays.stream(inputProcessors).forEach(inputMultiplexer::addProcessor);
     }
 
+
+    public GameData getGameData() {
+        return gameData;
+    }
 
     public Engine getEngine() {
         return engine;

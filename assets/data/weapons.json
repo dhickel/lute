@@ -1,0 +1,14 @@
+{
+  "sword": {
+    "damage": 10,
+    "attackSpeed": 1,
+    "hitDelay": 0.1,
+    "bounds_type": "SEMICIRCLE",
+    "bounds": {
+      "x1": 32,
+      "y1": 0,
+      "x2": 64,
+      "y2": 64
+    }
+  }
+}

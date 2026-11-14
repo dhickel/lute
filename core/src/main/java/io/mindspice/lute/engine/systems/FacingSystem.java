@@ -5,6 +5,7 @@ import com.badlogic.ashley.core.Family;
 import com.badlogic.ashley.systems.IteratingSystem;
 import com.badlogic.gdx.Gdx;
 import com.badlogic.gdx.math.Vector2;
+import io.mindspice.lute.engine.components.Combat;
 import io.mindspice.lute.engine.components.Facing;
 import io.mindspice.lute.engine.components.Move;
 
@@ -15,6 +16,8 @@ public class FacingSystem extends IteratingSystem {
 
     @Override
     protected void processEntity(Entity entity, float deltaTime) {
+        var combat = Combat.MAPPER.get(entity);
+        if (combat != null && combat.isAttacking()) { return; }
         Move move = Move.MAPPER.get(entity);
         Vector2 moveDir = move.getDirection();
         if (moveDir.isZero()) { return; }

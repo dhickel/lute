@@ -112,7 +112,7 @@ public final class TiledAnimationPropertiesTest {
                     check(props.keyFrames() == expected, source + " must not be silently replaced by the parser");
                     if (expected <= 0) {
                         rejectsFrames(() -> factory.getPlayerEntity(props, point.getPoint(), assets),
-                            expected, "player/idle_down", atlas.descriptor().fileName);
+                            expected, "player/idle_right", atlas.descriptor().fileName);
                     }
                     check(fixture.getTileSets().getTile(2663).getProperties().get("keyFrames", Integer.class) == 8,
                         source + " must be independent of the unused player's tile keyFrames=8");

@@ -11,4 +11,5 @@ public class GameConsts {
     public static final float CAMERA_SMOOTH_FACTOR = 4f;
     public static final String PROJECT_PATH = "game.tiled-project";
     public static final String MAPS_PATH = "maps/";
+    public static final String DATA_PATH = "data/";
 }
