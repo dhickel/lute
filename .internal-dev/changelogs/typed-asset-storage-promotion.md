@@ -33,4 +33,4 @@ Microbenchmark results are JVM- and workload-dependent, with noisy short smoke r
 
 ## Follow-up Items
 
-Independent phase validation passed asset lifecycle checks for both implementations, manifest, combat (768 checks), Tiled animation, and trigger-debug checks. Final integration validation remains to run. The pre-existing input issue remains tracked as GitHub #6.
+Final independent integration validation passed for the in-scope changes, including lifecycle and mocked-GL cleanup checks for both implementations and 768 combat checks. The root independently reran `:core:assetServiceTest --offline`, confirming both contracts and eight partial-failure cases per implementation. `:lwjgl3:build -x test --offline`, the diff review, and global policy comparison passed. The full `./gradlew check --continue --offline` failed only on the unchanged baseline `InputSystemTest.controllerMovementEvent` (expected 1, got 0), reproduced on the baseline and tracked as GitHub #6. No live desktop launch was performed. No in-scope defects remain unresolved.
