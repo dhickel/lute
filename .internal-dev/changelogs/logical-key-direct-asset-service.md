@@ -34,4 +34,4 @@ Consumers must stop using resources and their dependents before unload. Separate
 
 ## Follow-up Items
 
-Independent phase validation passed the asset, manifest, Tiled animation, combat (768 checks), and trigger-debug checks, including partial-load cleanup tests. Final integration validation and full check results will be recorded separately. No desktop launch is claimed.
+Phase validation and final independent change-scoped integration validation passed. Asset, manifest, Tiled animation, combat (768 checks), and trigger-debug tests passed, as did `./gradlew :lwjgl3:build -x test`, the diff check, and the global policy comparison. `./gradlew check --continue` failed solely on the unchanged baseline `InputSystemTest.controllerMovementEvent` failure (expected 1, got 0), tracked in GitHub #6. Validation used mocked GL; no live desktop launch was performed. There are no unresolved in-scope defects. Branch `feat/logical-key-asset-manager` remains unmerged for a pull request.
