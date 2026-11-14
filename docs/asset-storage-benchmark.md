@@ -1,6 +1,6 @@
 # Asset storage benchmark
 
-This manual standalone microbenchmark compares the production `AssetService` four-map storage and ordered pending queue with the original complete composite-key service retained as test-only `CompositeAssetService`. Both are exercised through adapters with the same service semantics. It is not JMH and is not part of `check`.
+This manual standalone microbenchmark compares the production `AssetService` four-map storage and ordered loading `queue` with the original complete composite-key service retained as test-only `CompositeAssetService`. Both are exercised through adapters with the same service semantics. It is not JMH and is not part of `check`.
 
 Run from the repository root:
 
@@ -28,6 +28,8 @@ The following are ns/get, medians of per-fork sample medians. The bundle is the 
 | 4096, hot, equal-distinct | 24.029 | 17.268 | 23.738 | 17.246 |
 | 4096, wide, reused | 35.332 | 29.416 | 35.390 | 29.493 |
 | 4096, wide, equal-distinct | 37.594 | 36.159 | 38.653 | 36.185 |
+
+After these measurements, redundant ownership bookkeeping was removed and the loading collection was renamed from `pending` to `queue`; those cleanup changes were not separately performance-measured.
 
 Typed storage was favored overall in these runs, but the widest equal-distinct case was close and one first-run fork reversed it. For example, independent fork medians for bundle hot reused ranged from 14.111–23.808 composite versus 9.378–11.835 typed ns/get; for 4096 wide equal-distinct they ranged from 28.570–38.772 versus 26.060–36.664.
 
