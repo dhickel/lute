@@ -122,8 +122,8 @@ public class AssetService implements Disposable {
         Object value = null;
         var asset = entry.definition;
         try {
-            value = loadDirect(asset);
-            entry.value = asset.type().cast(Objects.requireNonNull(value, "Loader returned null"));
+            value = Objects.requireNonNull(loadDirect(asset), "Loader returned null");
+            entry.value = asset.type().cast(value);
             queue.remove(entry);
         } catch (RuntimeException failure) {
             entriesFor(asset.type()).remove(asset.id());
