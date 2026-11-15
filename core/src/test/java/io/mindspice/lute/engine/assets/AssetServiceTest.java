@@ -392,8 +392,8 @@ public final class AssetServiceTest {
             var spawnProperties = map.getLayers().get("Triggers").getObjects().get("PlayerSpawn").getProperties();
             check("IDLE".equals(spawnProperties.get("animation")),
                 "Map loader must apply class defaults from GameConsts.PROJECT_PATH to the saved point");
-            check(Integer.valueOf(8).equals(spawnProperties.get("keyFrames")),
-                "Direct map loading must preserve explicit properties over project class defaults");
+            check(spawnProperties.get("keyFrames") == null,
+                "Player spawn must not retain legacy keyFrames");
             Set<Integer> mapTextures = new HashSet<>();
             for (var tileSet : map.getTileSets()) {
                 for (var tile : tileSet) {

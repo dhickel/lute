@@ -43,7 +43,10 @@ public class EntityFactory extends EntitySystem {
     public Entity getPlayerEntity(PlayerCharProps props, Vector2 pixelPosition, MapAssets mapAssets) {
         var facing = Facing.Direction.RIGHT;
         var data = GameCore.INSTANCE.getGameData();
-        var animation = createPlayerAnimation(props, mapAssets, facing, data.playerData().animation().frameInterval());
+        var playerAnimation = data.playerData().animation();
+        var atlas = resolveAtlas(props.atlasAsset(), mapAssets);
+        var animation = createAnimation(atlas, playerAnimation.atlasKey(),
+            Animation2D.AnimationType.valueOf(props.animation()), playerAnimation.speed(), playerAnimation.frameInterval(), facing);
         var region = animation.getAnimation().getKeyFrame(0f);
         var transform = createTransform(pixelPosition, region);
         var player = data.playerData();
@@ -89,10 +92,11 @@ public class EntityFactory extends EntitySystem {
 
     public Entity getAnimatedPhysicObjectEntity(AnimatedPhysicObjectProps props, TiledMapTileMapObject object, MapAssets mapAssets) {
         var atlas = resolveAtlas(props.atlasAsset(), mapAssets);
-        var type = Animation2D.AnimationType.valueOf(props.animation());
+        var type = Animation2D.AnimationType.valueOf(props.animationType());
         var facing = Facing.Direction.DOWN;
-        var animation = createAnimation(atlas, props.atlasKey(), type,
-            props.animationSpeed(), frameInterval(props.keyFrames()), facing);
+        var settings = props.animation();
+        var animation = createAnimation(atlas, settings.atlasKey(), type,
+            settings.speed(), settings.frameInterval(), facing);
 
         Entity entity = createPhysicObject(object, animation.getAnimation().getKeyFrame(0f));
         entity.add(new Facing(facing));
@@ -145,12 +149,6 @@ public class EntityFactory extends EntitySystem {
         return new Physic(body, transform.getPosition().cpy());
     }
 
-    private Animation2D createPlayerAnimation(PlayerCharProps props, MapAssets mapAssets, Facing.Direction facing, float frameInterval) {
-        var atlas = resolveAtlas(props.atlasAsset(), mapAssets);
-        var type = Animation2D.AnimationType.valueOf(props.animation());
-        return createAnimation(atlas, props.atlasKey(), type, props.animationSpeed(), frameInterval, facing);
-    }
-
     private Animation2D createAnimation(Asset.Atlas atlas, String atlasKey, Animation2D.AnimationType animType,
                                       float speed, float frameInterval, Facing.Direction facing) {
         String animationKey;
@@ -168,11 +166,6 @@ public class EntityFactory extends EntitySystem {
         var anim2d = new Animation2D(atlas.id(), atlasKey, animType, Animation.PlayMode.LOOP, speed, frameInterval);
         anim2d.setAnimation(animation, facing);
         return anim2d;
-    }
-
-    private float frameInterval(int keyFrames) {
-        if (keyFrames <= 0) { throw new GdxRuntimeException("Animation keyFrames must be positive: " + keyFrames); }
-        return 1f / keyFrames;
     }
 
     private Transform createTransform(Vector2 pixelPosition, TextureRegion region) {

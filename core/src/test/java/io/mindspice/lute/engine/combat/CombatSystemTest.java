@@ -18,6 +18,7 @@ import io.mindspice.lute.engine.assets.*;
 import io.mindspice.lute.engine.components.*;
 import io.mindspice.lute.engine.components.Transform;
 import io.mindspice.lute.engine.data.json.DataLoader;
+import io.mindspice.lute.engine.data.json.AnimationData;
 import io.mindspice.lute.engine.data.json.GameData;
 import io.mindspice.lute.engine.data.json.WeaponsData;
 import io.mindspice.lute.engine.data.json.WeaponsData.WeaponData.BoundsType;
@@ -289,7 +290,7 @@ public final class CombatSystemTest {
             var factory = new EntityFactory(world, assets, input); engine.addSystem(factory);
             var map = new MapAssets(Asset.Map.of("test", "test_tiled.tmx"), "",
                 Map.of("OBJECTS", Asset.Atlas.of("OBJECTS", "objects.atlas")), Map.of(), Map.of());
-            var props = new PlayerCharProps("IDLE", 1, 8, "OBJECTS", "player");
+            var props = new PlayerCharProps("IDLE", "OBJECTS");
             var original = data.weaponsData().requireWeapon(data.playerData().equippedWeapon());
             for (boolean hit : new boolean[]{true, false}) {
                 for (int invalid : new int[]{4, Integer.MAX_VALUE}) {
@@ -297,7 +298,7 @@ public final class CombatSystemTest {
                     var anim = original.animation();
                     var bad = new WeaponsData.WeaponData(
                         new WeaponsData.WeaponData.Stats(stats.damage(), stats.cost(), hit ? invalid : 0),
-                        new WeaponsData.WeaponData.WeaponAnimation(anim.speed(), anim.atlasKey(), hit ? 0 : invalid, anim.frameInterval()),
+                        new AnimationData(anim.speed(), anim.atlasKey(), hit ? 0 : invalid, anim.frameInterval()),
                         original.sounds(), original.bounds());
                     field.set(GameCore.INSTANCE, new GameData(data.playerData(),
                         new WeaponsData("NONE", Map.of(data.playerData().equippedWeapon(), bad))));
@@ -313,7 +314,7 @@ public final class CombatSystemTest {
             var anim = original.animation();
             var cues = new WeaponsData.WeaponData(
                 new WeaponsData.WeaponData.Stats(stats.damage(), stats.cost(), 2),
-                new WeaponsData.WeaponData.WeaponAnimation(anim.speed(), anim.atlasKey(), 3, anim.frameInterval()),
+                new AnimationData(anim.speed(), anim.atlasKey(), 3, anim.frameInterval()),
                 original.sounds(), original.bounds());
             field.set(GameCore.INSTANCE, new GameData(data.playerData(),
                 new WeaponsData("NONE", Map.of(data.playerData().equippedWeapon(), cues))));

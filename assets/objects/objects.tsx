@@ -7,13 +7,11 @@
  <tile id="4">
   <properties>
    <property name="animation" value="IDLE"/>
-   <property name="animationSpeed" type="float" value="1"/>
    <property name="atlasAsset" value="OBJECTS"/>
    <property name="atlasKey" value="player"/>
    <property name="hasCamera" type="bool" value="true"/>
    <property name="isAnimated" type="bool" value="true"/>
    <property name="isPhysics" type="bool" value="true"/>
-   <property name="keyFrames" type="int" value="8"/>
    <property name="physicBodyType" value="dynamic"/>
    <property name="speed" type="float" value="4"/>
   </properties>
@@ -37,10 +35,11 @@
  <tile id="7" type="AnimatedPhysicObject">
   <properties>
    <property name="animation" value="DEFAULT"/>
-   <property name="animationSpeed" type="float" value="0.35"/>
+   <property name="speed" type="float" value="0.35"/>
    <property name="atlasAsset" value="OBJECTS"/>
-   <property name="atlasKey" value="old_tree1/old_tree1"/>
-   <property name="keyFrames" type="int" value="10"/>
+   <property name="atlas_key" value="old_tree1/old_tree1"/>
+   <property name="frame_interval" type="float" value="0.1"/>
+   <property name="sound_frame" type="int" value="0"/>
   </properties>
   <image source="old_tree1/old_tree1_00.png" width="160" height="256"/>
   <objectgroup draworder="index" id="2">

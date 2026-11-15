@@ -8,6 +8,12 @@
 
 `ManifestLoader.parseMapManifest(mapName)` uses `mapName` as the map's logical ID and reads its manifest. The existing atlas, music, and sound manifest keys remain their logical IDs. `MapAssets` checks that each keyed definition has a matching ID; `all()` collects the map and its declared definitions for loading. `startMusic` selects a music ID or `RANDOM`.
 
+## Animation authoring and migration
+
+The shared `AnimationData` schema has four fields: `speed`, `atlas_key`, `sound_frame`, and `frame_interval` (seconds). In player and weapon JSON, put them in a nested `animation` object. For an `AnimatedPhysicObject` in Tiled, use the same field names as flat properties: `animation` already names the animation type, and `atlasAsset` separately identifies the atlas asset. The player gets its animation values from JSON; its Tiled properties supply the animation type and atlas asset. Object tile and placement properties can override `speed`, `atlas_key`, `sound_frame`, and `frame_interval`.
+
+Keep animation field names, types, and meaning synchronized between Tiled and JSON; values are independently authored. Migrate older definitions to these names and remove `keyFrames`; it is not used. Player and tree `atlas_key` values identify atlas regions, while a weapon's `NONE` means no separate rendering. The tree uses a `frame_interval` of 0.1 seconds and `speed` of 0.35. Only weapon attacks consume `sound_frame`. Player move and damage sounds list `sword_hit.wav` as placeholders in data only; they are not loaded or played.
+
 ## Weapon assets and animation timing
 
 Map manifests describe map-owned assets. Weapon assets belong to `assets/data/weapons.json`, which contains a shared `atlas` path and a `weapons` map. Each weapon defines `stats`, `animation`, `sounds`, and `bounds`. The shared atlas path and each weapon's `animation.atlas_key` default to `NONE`. Selecting a weapon with separate atlas visuals enabled fails explicitly; character animation continues using the combined tutorial sprites and existing `atlasKey/animation_direction` region convention.

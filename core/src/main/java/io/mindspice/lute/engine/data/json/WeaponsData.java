@@ -21,7 +21,7 @@ public record WeaponsData(String atlas, Map<String, WeaponData> weapons) {
         return weapon;
     }
 
-    public record WeaponData(Stats stats, WeaponAnimation animation, Sounds sounds, Bounds bounds) {
+    public record WeaponData(Stats stats, AnimationData animation, Sounds sounds, Bounds bounds) {
         public WeaponData {
             Objects.requireNonNull(stats, "stats");
             Objects.requireNonNull(animation, "animation");
@@ -33,18 +33,6 @@ public record WeaponsData(String atlas, Map<String, WeaponData> weapons) {
             public Stats {
                 if (damage <= 0 || cost < 0 || hitFrame < 0) {
                     throw new IllegalArgumentException("Weapon damage must be positive; cost and hit_frame must be nonnegative");
-                }
-            }
-        }
-
-        public record WeaponAnimation(float speed, @JsonProperty("atlas_key") String atlasKey,
-                                      @JsonProperty("sound_frame") int soundFrame,
-                                      @JsonProperty("frame_interval") float frameInterval) {
-            public WeaponAnimation {
-                atlasKey = atlasKey == null ? "NONE" : atlasKey;
-                if (!Float.isFinite(speed) || speed <= 0 || soundFrame < 0 || atlasKey.isBlank()
-                    || !Float.isFinite(frameInterval) || frameInterval <= 0) {
-                    throw new IllegalArgumentException("Invalid weapon animation speed, atlas_key or sound_frame");
                 }
             }
         }

@@ -9,6 +9,13 @@
 - **Source:** User-directed input listener simplification.
 - **Review timing:** Revisit if the input delivery contract changes.
 
+## Common animation authoring schema
+
+- **Decision:** Shared `AnimationData` uses `speed`, `atlas_key`, `sound_frame`, and `frame_interval`. Player and weapon JSON place these fields in a nested `animation` object. Tiled `AnimatedPhysicObject` properties use the same names flat because `animation` already identifies the animation type; `atlasAsset` separately identifies the atlas asset. Player animation values come from JSON, while its Tiled properties supply the type and atlas asset. Object tile and placement properties can override the four animation values.
+- **Authoring:** Keep animation field names, types, and meaning synchronized between Tiled and JSON; values are independently authored. Do not use `keyFrames`. Player and tree `atlas_key` values identify atlas regions; weapon `NONE` means no separate rendering. Only weapon attacks consume `sound_frame`. Player move and damage sounds use `sword_hit.wav` as data-only placeholders, without loading or playback. The tree uses a 0.1-second frame interval and speed 0.35.
+- **Source:** User-directed animation schema and asset authoring alignment.
+- **Review timing:** Revisit if animation data ownership or authoring changes.
+
 ## Animation-driven attack lifetime
 
 - **Decision:** Weapon definitions use nested `stats`, `animation`, `sounds`, and `bounds` records. `stats.hit_frame` starts the attack sensor; animation completion ends the attack. Frames are zero-based: frame 0 is immediate at animation start, and frame 2 starts the third frame. `animation.speed` scales the animation clock and therefore both frame timing and total attack lifetime. The independent `attack_duration` timer and unused `hitDelay` are removed.

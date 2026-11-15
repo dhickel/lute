@@ -25,7 +25,6 @@
   <object id="1" name="Teleport" x="432.667" y="275.333" width="34.6667" height="35.3333"/>
   <object id="18" name="PlayerSpawn" type="PlayerCharacter" x="302.248" y="561.672">
    <properties>
-    <property name="keyFrames" type="int" value="8"/>
    </properties>
    <point/>
   </object>
