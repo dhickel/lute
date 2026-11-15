@@ -691,18 +691,19 @@ public final class AssetServiceTest {
                 var audio = new AudioSystem(service);
                 engine.addSystem(audio);
                 var manifest = ManifestLoader.parseMapManifest("test_tiled");
-                manifest.soundAssets().values().forEach(service::load);
+                var weapons = io.mindspice.lute.engine.data.json.DataLoader.parseWeaponData();
+                var weaponSounds = WeaponAssets.of("sword", weapons);
+                weaponSounds.all().forEach(service::load);
                 manifest.musicAssets().values().forEach(service::load);
-                var sound = backend.resource(service.get(Sound.class, "SWORD_HIT"));
-                events.emitEvent(new Event.Sound.Play("SWORD_HIT"));
-                events.emitEvent(new Event.Sound.PlayAtVolume("SWORD_HIT", 2));
-                events.emitEvent(new Event.Player.Moved());
+                var sound = backend.resource(service.get(Sound.class, weaponSounds.attack().id()));
+                events.emitEvent(new Event.Sound.Play(weaponSounds.attack().id()));
+                events.emitEvent(new Event.Sound.PlayAtVolume(weaponSounds.attack().id(), 2));
                 events.emitEvent(new Event.Map.Load(manifest));
                 events.update(0);
-                check(sound.plays == 3 && Math.abs(sound.volume - .33f) < .0001f,
-                    "Sound and movement events must resolve the global logical key");
+                check(sound.plays == 2 && Math.abs(sound.volume - .33f) < .0001f,
+                    "Sound events must resolve the equipped weapon's logical key");
                 audio.setSoundVolume(.4f);
-                events.emitEvent(new Event.Sound.PlayAtVolume("SWORD_HIT", .5f));
+                events.emitEvent(new Event.Sound.PlayAtVolume(weaponSounds.attack().id(), .5f));
                 events.update(0);
                 check(Math.abs(sound.volume - .2f) < .0001f, "Key-based sound playback must preserve volume scaling");
                 var music = backend.resource(service.get(Music.class, "TOWN"));

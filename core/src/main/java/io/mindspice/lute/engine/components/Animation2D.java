@@ -19,6 +19,42 @@ public class Animation2D implements Component {
     private float stateTime;
     private Animation<TextureRegion> animation;
     boolean dirty;
+    private Attack attack;
+    private boolean attackSoundEmitted;
+
+    public record Attack(float speed, int soundFrame, String soundId) {
+        public Attack {
+            if (!Float.isFinite(speed) || speed <= 0 || soundFrame < 0
+                || soundId == null || soundId.isBlank()) {
+                throw new IllegalArgumentException("Invalid attack animation timing or sound ID");
+            }
+        }
+    }
+
+    public void configureAttack(Attack attack) { this.attack = attack; }
+
+    public void validateAttackFrames() {
+        if (attack != null && type == AnimationType.ATTACK) {
+            int count = animation.getKeyFrames().length;
+            if (attack.soundFrame() >= count) {
+                throw new IllegalArgumentException("Attack sound frame must be less than animation frame count: " + count);
+            }
+        }
+    }
+
+    public boolean isAttackReady() {
+        return attack != null && type == AnimationType.ATTACK && !dirty && animation != null;
+    }
+
+    public boolean hasReachedFrame(int frame) {
+        return isAttackReady() && stateTime >= frame * frameDuration;
+    }
+
+    public String consumeAttackSound() {
+        if (!isAttackReady() || attackSoundEmitted || stateTime < attack.soundFrame() * frameDuration) { return null; }
+        attackSoundEmitted = true;
+        return attack.soundId();
+    }
 
     public Animation2D(String atlasId,
                        String atlasKey,
@@ -96,9 +132,10 @@ public class Animation2D implements Component {
         this.speed = speed;
     }
 
-    public void beginAttack(float attackSpeed) {
+    public void beginAttack() {
         previousSpeed = speed;
-        speed = attackSpeed;
+        speed = attack.speed();
+        attackSoundEmitted = false;
     }
 
     public void endAttack() {

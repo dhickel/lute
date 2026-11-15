@@ -2,6 +2,7 @@ package io.mindspice.lute.engine.assets;
 
 import com.badlogic.gdx.graphics.g2d.TextureAtlas;
 import com.badlogic.gdx.maps.tiled.TiledMap;
+import io.mindspice.lute.engine.singletons.GameConsts;
 
 public sealed interface Asset<T> {
     String id();
@@ -28,7 +29,7 @@ public sealed interface Asset<T> {
         public Map { validate(id, path); }
         @Override public Class<TiledMap> type() { return TiledMap.class; }
         public static Map of(String id, String file) {
-            return new Map(id, Asset.path("maps/", file));
+            return new Map(id, Asset.path(GameConsts.MAPS_PATH, file));
         }
     }
 
@@ -36,7 +37,7 @@ public sealed interface Asset<T> {
         public Atlas { validate(id, path); }
         @Override public Class<TextureAtlas> type() { return TextureAtlas.class; }
         public static Atlas of(String id, String file) {
-            return new Atlas(id, Asset.path("objects/packed/", file));
+            return new Atlas(id, Asset.path(GameConsts.ATLAS_PATH, file));
         }
     }
 
@@ -44,7 +45,7 @@ public sealed interface Asset<T> {
         public Music { validate(id, path); }
         @Override public Class<com.badlogic.gdx.audio.Music> type() { return com.badlogic.gdx.audio.Music.class; }
         public static Music of(String id, String file) {
-            return new Music(id, Asset.path("audio/", file));
+            return new Music(id, Asset.path(GameConsts.MUSIC_PATH, file));
         }
     }
 
@@ -52,7 +53,7 @@ public sealed interface Asset<T> {
         public Sound { validate(id, path); }
         @Override public Class<com.badlogic.gdx.audio.Sound> type() { return com.badlogic.gdx.audio.Sound.class; }
         public static Sound of(String id, String file) {
-            return new Sound(id, Asset.path("audio/", file));
+            return new Sound(id, Asset.path(GameConsts.SOUND_PATH, file));
         }
     }
 }

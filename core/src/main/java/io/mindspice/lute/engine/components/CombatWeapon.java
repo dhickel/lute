@@ -17,12 +17,14 @@ public final class CombatWeapon {
         }
     }
 
-    public record Weapon(String id, float damage, float attackSpeed, float attackDuration, BoundsType shape, Bounds bounds) {
+    public record Weapon(String id, float damage, int hitFrame, Animation2D.Attack animation, String hitSoundId,
+                         BoundsType shape, Bounds bounds) {
         public Weapon {
             if (id == null || id.isBlank()) { throw new IllegalArgumentException("Weapon id is required"); }
             positive(damage, "damage");
-            positive(attackSpeed, "attackSpeed");
-            positive(attackDuration, "attackDuration");
+            if (hitFrame < 0) { throw new IllegalArgumentException("hitFrame must be nonnegative"); }
+            Objects.requireNonNull(animation, "animation");
+            if (hitSoundId == null || hitSoundId.isBlank()) { throw new IllegalArgumentException("hitSoundId is required"); }
             Objects.requireNonNull(shape, "shape");
             Objects.requireNonNull(bounds, "bounds");
             validatePolygon(localVertices(shape, bounds));

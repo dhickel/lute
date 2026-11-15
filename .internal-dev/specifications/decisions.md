@@ -9,13 +9,23 @@
 - **Source:** User-directed input listener simplification.
 - **Review timing:** Revisit if the input delivery contract changes.
 
-## Explicit combat attack lifetime
+## Animation-driven attack lifetime
 
-- **Decision:** GameData weapon `attack_duration` is a required, positive finite duration in seconds for a runtime weapon; the sword uses 0.5 seconds. Combat owns explicit active state and an elapsed timer. `AttackSpeed` affects animation playback only, not attack duration; animation follows combat state and does not end an attack. The attack sensor is a consequence of active combat, not the state itself. Existing `hitDelay` remains unchanged and unused.
-- **Justification and tradeoff:** An explicit duration decouples gameplay timing from animation and fixture lifetime. Ordinary 60 Hz physics ticks are accepted without an extra contact refresh: an attack shorter than a tick can expire without a physics hit.
-- **Affected specifications and sources:** This decision establishes the combat lifetime contract. Affected source paths are `assets/data/weapons.json`, `core/src/main/java/io/mindspice/lute/engine/data/json/WeaponsData.java`, `core/src/main/java/io/mindspice/lute/engine/components/Combat.java`, `core/src/main/java/io/mindspice/lute/engine/components/CombatWeapon.java`, `core/src/main/java/io/mindspice/lute/engine/systems/CombatSystem.java`, and `core/src/main/java/io/mindspice/lute/engine/systems/EntityFactory.java`.
-- **Source:** User request for explicit combat attack duration and acceptance of the physics-tick caveat.
+- **Decision:** Weapon definitions use nested `stats`, `animation`, `sounds`, and `bounds` records. `stats.hit_frame` starts the attack sensor; animation completion ends the attack. Frames are zero-based: frame 0 is immediate at animation start, and frame 2 starts the third frame. `animation.speed` scales the animation clock and therefore both frame timing and total attack lifetime. The independent `attack_duration` timer and unused `hitDelay` are removed.
+- **Ownership:** Combat passes animation speed, sound frame, and resolved attack-sound ID to `Animation2D` when accepting an attack. Animation emits the sound once when playback reaches or crosses `animation.sound_frame`; it does not inspect weapon definitions or manage fixtures. Combat reads animation progress and owns hit-frame validation, fixture creation, damage, and cleanup. An accepted attack can be active before its sensor exists. Hit sounds are loaded but not emitted.
+- **Ordering and tradeoff:** The animation FSM and playback update before combat, and combat updates before physics. Accepted input configures the attack in the combat pass; its animation begins on the following update. Frame 0 is relative to that animation start. Physics retains ordinary fixed ticks with no forced contact refresh: an entire active interval skipped by an update, or shorter than a physics tick, can produce no hit.
+- **Affected specifications and sources:** `assets/data/weapons.json`, `WeaponsData`, `Combat`, `CombatWeapon`, `Animation2D`, `AnimationState`, `AnimationSystem`, `CombatSystem`, `GameScreen`, and `EntityFactory`.
+- **Source:** User-directed weapon asset and animation-timing refactor. This supersedes the former explicit combat-duration decision.
 - **Review timing:** Revisit if attack timing, animation ownership, or physics contact guarantees change.
+
+## Settings and weapon asset ownership
+
+- **Decision:** `assets/game.settings.json` supplies the existing `GameConsts` values and map, data, sound, music, object, and atlas directory prefixes. `GameCore.create()` loads and validates settings before constructing runtime services or loading game data. Invalid settings fail startup without partially applying values. Static field defaults retain standalone-tool compatibility; runtime startup requires the settings file.
+- **Ownership:** Map manifests declare map-owned assets. `WeaponsData` has a top-level shared `atlas` path and a `weapons` map; each weapon includes an animation atlas region key. Both atlas fields default to `NONE`. Selecting a weapon with either enabled fails explicitly until separate weapon rendering is implemented. Character animation retains the existing atlas-region naming convention and combined tutorial sprites.
+- **Loading:** Only the initially equipped weapon contributes sound definitions to initial loading. Its attack and hit filenames are relative to the configured sound directory and resolve to `weapon/<weapon-id>/attack` and `weapon/<weapon-id>/hit` logical IDs. Weapon definitions do not require map sound entries. This does not add inventory, weapon switching, or automatic asset lifetime management.
+- **Source:** User-directed data and asset-structure refactor.
+- **Affected specifications:** This decision extends the existing logical-key asset contract; `docs/asset-service.md` describes the boundaries.
+- **Review timing:** Revisit when selectable weapons or separate weapon visuals are implemented.
 
 ## Custom asset service and logical keys
 

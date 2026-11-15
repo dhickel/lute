@@ -28,11 +28,9 @@ public class AudioSystem extends EntitySystem implements EventListener {
 
 
         eventSubscriber.accept(Event.Map.Load.class, this::onMapLoad);
-
         eventSubscriber.accept(Event.Sound.Play.class, play -> this.playSound(play.soundId()));
         eventSubscriber.accept(Event.Sound.PlayAtVolume.class, pav -> this.playSoundAtVol(pav.soundId(), pav.volume()));
 
-        eventSubscriber.accept(Event.Player.Moved.class, _ -> this.playSound("SWORD_HIT"));
 
     }
 
@@ -60,6 +58,8 @@ public class AudioSystem extends EntitySystem implements EventListener {
     private void onMapLoad(Event.Map.Load load) {
         var mapAssets = load.mapAssets();
         String mapMusic = mapAssets.startMusic();
+        if (mapMusic.isBlank()) { return; }
+
         if ("RANDOM".equals(mapMusic)) {
             if (mapAssets.musicAssets().isEmpty()) {
                 throw new GdxRuntimeException("No music assets available for RANDOM selection");

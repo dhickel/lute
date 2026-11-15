@@ -28,10 +28,12 @@ public final class ManifestLoaderTest {
             }
             checkAssets(assets.atlasAssets(), "atlases");
             checkAssets(assets.musicAssets(), "music");
-            checkAssets(assets.soundAssets(), "sounds");
+            if (!assets.soundAssets().isEmpty()) {
+                throw new AssertionError("Tutorial map must not own weapon sounds");
+            }
             checkAsset(assets.atlasAssets().get("OBJECTS"), "OBJECTS atlas");
             checkAsset(assets.musicAssets().get("TOWN"), "TOWN music");
-            checkAsset(assets.soundAssets().get("SWORD_HIT"), "SWORD_HIT sound");
+
             System.out.println("ManifestLoaderTest: passed");
         } finally {
             Gdx.files = previousFiles;

@@ -4,9 +4,19 @@
 
 ## Definitions and manifests
 
-`Asset.Sound`, `Asset.Music`, `Asset.Atlas`, and `Asset.Map` are load definitions, not runtime handles. Each provides an ID, path, and resource type; IDs and paths must be nonblank. Their `of(id, file)` helpers prefix files with `audio/`, `audio/`, `objects/packed/`, and `maps/`, respectively. Constructors accept complete paths.
+`Asset.Sound`, `Asset.Music`, `Asset.Atlas`, and `Asset.Map` are load definitions, not runtime handles. Each provides an ID, path, and resource type; IDs and paths must be nonblank. Their `of(id, file)` helpers use the sound, music, atlas, and map directory prefixes in `GameConsts`. Constructors accept complete paths. `GameCore.create()` first loads `assets/game.settings.json`, which supplies those prefixes and the existing game constants. Directory values must end with `/`; invalid settings stop startup before values are applied.
 
 `ManifestLoader.parseMapManifest(mapName)` uses `mapName` as the map's logical ID and reads its manifest. The existing atlas, music, and sound manifest keys remain their logical IDs. `MapAssets` checks that each keyed definition has a matching ID; `all()` collects the map and its declared definitions for loading. `startMusic` selects a music ID or `RANDOM`.
+
+## Weapon assets and animation timing
+
+Map manifests describe map-owned assets. Weapon assets belong to `assets/data/weapons.json`, which contains a shared `atlas` path and a `weapons` map. Each weapon defines `stats`, `animation`, `sounds`, and `bounds`. The shared atlas path and each weapon's `animation.atlas_key` default to `NONE`. Selecting a weapon with separate atlas visuals enabled fails explicitly; character animation continues using the combined tutorial sprites and existing `atlasKey/animation_direction` region convention.
+
+`WeaponAssets.of(weaponId, definitions)` resolves only that weapon's attack and hit sound filenames relative to the configured sound directory. Initial loading combines map assets with the equipped weapon's sound definitions. Runtime IDs use `weapon/<weapon-id>/attack` and `weapon/<weapon-id>/hit`; animation receives the resolved attack ID rather than weapon filenames or selection rules. Loading these assets does not implement inventory, weapon switching, or automatic unloading.
+
+Attack frames are zero-based. `stats.hit_frame` starts the hitbox, and animation completion removes it. `animation.sound_frame` emits one attack sound when playback reaches or crosses that frame; frame 0 is immediate at animation start. `animation.speed` scales both timings and the total attack lifetime. Combat owns fixtures and damage; animation owns playback and sound emission. Hit sounds are loaded but not triggered.
+
+The animation FSM and playback run before combat, which runs before physics. Combat accepts an attack and configures its playback data; the animation starts on the following update. Sound events retain the existing queued dispatch timing. Large updates cannot repeat or skip sound cues, but an update that crosses the entire hitbox interval does not force a physics step or fabricate a hit.
 
 ## Loading and lookup
 
