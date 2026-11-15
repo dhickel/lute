@@ -9,9 +9,6 @@ public class Health implements Component {
     private float current;
 
     public Health(float maximum) {
-        if (!Float.isFinite(maximum) || maximum <= 0f) {
-            throw new IllegalArgumentException("Maximum health must be finite and positive");
-        }
         this.maximum = maximum;
         this.current = maximum;
     }
@@ -21,9 +18,6 @@ public class Health implements Component {
     public boolean isAlive() { return current > 0f; }
 
     public void damage(float amount) {
-        if (!Float.isFinite(amount) || amount < 0f) {
-            throw new IllegalArgumentException("Damage must be finite and non-negative");
-        }
         current = Math.max(0f, current - amount);
     }
 }

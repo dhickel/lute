@@ -20,20 +20,16 @@ public class Animation2D implements Component {
     private Animation<TextureRegion> animation;
     boolean dirty;
     private Attack attack;
+    private long minimumAttackFrames;
     private boolean attackSoundEmitted;
 
     public record Attack(float speed, int soundFrame, String soundId) { }
 
     public void configureAttack(Attack attack) { this.attack = attack; }
 
-    public void validateAttackFrames() {
-        if (attack != null && type == AnimationType.ATTACK) {
-            int count = animation.getKeyFrames().length;
-            if (attack.soundFrame() >= count) {
-                throw new IllegalArgumentException("Attack sound frame must be less than animation frame count: " + count);
-            }
-        }
-    }
+    public void setMinimumAttackFrames(long count) { minimumAttackFrames = count; }
+
+    public long getMinimumAttackFrames() { return minimumAttackFrames; }
 
     public boolean isAttackReady() {
         return attack != null && type == AnimationType.ATTACK && !dirty && animation != null;

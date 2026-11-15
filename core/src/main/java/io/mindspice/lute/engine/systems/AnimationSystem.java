@@ -41,15 +41,18 @@ public class AnimationSystem extends IteratingSystem implements EventEmitter {
             -> key.atlasId().equals(anim2d.getAtlasId()) && key.atlas() != atlas
         );
 
+        TextureAtlas previousAtlas = currentAtlases.get(anim2d);
+        boolean atlasChanged = previousAtlas != atlas;
+        if (previousAtlas != null && atlasChanged) { validateAttackFrames(anim2d, atlas); }
+
         final float stateTime;
-        if (anim2d.isDirty() || fDirection != anim2d.getFdirection() || currentAtlases.get(anim2d) != atlas) {
+        if (anim2d.isDirty() || fDirection != anim2d.getFdirection() || atlasChanged) {
             updateAnimation(anim2d, fDirection);
             currentAtlases.put(anim2d, atlas);
             stateTime = 0;
         } else { stateTime = anim2d.incAndGetStateTime(deltaTime); }
 
         Animation<TextureRegion> animation = anim2d.getAnimation();
-        anim2d.validateAttackFrames();
         animation.setPlayMode(anim2d.getPlayMode());
 
         String soundId = anim2d.consumeAttackSound();
@@ -59,6 +62,16 @@ public class AnimationSystem extends IteratingSystem implements EventEmitter {
 
         TextureRegion keyFrame = animation.getKeyFrame(stateTime);
         Graphic.MAPPER.get(entity).setRegion(keyFrame);
+    }
+
+    public static void validateAttackFrames(Animation2D anim2d, TextureAtlas atlas) {
+        if (anim2d.getMinimumAttackFrames() == 0) { return; }
+        for (var direction : Facing.Direction.values()) {
+            var key = anim2d.getAtlasKey() + "/attack_" + direction.atlasKey;
+            if (atlas.findRegions(key).size < anim2d.getMinimumAttackFrames()) {
+                throw new IllegalArgumentException("Attack animation has too few frames for " + key);
+            }
+        }
     }
 
     public void updateAnimation(Animation2D anim2d, Facing.Direction fDir) {

@@ -46,6 +46,10 @@ public final class DataLoaderTest {
             rejects(() -> new WeaponsData.WeaponData.Stats(10, 0, -1), "negative hit frame");
             rejects(() -> new WeaponsData.WeaponData.WeaponAnimation(0, null, 0), "zero speed");
             rejects(() -> new WeaponsData.WeaponData.Sounds("", "hit.wav"), "empty sound");
+            rejects(() -> new PlayerData("player", 0, 100, "sword"), "zero move speed");
+            rejects(() -> new PlayerData("player", 1, 0, "sword"), "zero health");
+            rejects(() -> new WeaponsData.WeaponData.Bounds(WeaponsData.WeaponData.BoundsType.RECT, 1, 0, 1, 2), "collapsed bounds");
+            rejects(() -> new WeaponsData.WeaponData.Bounds(WeaponsData.WeaponData.BoundsType.RECT, Float.NaN, 0, 2, 2), "nonfinite bounds");
 
             var fixture = Files.createTempFile("weapon-settings", ".json");
             try {

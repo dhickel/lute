@@ -8,4 +8,10 @@ public record PlayerData(
     @JsonAlias("max_health") int maxHealth,
     @JsonAlias("equipped_weapon") String equippedWeapon
 ) {
+    public PlayerData {
+        if (!Float.isFinite(moveSpeed) || moveSpeed <= 0f || maxHealth <= 0
+            || equippedWeapon == null || equippedWeapon.isBlank()) {
+            throw new IllegalArgumentException("Invalid player movement, health, or equipped weapon");
+        }
+    }
 }

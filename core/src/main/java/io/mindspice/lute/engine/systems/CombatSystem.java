@@ -80,9 +80,6 @@ public class CombatSystem extends IteratingSystem implements ContactListener, En
             return;
         }
         int hitFrame = combat.getCurrentWeapon().hitFrame();
-        if (animation.isAttackReady() && hitFrame >= animation.getAnimation().getKeyFrames().length) {
-            throw new IllegalArgumentException("Weapon hit frame must be less than attack animation frame count");
-        }
         if (!alive || (animation.isAttackReady() && animation.isFinished())) {
             stopAttack(entity);
             return;

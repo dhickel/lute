@@ -34,7 +34,7 @@ public class AssetService implements Disposable {
     private boolean disposed;
 
     public AssetService(FileHandleResolver resolver) {
-        this.resolver = Objects.requireNonNull(resolver, "Asset resolver must not be null");
+        this.resolver = resolver;
     }
 
     @SuppressWarnings("unchecked")
@@ -49,12 +49,6 @@ public class AssetService implements Disposable {
         return (Map<String, Entry<T>>) selected;
     }
 
-    private static void validateId(String id) {
-        if (id == null || id.isBlank()) {
-            throw new IllegalArgumentException("Asset logical ID must not be null or blank");
-        }
-    }
-
     public <T> T load(Asset<T> asset) {
         queue(asset);
         var entry = entriesFor(asset.type()).get(asset.id());
@@ -64,7 +58,6 @@ public class AssetService implements Disposable {
 
     public void queue(Asset<?> asset) {
         requireOpen();
-        if (asset == null) { throw new IllegalArgumentException("Asset definition must not be null"); }
         queueChecked(asset);
     }
 
@@ -87,7 +80,6 @@ public class AssetService implements Disposable {
     public <T> T get(Class<T> type, String id) {
         requireOpen();
         var table = entriesFor(type);
-        validateId(id);
         Entry<?> entry = table.get(id);
         if (entry == null || entry.value == null) {
             throw new IllegalStateException("Asset is not loaded: " + type.getSimpleName() + "[" + id + "]");
@@ -97,7 +89,6 @@ public class AssetService implements Disposable {
 
     public boolean isLoaded(Class<?> type, String id) {
         var table = entriesFor(type);
-        validateId(id);
         var entry = table.get(id);
         return entry != null && entry.value != null;
     }
@@ -105,7 +96,6 @@ public class AssetService implements Disposable {
     public void unload(Class<?> type, String id) {
         requireOpen();
         var table = entriesFor(type);
-        validateId(id);
         var entry = table.remove(id);
         if (entry == null) { return; }
         queue.remove(entry);

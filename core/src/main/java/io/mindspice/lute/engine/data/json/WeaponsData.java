@@ -56,7 +56,13 @@ public record WeaponsData(String atlas, Map<String, WeaponData> weapons) {
         }
 
         public record Bounds(BoundsType type, float x1, float y1, float x2, float y2) {
-            public Bounds { Objects.requireNonNull(type, "bounds.type"); }
+            public Bounds {
+                Objects.requireNonNull(type, "bounds.type");
+                if (!Float.isFinite(x1) || !Float.isFinite(y1) || !Float.isFinite(x2) || !Float.isFinite(y2)
+                    || x2 <= x1 || y2 <= y1) {
+                    throw new IllegalArgumentException("Weapon bounds must be finite with x2 > x1 and y2 > y1");
+                }
+            }
         }
         public enum BoundsType { SEMICIRCLE, TRIANGLE, RECT }
     }
