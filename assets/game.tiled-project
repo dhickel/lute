@@ -76,23 +76,65 @@
             ]
         },
         {
-            "color": "#ffa0a0a4",
+            "id": 7,
+            "name": "SensorType",
+            "type": "enum",
+            "storageType": "string",
+            "values": ["GENERAL"],
+            "valuesAsFlags": false
+        },
+        {
+            "id": 8,
+            "name": "SpawnType",
+            "type": "enum",
+            "storageType": "string",
+            "values": ["PLAYER", "TELEPORT", "NPC", "ITEM"],
+            "valuesAsFlags": false
+        },
+        {
+            "color": "#ff55aaff",
             "drawFill": true,
-            "id": 3,
-            "members": [],
-            "name": "PlayerCharacter",
+            "id": 9,
+            "members": [
+                { "name": "sensorType", "type": "string", "propertyType": "SensorType", "value": "GENERAL" }
+            ],
+            "name": "Sensor",
             "type": "class",
-            "useAs": [
-                "property",
-                "map",
-                "layer",
-                "object",
-                "tile",
-                "tileset",
-                "wangcolor",
-                "wangset",
-                "project"
-            ]
+            "useAs": ["object"]
+        },
+        {
+            "color": "#ffaa55ff",
+            "drawFill": true,
+            "id": 10,
+            "members": [
+                { "name": "targetMap", "type": "string", "value": "THIS" },
+                { "name": "targetSpawn", "type": "string", "value": "" }
+            ],
+            "name": "Teleport",
+            "type": "class",
+            "useAs": ["object"]
+        },
+        {
+            "color": "#ff55ff88",
+            "drawFill": true,
+            "id": 11,
+            "members": [
+                { "name": "spawnType", "type": "string", "propertyType": "SpawnType", "value": "PLAYER" }
+            ],
+            "name": "SpawnPoint",
+            "type": "class",
+            "useAs": ["object"]
+        },
+        {
+            "color": "#ffffff55",
+            "drawFill": true,
+            "id": 12,
+            "members": [
+                { "name": "spawnType", "type": "string", "propertyType": "SpawnType", "value": "NPC" }
+            ],
+            "name": "SpawnArea",
+            "type": "class",
+            "useAs": ["object"]
         }
     ]
 }

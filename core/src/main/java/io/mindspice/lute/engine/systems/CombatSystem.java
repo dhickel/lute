@@ -115,6 +115,8 @@ public class CombatSystem extends IteratingSystem implements ContactListener, En
 
     @Override
     public void beginContact(Contact contact) {
+        var sensors = getEngine() == null ? null : getEngine().getSystem(MapSensorSystem.class);
+        if (sensors != null) { sensors.contact(contact.getFixtureA(), contact.getFixtureB(), true); }
         queueHit(contact.getFixtureA(), contact.getFixtureB());
         queueHit(contact.getFixtureB(), contact.getFixtureA());
     }
@@ -127,7 +129,11 @@ public class CombatSystem extends IteratingSystem implements ContactListener, En
         }
     }
 
-    @Override public void endContact(Contact contact) { }
+    @Override
+    public void endContact(Contact contact) {
+        var sensors = getEngine() == null ? null : getEngine().getSystem(MapSensorSystem.class);
+        if (sensors != null) { sensors.contact(contact.getFixtureA(), contact.getFixtureB(), false); }
+    }
     @Override public void preSolve(Contact contact, Manifold oldManifold) { }
     @Override public void postSolve(Contact contact, ContactImpulse impulse) { }
     @Override public void entityAdded(Entity entity) { }

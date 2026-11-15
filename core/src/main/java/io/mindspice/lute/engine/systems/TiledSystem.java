@@ -1,5 +1,6 @@
 package io.mindspice.lute.engine.systems;
 
+import com.badlogic.ashley.core.Engine;
 import com.badlogic.ashley.core.Entity;
 import com.badlogic.ashley.core.EntitySystem;
 import com.badlogic.gdx.Gdx;
@@ -16,6 +17,10 @@ import com.badlogic.gdx.physics.box2d.PolygonShape;
 import com.badlogic.gdx.physics.box2d.World;
 import com.badlogic.gdx.utils.Array;
 import com.badlogic.gdx.utils.GdxRuntimeException;
+import com.badlogic.gdx.utils.Disposable;
+import io.mindspice.lute.engine.GameCore;
+import io.mindspice.lute.engine.components.Controller;
+import io.mindspice.lute.engine.tiled.MapTriggers;
 import io.mindspice.lute.engine.assets.AssetService;
 import io.mindspice.lute.engine.assets.MapAssets;
 import io.mindspice.lute.engine.events.Event;
@@ -26,20 +31,46 @@ import io.mindspice.lute.engine.tiled.TiledPhysics;
 import io.mindspice.lute.engine.tiled.properties.PhysicObjectProps;
 import io.mindspice.lute.engine.tiled.properties.AnimatedPhysicObjectProps;
 
-public class TiledSystem extends EntitySystem implements EventListener, EventEmitter {
+import java.util.function.Consumer;
+
+public class TiledSystem extends EntitySystem implements EventListener, EventEmitter, Disposable {
     private final AssetService assetService;
 
     private final World physicsWorld;
     private TiledMap currMap;
     private MapAssets currMapAssets;
+    private MapTriggers mapTriggers;
+    private final Array<Body> mapBodies = new Array<>();
+    private final Array<Entity> mapEntities = new Array<>();
+    private final Consumer<Event.Map.Load> onMapLoad = load -> loadMap(load.mapAssets());
 
     public TiledSystem(AssetService assetService, World physicsWorld) {
         this.assetService = assetService;
         this.physicsWorld = physicsWorld;
-
-        eventSubscriber.accept(Event.Map.Load.class, (load) -> this.loadMap(load.mapAssets()));
     }
 
+    @Override
+    public void addedToEngine(Engine engine) {
+        eventSubscriber.accept(Event.Map.Load.class, onMapLoad);
+    }
+
+    @Override
+    public void removedFromEngine(Engine engine) {
+        eventUnSubscriber.accept(Event.Map.Load.class, onMapLoad);
+        unloadCurrentMap(engine, false);
+    }
+
+    @Override
+    public void dispose() {
+        var engine = getEngine();
+        if (engine == null) { return; }
+        eventUnSubscriber.accept(Event.Map.Load.class, onMapLoad);
+        unloadCurrentMap(engine, false);
+    }
+
+    public MapTriggers getMapTriggers() {
+        return mapTriggers;
+    }
 
     public TiledMap getCurrentMap() {
         return currMap;
@@ -52,23 +83,49 @@ public class TiledSystem extends EntitySystem implements EventListener, EventEmi
     }
 
     public void setMap(TiledMap map, MapAssets assets) {
-        if (currMap != null) { unloadCurrentMap(currMap != map); }
+        if (physicsWorld.isLocked()) { throw new IllegalStateException("Cannot change maps during a physics step"); }
+        var parsed = MapTriggers.parse(map);
+        var sensors = getEngine().getSystem(MapSensorSystem.class);
+        if (sensors == null) { throw new IllegalStateException("Map loading requires MapSensorSystem"); }
+        if (currMap != null) { unloadCurrentMap(getEngine(), currMap != map); }
 
         currMap = map;
         currMapAssets = assets;
-        loadMapObjects(map);
+        mapTriggers = parsed;
+        try {
+            sensors.setMap(parsed);
+            loadMapObjects(map);
+            for (var point : parsed.points()) {
+                if (point.type() == MapTriggers.SpawnType.PLAYER) { spawnPlayerEntity(point.position()); }
+            }
+        } catch (RuntimeException | Error failure) {
+            unloadCurrentMap(getEngine(), false);
+            throw failure;
+        }
 
         eventEmitter.accept(new Event.Map.Changed(map));
     }
 
 
-    private void unloadCurrentMap(boolean unloadAsset) {
-        if (unloadAsset) { assetService.unload(TiledMap.class, currMapAssets.mapAsset().id()); }
-        Array<Body> bodies = new Array<>();
-        physicsWorld.getBodies(bodies);
-        for (Body body : bodies) {
-            if ("environment".equals(body.getUserData())) { physicsWorld.destroyBody(body); }
+    private void unloadCurrentMap(Engine engine, boolean unloadAsset) {
+        var sensors = engine.getSystem(MapSensorSystem.class);
+        if (sensors != null) { sensors.clearMap(); }
+        for (var entity : mapEntities) {
+            var controller = Controller.MAPPER.get(entity);
+            if (controller != null) {
+                GameCore.INSTANCE.getInputManager().unRegKeyListener(controller.getInputListener());
+            }
+            engine.removeEntity(entity);
         }
+        mapEntities.clear();
+        for (var body : mapBodies) { physicsWorld.destroyBody(body); }
+        mapBodies.clear();
+        if (unloadAsset && currMapAssets != null) {
+            assetService.unload(TiledMap.class, currMapAssets.mapAsset().id());
+        }
+        currMap = null;
+        currMapAssets = null;
+        mapTriggers = null;
     }
 
     private void loadMapObjects(TiledMap map) {
@@ -76,7 +133,7 @@ public class TiledSystem extends EntitySystem implements EventListener, EventEmi
             switch (layer) {
                 case MapLayer l when l.getName().equals("Objects") -> loadObjectLayer(layer);
                 case MapLayer l when l.getName().equals("Collisions") -> loadObjectLayer(layer);
-                case MapLayer l when l.getName().equals("Triggers") -> loadTriggerLayer(layer);
+                case MapLayer l when l.getName().equals("Triggers") || l.getName().equals("Trigger") -> { }
                 case TiledMapTileLayer t -> loadTileLayer(t);
                 default -> Gdx.app.debug("TiledSystem", " Skipping load for layer: " + layer.getName());
             }
@@ -84,22 +141,15 @@ public class TiledSystem extends EntitySystem implements EventListener, EventEmi
         initMapBoundary(map);
     }
 
-    private void loadTriggerLayer(MapLayer layer) {
-        for (var obj : layer.getObjects()) {
-            switch (obj) {
-                case PointMapObject point -> {
-                    String objClass = obj.getProperties().get("type", String.class);
-                    if ("PlayerCharacter".equals(objClass)) { spawnPlayerEntity(point); }
-                }
-                default -> Gdx.app.error("TiledSystem.loadTriggerLayers", "Unsupported Object Type: " + obj.getClass());
-            }
-        }
-    }
-
-    public void spawnPlayerEntity(PointMapObject spawnPoint) {
+    private void spawnPlayerEntity(Vector2 pixelPosition) {
         Entity entity = getEngine()
             .getSystem(EntityFactory.class)
-            .getPlayerEntity(spawnPoint.getPoint(), currMapAssets);
+            .getPlayerEntity(pixelPosition, currMapAssets);
+        addMapEntity(entity);
+    }
+
+    private void addMapEntity(Entity entity) {
+        mapEntities.add(entity);
         getEngine().addEntity(entity);
     }
 
@@ -109,8 +159,12 @@ public class TiledSystem extends EntitySystem implements EventListener, EventEmi
         int height = map.getProperties().get("height", 0, Integer.class);
         int tileHeight = map.getProperties().get("tileheight", 0, Integer.class);
 
-        float mapW = width * tileWidth * GameConsts.UNIT_SCALE;
-        float mapH = height * tileHeight * GameConsts.UNIT_SCALE;
+        float mapW = (float) width * tileWidth * GameConsts.UNIT_SCALE;
+        float mapH = (float) height * tileHeight * GameConsts.UNIT_SCALE;
+        if (width <= 0 || tileWidth <= 0 || height <= 0 || tileHeight <= 0
+            || !Float.isFinite(mapW) || !Float.isFinite(mapH) || mapW <= 0 || mapH <= 0) {
+            throw new IllegalArgumentException("Map boundaries require positive finite map and tile dimensions");
+        }
         float halfMapH = mapH * 0.5f;
         float halfMapW = mapW * 0.5f;
         float boxThickness = 0.5f;
@@ -121,6 +175,7 @@ public class TiledSystem extends EntitySystem implements EventListener, EventEmi
         bodyDef.fixedRotation = true;
         Body body = physicsWorld.createBody(bodyDef);
         body.setUserData("environment");
+        mapBodies.add(body);
 
         // Left Edge
         PolygonShape shape = new PolygonShape();
@@ -170,6 +225,7 @@ public class TiledSystem extends EntitySystem implements EventListener, EventEmi
 
         var body = physicsWorld.createBody(bodyDef);
         body.setUserData("environment");
+        mapBodies.add(body);
 
         for (var mapObject : mapObjects) {
             var fixtureDef = TiledPhysics.fixtureDefOf(mapObject, GameConsts.PHYSIC_SCALING, Vector2.Zero);
@@ -189,11 +245,11 @@ public class TiledSystem extends EntitySystem implements EventListener, EventEmi
                 switch (objectClass) {
                     case "PhysicObject" -> {
                         var props = PhysicObjectProps.fromMapObj(tmObj);
-                        getEngine().addEntity(factory.getPhysicObjectEntity(props, tmObj, currMapAssets));
+                        addMapEntity(factory.getPhysicObjectEntity(props, tmObj, currMapAssets));
                     }
                     case "AnimatedPhysicObject" -> {
                         var props = AnimatedPhysicObjectProps.fromMapObj(tmObj);
-                        getEngine().addEntity(factory.getAnimatedPhysicObjectEntity(props, tmObj, currMapAssets));
+                        addMapEntity(factory.getAnimatedPhysicObjectEntity(props, tmObj, currMapAssets));
                     }
                     default -> throw new GdxRuntimeException("Unsupported tile object class: '" + objectClass
                         + "' (object ID: " + tmObj.getProperties().get("id") + ")");
