@@ -3,6 +3,7 @@ package io.mindspice.lute.engine.tiled;
 import com.badlogic.gdx.files.FileHandle;
 import com.badlogic.gdx.graphics.Texture;
 import com.badlogic.gdx.graphics.g2d.TextureRegion;
+import com.badlogic.gdx.maps.objects.EllipseMapObject;
 import com.badlogic.gdx.maps.objects.PointMapObject;
 import com.badlogic.gdx.maps.objects.RectangleMapObject;
 import com.badlogic.gdx.maps.tiled.BaseTiledMapLoader;
@@ -37,6 +38,7 @@ public final class MapTriggersTest {
             classDefaultsAndCoordinates();
             groupedLayers();
             detectorShapes();
+            collisionEllipsesMatchDetectors();
             invalidGeometry();
             invalidProperties();
             invalidNamesAndReferences();
@@ -226,6 +228,54 @@ public final class MapTriggersTest {
                 nativeCoverage(collinear, rotated(96, 528, 64, 544, rotation), true);
             }
         }
+    }
+
+    private static void collisionEllipsesMatchDetectors() {
+        for (float rotation : new float[]{0, 90, 33}) {
+            for (float height : new float[]{64, 62, 32}) {
+                var object = new EllipseMapObject(64, 512, 64, height);
+                object.getProperties().put("rotation", rotation);
+                var detector = DetectorGeometryParser.parse(object, rotation);
+                var collision = TiledPhysics.fixtureDefOf(object, new Vector2(1, 1), Vector2.Zero);
+                try {
+                    if (height == 64) {
+                        check(collision.shape instanceof CircleShape, "True circle uses a circle fixture");
+                        var circle = (CircleShape) collision.shape;
+                        near(circle.getRadius(), detector.radius(), "Circle collision radius matches detector");
+                        near(circle.getPosition().x, detector.center().x, "Circle collision center x matches detector");
+                        near(circle.getPosition().y, detector.center().y, "Circle collision center y matches detector");
+                    } else {
+                        check(collision.shape instanceof PolygonShape, "Noncircular ellipse uses a polygon fixture");
+                        var polygon = (PolygonShape) collision.shape;
+                        check(polygon.getVertexCount() == 8, "Ellipse collision has eight vertices");
+                        var expected = detector.polygons().getFirst();
+                        var vertex = new Vector2();
+                        for (int i = 0; i < polygon.getVertexCount(); i++) {
+                            polygon.getVertex(i, vertex);
+                            boolean found = false;
+                            for (int j = 0; j < expected.length; j += 2) {
+                                if (Math.abs(vertex.x - expected[j]) < .0001f
+                                    && Math.abs(vertex.y - expected[j + 1]) < .0001f) { found = true; }
+                            }
+                            check(found, "Ellipse collision vertex matches detector: " + vertex);
+                        }
+                    }
+                } finally { collision.shape.dispose(); }
+            }
+        }
+        var circle = new EllipseMapObject(64, 512, 64, 64);
+        var scaled = TiledPhysics.fixtureDefOf(circle, new Vector2(2, 1), new Vector2(1, 2));
+        try {
+            check(scaled.shape instanceof PolygonShape, "Nonuniformly scaled circle uses an ellipse fixture");
+            var polygon = (PolygonShape) scaled.shape;
+            var vertex = new Vector2();
+            boolean found = false;
+            for (int i = 0; i < polygon.getVertexCount(); i++) {
+                polygon.getVertex(i, vertex);
+                if (Math.abs(vertex.x - 7) < .0001f && Math.abs(vertex.y - 15) < .0001f) { found = true; }
+            }
+            check(found, "Ellipse collision applies scaling and relative offset");
+        } finally { scaled.shape.dispose(); }
     }
 
     private static String detectorProperties(String type) {

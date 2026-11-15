@@ -59,33 +59,28 @@ public class TiledPhysics {
         float w = ellipse.width;
         float h = ellipse.height;
 
-        float ellipseX = x * GameConsts.UNIT_SCALE * scaling.x - relativeTo.x;
-        float ellipseY = y * GameConsts.UNIT_SCALE * scaling.y - relativeTo.y;
-        float ellipseW = w * GameConsts.UNIT_SCALE * scaling.x * 0.5f;
-        float ellipseH = h * GameConsts.UNIT_SCALE * scaling.y * 0.5f;
+        float rotation = mapObject.getProperties().get("rotation", 0f, Number.class).floatValue();
+        float centerX = x + w * 0.5f;
+        float centerY = y + h * 0.5f;
+        float pivotY = y + h;
 
-        if (MathUtils.isEqual(ellipseW, ellipseH, 0.1f)) {
-            // width and height are equal -> return a circle shape
+        if (w == h && Math.abs(scaling.x) == Math.abs(scaling.y)) {
             CircleShape shape = new CircleShape();
-            shape.setPosition(new Vector2(ellipseX + ellipseW, ellipseY + ellipseH));
-            shape.setRadius(ellipseW);
+            var center = new Vector2(centerX - x, centerY - pivotY).rotateDeg(-rotation).add(x, pivotY);
+            center.scl(GameConsts.UNIT_SCALE).scl(scaling).sub(relativeTo);
+            shape.setPosition(center);
+            shape.setRadius(w * 0.5f * GameConsts.UNIT_SCALE * Math.abs(scaling.x));
             return fixtureDefOfMapObjectAndShape(mapObject, shape);
         }
 
-        // width and height are not equal -> return an ellipse shape (=polygon with 'numVertices' vertices)
-        // PolygonShape only supports 8 vertices
-        // ChainShape supports more but does not properly collide in some scenarios
-        final int numVertices = 8;
-        float angleStep = MathUtils.PI2 / numVertices;
-        Vector2[] vertices = new Vector2[numVertices];
-
-        for (int vertexIdx = 0; vertexIdx < numVertices; vertexIdx++) {
-            float angle = vertexIdx * angleStep;
-            float offsetX = ellipseW * MathUtils.cos(angle);
-            float offsetY = ellipseH * MathUtils.sin(angle);
-            vertices[vertexIdx] = new Vector2(ellipseX + ellipseW + offsetX, ellipseY + ellipseH + offsetY);
+        Vector2[] vertices = new Vector2[8];
+        for (int i = 0; i < vertices.length; i++) {
+            double angle = i * Math.PI / 4;
+            float pointX = centerX + (float) Math.cos(angle) * w * 0.5f;
+            float pointY = centerY + (float) Math.sin(angle) * h * 0.5f;
+            vertices[i] = new Vector2(pointX - x, pointY - pivotY).rotateDeg(-rotation).add(x, pivotY)
+                .scl(GameConsts.UNIT_SCALE).scl(scaling).sub(relativeTo);
         }
-
         PolygonShape shape = new PolygonShape();
         shape.set(vertices);
         return fixtureDefOfMapObjectAndShape(mapObject, shape);
