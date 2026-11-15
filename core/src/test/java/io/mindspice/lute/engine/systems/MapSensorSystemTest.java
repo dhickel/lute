@@ -57,12 +57,23 @@ public final class MapSensorSystemTest {
         var previousApp = Gdx.app;
         Gdx.app = (Application) Proxy.newProxyInstance(Application.class.getClassLoader(),
             new Class<?>[]{Application.class}, (proxy, method, values) -> {
-                if ((method.getName().equals("log") || method.getName().equals("error")) && values != null) {
+                if ((method.getName().equals("log") || method.getName().equals("error")
+                    || method.getName().equals("debug")) && values != null) {
                     LOGS.add(values[0] + ": " + values[1]);
                 }
                 return null;
             });
         try {
+            var events = new EventSystem();
+            var player = new Entity();
+            LOGS.clear();
+            events.emitEvent(new Event.Sensor.Enter("TestSensor", MapTriggers.SensorType.GENERAL, player));
+            events.emitEvent(new Event.Sensor.Exit("TestSensor", MapTriggers.SensorType.GENERAL, player));
+            events.update(0);
+            check(LOGS.stream().anyMatch(log -> log.startsWith("Sensor: Enter[") && log.contains("TestSensor")),
+                "Sensor entry is logged without subscribers");
+            check(LOGS.stream().anyMatch(log -> log.startsWith("Sensor: Exit[") && log.contains("TestSensor")),
+                "Sensor exit is logged without subscribers");
             nativeContactsAndFixtureDeduplication();
             onlyPlayerPhysicalFixtures();
             sameMapTeleport("THIS");

@@ -61,8 +61,10 @@ public final class MapTriggersTest {
         TiledMap map = new PropertyLoader().sample();
         try {
             var triggers = MapTriggers.parse(map);
-            check(triggers.sensors().size() == 1 && triggers.points().size() == 2 && triggers.areas().isEmpty(),
-                "Sample must contain a teleport, player point, and destination point");
+            check(triggers.sensors().size() == 2 && triggers.points().size() == 2 && triggers.areas().isEmpty(),
+                "Sample must contain a test sensor, teleport, player point, and destination point");
+            var testSensor = triggers.sensors().stream().filter(s -> s.name().equals("TestSensor")).findFirst().orElseThrow();
+            check(testSensor.type() == SensorType.GENERAL && testSensor.targetMap() == null, "Sample test sensor is general");
             var player = triggers.points().stream().filter(p -> p.type() == SpawnType.PLAYER).findFirst().orElseThrow();
             check(player.name().equals("PlayerSpawn"), "Sample player marker name is preserved");
             near(player.position().x, 302.248f, "Sample player x stays in pixels");

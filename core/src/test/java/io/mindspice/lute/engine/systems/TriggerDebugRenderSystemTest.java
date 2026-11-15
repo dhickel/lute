@@ -198,19 +198,33 @@ public final class TriggerDebugRenderSystemTest {
         var system = attach(world, renderer, map);
         try {
             system.update(0);
-            check(renderer.lines.size() == 8, "Saved map must render Teleport and both spawn-point crosses");
+            check(renderer.lines.size() == 12, "Saved map must render both sensor rectangles and spawn-point crosses");
             float bottom = 640f - 275.333f - 35.3333f;
             float right = 432.667f + 34.6667f;
             float top = 640f - 275.333f;
-            mapLine(renderer, 0, 432.667f, bottom, right, bottom);
-            mapLine(renderer, 1, right, bottom, right, top);
-            mapLine(renderer, 2, right, top, 432.667f, top);
-            mapLine(renderer, 3, 432.667f, top, 432.667f, bottom);
             float spawnY = 640f - 561.672f;
-            mapLine(renderer, 4, 302.248f - 4, spawnY, 302.248f + 4, spawnY);
-            mapLine(renderer, 5, 302.248f, spawnY - 4, 302.248f, spawnY + 4);
-            mapLine(renderer, 6, 556, 240, 564, 240);
-            mapLine(renderer, 7, 560, 236, 560, 244);
+            float sensorBottom = 640f - 500 - 48;
+            float sensorTop = 640f - 500;
+            float[][] expectedLines = {
+                {340, sensorBottom, 404, sensorBottom},
+                {404, sensorBottom, 404, sensorTop},
+                {404, sensorTop, 340, sensorTop},
+                {340, sensorTop, 340, sensorBottom},
+                {432.667f, bottom, right, bottom},
+                {right, bottom, right, top},
+                {right, top, 432.667f, top},
+                {432.667f, top, 432.667f, bottom},
+                {302.248f - 4, spawnY, 302.248f + 4, spawnY},
+                {302.248f, spawnY - 4, 302.248f, spawnY + 4},
+                {556, 240, 564, 240},
+                {560, 236, 560, 244}
+            };
+            var actual = new ArrayList<>(renderer.lines);
+            float scale = GameConsts.UNIT_SCALE;
+            for (var line : expectedLines) {
+                removeLine(actual, line[0] * scale, line[1] * scale, line[2] * scale, line[3] * scale);
+            }
+            check(actual.isEmpty(), "Unexpected saved-map trigger lines");
         } finally {
             system.dispose();
             world.dispose();

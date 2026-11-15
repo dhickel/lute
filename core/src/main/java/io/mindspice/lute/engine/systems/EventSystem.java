@@ -75,6 +75,9 @@ public class EventSystem extends EntitySystem {
 
         for (int i = 0; i < eventCount; ++i) {
             Event event = eventQueue[i];
+            if (event instanceof Event.Sensor.Enter || event instanceof Event.Sensor.Exit) {
+                Gdx.app.debug("Sensor", event.toString());
+            }
 
             var listenerList = listeners.get(event.getClass());
             if (listenerList == null || listenerList.isEmpty()) { continue; }
