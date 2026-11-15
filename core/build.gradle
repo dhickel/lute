@@ -73,3 +73,21 @@ tasks.register('triggerDebugRenderSystemTest', JavaExec) {
   workingDir = rootProject.projectDir
 }
 check.dependsOn triggerDebugRenderSystemTest
+
+tasks.register('assetServiceTest', JavaExec) {
+  dependsOn testClasses
+  classpath = sourceSets.test.runtimeClasspath
+  mainClass = 'io.mindspice.lute.engine.assets.AssetServiceTest'
+  workingDir = rootProject.projectDir
+}
+check.dependsOn assetServiceTest
+
+tasks.register('assetStorageBenchmark', JavaExec) {
+  dependsOn testClasses
+  classpath = sourceSets.test.runtimeClasspath
+  mainClass = 'io.mindspice.lute.engine.assets.AssetStorageBenchmark'
+  workingDir = rootProject.projectDir
+  if (project.hasProperty('assetBenchmarkArgs')) {
+    args project.property('assetBenchmarkArgs').toString().trim().split(/\s+/)
+  }
+}

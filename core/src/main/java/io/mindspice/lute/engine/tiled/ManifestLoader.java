@@ -16,6 +16,9 @@ public class ManifestLoader {
     public static final JsonMapper mapper = JsonMapper.builder().build();
 
     public static MapAssets parseMapManifest(String mapName) {
+        if (mapName == null || mapName.isBlank()) {
+            throw new IllegalArgumentException("Map manifest name must not be null or blank");
+        }
         String filePath = GameConsts.MAPS_PATH + mapName + ".manifest.json";
 
         AssetManifest manifest = null;
@@ -25,17 +28,17 @@ public class ManifestLoader {
             throw new GdxRuntimeException("Failed to read file at path: " + filePath, e);
         }
 
-        Asset.Map mapAsset = Asset.Map.of(manifest.mapAsset());
+        Asset.Map mapAsset = Asset.Map.of(mapName, manifest.mapAsset());
 
         Map<String, Asset.Atlas> atlasAssets = manifest.atlasAssets().entrySet().stream()
             .collect(
-                Collectors.toMap(Map.Entry::getKey, entry -> Asset.Atlas.of(entry.getValue())));
+                Collectors.toMap(Map.Entry::getKey, entry -> Asset.Atlas.of(entry.getKey(), entry.getValue())));
 
         Map<String, Asset.Music> musicAssets = manifest.musicAssets().entrySet().stream()
-            .collect(Collectors.toMap(Map.Entry::getKey, entry -> Asset.Music.of(entry.getValue())));
+            .collect(Collectors.toMap(Map.Entry::getKey, entry -> Asset.Music.of(entry.getKey(), entry.getValue())));
 
         Map<String, Asset.Sound> soundAsset = manifest.soundAssets().entrySet().stream()
-            .collect(Collectors.toMap(Map.Entry::getKey, entry -> Asset.Sound.of(entry.getValue())));
+            .collect(Collectors.toMap(Map.Entry::getKey, entry -> Asset.Sound.of(entry.getKey(), entry.getValue())));
 
         return new MapAssets(mapAsset, manifest.startMusic(), atlasAssets, musicAssets, soundAsset);
     }

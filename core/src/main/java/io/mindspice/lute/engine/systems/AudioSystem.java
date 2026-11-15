@@ -2,11 +2,10 @@ package io.mindspice.lute.engine.systems;
 
 import com.badlogic.ashley.core.EntitySystem;
 import com.badlogic.gdx.audio.Music;
+import com.badlogic.gdx.audio.Sound;
 import com.badlogic.gdx.math.MathUtils;
 import com.badlogic.gdx.utils.GdxRuntimeException;
-import io.mindspice.lute.engine.assets.Asset;
 import io.mindspice.lute.engine.assets.AssetService;
-import io.mindspice.lute.engine.assets.MapAssets;
 import io.mindspice.lute.engine.events.Event;
 import io.mindspice.lute.engine.events.EventListener;
 
@@ -17,8 +16,7 @@ public class AudioSystem extends EntitySystem implements EventListener {
 
     private final AssetService assetService;
     private Music currMusic;
-    private MapAssets currMapAssets;
-    private Asset.Music currMusicAsset;
+    private String currMusicId;
     private float musicVolume = 0.5f;
     private float soundVolume = 0.33f;
 
@@ -26,23 +24,23 @@ public class AudioSystem extends EntitySystem implements EventListener {
     public AudioSystem(AssetService assetService) {
         this.assetService = assetService;
         this.currMusic = null;
-        this.currMusicAsset = null;
-        this.currMapAssets = null;
+        this.currMusicId = null;
 
 
         eventSubscriber.accept(Event.Map.Load.class, this::onMapLoad);
 
-        eventSubscriber.accept(Event.Sound.Play.class, play -> this.playSound(play.sound()));
-        eventSubscriber.accept(Event.Sound.PlayAtVolume.class, pav -> this.playSoundAtVol(pav.sound(), pav.volume()));
+        eventSubscriber.accept(Event.Sound.Play.class, play -> this.playSound(play.soundId()));
+        eventSubscriber.accept(Event.Sound.PlayAtVolume.class, pav -> this.playSoundAtVol(pav.soundId(), pav.volume()));
 
-        eventSubscriber.accept(Event.Player.Moved.class, _ -> this.playSound(currMapAssets.soundAssets().get("SWORD_HIT")));
+        eventSubscriber.accept(Event.Player.Moved.class, _ -> this.playSound("SWORD_HIT"));
 
     }
 
 
     public void setMusicVolume(float musicVolume) {
         this.musicVolume = MathUtils.clamp(musicVolume, 0f, 1f);
-        if (currMusic != null) {
+        if (currMusicId != null && assetService.isLoaded(Music.class, currMusicId)
+            && assetService.get(Music.class, currMusicId) == currMusic) {
             currMusic.setVolume(this.musicVolume);
         }
     }
@@ -60,44 +58,48 @@ public class AudioSystem extends EntitySystem implements EventListener {
     }
 
     private void onMapLoad(Event.Map.Load load) {
-        this.currMapAssets = load.mapAssets();
-
-        String mapMusic = currMapAssets.startMusic();
-        if (mapMusic.equals("RANDOM")) {
-            currMapAssets.musicAssets().values().stream()
-                .skip(ThreadLocalRandom.current().nextInt(currMapAssets.musicAssets().size()))
+        var mapAssets = load.mapAssets();
+        String mapMusic = mapAssets.startMusic();
+        if ("RANDOM".equals(mapMusic)) {
+            if (mapAssets.musicAssets().isEmpty()) {
+                throw new GdxRuntimeException("No music assets available for RANDOM selection");
+            }
+            mapAssets.musicAssets().values().stream()
+                .skip(ThreadLocalRandom.current().nextInt(mapAssets.musicAssets().size()))
                 .findFirst()
-                .ifPresent(this::playMusic);
+                .ifPresent(music -> playMusic(music.id()));
         } else {
-            Asset.Music music = currMapAssets.musicAssets().get(mapMusic);
-            playMusic(music);
+            var music = mapAssets.musicAssets().get(mapMusic);
             if (music == null) {
                 throw new GdxRuntimeException("Failed to find music asset for key: " + mapMusic);
             }
+            playMusic(music.id());
         }
     }
 
-    public void playMusic(Asset.Music musicAsset) {
-        if (currMusicAsset == musicAsset) { return; }
+    public void playMusic(String musicId) {
+        Music music = assetService.get(Music.class, musicId);
+        if (music == currMusic && musicId.equals(currMusicId)) { return; }
 
-        if (this.currMusic != null) {
+        if (currMusic != null && assetService.isLoaded(Music.class, currMusicId)
+            && assetService.get(Music.class, currMusicId) == currMusic) {
             currMusic.stop();
         }
 
-        currMusic = assetService.get(musicAsset);
-        currMusicAsset = musicAsset;
+        currMusic = music;
+        currMusicId = musicId;
 
         currMusic.setLooping(true);
         currMusic.setVolume(musicVolume);
         currMusic.play();
     }
 
-    public void playSound(Asset.Sound soundAsset) {
-        assetService.get(soundAsset).play(soundVolume);
+    public void playSound(String soundId) {
+        assetService.get(Sound.class, soundId).play(soundVolume);
     }
 
-    public void playSoundAtVol(Asset.Sound soundAsset, float volume) {
+    public void playSoundAtVol(String soundId, float volume) {
         float scaledVolume = soundVolume * Math.clamp(volume, 0f, 1f);
-        assetService.get(soundAsset).play(scaledVolume);
+        assetService.get(Sound.class, soundId).play(scaledVolume);
     }
 }

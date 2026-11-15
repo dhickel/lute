@@ -2,9 +2,9 @@ package io.mindspice.lute.engine.systems;
 
 import com.badlogic.ashley.core.Entity;
 import com.badlogic.ashley.core.EntitySystem;
-import com.badlogic.gdx.Gdx;
 import com.badlogic.gdx.graphics.Color;
 import com.badlogic.gdx.graphics.g2d.Animation;
+import com.badlogic.gdx.graphics.g2d.TextureAtlas;
 import com.badlogic.gdx.graphics.g2d.TextureRegion;
 import com.badlogic.gdx.maps.tiled.objects.TiledMapTileMapObject;
 import com.badlogic.gdx.math.MathUtils;
@@ -74,7 +74,7 @@ public class EntityFactory extends EntitySystem {
     public Entity getPhysicObjectEntity(PhysicObjectProps props, TiledMapTileMapObject object, MapAssets mapAssets) {
         var atlas = resolveAtlas(props.atlasAsset(), mapAssets);
         String assetKey = props.assetKey();
-        var region = assetService.get(atlas).findRegion(assetKey);
+        var region = assetService.get(TextureAtlas.class, atlas.id()).findRegion(assetKey);
         if (region == null) {
             throw new GdxRuntimeException("No atlas region found for key: " + assetKey);
         }
@@ -155,15 +155,15 @@ public class EntityFactory extends EntitySystem {
         }
         if (keyFrames <= 0) {
             throw new GdxRuntimeException("Animation keyFrames must be positive: " + keyFrames
-                + " (key: " + animationKey + ", atlas: " + atlas.descriptor().fileName + ")");
+                + " (key: " + animationKey + ", atlas: " + atlas.path() + ")");
         }
-        var regions = assetService.get(atlas).findRegions(animationKey);
+        var regions = assetService.get(TextureAtlas.class, atlas.id()).findRegions(animationKey);
         if (regions.isEmpty()) {
             throw new GdxRuntimeException("No atlas regions found for key: " + animationKey
-                + " (atlas: " + atlas.descriptor().fileName + ")");
+                + " (atlas: " + atlas.path() + ")");
         }
         Animation<TextureRegion> animation = new Animation<>(1f / keyFrames, regions, Animation.PlayMode.LOOP);
-        var anim2d = new Animation2D(atlas, atlasKey, animType, Animation.PlayMode.LOOP, speed, keyFrames);
+        var anim2d = new Animation2D(atlas.id(), atlasKey, animType, Animation.PlayMode.LOOP, speed, keyFrames);
         anim2d.setAnimation(animation, facing);
         return anim2d;
     }

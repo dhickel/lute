@@ -49,6 +49,7 @@ public final class CombatSystemTest {
         Box2D.init();
 
         run("factory internal JSON and real atlas animation integration", CombatSystemTest::factoryIntegration);
+        run("logical atlas reload and frame-duration cache isolation", CombatSystemTest::atlasReload);
         run("invalid combat data", CombatSystemTest::invalidData);
         run("native-unsafe bounds rejected before JNI", CombatSystemTest::unsafeGeometry);
         run("shape bounds, rotations and native polygons", CombatSystemTest::shapeGeometry);
@@ -113,7 +114,10 @@ public final class CombatSystemTest {
             atlas.addRegion(region.name, texture, region.left, region.top, region.width, region.height).index = region.index;
         }
         var assets = new AssetService(FileHandle::new) {
-            @Override @SuppressWarnings("unchecked") public <T> T get(Asset<T> asset) { return (T) atlas; }
+            @Override public <T> T get(Class<T> type, String id) {
+                check(type == TextureAtlas.class && "OBJECTS".equals(id), "Factory resolves atlas by class and logical ID");
+                return type.cast(atlas);
+            }
         };
         var input = new InputManager(InputMap.of(Pair.of(Input.Keys.SPACE, InputAction.ATTACK)));
         try {
@@ -126,8 +130,8 @@ public final class CombatSystemTest {
             engine.addSystem(new AnimationSystem(assets));
             var factory = new EntityFactory(world, assets, input);
             engine.addSystem(factory);
-            var atlasAsset = Asset.Atlas.of("objects.atlas");
-            var mapAssets = new MapAssets(Asset.Map.of("test_tiled.tmx"), null,
+            var atlasAsset = Asset.Atlas.of("OBJECTS", "objects.atlas");
+            var mapAssets = new MapAssets(Asset.Map.of("TEST", "test_tiled.tmx"), null,
                 Map.of("OBJECTS", atlasAsset), Map.of(), Map.of());
             var props = new PlayerCharProps("IDLE", 1, 8, "OBJECTS", "player");
             var dataField = io.mindspice.lute.engine.GameCore.class.getDeclaredField("gameData");
@@ -165,6 +169,7 @@ public final class CombatSystemTest {
             vector(new Vector2(9, 19), Physic.MAPPER.get(player).getBody().getPosition(), "Factory sprite body origin");
             near(4, Move.MAPPER.get(player).getMaxSpeed(), "Factory loads player movement speed");
             var animation = Animation2D.MAPPER.get(player);
+            equal("OBJECTS", animation.getAtlasId(), "Factory stores logical atlas ID, not its filename");
             for (var facing : Facing.Direction.values()) {
                 Facing.MAPPER.get(player).setDirection(facing);
                 engine.update(0);
@@ -193,6 +198,83 @@ public final class CombatSystemTest {
             assets.dispose();
             Gdx.files = previousFiles;
         }
+    }
+
+    private static void atlasReload() {
+        var first = new TextureAtlas();
+        var firstRegion = first.addRegion("loop", new DimensionTexture(16, 16), 0, 0, 16, 16);
+        var second = new TextureAtlas();
+        var secondRegion = second.addRegion("loop", new DimensionTexture(32, 32), 0, 0, 32, 32);
+        TextureAtlas[] loaded = {first};
+        var assets = new AssetService(FileHandle::new) {
+            @Override public <T> T get(Class<T> type, String id) {
+                if (type != TextureAtlas.class || !"OBJECTS".equals(id) || loaded[0] == null) {
+                    throw new IllegalStateException("Atlas is not loaded: " + id);
+                }
+                return type.cast(loaded[0]);
+            }
+            @Override public void unload(Class<?> type, String id) {
+                get(type, id);
+                loaded[0].dispose();
+                loaded[0] = null;
+            }
+        };
+        var engine = new Engine();
+        var system = new AnimationSystem(assets);
+        engine.addSystem(system);
+        var slow = animationEntity(8);
+        var fast = animationEntity(16);
+        engine.addEntity(slow);
+        engine.addEntity(fast);
+        try {
+            engine.update(0);
+            var slowAnimation = Animation2D.MAPPER.get(slow);
+            var fastAnimation = Animation2D.MAPPER.get(fast);
+            near(1f / 8, slowAnimation.getAnimation().getFrameDuration(), "Slow entity retains frame duration");
+            near(1f / 16, fastAnimation.getAnimation().getFrameDuration(), "Fast entity has a distinct cache entry");
+            check(Graphic.MAPPER.get(slow).getRegion().getTexture() == firstRegion.getTexture(),
+                "Initial animation uses the first atlas");
+            var originalAnimation = slowAnimation.getAnimation();
+            engine.update(.125f);
+            check(slowAnimation.getAnimation() == originalAnimation, "Unchanged loaded atlas reuses cached animation");
+            near(.125f, slowAnimation.incAndGetStateTime(0), "Unchanged atlas advances rather than resetting time");
+            assets.unload(TextureAtlas.class, "OBJECTS");
+            try {
+                engine.update(0);
+                throw new AssertionError("An unloaded atlas must not render cached disposed regions");
+            } catch (IllegalStateException expected) {
+                check(expected.getMessage().contains("OBJECTS"), "Unloaded lookup identifies the logical ID");
+            }
+            loaded[0] = second;
+            check(!slowAnimation.isDirty(), "Reload regression must not rely on a dirty component");
+            engine.update(0);
+            check(slowAnimation.getAnimation() != originalAnimation, "Unchanged component rebuilds after atlas reload");
+            check(Graphic.MAPPER.get(slow).getRegion().getTexture() == secondRegion.getTexture(),
+                "Reloaded animation uses the new atlas texture");
+            check(Graphic.MAPPER.get(fast).getRegion().getTexture() == secondRegion.getTexture(),
+                "Every entity refreshes its atlas identity");
+            near(1f / 16, fastAnimation.getAnimation().getFrameDuration(), "Reload preserves per-entity frame duration");
+            near(0, slowAnimation.incAndGetStateTime(0), "Reload resets playback time");
+            var cacheField = AnimationSystem.class.getDeclaredField("animationCache");
+            cacheField.setAccessible(true);
+            var cache = (Map<?, ?>) cacheField.get(system);
+            equal(2, cache.size(), "Reload purges stale atlas cache identities");
+            check(cache.keySet().stream().allMatch(key -> ((AnimationSystem.CacheKey) key).atlas() == second),
+                "Cache retains only current atlas regions");
+        } catch (ReflectiveOperationException failure) {
+            throw new AssertionError("Cannot inspect atlas cache identities", failure);
+        } finally {
+            engine.removeAllEntities();
+            if (loaded[0] != null) { loaded[0].dispose(); }
+            assets.dispose();
+        }
+    }
+
+    private static Entity animationEntity(int frames) {
+        return new Entity()
+            .add(new Animation2D("OBJECTS", "loop", Animation2D.AnimationType.DEFAULT, Animation.PlayMode.LOOP, 1, frames))
+            .add(new Facing(Facing.Direction.DOWN))
+            .add(new Graphic(new TextureRegion(), Color.WHITE));
     }
 
     private static void invalidData() {
@@ -774,7 +856,15 @@ public final class CombatSystemTest {
     }
 
     private static final class FakeAnimationSystem extends AnimationSystem {
-        FakeAnimationSystem() { super(null); }
+        private static final TextureAtlas ATLAS = new TextureAtlas();
+
+        FakeAnimationSystem() {
+            super(new AssetService(FileHandle::new) {
+                @Override public <T> T get(Class<T> type, String id) {
+                    return type.cast(ATLAS);
+                }
+            });
+        }
 
         @Override public void updateAnimation(Animation2D component, Facing.Direction facing) {
             int count = component.getType() == Animation2D.AnimationType.ATTACK ? 4 : 6;
@@ -836,7 +926,7 @@ public final class CombatSystemTest {
             player.add(new Controller());
             player.add(new Combat(weapon));
             player.add(new Health(100));
-            player.add(new Animation2D(Asset.Atlas.of("objects.atlas"), "player", Animation2D.AnimationType.IDLE,
+            player.add(new Animation2D("OBJECTS", "player", Animation2D.AnimationType.IDLE,
                 Animation.PlayMode.LOOP, 1, 8));
             player.add(new Graphic(new TextureRegion(), Color.WHITE));
             player.add(new AnimationPlayer(player));

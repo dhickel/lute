@@ -390,10 +390,12 @@ public final class TriggerDebugRenderSystemTest {
         GeometryLoader() { super(path -> new FileHandle("assets/" + path)); }
 
         TiledMap loadSavedMap() {
-            var asset = io.mindspice.lute.engine.assets.Asset.Map.of("test_tiled.tmx");
-            var file = resolve(asset.descriptor().fileName);
+            var asset = io.mindspice.lute.engine.assets.Asset.Map.of("TEST", "test_tiled.tmx");
+            var file = resolve(asset.path());
             root = xml.parse(file);
-            return loadTiledMap(file, (BaseTiledMapLoader.Parameters) asset.descriptor().params, imagePath -> {
+            var parameters = new BaseTiledMapLoader.Parameters();
+            parameters.projectFilePath = GameConsts.PROJECT_PATH;
+            return loadTiledMap(file, parameters, imagePath -> {
                 try {
                     var image = javax.imageio.ImageIO.read(new java.io.File(imagePath));
                     return new TextureRegion(new DimensionTexture(image.getWidth(), image.getHeight()));
