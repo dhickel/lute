@@ -13,37 +13,32 @@
         {
             "color": "#ffa0a0a4",
             "drawFill": true,
+            "id": 6,
+            "members": [
+                { "name": "speed", "type": "float", "value": 1 },
+                { "name": "atlasKey", "type": "string", "value": "NONE" },
+                { "name": "soundFrame", "type": "int", "value": 0 },
+                { "name": "frameInterval", "type": "float", "value": 0.1 }
+            ],
+            "name": "Animation",
+            "type": "class",
+            "useAs": ["property"]
+        },
+        {
+            "color": "#ffa0a0a4",
+            "drawFill": true,
             "id": 4,
             "members": [
                 {
-                    "name": "animation",
+                    "name": "animationType",
                     "type": "string",
                     "value": "DEFAULT"
                 },
                 {
-                    "name": "speed",
-                    "type": "float",
-                    "value": 1
-                },
-                {
-                    "name": "atlasAsset",
-                    "type": "string",
-                    "value": "NULL"
-                },
-                {
-                    "name": "atlas_key",
-                    "type": "string",
-                    "value": "NULL"
-                },
-                {
-                    "name": "frame_interval",
-                    "type": "float",
-                    "value": 0.1
-                },
-                {
-                    "name": "sound_frame",
-                    "type": "int",
-                    "value": 0
+                    "name": "animation",
+                    "type": "class",
+                    "propertyType": "Animation",
+                    "value": {}
                 }
             ],
             "name": "AnimatedPhysicObject",
@@ -65,11 +60,6 @@
             "drawFill": true,
             "id": 5,
             "members": [
-                {
-                    "name": "atlasAsset",
-                    "type": "string",
-                    "value": "NULL"
-                },
                 {
                     "name": "atlasKey",
                     "type": "string",
@@ -96,14 +86,9 @@
             "id": 3,
             "members": [
                 {
-                    "name": "animation",
+                    "name": "animationType",
                     "type": "string",
                     "value": "IDLE"
-                },
-                {
-                    "name": "atlasAsset",
-                    "type": "string",
-                    "value": "OBJECTS"
                 }
             ],
             "name": "PlayerCharacter",

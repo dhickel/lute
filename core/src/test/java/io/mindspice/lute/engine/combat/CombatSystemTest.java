@@ -289,8 +289,8 @@ public final class CombatSystemTest {
             var combat = new CombatSystem(world); engine.addSystem(combat);
             var factory = new EntityFactory(world, assets, input); engine.addSystem(factory);
             var map = new MapAssets(Asset.Map.of("test", "test_tiled.tmx"), "",
-                Map.of("OBJECTS", Asset.Atlas.of("OBJECTS", "objects.atlas")), Map.of(), Map.of());
-            var props = new PlayerCharProps("IDLE", "OBJECTS");
+                Asset.Atlas.of("OBJECTS", "objects.atlas"), Map.of(), Map.of());
+            var props = new PlayerCharProps("IDLE");
             var original = data.weaponsData().requireWeapon(data.playerData().equippedWeapon());
             for (boolean hit : new boolean[]{true, false}) {
                 for (int invalid : new int[]{4, Integer.MAX_VALUE}) {

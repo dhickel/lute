@@ -390,7 +390,7 @@ public final class AssetServiceTest {
             check(map.getLayers().get("Objects") != null && map.getLayers().get("Triggers") != null,
                 "Direct map branch must parse the actual map and external tilesets");
             var spawnProperties = map.getLayers().get("Triggers").getObjects().get("PlayerSpawn").getProperties();
-            check("IDLE".equals(spawnProperties.get("animation")),
+            check("IDLE".equals(spawnProperties.get("animationType")),
                 "Map loader must apply class defaults from GameConsts.PROJECT_PATH to the saved point");
             check(spawnProperties.get("keyFrames") == null,
                 "Player spawn must not retain legacy keyFrames");

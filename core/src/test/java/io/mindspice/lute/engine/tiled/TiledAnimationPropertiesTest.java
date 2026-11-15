@@ -3,10 +3,12 @@ package io.mindspice.lute.engine.tiled;
 import com.badlogic.gdx.files.FileHandle;
 import com.badlogic.gdx.graphics.Texture;
 import com.badlogic.gdx.graphics.g2d.TextureRegion;
+import com.badlogic.gdx.maps.MapProperties;
 import com.badlogic.gdx.maps.tiled.BaseTiledMapLoader;
 import com.badlogic.gdx.maps.tiled.TiledMap;
 import com.badlogic.gdx.maps.tiled.objects.TiledMapTileMapObject;
 import com.badlogic.gdx.utils.JsonReader;
+import com.badlogic.gdx.utils.XmlReader.Element;
 import io.mindspice.lute.engine.assets.Asset;
 import io.mindspice.lute.engine.singletons.GameConsts;
 import io.mindspice.lute.engine.tiled.properties.AnimatedPhysicObjectProps;
@@ -21,13 +23,21 @@ public final class TiledAnimationPropertiesTest {
     public static void main(String[] args) {
         var types = new JsonReader().parse(new FileHandle("assets/game.tiled-project")).get("propertyTypes");
         Set<String> members = new HashSet<>();
+        boolean nested = false;
         for (var type : types) {
-            if ("AnimatedPhysicObject".equals(type.getString("name"))) {
+            if ("Animation".equals(type.getString("name"))) {
                 for (var member : type.get("members")) { members.add(member.getString("name")); }
             }
+            if ("AnimatedPhysicObject".equals(type.getString("name"))) {
+                for (var member : type.get("members")) {
+                    if ("animation".equals(member.getString("name"))) {
+                        nested = "class".equals(member.getString("type")) && "Animation".equals(member.getString("propertyType"));
+                    }
+                }
+            }
         }
-        check(members.containsAll(Set.of("speed", "atlas_key", "sound_frame", "frame_interval"))
-            && !members.contains("keyFrames"), "Tiled animation fields must match shared schema");
+        check(nested && members.equals(Set.of("speed", "atlasKey", "soundFrame", "frameInterval")),
+            "AnimatedPhysicObject must use the shared camelCase Animation class");
         var parameters = new BaseTiledMapLoader.Parameters();
         parameters.projectFilePath = GameConsts.PROJECT_PATH;
         TiledMap map = new PropertyLoader().loadProperties(Asset.Map.of("TEST", "test_tiled.tmx").path(), parameters);
@@ -36,32 +46,45 @@ public final class TiledAnimationPropertiesTest {
             TiledMapTileMapObject tree = null;
             for (var object : map.getLayers().get("Objects").getObjects()) {
                 if (object instanceof TiledMapTileMapObject tile
-                    && "old_tree1/old_tree1".equals(tile.getTile().getProperties().get("atlas_key"))) {
+                    && tile.getTile().getProperties().get("animation", MapProperties.class) != null) {
                     tree = tile;
-                    var data = AnimatedPhysicObjectProps.fromMapObj(tile).animation();
-                    check(data.frameInterval() == .1f && data.speed() == .35f && data.soundFrame() == 0,
-                        "Tree must use authored common animation fields");
+                    var props = AnimatedPhysicObjectProps.fromMapObj(tile);
+                    var data = props.animation();
+                    check(props.animationType().equals("DEFAULT") && data.atlasKey().equals("old_tree1/old_tree1")
+                        && data.frameInterval() == .1f && data.speed() == .35f && data.soundFrame() == 0,
+                        "Tree must use nested authored animation fields");
                     trees++;
                 }
             }
             check(trees == 5, "Expected five animated trees");
             var point = map.getLayers().get("Triggers").getObjects().get("PlayerSpawn");
-            check("OBJECTS".equals(PlayerCharProps.fromMapObj(point).atlasAsset()), "Player atlas source");
-            check(point.getProperties().get("keyFrames") == null, "Player no longer uses keyFrames");
-            tree.getProperties().put("frame_interval", .2f);
+            check("IDLE".equals(PlayerCharProps.fromMapObj(point).animationType()), "Player animation type default");
+            check(point.getProperties().get("keyFrames") == null && point.getProperties().get("atlasAsset") == null,
+                "Player spawn has no legacy atlas or keyFrames");
+            var override = new MapProperties();
+            override.put("speed", 1f); override.put("atlasKey", "other");
+            override.put("soundFrame", 0); override.put("frameInterval", .2f);
+            tree.getProperties().put("animation", override);
             check(AnimatedPhysicObjectProps.fromMapObj(tree).animation().frameInterval() == .2f,
-                "Placement interval overrides tile interval");
-            tree.getProperties().put("frame_interval", 0f);
+                "Placement animation replaces tile animation");
+            override.put("frameInterval", 0f);
             final var selected = tree;
             rejects(() -> AnimatedPhysicObjectProps.fromMapObj(selected));
-            tree.getProperties().remove("frame_interval");
-            tree.getProperties().put("speed", -1f);
-            rejects(() -> AnimatedPhysicObjectProps.fromMapObj(selected));
-            tree.getProperties().remove("speed");
+            tree.getProperties().remove("animation");
             check(AnimatedPhysicObjectProps.fromMapObj(tree).animation().frameInterval() == .1f,
-                "Removing override restores tile interval");
-            tree.getTile().getProperties().remove("frame_interval");
+                "Removing override restores tile animation");
+            tree.getTile().getProperties().remove("animation");
             rejects(() -> AnimatedPhysicObjectProps.fromMapObj(selected));
+            var fixture = new PropertyLoader().loadWithPartialOverride(Asset.Map.of("TEST", "test_tiled.tmx").path(), parameters);
+            try {
+                var overridden = (TiledMapTileMapObject) fixture.getLayers().get("Objects").getObjects().get(1);
+                var actual = AnimatedPhysicObjectProps.fromMapObj(overridden).animation();
+                check(actual.frameInterval() == .2f && actual.speed() == 1f && actual.atlasKey().equals("old_tree1/old_tree1"),
+                    "Partial class override preserves tile fields and explicit class-default values");
+                var other = (TiledMapTileMapObject) fixture.getLayers().get("Objects").getObjects().get(2);
+                check(AnimatedPhysicObjectProps.fromMapObj(other).animation().frameInterval() == .1f,
+                    "Placement overrides must not mutate the shared tile");
+            } finally { fixture.dispose(); }
             System.out.println("TiledAnimationPropertiesTest: passed (no graphics context or game launch)");
         } finally { map.dispose(); }
     }
@@ -76,8 +99,34 @@ public final class TiledAnimationPropertiesTest {
     private static final class PropertyLoader extends FixedTmxMapLoader {
         PropertyLoader() { super(path -> new FileHandle("assets/" + path)); }
         TiledMap loadProperties(String path, BaseTiledMapLoader.Parameters parameters) {
+            return load(path, parameters, false);
+        }
+        TiledMap loadWithPartialOverride(String path, BaseTiledMapLoader.Parameters parameters) {
+            return load(path, parameters, true);
+        }
+        private TiledMap load(String path, BaseTiledMapLoader.Parameters parameters, boolean override) {
             var file = resolve(path);
             root = xml.parse(file);
+            if (override) {
+                for (var object : root.getChildrenByNameRecursively("object")) {
+                    if (!"8".equals(object.getAttribute("id", null))) { continue; }
+                    var properties = new Element("properties", object);
+                    var animation = new Element("property", properties);
+                    animation.setAttribute("name", "animation");
+                    animation.setAttribute("type", "class");
+                    animation.setAttribute("propertytype", "Animation");
+                    var fields = new Element("properties", animation);
+                    var interval = new Element("property", fields);
+                    interval.setAttribute("name", "frameInterval");
+                    interval.setAttribute("type", "float");
+                    interval.setAttribute("value", "0.2");
+                    var speed = new Element("property", fields);
+                    speed.setAttribute("name", "speed");
+                    speed.setAttribute("type", "float");
+                    speed.setAttribute("value", "1.0");
+                    fields.addChild(interval); fields.addChild(speed); animation.addChild(fields); properties.addChild(animation); object.addChild(properties);
+                }
+            }
             return loadTiledMap(file, parameters, imagePath -> {
                 try {
                     var image = ImageIO.read(new java.io.File(imagePath));

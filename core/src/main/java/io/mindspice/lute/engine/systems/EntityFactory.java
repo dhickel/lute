@@ -44,9 +44,9 @@ public class EntityFactory extends EntitySystem {
         var facing = Facing.Direction.RIGHT;
         var data = GameCore.INSTANCE.getGameData();
         var playerAnimation = data.playerData().animation();
-        var atlas = resolveAtlas(props.atlasAsset(), mapAssets);
+        var atlas = mapAssets.atlasAsset();
         var animation = createAnimation(atlas, playerAnimation.atlasKey(),
-            Animation2D.AnimationType.valueOf(props.animation()), playerAnimation.speed(), playerAnimation.frameInterval(), facing);
+            Animation2D.AnimationType.valueOf(props.animationType()), playerAnimation.speed(), playerAnimation.frameInterval(), facing);
         var region = animation.getAnimation().getKeyFrame(0f);
         var transform = createTransform(pixelPosition, region);
         var player = data.playerData();
@@ -81,8 +81,8 @@ public class EntityFactory extends EntitySystem {
     }
 
     public Entity getPhysicObjectEntity(PhysicObjectProps props, TiledMapTileMapObject object, MapAssets mapAssets) {
-        var atlas = resolveAtlas(props.atlasAsset(), mapAssets);
-        String assetKey = props.assetKey();
+        var atlas = mapAssets.atlasAsset();
+        String assetKey = props.atlasKey();
         var region = assetService.get(TextureAtlas.class, atlas.id()).findRegion(assetKey);
         if (region == null) {
             throw new GdxRuntimeException("No atlas region found for key: " + assetKey);
@@ -91,7 +91,7 @@ public class EntityFactory extends EntitySystem {
     }
 
     public Entity getAnimatedPhysicObjectEntity(AnimatedPhysicObjectProps props, TiledMapTileMapObject object, MapAssets mapAssets) {
-        var atlas = resolveAtlas(props.atlasAsset(), mapAssets);
+        var atlas = mapAssets.atlasAsset();
         var type = Animation2D.AnimationType.valueOf(props.animationType());
         var facing = Facing.Direction.DOWN;
         var settings = props.animation();
@@ -102,14 +102,6 @@ public class EntityFactory extends EntitySystem {
         entity.add(new Facing(facing));
         entity.add(animation);
         return entity;
-    }
-
-    private Asset.Atlas resolveAtlas(String atlasId, MapAssets mapAssets) {
-        var atlas = mapAssets.atlasAssets().get(atlasId);
-        if (atlas == null) {
-            throw new GdxRuntimeException("Unknown atlas asset ID: " + atlasId);
-        }
-        return atlas;
     }
 
     private Entity createPhysicObject(TiledMapTileMapObject object, TextureRegion region) {
