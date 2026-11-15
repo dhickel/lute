@@ -24,7 +24,6 @@ import io.mindspice.lute.engine.components.*;
 import io.mindspice.lute.engine.components.Transform;
 import io.mindspice.lute.engine.input.InputManager;
 import io.mindspice.lute.engine.singletons.GameConsts;
-import io.mindspice.lute.engine.tiled.properties.PlayerCharProps;
 import io.mindspice.lute.engine.tiled.properties.PhysicObjectProps;
 import io.mindspice.lute.engine.tiled.properties.AnimatedPhysicObjectProps;
 import io.mindspice.lute.engine.tiled.TiledPhysics;
@@ -40,13 +39,13 @@ public class EntityFactory extends EntitySystem {
         this.inputManager = inputManager;
     }
 
-    public Entity getPlayerEntity(PlayerCharProps props, Vector2 pixelPosition, MapAssets mapAssets) {
+    public Entity getPlayerEntity(Vector2 pixelPosition, MapAssets mapAssets) {
         var facing = Facing.Direction.RIGHT;
         var data = GameCore.INSTANCE.getGameData();
         var playerAnimation = data.playerData().animation();
         var atlas = mapAssets.atlasAsset();
         var animation = createAnimation(atlas, playerAnimation.atlasKey(),
-            Animation2D.AnimationType.valueOf(props.animationType()), playerAnimation.speed(), playerAnimation.frameInterval(), facing);
+            Animation2D.AnimationType.IDLE, playerAnimation.speed(), playerAnimation.frameInterval(), facing);
         var region = animation.getAnimation().getKeyFrame(0f);
         var transform = createTransform(pixelPosition, region);
         var player = data.playerData();
@@ -92,10 +91,9 @@ public class EntityFactory extends EntitySystem {
 
     public Entity getAnimatedPhysicObjectEntity(AnimatedPhysicObjectProps props, TiledMapTileMapObject object, MapAssets mapAssets) {
         var atlas = mapAssets.atlasAsset();
-        var type = Animation2D.AnimationType.valueOf(props.animationType());
         var facing = Facing.Direction.DOWN;
         var settings = props.animation();
-        var animation = createAnimation(atlas, settings.atlasKey(), type,
+        var animation = createAnimation(atlas, settings.atlasKey(), Animation2D.AnimationType.DEFAULT,
             settings.speed(), settings.frameInterval(), facing);
 
         Entity entity = createPhysicObject(object, animation.getAnimation().getKeyFrame(0f));

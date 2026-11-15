@@ -30,11 +30,6 @@
             "id": 4,
             "members": [
                 {
-                    "name": "animationType",
-                    "type": "string",
-                    "value": "DEFAULT"
-                },
-                {
                     "name": "animation",
                     "type": "class",
                     "propertyType": "Animation",
@@ -84,13 +79,7 @@
             "color": "#ffa0a0a4",
             "drawFill": true,
             "id": 3,
-            "members": [
-                {
-                    "name": "animationType",
-                    "type": "string",
-                    "value": "IDLE"
-                }
-            ],
+            "members": [],
             "name": "PlayerCharacter",
             "type": "class",
             "useAs": [

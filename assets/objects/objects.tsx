@@ -3,7 +3,6 @@
  <grid orientation="orthogonal" width="1024" height="1"/>
  <tile id="4">
   <properties>
-   <property name="animationType" value="IDLE"/>
    <property name="atlasKey" value="player"/>
    <property name="hasCamera" type="bool" value="true"/>
    <property name="isAnimated" type="bool" value="true"/>

@@ -10,6 +10,9 @@ import com.badlogic.gdx.graphics.g2d.Animation;
 import com.badlogic.gdx.graphics.g2d.TextureAtlas;
 import com.badlogic.gdx.graphics.g2d.TextureRegion;
 import com.badlogic.gdx.math.Vector2;
+import com.badlogic.gdx.maps.objects.RectangleMapObject;
+import com.badlogic.gdx.maps.tiled.objects.TiledMapTileMapObject;
+import com.badlogic.gdx.maps.tiled.tiles.StaticTiledMapTile;
 import com.badlogic.gdx.physics.box2d.*;
 import com.badlogic.gdx.utils.GdxNativesLoader;
 import io.mindspice.lute.engine.GameCore;
@@ -26,7 +29,7 @@ import io.mindspice.lute.engine.events.Event;
 import io.mindspice.lute.engine.input.*;
 import io.mindspice.lute.engine.singletons.GameConsts;
 import io.mindspice.lute.engine.systems.*;
-import io.mindspice.lute.engine.tiled.properties.PlayerCharProps;
+import io.mindspice.lute.engine.tiled.properties.AnimatedPhysicObjectProps;
 
 import java.lang.reflect.Proxy;
 import java.util.ArrayList;
@@ -290,7 +293,14 @@ public final class CombatSystemTest {
             var factory = new EntityFactory(world, assets, input); engine.addSystem(factory);
             var map = new MapAssets(Asset.Map.of("test", "test_tiled.tmx"), "",
                 Asset.Atlas.of("OBJECTS", "objects.atlas"), Map.of(), Map.of());
-            var props = new PlayerCharProps("IDLE");
+            var tile = new StaticTiledMapTile(new TextureRegion(new DimensionTexture(160, 256)));
+            tile.getObjects().add(new RectangleMapObject(0, 0, 32, 32));
+            var object = new TiledMapTileMapObject(tile, false, false);
+            object.getProperties().put("animationType", "ATTACK"); // Legacy properties cannot select playback.
+            var objectProps = new AnimatedPhysicObjectProps(new AnimationData(.35f, "old_tree1/old_tree1", 0, .1f));
+            var animatedObject = factory.getAnimatedPhysicObjectEntity(objectProps, object, map);
+            check(Animation2D.MAPPER.get(animatedObject).getType() == Animation2D.AnimationType.DEFAULT,
+                "Animated environmental objects start in DEFAULT");
             var original = data.weaponsData().requireWeapon(data.playerData().equippedWeapon());
             for (boolean hit : new boolean[]{true, false}) {
                 for (int invalid : new int[]{4, Integer.MAX_VALUE}) {
@@ -302,14 +312,14 @@ public final class CombatSystemTest {
                         original.sounds(), original.bounds());
                     field.set(GameCore.INSTANCE, new GameData(data.playerData(),
                         new WeaponsData("NONE", Map.of(data.playerData().equippedWeapon(), bad))));
-                    rejects(() -> factory.getPlayerEntity(props, new Vector2(320, 640), map), "Out of range cue frame");
+                    rejects(() -> factory.getPlayerEntity(new Vector2(320, 640), map), "Out of range cue frame");
                 }
             }
             var badBounds = new WeaponsData.WeaponData.Bounds(BoundsType.RECT, 0, 0, .001f, .001f);
             var badGeometry = new WeaponsData.WeaponData(original.stats(), original.animation(), original.sounds(), badBounds);
             field.set(GameCore.INSTANCE, new GameData(data.playerData(),
                 new WeaponsData("NONE", Map.of(data.playerData().equippedWeapon(), badGeometry))));
-            rejects(() -> factory.getPlayerEntity(props, new Vector2(320, 640), map), "Unsafe Box2D geometry");
+            rejects(() -> factory.getPlayerEntity(new Vector2(320, 640), map), "Unsafe Box2D geometry");
             var stats = original.stats();
             var anim = original.animation();
             var cues = new WeaponsData.WeaponData(
@@ -318,7 +328,9 @@ public final class CombatSystemTest {
                 original.sounds(), original.bounds());
             field.set(GameCore.INSTANCE, new GameData(data.playerData(),
                 new WeaponsData("NONE", Map.of(data.playerData().equippedWeapon(), cues))));
-            var player = factory.getPlayerEntity(props, new Vector2(320, 640), map);
+            var player = factory.getPlayerEntity(new Vector2(320, 640), map);
+            check(Animation2D.MAPPER.get(player).getType() == Animation2D.AnimationType.IDLE,
+                "Player factory starts in IDLE");
             engine.addEntity(player);
             var animation = Animation2D.MAPPER.get(player);
             var state = Combat.MAPPER.get(player);

@@ -12,7 +12,6 @@ import com.badlogic.gdx.utils.XmlReader.Element;
 import io.mindspice.lute.engine.assets.Asset;
 import io.mindspice.lute.engine.singletons.GameConsts;
 import io.mindspice.lute.engine.tiled.properties.AnimatedPhysicObjectProps;
-import io.mindspice.lute.engine.tiled.properties.PlayerCharProps;
 
 import javax.imageio.ImageIO;
 import java.io.IOException;
@@ -30,9 +29,15 @@ public final class TiledAnimationPropertiesTest {
             }
             if ("AnimatedPhysicObject".equals(type.getString("name"))) {
                 for (var member : type.get("members")) {
+                    check(!"animationType".equals(member.getString("name")), "Object class must not configure animation type");
                     if ("animation".equals(member.getString("name"))) {
                         nested = "class".equals(member.getString("type")) && "Animation".equals(member.getString("propertyType"));
                     }
+                }
+            }
+            if ("PlayerCharacter".equals(type.getString("name"))) {
+                for (var member : type.get("members")) {
+                    check(!"animationType".equals(member.getString("name")), "Player class must not configure animation type");
                 }
             }
         }
@@ -50,7 +55,7 @@ public final class TiledAnimationPropertiesTest {
                     tree = tile;
                     var props = AnimatedPhysicObjectProps.fromMapObj(tile);
                     var data = props.animation();
-                    check(props.animationType().equals("DEFAULT") && data.atlasKey().equals("old_tree1/old_tree1")
+                    check(data.atlasKey().equals("old_tree1/old_tree1")
                         && data.frameInterval() == .1f && data.speed() == .35f && data.soundFrame() == 0,
                         "Tree must use nested authored animation fields");
                     trees++;
@@ -58,7 +63,7 @@ public final class TiledAnimationPropertiesTest {
             }
             check(trees == 5, "Expected five animated trees");
             var point = map.getLayers().get("Triggers").getObjects().get("PlayerSpawn");
-            check("IDLE".equals(PlayerCharProps.fromMapObj(point).animationType()), "Player animation type default");
+            check(point.getProperties().get("animationType") == null, "Player does not configure animation type");
             check(point.getProperties().get("keyFrames") == null && point.getProperties().get("atlasAsset") == null,
                 "Player spawn has no legacy atlas or keyFrames");
             var override = new MapProperties();
