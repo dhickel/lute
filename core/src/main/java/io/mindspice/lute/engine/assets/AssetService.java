@@ -39,12 +39,13 @@ public class AssetService implements Disposable {
 
     @SuppressWarnings("unchecked")
     private <T> Map<String, Entry<T>> entries(Class<T> type, String id) {
-        Map<?, ?> selected;
-        if (type == Sound.class) { selected = sounds; }
-        else if (type == Music.class) { selected = music; }
-        else if (type == TextureAtlas.class) { selected = atlases; }
-        else if (type == TiledMap.class) { selected = maps; }
-        else { throw new IllegalArgumentException("Unsupported asset type: " + type); }
+        Map<?, ?> selected = switch (type) {
+            case Class<?> assetType when assetType == Sound.class -> sounds;
+            case Class<?> assetType when assetType == Music.class -> music;
+            case Class<?> assetType when assetType == TextureAtlas.class -> atlases;
+            case Class<?> assetType when assetType == TiledMap.class -> maps;
+            case null, default -> throw new IllegalArgumentException("Unsupported asset type: " + type);
+        };
         if (id == null || id.isBlank()) {
             throw new IllegalArgumentException("Asset logical ID must not be null or blank");
         }
