@@ -58,6 +58,22 @@ tasks.register('tiledAnimationPropertiesTest', JavaExec) {
 }
 check.dependsOn tiledAnimationPropertiesTest
 
+tasks.register('mapTriggersTest', JavaExec) {
+  dependsOn testClasses
+  classpath = sourceSets.test.runtimeClasspath
+  mainClass = 'io.mindspice.lute.engine.tiled.MapTriggersTest'
+  workingDir = rootProject.projectDir
+}
+check.dependsOn mapTriggersTest
+
+tasks.register('mapSensorSystemTest', JavaExec) {
+  dependsOn testClasses
+  classpath = sourceSets.test.runtimeClasspath + files(rootProject.file('assets'))
+  mainClass = 'io.mindspice.lute.engine.systems.MapSensorSystemTest'
+  workingDir = rootProject.projectDir
+}
+check.dependsOn mapSensorSystemTest
+
 tasks.register('combatSystemTest', JavaExec) {
   dependsOn testClasses
   classpath = sourceSets.test.runtimeClasspath + files(rootProject.file('assets'))

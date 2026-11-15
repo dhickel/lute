@@ -91,7 +91,7 @@ public class TriggerDebugRenderSystem extends EntitySystem implements Disposable
 
     private void drawTriggerLayers(MapLayers layers, boolean inTriggers) {
         for (var layer : layers) {
-            boolean triggers = inTriggers || "Triggers".equals(layer.getName());
+            boolean triggers = inTriggers || "Triggers".equals(layer.getName()) || "Trigger".equals(layer.getName());
             if (triggers) {
                 for (var object : layer.getObjects()) {
                     // The configured TMX loader leaves offsets in Tiled's y-down pixel coordinates.

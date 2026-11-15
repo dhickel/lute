@@ -66,6 +66,7 @@ public class EntityFactory extends EntitySystem {
 
         Entity entity = getEngine().createEntity();
         entity.add(new Graphic(region, Color.WHITE.cpy()));
+        entity.add(new Player());
         entity.add(transform);
         entity.add(new Facing(facing));
         entity.add(new Move(player.moveSpeed()));

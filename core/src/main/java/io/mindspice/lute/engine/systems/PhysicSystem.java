@@ -31,6 +31,8 @@ public class PhysicSystem extends IteratingSystem implements EntityListener {
             accumulator -= interval;
             super.update(deltaTime);
             world.step(interval, 6, 2);
+            var sensors = getEngine().getSystem(MapSensorSystem.class);
+            if (sensors != null) { sensors.afterPhysicsStep(); }
         }
         world.clearForces();
 

@@ -329,6 +329,15 @@ public final class CombatSystemTest {
             field.set(GameCore.INSTANCE, new GameData(data.playerData(),
                 new WeaponsData("NONE", Map.of(data.playerData().equippedWeapon(), cues))));
             var player = factory.getPlayerEntity(new Vector2(320, 640), map);
+            check(player.getComponent(Player.class) != null, "Real player factory declares map-sensor participation");
+            var transform = Transform.MAPPER.get(player);
+            near(320 * GameConsts.UNIT_SCALE, transform.getPosition().x + transform.getSize().x / 2,
+                "Real factory centers initial PLAYER point X");
+            near(640 * GameConsts.UNIT_SCALE, transform.getPosition().y + transform.getSize().y / 2,
+                "Real factory centers initial PLAYER point Y without a second flip");
+            check(Physic.MAPPER.get(player).getBody().getPosition().equals(transform.getPosition())
+                && Physic.MAPPER.get(player).getPrevPos().equals(transform.getPosition()),
+                "Real initial player body and interpolation share the centered transform");
             check(Animation2D.MAPPER.get(player).getType() == Animation2D.AnimationType.IDLE,
                 "Player factory starts in IDLE");
             engine.addEntity(player);

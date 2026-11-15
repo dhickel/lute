@@ -198,7 +198,7 @@ public final class TriggerDebugRenderSystemTest {
         var system = attach(world, renderer, map);
         try {
             system.update(0);
-            check(renderer.lines.size() == 6, "Saved map must render Teleport's four sides and PlayerSpawn's cross");
+            check(renderer.lines.size() == 8, "Saved map must render Teleport and both spawn-point crosses");
             float bottom = 640f - 275.333f - 35.3333f;
             float right = 432.667f + 34.6667f;
             float top = 640f - 275.333f;
@@ -209,6 +209,8 @@ public final class TriggerDebugRenderSystemTest {
             float spawnY = 640f - 561.672f;
             mapLine(renderer, 4, 302.248f - 4, spawnY, 302.248f + 4, spawnY);
             mapLine(renderer, 5, 302.248f, spawnY - 4, 302.248f, spawnY + 4);
+            mapLine(renderer, 6, 556, 240, 564, 240);
+            mapLine(renderer, 7, 560, 236, 560, 244);
         } finally {
             system.dispose();
             world.dispose();
@@ -270,7 +272,7 @@ public final class TriggerDebugRenderSystemTest {
     private static TriggerDebugRenderSystem attach(World world, RecordingRenderer renderer, TiledMap map) {
         var engine = new Engine();
         if (map != null) {
-            // TiledSystem subscribes through GameCore even when only its map accessor is needed.
+            // TiledSystem's event helpers resolve the current engine through GameCore.
             try {
                 var field = GameCore.class.getDeclaredField("engine");
                 field.setAccessible(true);

@@ -35,7 +35,7 @@ public final class TiledAnimationPropertiesTest {
                     }
                 }
             }
-            if ("PlayerCharacter".equals(type.getString("name"))) {
+            if ("SpawnPoint".equals(type.getString("name"))) {
                 for (var member : type.get("members")) {
                     check(!"animationType".equals(member.getString("name")), "Player class must not configure animation type");
                 }

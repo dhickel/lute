@@ -1,6 +1,8 @@
 package io.mindspice.lute.engine.events;
 
+import com.badlogic.ashley.core.Entity;
 import com.badlogic.gdx.maps.tiled.TiledMap;
+import io.mindspice.lute.engine.tiled.MapTriggers.SensorType;
 import io.mindspice.lute.engine.assets.MapAssets;
 
 public sealed interface Event {
@@ -18,6 +20,11 @@ public sealed interface Event {
     sealed interface Sound extends Event {
         record Play(String soundId) implements Sound { }
         record PlayAtVolume(String soundId, float volume) implements Sound { }
+    }
+
+    sealed interface Sensor extends Event {
+        record Enter(String name, SensorType type, Entity player) implements Sensor { }
+        record Exit(String name, SensorType type, Entity player) implements Sensor { }
     }
 
     sealed interface Player extends Event {
