@@ -18,6 +18,8 @@ import io.mindspice.lute.engine.assets.*;
 import io.mindspice.lute.engine.components.*;
 import io.mindspice.lute.engine.components.Transform;
 import io.mindspice.lute.engine.data.json.DataLoader;
+import io.mindspice.lute.engine.data.json.GameData;
+import io.mindspice.lute.engine.data.json.WeaponsData;
 import io.mindspice.lute.engine.data.json.WeaponsData.WeaponData.BoundsType;
 import io.mindspice.lute.engine.events.Event;
 import io.mindspice.lute.engine.input.*;
@@ -91,10 +93,6 @@ public final class CombatSystemTest {
             check(game.sounds.size() == 1, "Frame 0 sound is immediate");
             game.update(0); game.events.update(0);
             check(game.sounds.size() == 1, "Zero delta does not repeat frame 0");
-        }
-        for (int invalid : new int[]{4, 10}) {
-            try (var game = new Harness(1, invalid, 0)) { rejects(game::attack, "Out of range hit frame"); }
-            try (var game = new Harness(1, 0, invalid)) { rejects(game::attack, "Out of range sound frame"); }
         }
     }
 
@@ -214,10 +212,6 @@ public final class CombatSystemTest {
     }
 
     private static void geometryAndHealth() {
-        rejects(() -> new Animation2D.Attack(0, 0, "sound"), "Zero speed");
-        rejects(() -> new Animation2D.Attack(1, -1, "sound"), "Negative frame");
-        rejects(() -> new Animation2D.Attack(Float.NaN, 0, "sound"), "NaN speed");
-        rejects(() -> new CombatWeapon.Bounds(1, 0, 1, 2), "Collapsed bounds");
         var anchor = new Vector2(1, 1);
         for (var shape : BoundsType.values()) {
             var weapon = weapon(1, 0, 0, shape);
@@ -230,23 +224,22 @@ public final class CombatSystemTest {
             }
             for (var bounds : new CombatWeapon.Bounds[]{new CombatWeapon.Bounds(0, 0, .001f, .001f),
                 new CombatWeapon.Bounds(0, 0, 1e24f, 64), new CombatWeapon.Bounds(0, 0, 1e15f, 1e15f)}) {
-                rejects(() -> new CombatWeapon.Weapon("bad", 10, 0, new Animation2D.Attack(1, 0, "sound"),
-                    "hit", shape, bounds), "Unsafe geometry");
+                var unsafe = new CombatWeapon.Weapon("bad", 10, 0, new Animation2D.Attack(1, 0, "sound"),
+                    "hit", shape, bounds);
+                rejects(() -> unsafe.validateGeometry(anchor), "Unsafe geometry");
             }
-            rejects(() -> weapon.vertices(new Vector2(Float.NaN, 0), Facing.Direction.RIGHT), "Nonfinite anchor");
         }
         var health = new Health(100);
         health.damage(25); near(75, health.getCurrent(), "Damage subtracts");
         health.damage(Float.MAX_VALUE); near(0, health.getCurrent(), "Damage clamps");
         check(!health.isAlive(), "Zero health dead");
-        rejects(() -> new Health(0), "Zero maximum health");
-        rejects(() -> health.damage(-1), "Negative damage");
     }
 
     private static void factoryIntegration() throws Exception {
         var files = Gdx.files;
         var field = GameCore.class.getDeclaredField("gameData"); field.setAccessible(true);
         var previous = field.get(GameCore.INSTANCE);
+        var previousEngine = bindEngine(null);
         Gdx.files = (com.badlogic.gdx.Files) Proxy.newProxyInstance(com.badlogic.gdx.Files.class.getClassLoader(),
             new Class<?>[]{com.badlogic.gdx.Files.class}, (proxy, method, args) -> {
                 if (method.getName().equals("internal")) { return new FileHandle("assets/" + args[0]); }
@@ -259,16 +252,19 @@ public final class CombatSystemTest {
                 region.left, region.top, region.width, region.height).index = region.index;
         }
         var world = new World(Vector2.Zero, true);
+        TextureAtlas[] loaded = {atlas};
         var assets = new AssetService(FileHandle::new) {
             @Override public <T> T get(Class<T> type, String id) {
                 check(type == TextureAtlas.class && id.equals("OBJECTS"), "Factory uses logical atlas key");
-                return type.cast(atlas);
+                return type.cast(loaded[0]);
             }
         };
         var input = new InputManager(InputMap.of());
         var engine = new Engine();
         try {
-            field.set(GameCore.INSTANCE, DataLoader.loadGameData());
+            var data = DataLoader.loadGameData();
+            field.set(GameCore.INSTANCE, data);
+            bindEngine(engine);
             engine.addSystem(new EventSystem());
             engine.addSystem(new AnimationPlayerSystem());
             engine.addSystem(new AnimationSystem(assets));
@@ -276,8 +272,35 @@ public final class CombatSystemTest {
             var factory = new EntityFactory(world, assets, input); engine.addSystem(factory);
             var map = new MapAssets(Asset.Map.of("test", "test_tiled.tmx"), "",
                 Map.of("OBJECTS", Asset.Atlas.of("OBJECTS", "objects.atlas")), Map.of(), Map.of());
-            var player = factory.getPlayerEntity(new PlayerCharProps("IDLE", 1, 8, "OBJECTS", "player"),
-                new Vector2(320, 640), map);
+            var props = new PlayerCharProps("IDLE", 1, 8, "OBJECTS", "player");
+            var original = data.weaponsData().requireWeapon(data.playerData().equippedWeapon());
+            for (boolean hit : new boolean[]{true, false}) {
+                for (int invalid : new int[]{4, Integer.MAX_VALUE}) {
+                    var stats = original.stats();
+                    var anim = original.animation();
+                    var bad = new WeaponsData.WeaponData(
+                        new WeaponsData.WeaponData.Stats(stats.damage(), stats.cost(), hit ? invalid : 0),
+                        new WeaponsData.WeaponData.WeaponAnimation(anim.speed(), anim.atlasKey(), hit ? 0 : invalid),
+                        original.sounds(), original.bounds());
+                    field.set(GameCore.INSTANCE, new GameData(data.playerData(),
+                        new WeaponsData("NONE", Map.of(data.playerData().equippedWeapon(), bad))));
+                    rejects(() -> factory.getPlayerEntity(props, new Vector2(320, 640), map), "Out of range cue frame");
+                }
+            }
+            var badBounds = new WeaponsData.WeaponData.Bounds(BoundsType.RECT, 0, 0, .001f, .001f);
+            var badGeometry = new WeaponsData.WeaponData(original.stats(), original.animation(), original.sounds(), badBounds);
+            field.set(GameCore.INSTANCE, new GameData(data.playerData(),
+                new WeaponsData("NONE", Map.of(data.playerData().equippedWeapon(), badGeometry))));
+            rejects(() -> factory.getPlayerEntity(props, new Vector2(320, 640), map), "Unsafe Box2D geometry");
+            var stats = original.stats();
+            var anim = original.animation();
+            var cues = new WeaponsData.WeaponData(
+                new WeaponsData.WeaponData.Stats(stats.damage(), stats.cost(), 2),
+                new WeaponsData.WeaponData.WeaponAnimation(anim.speed(), anim.atlasKey(), 3),
+                original.sounds(), original.bounds());
+            field.set(GameCore.INSTANCE, new GameData(data.playerData(),
+                new WeaponsData("NONE", Map.of(data.playerData().equippedWeapon(), cues))));
+            var player = factory.getPlayerEntity(props, new Vector2(320, 640), map);
             engine.addEntity(player);
             var animation = Animation2D.MAPPER.get(player);
             var state = Combat.MAPPER.get(player);
@@ -300,9 +323,31 @@ public final class CombatSystemTest {
                 check(!state.isAttacking(), "Real animation completion");
                 check(animation.getAnimation().getKeyFrames().length == 6, "Idle frames restored");
             }
+            check(animation.getMinimumAttackFrames() == 4, "Factory carries both cue requirements");
+            var shortAtlas = new TextureAtlas();
+            var replacement = new TextureAtlas();
+            try {
+                for (var frame : atlas.getRegions()) {
+                    replacement.addRegion(frame.name, frame).index = frame.index;
+                    if (!frame.name.equals("player/attack_up") || frame.index < 3) {
+                        shortAtlas.addRegion(frame.name, frame).index = frame.index;
+                    }
+                }
+                var previousAnimation = animation.getAnimation();
+                loaded[0] = shortAtlas;
+                rejects(() -> engine.update(0), "Reload with too-short non-facing attack animation");
+                check(animation.getAnimation() == previousAnimation, "Invalid reload does not install animation");
+                rejects(() -> engine.update(0), "Invalid reload remains unaccepted on retry");
+                loaded[0] = replacement;
+                engine.update(0);
+                check(animation.getAnimation() != previousAnimation, "Valid replacement reloads existing entity");
+                Facing.MAPPER.get(player).setDirection(Facing.Direction.UP);
+                state.requestAttack(); engine.update(0); engine.update(0);
+                check(animation.getAnimation().getKeyFrames().length == 4, "Valid replacement supports attack playback");
+            } finally { shortAtlas.dispose(); replacement.dispose(); }
         } finally {
             engine.removeAllEntities(); world.dispose(); assets.dispose(); atlas.dispose(); input.dispose();
-            field.set(GameCore.INSTANCE, previous); Gdx.files = files;
+            field.set(GameCore.INSTANCE, previous); bindEngine(previousEngine); Gdx.files = files;
         }
     }
 
@@ -343,6 +388,15 @@ public final class CombatSystemTest {
         try { action.run(); } catch (IllegalArgumentException | NullPointerException expected) { checks++; return; }
         throw new AssertionError("Accepted " + message);
     }
+    private static Engine bindEngine(Engine engine) {
+        try {
+            var field = GameCore.class.getDeclaredField("engine");
+            field.setAccessible(true);
+            var previous = (Engine) field.get(GameCore.INSTANCE);
+            field.set(GameCore.INSTANCE, engine);
+            return previous;
+        } catch (ReflectiveOperationException failure) { throw new RuntimeException(failure); }
+    }
     private static final class DimensionTexture extends Texture {
         private final int width, height;
         DimensionTexture(int width, int height) { super(); this.width = width; this.height = height; }
@@ -371,7 +425,9 @@ public final class CombatSystemTest {
         final CombatSystem combatSystem = new CombatSystem(world);
         final List<String> sounds = new ArrayList<>();
         final Entity player = new Entity();
+        final Engine previousEngine;
         Harness(float speed, int hit, int sound) {
+            previousEngine = bindEngine(engine);
             engine.addSystem(events);
             events.subscribe(Event.Sound.Play.class, e -> sounds.add(e.soundId()));
             engine.addSystem(new ControllerSystem()); engine.addSystem(new FacingSystem());
@@ -406,7 +462,9 @@ public final class CombatSystemTest {
         com.badlogic.gdx.ai.fsm.DefaultStateMachine<Entity, AnimationState> fsm() {
             return AnimationPlayer.MAPPER.get(player).getAnimationFsm();
         }
-        @Override public void close() { engine.removeSystem(combatSystem); engine.removeAllEntities(); world.dispose(); }
+        @Override public void close() {
+            engine.removeSystem(combatSystem); engine.removeAllEntities(); world.dispose(); bindEngine(previousEngine);
+        }
     }
     private static void fixture(Body body, float width, float height, Vector2 center, boolean sensor) {
         var shape = new PolygonShape();

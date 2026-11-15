@@ -47,9 +47,6 @@ public class EntityFactory extends EntitySystem {
         var transform = createTransform(pixelPosition, region);
         var data = GameCore.INSTANCE.getGameData();
         var player = data.playerData();
-        if (!Float.isFinite(player.moveSpeed()) || player.moveSpeed() <= 0f) {
-            throw new IllegalArgumentException("Player moveSpeed must be finite and positive");
-        }
         var weaponData = data.weaponsData().requireWeapon(player.equippedWeapon());
         var sounds = WeaponAssets.of(player.equippedWeapon(), data.weaponsData());
         var bounds = weaponData.bounds();
@@ -58,6 +55,12 @@ public class EntityFactory extends EntitySystem {
         var weapon = new CombatWeapon.Weapon(player.equippedWeapon(), weaponData.stats().damage(),
             weaponData.stats().hitFrame(), attack, sounds.hit().id(), bounds.type(),
             new CombatWeapon.Bounds(bounds.x1(), bounds.y1(), bounds.x2(), bounds.y2()));
+
+        animation.setMinimumAttackFrames((long) Math.max(weapon.hitFrame(), attack.soundFrame()) + 1);
+        AnimationSystem.validateAttackFrames(animation,
+            assetService.get(TextureAtlas.class, animation.getAtlasId()));
+        var size = transform.getSize();
+        weapon.validateGeometry(new Vector2(size.x * 0.5f, size.y * 0.5f));
 
         Entity entity = getEngine().createEntity();
         entity.add(new Graphic(region, Color.WHITE.cpy()));

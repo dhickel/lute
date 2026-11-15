@@ -7,7 +7,6 @@ import com.badlogic.gdx.physics.box2d.Fixture;
 
 import java.util.Collections;
 import java.util.IdentityHashMap;
-import java.util.Objects;
 import java.util.Set;
 
 public class Combat implements Component {
@@ -20,7 +19,7 @@ public class Combat implements Component {
     private final Set<Entity> hitTargets = Collections.newSetFromMap(new IdentityHashMap<>());
 
     public Combat(CombatWeapon.Weapon currentWeapon) {
-        this.currentWeapon = Objects.requireNonNull(currentWeapon, "currentWeapon");
+        this.currentWeapon = currentWeapon;
     }
 
     public CombatWeapon.Weapon getCurrentWeapon() { return currentWeapon; }

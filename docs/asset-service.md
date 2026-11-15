@@ -16,6 +16,8 @@ Map manifests describe map-owned assets. Weapon assets belong to `assets/data/we
 
 Attack frames are zero-based. `stats.hit_frame` starts the hitbox, and animation completion removes it. `animation.sound_frame` emits one attack sound when playback reaches or crosses that frame; frame 0 is immediate at animation start. `animation.speed` scales both timings and the total attack lifetime. Combat owns fixtures and damage; animation owns playback and sound emission. Hit sounds are loaded but not triggered.
 
+Player and weapon JSON values are validated on entry. At entity composition, `EntityFactory` validates weapon geometry and both cue frame limits for every facing direction against the loaded atlas. Runtime code trusts these values; animation checks the stored minimum frame count again only when a previously seen atlas is replaced.
+
 The animation FSM and playback run before combat, which runs before physics. Combat accepts an attack and configures its playback data; the animation starts on the following update. Sound events retain the existing queued dispatch timing. Large updates cannot repeat or skip sound cues, but an update that crosses the entire hitbox interval does not force a physics step or fabricate a hit.
 
 ## Loading and lookup

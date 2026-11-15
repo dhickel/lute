@@ -14,12 +14,13 @@ import io.mindspice.lute.engine.components.Facing;
 import io.mindspice.lute.engine.components.Graphic;
 
 import io.mindspice.lute.engine.events.Event;
+import io.mindspice.lute.engine.events.EventEmitter;
 
 import java.util.HashMap;
 import java.util.Map;
 import java.util.WeakHashMap;
 
-public class AnimationSystem extends IteratingSystem {
+public class AnimationSystem extends IteratingSystem implements EventEmitter {
     private final AssetService assetService;
     private final Map<CacheKey, Animation<TextureRegion>> animationCache;
     private final Map<Animation2D, TextureAtlas> currentAtlases = new WeakHashMap<>();
@@ -40,24 +41,37 @@ public class AnimationSystem extends IteratingSystem {
             -> key.atlasId().equals(anim2d.getAtlasId()) && key.atlas() != atlas
         );
 
+        TextureAtlas previousAtlas = currentAtlases.get(anim2d);
+        boolean atlasChanged = previousAtlas != atlas;
+        if (previousAtlas != null && atlasChanged) { validateAttackFrames(anim2d, atlas); }
+
         final float stateTime;
-        if (anim2d.isDirty() || fDirection != anim2d.getFdirection() || currentAtlases.get(anim2d) != atlas) {
+        if (anim2d.isDirty() || fDirection != anim2d.getFdirection() || atlasChanged) {
             updateAnimation(anim2d, fDirection);
             currentAtlases.put(anim2d, atlas);
             stateTime = 0;
         } else { stateTime = anim2d.incAndGetStateTime(deltaTime); }
 
         Animation<TextureRegion> animation = anim2d.getAnimation();
-        anim2d.validateAttackFrames();
         animation.setPlayMode(anim2d.getPlayMode());
 
         String soundId = anim2d.consumeAttackSound();
         if (soundId != null) {
-            getEngine().getSystem(EventSystem.class).emitEvent(new Event.Sound.Play(soundId));
+            eventEmitter.accept(new Event.Sound.Play(soundId));
         }
 
         TextureRegion keyFrame = animation.getKeyFrame(stateTime);
         Graphic.MAPPER.get(entity).setRegion(keyFrame);
+    }
+
+    public static void validateAttackFrames(Animation2D anim2d, TextureAtlas atlas) {
+        if (anim2d.getMinimumAttackFrames() == 0) { return; }
+        for (var direction : Facing.Direction.values()) {
+            var key = anim2d.getAtlasKey() + "/attack_" + direction.atlasKey;
+            if (atlas.findRegions(key).size < anim2d.getMinimumAttackFrames()) {
+                throw new IllegalArgumentException("Attack animation has too few frames for " + key);
+            }
+        }
     }
 
     public void updateAnimation(Animation2D anim2d, Facing.Direction fDir) {

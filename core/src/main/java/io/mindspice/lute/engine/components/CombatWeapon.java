@@ -4,30 +4,17 @@ import com.badlogic.gdx.math.MathUtils;
 import com.badlogic.gdx.math.Vector2;
 import io.mindspice.lute.engine.singletons.GameConsts;
 import io.mindspice.lute.engine.data.json.WeaponsData.WeaponData.BoundsType;
-import java.util.Objects;
 
 public final class CombatWeapon {
     private CombatWeapon() {}
-    public record Bounds(float x1, float y1, float x2, float y2) {
-        public Bounds {
-            if (!Float.isFinite(x1) || !Float.isFinite(y1) || !Float.isFinite(x2) || !Float.isFinite(y2)
-                || x2 <= x1 || y2 <= y1) {
-                throw new IllegalArgumentException("Weapon bounds must be finite with x2 > x1 and y2 > y1");
-            }
-        }
-    }
+    public record Bounds(float x1, float y1, float x2, float y2) { }
 
     public record Weapon(String id, float damage, int hitFrame, Animation2D.Attack animation, String hitSoundId,
                          BoundsType shape, Bounds bounds) {
-        public Weapon {
-            if (id == null || id.isBlank()) { throw new IllegalArgumentException("Weapon id is required"); }
-            positive(damage, "damage");
-            if (hitFrame < 0) { throw new IllegalArgumentException("hitFrame must be nonnegative"); }
-            Objects.requireNonNull(animation, "animation");
-            if (hitSoundId == null || hitSoundId.isBlank()) { throw new IllegalArgumentException("hitSoundId is required"); }
-            Objects.requireNonNull(shape, "shape");
-            Objects.requireNonNull(bounds, "bounds");
-            validatePolygon(localVertices(shape, bounds));
+        public void validateGeometry(Vector2 anchor) {
+            for (var direction : Facing.Direction.values()) {
+                validatePolygon(vertices(anchor, direction));
+            }
         }
 
         // Bounds are sprite-local pixels facing right. The flat edge is at x1; x2 is the tip.
@@ -41,7 +28,6 @@ public final class CombatWeapon {
                 case DOWN -> 270f;
             };
             for (var vertex : vertices) { vertex.sub(anchor).rotateDeg(degrees).add(anchor); }
-            validatePolygon(vertices);
             return vertices;
         }
 
@@ -109,9 +95,4 @@ public final class CombatWeapon {
         }
     }
 
-    private static void positive(float value, String name) {
-        if (!Float.isFinite(value) || value <= 0f) {
-            throw new IllegalArgumentException(name + " must be finite and positive");
-        }
-    }
 }

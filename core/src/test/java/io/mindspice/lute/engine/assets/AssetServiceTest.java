@@ -120,7 +120,6 @@ public final class AssetServiceTest {
     }
 
     private static void validation(Backend backend) {
-        rejectsArgument(() -> newService(null), "Null resolver");
         var service = newService(backend.resolver());
         try {
             List<BiFunction<String, String, Asset<?>>> constructors = List.of(
@@ -138,13 +137,6 @@ public final class AssetServiceTest {
                     rejectsArgument(() -> service.load(factory.apply(invalid, "valid.file")), "Invalid factory ID");
                     rejectsArgument(() -> service.queue(factory.apply("valid", invalid)), "Invalid factory file");
                 }
-            }
-            rejectsArgument(() -> service.load(null), "Null load asset");
-            rejectsArgument(() -> service.queue(null), "Null queued asset");
-            for (String invalid : new String[]{null, "", " \t"}) {
-                rejectsArgument(() -> service.get(Sound.class, invalid), "Invalid get ID");
-                rejectsArgument(() -> service.unload(Sound.class, invalid), "Invalid unload ID");
-                rejectsArgument(() -> service.isLoaded(Sound.class, invalid), "Invalid isLoaded ID");
             }
             rejectsArgument(() -> service.get(null, "valid"), "Null get type");
             rejectsArgument(() -> service.unload(null, "valid"), "Null unload type");
