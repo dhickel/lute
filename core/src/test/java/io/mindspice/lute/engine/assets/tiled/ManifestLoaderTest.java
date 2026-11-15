@@ -4,6 +4,7 @@ import com.badlogic.gdx.Files;
 import com.badlogic.gdx.Gdx;
 import com.badlogic.gdx.files.FileHandle;
 import io.mindspice.lute.engine.assets.Asset;
+import io.mindspice.lute.engine.assets.MapAssets;
 import io.mindspice.lute.engine.tiled.ManifestLoader;
 
 import java.lang.reflect.Proxy;
@@ -26,13 +27,20 @@ public final class ManifestLoaderTest {
             if (!assets.mapAsset().id().equals("test_tiled")) {
                 throw new AssertionError("Map key must derive from the manifest name");
             }
-            checkAssets(assets.atlasAssets(), "atlases");
+            checkAsset(assets.atlasAsset(), "atlas");
+            if (!assets.atlasAsset().id().equals("test_tiled")) {
+                throw new AssertionError("Atlas logical ID must derive from the map name");
+            }
             checkAssets(assets.musicAssets(), "music");
             if (!assets.soundAssets().isEmpty()) {
                 throw new AssertionError("Tutorial map must not own weapon sounds");
             }
-            checkAsset(assets.atlasAssets().get("OBJECTS"), "OBJECTS atlas");
             checkAsset(assets.musicAssets().get("TOWN"), "TOWN music");
+            if (!assets.all().contains(assets.atlasAsset())) { throw new AssertionError("Single atlas must be queued"); }
+            try {
+                new MapAssets(assets.mapAsset(), assets.startMusic(), null, assets.musicAssets(), assets.soundAssets());
+                throw new AssertionError("Missing atlas must be rejected");
+            } catch (IllegalArgumentException expected) { /* expected */ }
 
             System.out.println("ManifestLoaderTest: passed");
         } finally {

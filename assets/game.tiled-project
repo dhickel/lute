@@ -13,32 +13,27 @@
         {
             "color": "#ffa0a0a4",
             "drawFill": true,
+            "id": 6,
+            "members": [
+                { "name": "speed", "type": "float", "value": 1 },
+                { "name": "atlasKey", "type": "string", "value": "NONE" },
+                { "name": "soundFrame", "type": "int", "value": 0 },
+                { "name": "frameInterval", "type": "float", "value": 0.1 }
+            ],
+            "name": "Animation",
+            "type": "class",
+            "useAs": ["property"]
+        },
+        {
+            "color": "#ffa0a0a4",
+            "drawFill": true,
             "id": 4,
             "members": [
                 {
                     "name": "animation",
-                    "type": "string",
-                    "value": "DEFAULT"
-                },
-                {
-                    "name": "animationSpeed",
-                    "type": "int",
-                    "value": 1
-                },
-                {
-                    "name": "atlasAsset",
-                    "type": "string",
-                    "value": "NULL"
-                },
-                {
-                    "name": "atlasKey",
-                    "type": "string",
-                    "value": "NULL"
-                },
-                {
-                    "name": "keyFrames",
-                    "type": "int",
-                    "value": 0
+                    "type": "class",
+                    "propertyType": "Animation",
+                    "value": {}
                 }
             ],
             "name": "AnimatedPhysicObject",
@@ -60,11 +55,6 @@
             "drawFill": true,
             "id": 5,
             "members": [
-                {
-                    "name": "atlasAsset",
-                    "type": "string",
-                    "value": "NULL"
-                },
                 {
                     "name": "atlasKey",
                     "type": "string",
@@ -89,33 +79,7 @@
             "color": "#ffa0a0a4",
             "drawFill": true,
             "id": 3,
-            "members": [
-                {
-                    "name": "animation",
-                    "type": "string",
-                    "value": "IDLE"
-                },
-                {
-                    "name": "animationSpeed",
-                    "type": "float",
-                    "value": 1
-                },
-                {
-                    "name": "atlasAsset",
-                    "type": "string",
-                    "value": "OBJECTS"
-                },
-                {
-                    "name": "atlasKey",
-                    "type": "string",
-                    "value": "player"
-                },
-                {
-                    "name": "keyFrames",
-                    "type": "int",
-                    "value": 10
-                }
-            ],
+            "members": [],
             "name": "PlayerCharacter",
             "type": "class",
             "useAs": [

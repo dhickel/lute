@@ -22,7 +22,7 @@ import java.util.WeakHashMap;
 
 public class AnimationSystem extends IteratingSystem implements EventEmitter {
     private final AssetService assetService;
-    private final Map<CacheKey, Animation<TextureRegion>> animationCache;
+    private final Map<CacheKey, Array<TextureAtlas.AtlasRegion>> animationCache;
     private final Map<Animation2D, TextureAtlas> currentAtlases = new WeakHashMap<>();
 
     public AnimationSystem(AssetService assetService) {
@@ -78,9 +78,9 @@ public class AnimationSystem extends IteratingSystem implements EventEmitter {
         TextureAtlas atlas = assetService.get(TextureAtlas.class, anim2d.getAtlasId());
         String atlasKey = anim2d.getAtlasKey();
         Animation2D.AnimationType type = anim2d.getType();
-        var cacheKey = new CacheKey(atlas, anim2d.getAtlasId(), atlasKey, type, fDir, anim2d.getFrameDuration());
+        var cacheKey = new CacheKey(atlas, anim2d.getAtlasId(), atlasKey, type, fDir);
 
-        Animation<TextureRegion> animation = animationCache.computeIfAbsent(cacheKey, k -> {
+        Array<TextureAtlas.AtlasRegion> frames = animationCache.computeIfAbsent(cacheKey, k -> {
             String combinedKey = type == Animation2D.AnimationType.DEFAULT
                 ? atlasKey
                 : atlasKey + "/" + type.atlasKey + "_" + fDir.atlasKey;
@@ -90,10 +90,9 @@ public class AnimationSystem extends IteratingSystem implements EventEmitter {
             if (regions.isEmpty()) {
                 throw new GdxRuntimeException("No atlas regions found for key: " + combinedKey);
             }
-            return new Animation<>(anim2d.getFrameDuration(), regions);
-
+            return regions;
         });
-        anim2d.setAnimation(animation, fDir);
+        anim2d.setAnimation(new Animation<>(anim2d.getFrameDuration(), frames), fDir);
     }
 
 
@@ -102,8 +101,7 @@ public class AnimationSystem extends IteratingSystem implements EventEmitter {
         String atlasId,
         String atlasKey,
         Animation2D.AnimationType type,
-        Facing.Direction fDirection,
-        float frameDuration
+        Facing.Direction fDirection
     ) {
     }
 

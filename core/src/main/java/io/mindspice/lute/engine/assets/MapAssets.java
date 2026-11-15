@@ -7,13 +7,13 @@ import java.util.Map;
 public record MapAssets(
     Asset.Map mapAsset,
     String startMusic,
-    Map<String, Asset.Atlas> atlasAssets,
+    Asset.Atlas atlasAsset,
     Map<String, Asset.Music> musicAssets,
     Map<String, Asset.Sound> soundAssets
 ) {
     public MapAssets {
         if (mapAsset == null) { throw new IllegalArgumentException("Map asset must not be null"); }
-        atlasAssets = checkedAssets(atlasAssets, "atlas");
+        if (atlasAsset == null) { throw new IllegalArgumentException("Map atlas must not be null"); }
         musicAssets = checkedAssets(musicAssets, "music");
         soundAssets = checkedAssets(soundAssets, "sound");
     }
@@ -31,7 +31,7 @@ public record MapAssets(
     public List<Asset<?>> all() {
         List<Asset<?>> assets = new ArrayList<>();
         assets.add(mapAsset);
-        assets.addAll(atlasAssets.values());
+        assets.add(atlasAsset);
         assets.addAll(musicAssets.values());
         assets.addAll(soundAssets.values());
         return assets;

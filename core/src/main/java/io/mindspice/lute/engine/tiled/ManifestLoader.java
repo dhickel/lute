@@ -30,9 +30,7 @@ public class ManifestLoader {
 
         Asset.Map mapAsset = Asset.Map.of(mapName, manifest.mapAsset());
 
-        Map<String, Asset.Atlas> atlasAssets = manifest.atlasAssets().entrySet().stream()
-            .collect(
-                Collectors.toMap(Map.Entry::getKey, entry -> Asset.Atlas.of(entry.getKey(), entry.getValue())));
+        Asset.Atlas atlasAsset = Asset.Atlas.of(mapName, manifest.atlasAsset());
 
         Map<String, Asset.Music> musicAssets = manifest.musicAssets().entrySet().stream()
             .collect(Collectors.toMap(Map.Entry::getKey, entry -> Asset.Music.of(entry.getKey(), entry.getValue())));
@@ -40,6 +38,6 @@ public class ManifestLoader {
         Map<String, Asset.Sound> soundAsset = manifest.soundAssets().entrySet().stream()
             .collect(Collectors.toMap(Map.Entry::getKey, entry -> Asset.Sound.of(entry.getKey(), entry.getValue())));
 
-        return new MapAssets(mapAsset, manifest.startMusic(), atlasAssets, musicAssets, soundAsset);
+        return new MapAssets(mapAsset, manifest.startMusic(), atlasAsset, musicAssets, soundAsset);
     }
 }

@@ -24,7 +24,6 @@ import io.mindspice.lute.engine.components.*;
 import io.mindspice.lute.engine.components.Transform;
 import io.mindspice.lute.engine.input.InputManager;
 import io.mindspice.lute.engine.singletons.GameConsts;
-import io.mindspice.lute.engine.tiled.properties.PlayerCharProps;
 import io.mindspice.lute.engine.tiled.properties.PhysicObjectProps;
 import io.mindspice.lute.engine.tiled.properties.AnimatedPhysicObjectProps;
 import io.mindspice.lute.engine.tiled.TiledPhysics;
@@ -40,17 +39,20 @@ public class EntityFactory extends EntitySystem {
         this.inputManager = inputManager;
     }
 
-    public Entity getPlayerEntity(PlayerCharProps props, Vector2 pixelPosition, MapAssets mapAssets) {
+    public Entity getPlayerEntity(Vector2 pixelPosition, MapAssets mapAssets) {
         var facing = Facing.Direction.RIGHT;
-        var animation = createPlayerAnimation(props, mapAssets, facing);
+        var data = GameCore.INSTANCE.getGameData();
+        var playerAnimation = data.playerData().animation();
+        var atlas = mapAssets.atlasAsset();
+        var animation = createAnimation(atlas, playerAnimation.atlasKey(),
+            Animation2D.AnimationType.IDLE, playerAnimation.speed(), playerAnimation.frameInterval(), facing);
         var region = animation.getAnimation().getKeyFrame(0f);
         var transform = createTransform(pixelPosition, region);
-        var data = GameCore.INSTANCE.getGameData();
         var player = data.playerData();
         var weaponData = data.weaponsData().requireWeapon(player.equippedWeapon());
         var sounds = WeaponAssets.of(player.equippedWeapon(), data.weaponsData());
         var bounds = weaponData.bounds();
-        var attack = new Animation2D.Attack(weaponData.animation().speed(),
+        var attack = new Animation2D.Attack(weaponData.animation().speed(), weaponData.animation().frameInterval(),
             weaponData.animation().soundFrame(), sounds.attack().id());
         var weapon = new CombatWeapon.Weapon(player.equippedWeapon(), weaponData.stats().damage(),
             weaponData.stats().hitFrame(), attack, sounds.hit().id(), bounds.type(),
@@ -78,8 +80,8 @@ public class EntityFactory extends EntitySystem {
     }
 
     public Entity getPhysicObjectEntity(PhysicObjectProps props, TiledMapTileMapObject object, MapAssets mapAssets) {
-        var atlas = resolveAtlas(props.atlasAsset(), mapAssets);
-        String assetKey = props.assetKey();
+        var atlas = mapAssets.atlasAsset();
+        String assetKey = props.atlasKey();
         var region = assetService.get(TextureAtlas.class, atlas.id()).findRegion(assetKey);
         if (region == null) {
             throw new GdxRuntimeException("No atlas region found for key: " + assetKey);
@@ -88,24 +90,16 @@ public class EntityFactory extends EntitySystem {
     }
 
     public Entity getAnimatedPhysicObjectEntity(AnimatedPhysicObjectProps props, TiledMapTileMapObject object, MapAssets mapAssets) {
-        var atlas = resolveAtlas(props.atlasAsset(), mapAssets);
-        var type = Animation2D.AnimationType.valueOf(props.animation());
+        var atlas = mapAssets.atlasAsset();
         var facing = Facing.Direction.DOWN;
-        var animation = createAnimation(atlas, props.atlasKey(), type,
-            props.animationSpeed(), props.keyFrames(), facing);
+        var settings = props.animation();
+        var animation = createAnimation(atlas, settings.atlasKey(), Animation2D.AnimationType.DEFAULT,
+            settings.speed(), settings.frameInterval(), facing);
 
         Entity entity = createPhysicObject(object, animation.getAnimation().getKeyFrame(0f));
         entity.add(new Facing(facing));
         entity.add(animation);
         return entity;
-    }
-
-    private Asset.Atlas resolveAtlas(String atlasId, MapAssets mapAssets) {
-        var atlas = mapAssets.atlasAssets().get(atlasId);
-        if (atlas == null) {
-            throw new GdxRuntimeException("Unknown atlas asset ID: " + atlasId);
-        }
-        return atlas;
     }
 
     private Entity createPhysicObject(TiledMapTileMapObject object, TextureRegion region) {
@@ -145,31 +139,21 @@ public class EntityFactory extends EntitySystem {
         return new Physic(body, transform.getPosition().cpy());
     }
 
-    private Animation2D createPlayerAnimation(PlayerCharProps props, MapAssets mapAssets, Facing.Direction facing) {
-        var atlas = resolveAtlas(props.atlasAsset(), mapAssets);
-        var type = Animation2D.AnimationType.valueOf(props.animation());
-        return createAnimation(atlas, props.atlasKey(), type, props.animationSpeed(), props.keyFrames(), facing);
-    }
-
     private Animation2D createAnimation(Asset.Atlas atlas, String atlasKey, Animation2D.AnimationType animType,
-                                      float speed, int keyFrames, Facing.Direction facing) {
+                                      float speed, float frameInterval, Facing.Direction facing) {
         String animationKey;
         if (animType == Animation2D.AnimationType.DEFAULT) {
             animationKey = atlasKey;
         } else {
             animationKey = atlasKey + "/" + animType.atlasKey + "_" + facing.atlasKey;
         }
-        if (keyFrames <= 0) {
-            throw new GdxRuntimeException("Animation keyFrames must be positive: " + keyFrames
-                + " (key: " + animationKey + ", atlas: " + atlas.path() + ")");
-        }
         var regions = assetService.get(TextureAtlas.class, atlas.id()).findRegions(animationKey);
         if (regions.isEmpty()) {
             throw new GdxRuntimeException("No atlas regions found for key: " + animationKey
                 + " (atlas: " + atlas.path() + ")");
         }
-        Animation<TextureRegion> animation = new Animation<>(1f / keyFrames, regions, Animation.PlayMode.LOOP);
-        var anim2d = new Animation2D(atlas.id(), atlasKey, animType, Animation.PlayMode.LOOP, speed, keyFrames);
+        Animation<TextureRegion> animation = new Animation<>(frameInterval, regions, Animation.PlayMode.LOOP);
+        var anim2d = new Animation2D(atlas.id(), atlasKey, animType, Animation.PlayMode.LOOP, speed, frameInterval);
         anim2d.setAnimation(animation, facing);
         return anim2d;
     }

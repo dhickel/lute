@@ -4,6 +4,9 @@ import com.badlogic.gdx.assets.loaders.FileHandleResolver;
 import com.badlogic.gdx.files.FileHandle;
 import com.badlogic.gdx.graphics.Texture;
 import com.badlogic.gdx.maps.ImageResolver;
+import com.badlogic.gdx.maps.MapObjects;
+import com.badlogic.gdx.maps.MapProperties;
+import com.badlogic.gdx.maps.tiled.objects.TiledMapTileMapObject;
 import com.badlogic.gdx.maps.tiled.TiledMap;
 import com.badlogic.gdx.maps.tiled.TiledMapTileSet;
 import com.badlogic.gdx.maps.tiled.TmxMapLoader;
@@ -41,6 +44,33 @@ public class FixedTmxMapLoader extends TmxMapLoader {
                 catch (RuntimeException cleanup) { failure.addSuppressed(cleanup); }
             }
             throw failure;
+        }
+    }
+
+    @Override
+    protected void loadObject(TiledMap map, MapObjects objects, Element element, float heightInPixels) {
+        int count = objects.getCount();
+        super.loadObject(map, objects, element, heightInPixels);
+        if (objects.getCount() == count || !(objects.get(objects.getCount() - 1) instanceof TiledMapTileMapObject object)) { return; }
+        var properties = element.getChildByName("properties");
+        if (properties == null) { return; }
+        for (var property : properties.getChildrenByName("property")) {
+            if (!"animation".equals(property.getAttribute("name", null))
+                || !"class".equals(property.getAttribute("type", null))
+                || !"Animation".equals(property.getAttribute("propertytype", null))) { continue; }
+            var tileAnimation = object.getTile().getProperties().get("animation", MapProperties.class);
+            var placementAnimation = object.getProperties().get("animation", MapProperties.class);
+            if (tileAnimation == null || placementAnimation == null) { return; }
+            var merged = new MapProperties();
+            merged.putAll(tileAnimation);
+            var fields = property.getChildByName("properties");
+            if (fields != null) {
+                for (var field : fields.getChildrenByName("property")) {
+                    String name = field.getAttribute("name");
+                    if (placementAnimation.containsKey(name)) { merged.put(name, placementAnimation.get(name)); }
+                }
+            }
+            object.getProperties().put("animation", merged);
         }
     }
 

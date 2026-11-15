@@ -3,224 +3,146 @@ package io.mindspice.lute.engine.tiled;
 import com.badlogic.gdx.files.FileHandle;
 import com.badlogic.gdx.graphics.Texture;
 import com.badlogic.gdx.graphics.g2d.TextureRegion;
-import com.badlogic.gdx.maps.objects.PointMapObject;
+import com.badlogic.gdx.maps.MapProperties;
 import com.badlogic.gdx.maps.tiled.BaseTiledMapLoader;
 import com.badlogic.gdx.maps.tiled.TiledMap;
 import com.badlogic.gdx.maps.tiled.objects.TiledMapTileMapObject;
-import com.badlogic.gdx.utils.GdxRuntimeException;
+import com.badlogic.gdx.utils.JsonReader;
 import com.badlogic.gdx.utils.XmlReader.Element;
 import io.mindspice.lute.engine.assets.Asset;
-import io.mindspice.lute.engine.assets.MapAssets;
-import io.mindspice.lute.engine.systems.EntityFactory;
 import io.mindspice.lute.engine.singletons.GameConsts;
 import io.mindspice.lute.engine.tiled.properties.AnimatedPhysicObjectProps;
-import io.mindspice.lute.engine.tiled.properties.PlayerCharProps;
 
 import javax.imageio.ImageIO;
 import java.io.IOException;
-import java.util.Map;
+import java.util.HashSet;
+import java.util.Set;
 
 public final class TiledAnimationPropertiesTest {
     public static void main(String[] args) {
-        var mapAsset = Asset.Map.of("TEST", "test_tiled.tmx");
+        var types = new JsonReader().parse(new FileHandle("assets/game.tiled-project")).get("propertyTypes");
+        Set<String> members = new HashSet<>();
+        boolean nested = false;
+        for (var type : types) {
+            if ("Animation".equals(type.getString("name"))) {
+                for (var member : type.get("members")) { members.add(member.getString("name")); }
+            }
+            if ("AnimatedPhysicObject".equals(type.getString("name"))) {
+                for (var member : type.get("members")) {
+                    check(!"animationType".equals(member.getString("name")), "Object class must not configure animation type");
+                    if ("animation".equals(member.getString("name"))) {
+                        nested = "class".equals(member.getString("type")) && "Animation".equals(member.getString("propertyType"));
+                    }
+                }
+            }
+            if ("PlayerCharacter".equals(type.getString("name"))) {
+                for (var member : type.get("members")) {
+                    check(!"animationType".equals(member.getString("name")), "Player class must not configure animation type");
+                }
+            }
+        }
+        check(nested && members.equals(Set.of("speed", "atlasKey", "soundFrame", "frameInterval")),
+            "AnimatedPhysicObject must use the shared camelCase Animation class");
         var parameters = new BaseTiledMapLoader.Parameters();
         parameters.projectFilePath = GameConsts.PROJECT_PATH;
-        TiledMap map = new PropertyLoader().loadProperties(mapAsset.path(), parameters);
+        TiledMap map = new PropertyLoader().loadProperties(Asset.Map.of("TEST", "test_tiled.tmx").path(), parameters);
         try {
             int trees = 0;
             TiledMapTileMapObject tree = null;
             for (var object : map.getLayers().get("Objects").getObjects()) {
-                if (object instanceof TiledMapTileMapObject tileObject
-                        && "old_tree1/old_tree1".equals(tileObject.getTile().getProperties().get("atlasKey"))) {
-                    tree = tileObject;
-                    var props = AnimatedPhysicObjectProps.fromMapObj(tree);
-                    check(props.keyFrames() == 10, "Tree " + object.getProperties().get("id") + " must retain tile keyFrames=10");
-                    check(props.animationSpeed() == 0.35f, "Explicit tile animationSpeed must override the integer class default");
+                if (object instanceof TiledMapTileMapObject tile
+                    && tile.getTile().getProperties().get("animation", MapProperties.class) != null) {
+                    tree = tile;
+                    var props = AnimatedPhysicObjectProps.fromMapObj(tile);
+                    var data = props.animation();
+                    check(data.atlasKey().equals("old_tree1/old_tree1")
+                        && data.frameInterval() == .1f && data.speed() == .35f && data.soundFrame() == 0,
+                        "Tree must use nested authored animation fields");
                     trees++;
                 }
             }
             check(trees == 5, "Expected five animated trees");
-
-            var point = playerSpawn(map);
-            var player = PlayerCharProps.fromMapObj(point);
-            System.out.println("PlayerSpawn id=" + point.getProperties().get("id")
-                + " loaded keyFrames=" + point.getProperties().get("keyFrames")
-                + ", parsed keyFrames=" + player.keyFrames() + "; animated trees=" + trees);
-            check(Integer.valueOf(8).equals(point.getProperties().get("keyFrames")),
-                "PlayerSpawn id=18 must load keyFrames=8 from its explicit map property");
-            check(player.keyFrames() == 8, "Player parser must preserve the explicit frame rate");
-            check(map.getTileSets().getTile(2663).getProperties().get("keyFrames", Integer.class) == 8,
-                "The unused player tile has an independent keyFrames=8");
-
-            var atlas = Asset.Atlas.of("OBJECTS", "objects.atlas");
-            var assets = new MapAssets(mapAsset, null, Map.of("OBJECTS", atlas), Map.of(), Map.of());
-            var factory = new EntityFactory(null, null, null);
-            checkPlayerPrecedence(mapAsset, parameters, factory, assets, atlas);
-            for (int invalid : new int[]{0, -1}) {
-                tree.getProperties().put("keyFrames", invalid);
-                var invalidTree = AnimatedPhysicObjectProps.fromMapObj(tree);
-                check(invalidTree.keyFrames() == invalid, "An explicit placement value must override its tile");
-                TiledMapTileMapObject loadedTree = tree;
-                rejectsFrames(() -> factory.getAnimatedPhysicObjectEntity(invalidTree, loadedTree, assets),
-                    invalid, "old_tree1/old_tree1", atlas.path());
-            }
-            tree.getProperties().remove("keyFrames");
-            check(AnimatedPhysicObjectProps.fromMapObj(tree).keyFrames() == 10, "Placement overrides must not mutate the tile");
-            tree.getTile().getProperties().remove("keyFrames");
+            var point = map.getLayers().get("Triggers").getObjects().get("PlayerSpawn");
+            check(point.getProperties().get("animationType") == null, "Player does not configure animation type");
+            check(point.getProperties().get("keyFrames") == null && point.getProperties().get("atlasAsset") == null,
+                "Player spawn has no legacy atlas or keyFrames");
+            var override = new MapProperties();
+            override.put("speed", 1f); override.put("atlasKey", "other");
+            override.put("soundFrame", 0); override.put("frameInterval", .2f);
+            tree.getProperties().put("animation", override);
+            check(AnimatedPhysicObjectProps.fromMapObj(tree).animation().frameInterval() == .2f,
+                "Placement animation replaces tile animation");
+            override.put("frameInterval", 0f);
+            final var selected = tree;
+            rejects(() -> AnimatedPhysicObjectProps.fromMapObj(selected));
+            tree.getProperties().remove("animation");
+            check(AnimatedPhysicObjectProps.fromMapObj(tree).animation().frameInterval() == .1f,
+                "Removing override restores tile animation");
+            tree.getTile().getProperties().remove("animation");
+            rejects(() -> AnimatedPhysicObjectProps.fromMapObj(selected));
+            var fixture = new PropertyLoader().loadWithPartialOverride(Asset.Map.of("TEST", "test_tiled.tmx").path(), parameters);
             try {
-                AnimatedPhysicObjectProps.fromMapObj(tree);
-                throw new AssertionError("Missing required keyFrames must fail");
-            } catch (NullPointerException expected) {
-                check("keyFrames".equals(expected.getMessage()), "Missing-property error must identify keyFrames");
-            }
+                var overridden = (TiledMapTileMapObject) fixture.getLayers().get("Objects").getObjects().get(1);
+                var actual = AnimatedPhysicObjectProps.fromMapObj(overridden).animation();
+                check(actual.frameInterval() == .2f && actual.speed() == 1f && actual.atlasKey().equals("old_tree1/old_tree1"),
+                    "Partial class override preserves tile fields and explicit class-default values");
+                var other = (TiledMapTileMapObject) fixture.getLayers().get("Objects").getObjects().get(2);
+                check(AnimatedPhysicObjectProps.fromMapObj(other).animation().frameInterval() == .1f,
+                    "Placement overrides must not mutate the shared tile");
+            } finally { fixture.dispose(); }
             System.out.println("TiledAnimationPropertiesTest: passed (no graphics context or game launch)");
-        } finally {
-            map.dispose();
-        }
+        } finally { map.dispose(); }
     }
 
-    private static PointMapObject playerSpawn(TiledMap map) {
-        for (var object : map.getLayers().get("Triggers").getObjects()) {
-            if (Integer.valueOf(18).equals(object.getProperties().get("id"))) {
-                check(object instanceof PointMapObject, "PlayerSpawn must remain a point, not a tile object");
-                check("PlayerCharacter".equals(object.getProperties().get("type")), "Expected PlayerCharacter class");
-                return (PointMapObject) object;
-            }
-        }
-        throw new AssertionError("Expected PlayerSpawn id=18");
+    private static void rejects(Runnable action) {
+        try { action.run(); } catch (IllegalArgumentException | NullPointerException expected) { return; }
+        throw new AssertionError("Invalid animation property was accepted");
     }
-
-    private static void checkPlayerPrecedence(Asset.Map mapAsset, BaseTiledMapLoader.Parameters parameters,
-                                              EntityFactory factory, MapAssets assets, Asset.Atlas atlas) {
-        String path = mapAsset.path();
-        for (int classFrames : new int[]{0, 8}) {
-            // Load the saved point unchanged: a class-default-only repair must not satisfy this regression.
-            var savedMap = new PropertyLoader(classFrames).loadProperties(path, parameters);
-            try {
-                check(PlayerCharProps.fromMapObj(playerSpawn(savedMap)).keyFrames() == 8,
-                    "Saved PlayerSpawn must explicitly override project keyFrames=" + classFrames);
-            } finally {
-                savedMap.dispose();
-            }
-            for (Integer explicitFrames : new Integer[]{null, 0, -1, 8}) {
-                var fixture = new PropertyLoader(classFrames).loadProperties(path, parameters, explicitFrames);
-                try {
-                    var point = playerSpawn(fixture);
-                    int expected = explicitFrames == null ? classFrames : explicitFrames;
-                    String source = "PlayerSpawn id=18: class keyFrames=" + classFrames + ", explicit=" + explicitFrames;
-                    check(Integer.valueOf(expected).equals(point.getProperties().get("keyFrames")),
-                        source + " must obey explicit-over-class precedence");
-                    var props = PlayerCharProps.fromMapObj(point);
-                    check(props.keyFrames() == expected, source + " must not be silently replaced by the parser");
-                    if (expected <= 0) {
-                        rejectsFrames(() -> factory.getPlayerEntity(props, point.getPoint(), assets),
-                            expected, "player/idle_right", atlas.path());
-                    }
-                    check(fixture.getTileSets().getTile(2663).getProperties().get("keyFrames", Integer.class) == 8,
-                        source + " must be independent of the unused player's tile keyFrames=8");
-                } finally {
-                    fixture.dispose();
-                }
-            }
-        }
-        System.out.println("Player precedence: saved override against class defaults 0/8; eight loaded fixture cases passed");
-    }
-
-    private static void rejectsFrames(Runnable action, int keyFrames, String animationKey, String atlasFile) {
-        try {
-            action.run();
-            throw new AssertionError("Invalid keyFrames must fail for " + animationKey);
-        } catch (GdxRuntimeException expected) {
-            check(expected.getMessage().contains("keyFrames must be positive: " + keyFrames),
-                "Frame validation must reject the actual invalid value: " + expected.getMessage());
-            check(expected.getMessage().contains("key: " + animationKey + ", atlas: " + atlasFile),
-                "Frame validation must identify the actual animation and atlas: " + expected.getMessage());
-        }
-    }
-
     private static void check(boolean condition, String message) {
         if (!condition) { throw new AssertionError(message); }
     }
-
     private static final class PropertyLoader extends FixedTmxMapLoader {
-        private final Integer classFrames;
-
-        PropertyLoader() {
-            this(null);
-        }
-
-        PropertyLoader(Integer classFrames) {
-            super(path -> new FileHandle("assets/" + path));
-            this.classFrames = classFrames;
-        }
-
-        @Override
-        protected void loadProjectFile(String path) {
-            super.loadProjectFile(path);
-            if (classFrames != null) {
-                for (var member : projectClassInfo.get("PlayerCharacter")) {
-                    if ("keyFrames".equals(member.name)) {
-                        member.defaultValue.set(classFrames.longValue(), null);
-                    }
-                }
-            }
-        }
-
-        TiledMap loadProperties(String path, BaseTiledMapLoader.Parameters parameters, Integer explicitFrames) {
-            return loadProperties(path, parameters, true, explicitFrames);
-        }
-
+        PropertyLoader() { super(path -> new FileHandle("assets/" + path)); }
         TiledMap loadProperties(String path, BaseTiledMapLoader.Parameters parameters) {
-            return loadProperties(path, parameters, false, null);
+            return load(path, parameters, false);
         }
-
-        private TiledMap loadProperties(String path, BaseTiledMapLoader.Parameters parameters,
-                                       boolean replaceSpawnFrames, Integer explicitFrames) {
+        TiledMap loadWithPartialOverride(String path, BaseTiledMapLoader.Parameters parameters) {
+            return load(path, parameters, true);
+        }
+        private TiledMap load(String path, BaseTiledMapLoader.Parameters parameters, boolean override) {
             var file = resolve(path);
             root = xml.parse(file);
-            if (replaceSpawnFrames) {
+            if (override) {
                 for (var object : root.getChildrenByNameRecursively("object")) {
-                    if (!"18".equals(object.getAttribute("id", null))) { continue; }
-                    var properties = object.getChildByName("properties");
-                    if (properties == null) {
-                        properties = new Element("properties", object);
-                        object.addChild(properties);
-                    }
-                    for (var property : properties.getChildrenByName("property")) {
-                        if ("keyFrames".equals(property.getAttribute("name"))) {
-                            properties.removeChild(property);
-                        }
-                    }
-                    if (explicitFrames != null) {
-                        var property = new Element("property", properties);
-                        property.setAttribute("name", "keyFrames");
-                        property.setAttribute("type", "int");
-                        property.setAttribute("value", explicitFrames.toString());
-                        properties.addChild(property);
-                    }
+                    if (!"8".equals(object.getAttribute("id", null))) { continue; }
+                    var properties = new Element("properties", object);
+                    var animation = new Element("property", properties);
+                    animation.setAttribute("name", "animation");
+                    animation.setAttribute("type", "class");
+                    animation.setAttribute("propertytype", "Animation");
+                    var fields = new Element("properties", animation);
+                    var interval = new Element("property", fields);
+                    interval.setAttribute("name", "frameInterval");
+                    interval.setAttribute("type", "float");
+                    interval.setAttribute("value", "0.2");
+                    var speed = new Element("property", fields);
+                    speed.setAttribute("name", "speed");
+                    speed.setAttribute("type", "float");
+                    speed.setAttribute("value", "1.0");
+                    fields.addChild(interval); fields.addChild(speed); animation.addChild(fields); properties.addChild(animation); object.addChild(properties);
                 }
             }
             return loadTiledMap(file, parameters, imagePath -> {
                 try {
                     var image = ImageIO.read(new java.io.File(imagePath));
                     return new TextureRegion(new DimensionTexture(image.getWidth(), image.getHeight()));
-                } catch (IOException failure) {
-                    throw new AssertionError("Cannot read image dimensions: " + imagePath, failure);
-                }
+                } catch (IOException failure) { throw new AssertionError(failure); }
             });
         }
     }
-
     private static final class DimensionTexture extends Texture {
-        private final int width;
-        private final int height;
-
-        DimensionTexture(int width, int height) {
-            super();
-            this.width = width;
-            this.height = height;
-        }
-
+        private final int width, height;
+        DimensionTexture(int width, int height) { super(); this.width = width; this.height = height; }
         @Override public int getWidth() { return width; }
         @Override public int getHeight() { return height; }
     }

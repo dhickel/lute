@@ -23,7 +23,6 @@ import io.mindspice.lute.engine.events.EventEmitter;
 import io.mindspice.lute.engine.events.EventListener;
 import io.mindspice.lute.engine.singletons.GameConsts;
 import io.mindspice.lute.engine.tiled.TiledPhysics;
-import io.mindspice.lute.engine.tiled.properties.PlayerCharProps;
 import io.mindspice.lute.engine.tiled.properties.PhysicObjectProps;
 import io.mindspice.lute.engine.tiled.properties.AnimatedPhysicObjectProps;
 
@@ -98,10 +97,9 @@ public class TiledSystem extends EntitySystem implements EventListener, EventEmi
     }
 
     public void spawnPlayerEntity(PointMapObject spawnPoint) {
-        var props = PlayerCharProps.fromMapObj(spawnPoint);
         Entity entity = getEngine()
             .getSystem(EntityFactory.class)
-            .getPlayerEntity(props, spawnPoint.getPoint(), currMapAssets);
+            .getPlayerEntity(spawnPoint.getPoint(), currMapAssets);
         getEngine().addEntity(entity);
     }
 
