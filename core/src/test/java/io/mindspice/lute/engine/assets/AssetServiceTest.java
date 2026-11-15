@@ -598,7 +598,7 @@ public final class AssetServiceTest {
         var engine = new Engine();
         engine.addSystem(new AnimationSystem(service));
         var animation = new Animation2D("OBJECTS", "player", Animation2D.AnimationType.IDLE,
-            Animation.PlayMode.LOOP, 1, 8);
+            Animation.PlayMode.LOOP, 1, .125f);
         var graphic = new Graphic(null, Color.WHITE);
         var entity = new Entity().add(animation).add(graphic).add(new Facing(Facing.Direction.DOWN));
         engine.addEntity(entity);
@@ -616,13 +616,17 @@ public final class AssetServiceTest {
             check(animation.getAnimation() != firstAnimation, "Reload must refresh an unchanged component's cached animation");
             check(graphic.getRegion().getTexture() != firstTexture, "Reload must replace disposed atlas regions in Graphic");
             var slower = new Animation2D("OBJECTS", "player", Animation2D.AnimationType.IDLE,
-                Animation.PlayMode.LOOP, 1, 4);
+                Animation.PlayMode.NORMAL, 1, .25f);
             engine.addEntity(new Entity().add(slower).add(new Graphic(null, Color.WHITE))
                 .add(new Facing(Facing.Direction.DOWN)));
             engine.update(0);
             check(slower.getAnimation().getFrameDuration() == .25f
                     && animation.getAnimation().getFrameDuration() == .125f,
-                "Animation cache must distinguish frame durations for the same atlas key");
+                "Entities must retain their own frame durations for the same atlas key");
+            check(animation.getAnimation() != slower.getAnimation()
+                    && animation.getAnimation().getPlayMode() == Animation.PlayMode.LOOP
+                    && slower.getAnimation().getPlayMode() == Animation.PlayMode.NORMAL,
+                "Entities must not share mutable play modes");
         } finally {
             engine.removeAllEntities();
             service.dispose();

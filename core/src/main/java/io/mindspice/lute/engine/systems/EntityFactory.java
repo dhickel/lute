@@ -42,15 +42,15 @@ public class EntityFactory extends EntitySystem {
 
     public Entity getPlayerEntity(PlayerCharProps props, Vector2 pixelPosition, MapAssets mapAssets) {
         var facing = Facing.Direction.RIGHT;
-        var animation = createPlayerAnimation(props, mapAssets, facing);
+        var data = GameCore.INSTANCE.getGameData();
+        var animation = createPlayerAnimation(props, mapAssets, facing, data.playerData().animation().frameInterval());
         var region = animation.getAnimation().getKeyFrame(0f);
         var transform = createTransform(pixelPosition, region);
-        var data = GameCore.INSTANCE.getGameData();
         var player = data.playerData();
         var weaponData = data.weaponsData().requireWeapon(player.equippedWeapon());
         var sounds = WeaponAssets.of(player.equippedWeapon(), data.weaponsData());
         var bounds = weaponData.bounds();
-        var attack = new Animation2D.Attack(weaponData.animation().speed(),
+        var attack = new Animation2D.Attack(weaponData.animation().speed(), weaponData.animation().frameInterval(),
             weaponData.animation().soundFrame(), sounds.attack().id());
         var weapon = new CombatWeapon.Weapon(player.equippedWeapon(), weaponData.stats().damage(),
             weaponData.stats().hitFrame(), attack, sounds.hit().id(), bounds.type(),
@@ -92,7 +92,7 @@ public class EntityFactory extends EntitySystem {
         var type = Animation2D.AnimationType.valueOf(props.animation());
         var facing = Facing.Direction.DOWN;
         var animation = createAnimation(atlas, props.atlasKey(), type,
-            props.animationSpeed(), props.keyFrames(), facing);
+            props.animationSpeed(), frameInterval(props.keyFrames()), facing);
 
         Entity entity = createPhysicObject(object, animation.getAnimation().getKeyFrame(0f));
         entity.add(new Facing(facing));
@@ -145,33 +145,34 @@ public class EntityFactory extends EntitySystem {
         return new Physic(body, transform.getPosition().cpy());
     }
 
-    private Animation2D createPlayerAnimation(PlayerCharProps props, MapAssets mapAssets, Facing.Direction facing) {
+    private Animation2D createPlayerAnimation(PlayerCharProps props, MapAssets mapAssets, Facing.Direction facing, float frameInterval) {
         var atlas = resolveAtlas(props.atlasAsset(), mapAssets);
         var type = Animation2D.AnimationType.valueOf(props.animation());
-        return createAnimation(atlas, props.atlasKey(), type, props.animationSpeed(), props.keyFrames(), facing);
+        return createAnimation(atlas, props.atlasKey(), type, props.animationSpeed(), frameInterval, facing);
     }
 
     private Animation2D createAnimation(Asset.Atlas atlas, String atlasKey, Animation2D.AnimationType animType,
-                                      float speed, int keyFrames, Facing.Direction facing) {
+                                      float speed, float frameInterval, Facing.Direction facing) {
         String animationKey;
         if (animType == Animation2D.AnimationType.DEFAULT) {
             animationKey = atlasKey;
         } else {
             animationKey = atlasKey + "/" + animType.atlasKey + "_" + facing.atlasKey;
         }
-        if (keyFrames <= 0) {
-            throw new GdxRuntimeException("Animation keyFrames must be positive: " + keyFrames
-                + " (key: " + animationKey + ", atlas: " + atlas.path() + ")");
-        }
         var regions = assetService.get(TextureAtlas.class, atlas.id()).findRegions(animationKey);
         if (regions.isEmpty()) {
             throw new GdxRuntimeException("No atlas regions found for key: " + animationKey
                 + " (atlas: " + atlas.path() + ")");
         }
-        Animation<TextureRegion> animation = new Animation<>(1f / keyFrames, regions, Animation.PlayMode.LOOP);
-        var anim2d = new Animation2D(atlas.id(), atlasKey, animType, Animation.PlayMode.LOOP, speed, keyFrames);
+        Animation<TextureRegion> animation = new Animation<>(frameInterval, regions, Animation.PlayMode.LOOP);
+        var anim2d = new Animation2D(atlas.id(), atlasKey, animType, Animation.PlayMode.LOOP, speed, frameInterval);
         anim2d.setAnimation(animation, facing);
         return anim2d;
+    }
+
+    private float frameInterval(int keyFrames) {
+        if (keyFrames <= 0) { throw new GdxRuntimeException("Animation keyFrames must be positive: " + keyFrames); }
+        return 1f / keyFrames;
     }
 
     private Transform createTransform(Vector2 pixelPosition, TextureRegion region) {

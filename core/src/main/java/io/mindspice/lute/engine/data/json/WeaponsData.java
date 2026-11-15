@@ -38,10 +38,12 @@ public record WeaponsData(String atlas, Map<String, WeaponData> weapons) {
         }
 
         public record WeaponAnimation(float speed, @JsonProperty("atlas_key") String atlasKey,
-                                      @JsonProperty("sound_frame") int soundFrame) {
+                                      @JsonProperty("sound_frame") int soundFrame,
+                                      @JsonProperty("frame_interval") float frameInterval) {
             public WeaponAnimation {
                 atlasKey = atlasKey == null ? "NONE" : atlasKey;
-                if (!Float.isFinite(speed) || speed <= 0 || soundFrame < 0 || atlasKey.isBlank()) {
+                if (!Float.isFinite(speed) || speed <= 0 || soundFrame < 0 || atlasKey.isBlank()
+                    || !Float.isFinite(frameInterval) || frameInterval <= 0) {
                     throw new IllegalArgumentException("Invalid weapon animation speed, atlas_key or sound_frame");
                 }
             }

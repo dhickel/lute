@@ -42,6 +42,7 @@ public final class CombatSystemTest {
         Gdx.app = (com.badlogic.gdx.Application) Proxy.newProxyInstance(com.badlogic.gdx.Application.class.getClassLoader(),
             new Class<?>[]{com.badlogic.gdx.Application.class}, (proxy, method, values) -> null);
         animationWithoutCombat();
+        animationIntervals();
         frameTiming();
         speedAndSkippedFrames();
         movementAndInput();
@@ -57,11 +58,27 @@ public final class CombatSystemTest {
         var engine = new Engine();
         engine.addSystem(new FakeAnimationSystem());
         var entity = new Entity()
-            .add(new Animation2D("OBJECTS", "object", Animation2D.AnimationType.ATTACK, Animation.PlayMode.LOOP, 1, 8))
+            .add(new Animation2D("OBJECTS", "object", Animation2D.AnimationType.ATTACK, Animation.PlayMode.LOOP, 1, .125f))
             .add(new Facing(Facing.Direction.DOWN)).add(new Graphic(new TextureRegion(), Color.WHITE));
         engine.addEntity(entity);
         engine.update(0); engine.update(.25f);
         check(Animation2D.MAPPER.get(entity).getAnimation() != null, "Animated objects do not require combat or sound metadata");
+    }
+
+    private static void animationIntervals() {
+        var animation = new Animation2D("OBJECTS", "player", Animation2D.AnimationType.IDLE,
+            Animation.PlayMode.LOOP, 1, .125f);
+        animation.configureAttack(new Animation2D.Attack(2, .3f, 1, "sound"));
+        animation.beginAttack();
+        animation.setType(Animation2D.AnimationType.ATTACK);
+        animation.setAnimation(new Animation<>(animation.getFrameDuration(), new TextureRegion(), new TextureRegion()),
+            Facing.Direction.DOWN);
+        animation.incAndGetStateTime(.149f);
+        check(!animation.hasReachedFrame(1), "Weapon interval and speed delay the attack frame");
+        animation.incAndGetStateTime(.002f);
+        check(animation.hasReachedFrame(1), "Weapon interval and speed determine attack frame timing");
+        animation.endAttack();
+        near(.125f, animation.getFrameDuration(), "Player interval restored after attack");
     }
 
     private static void frameTiming() {
@@ -224,7 +241,7 @@ public final class CombatSystemTest {
             }
             for (var bounds : new CombatWeapon.Bounds[]{new CombatWeapon.Bounds(0, 0, .001f, .001f),
                 new CombatWeapon.Bounds(0, 0, 1e24f, 64), new CombatWeapon.Bounds(0, 0, 1e15f, 1e15f)}) {
-                var unsafe = new CombatWeapon.Weapon("bad", 10, 0, new Animation2D.Attack(1, 0, "sound"),
+                var unsafe = new CombatWeapon.Weapon("bad", 10, 0, new Animation2D.Attack(1, .125f, 0, "sound"),
                     "hit", shape, bounds);
                 rejects(() -> unsafe.validateGeometry(anchor), "Unsafe geometry");
             }
@@ -280,7 +297,7 @@ public final class CombatSystemTest {
                     var anim = original.animation();
                     var bad = new WeaponsData.WeaponData(
                         new WeaponsData.WeaponData.Stats(stats.damage(), stats.cost(), hit ? invalid : 0),
-                        new WeaponsData.WeaponData.WeaponAnimation(anim.speed(), anim.atlasKey(), hit ? 0 : invalid),
+                        new WeaponsData.WeaponData.WeaponAnimation(anim.speed(), anim.atlasKey(), hit ? 0 : invalid, anim.frameInterval()),
                         original.sounds(), original.bounds());
                     field.set(GameCore.INSTANCE, new GameData(data.playerData(),
                         new WeaponsData("NONE", Map.of(data.playerData().equippedWeapon(), bad))));
@@ -296,7 +313,7 @@ public final class CombatSystemTest {
             var anim = original.animation();
             var cues = new WeaponsData.WeaponData(
                 new WeaponsData.WeaponData.Stats(stats.damage(), stats.cost(), 2),
-                new WeaponsData.WeaponData.WeaponAnimation(anim.speed(), anim.atlasKey(), 3),
+                new WeaponsData.WeaponData.WeaponAnimation(anim.speed(), anim.atlasKey(), 3, anim.frameInterval()),
                 original.sounds(), original.bounds());
             field.set(GameCore.INSTANCE, new GameData(data.playerData(),
                 new WeaponsData("NONE", Map.of(data.playerData().equippedWeapon(), cues))));
@@ -361,7 +378,7 @@ public final class CombatSystemTest {
         };
         var engine = new Engine(); engine.addSystem(new AnimationSystem(assets));
         var player = new Entity().add(new Animation2D("OBJECTS", "loop", Animation2D.AnimationType.DEFAULT,
-            Animation.PlayMode.LOOP, 1, 8)).add(new Facing(Facing.Direction.DOWN)).add(new Graphic(new TextureRegion(), Color.WHITE));
+            Animation.PlayMode.LOOP, 1, .125f)).add(new Facing(Facing.Direction.DOWN)).add(new Graphic(new TextureRegion(), Color.WHITE));
         engine.addEntity(player);
         try {
             engine.update(0); engine.update(.125f);
@@ -374,7 +391,7 @@ public final class CombatSystemTest {
     }
 
     private static CombatWeapon.Weapon weapon(float speed, int hit, int sound, BoundsType shape) {
-        return new CombatWeapon.Weapon("test", 10, hit, new Animation2D.Attack(speed, sound, "weapon/test/attack"),
+        return new CombatWeapon.Weapon("test", 10, hit, new Animation2D.Attack(speed, .125f, sound, "weapon/test/attack"),
             "weapon/test/hit", shape, new CombatWeapon.Bounds(32, 0, 72, 64));
     }
     private static void check(boolean condition, String message) {
@@ -440,7 +457,7 @@ public final class CombatSystemTest {
             player.add(new Physic(body, new Vector2())).add(new Transform(new Vector2(), 0, new Vector2(2, 2), new Vector2(1, 1), 0, 0))
                 .add(new Facing(Facing.Direction.RIGHT)).add(new Move(4)).add(new Controller())
                 .add(new Combat(weapon(speed, hit, sound, BoundsType.SEMICIRCLE))).add(new Health(100))
-                .add(new Animation2D("OBJECTS", "player", Animation2D.AnimationType.IDLE, Animation.PlayMode.LOOP, 1, 8))
+                .add(new Animation2D("OBJECTS", "player", Animation2D.AnimationType.IDLE, Animation.PlayMode.LOOP, 1, .125f))
                 .add(new Graphic(new TextureRegion(), Color.WHITE)).add(new AnimationPlayer(player));
             engine.addEntity(player); update(0);
         }

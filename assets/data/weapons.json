@@ -10,7 +10,8 @@
       "animation": {
         "speed": 1,
         "atlas_key": "NONE",
-        "sound_frame": 0
+        "sound_frame": 0,
+        "frame_interval": 0.15
       },
       "sounds": {
         "attack": "sword_swing.wav",

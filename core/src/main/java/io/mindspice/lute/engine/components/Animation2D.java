@@ -15,6 +15,7 @@ public class Animation2D implements Component {
     private Animation.PlayMode mode;
     private float speed;
     private float previousSpeed;
+    private final float baseFrameDuration;
     private float frameDuration;
     private float stateTime;
     private Animation<TextureRegion> animation;
@@ -23,7 +24,7 @@ public class Animation2D implements Component {
     private long minimumAttackFrames;
     private boolean attackSoundEmitted;
 
-    public record Attack(float speed, int soundFrame, String soundId) { }
+    public record Attack(float speed, float frameInterval, int soundFrame, String soundId) { }
 
     public void configureAttack(Attack attack) { this.attack = attack; }
 
@@ -50,7 +51,7 @@ public class Animation2D implements Component {
                        AnimationType type,
                        Animation.PlayMode mode,
                        float speed,
-                       int keyFrames
+                       float frameInterval
     ) {
         this.atlasId = atlasId;
         this.atlasKey = atlasKey;
@@ -58,7 +59,8 @@ public class Animation2D implements Component {
         this.fdirection = Facing.Direction.DOWN;
         this.mode = mode;
         this.speed = speed;
-        this.frameDuration = 1f / keyFrames;
+        this.baseFrameDuration = frameInterval;
+        this.frameDuration = frameInterval;
         this.stateTime = 0f;
         this.animation = null;
         this.dirty = true;
@@ -124,11 +126,13 @@ public class Animation2D implements Component {
     public void beginAttack() {
         previousSpeed = speed;
         speed = attack.speed();
+        frameDuration = attack.frameInterval();
         attackSoundEmitted = false;
     }
 
     public void endAttack() {
         speed = previousSpeed;
+        frameDuration = baseFrameDuration;
     }
 
     public boolean isFinished() {

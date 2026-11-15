@@ -18,6 +18,10 @@ public final class DataLoaderTest {
             check(GameConsts.VIEW_WIDTH == 21.3f && GameConsts.UNIT_SCALE == 1f / 32f, "settings constants");
             var player = DataLoader.parsePlayerData();
             check(player.maxHealth() == 100 && player.moveSpeed() == 4, "player stats");
+            check(player.animation().frameInterval() == .125f, "player animation interval");
+            rejects(() -> new PlayerData.PlayerAnimation(0), "zero player interval");
+            rejects(() -> new PlayerData.PlayerAnimation(Float.NaN), "nonfinite player interval");
+            rejects(() -> new WeaponsData.WeaponData.WeaponAnimation(1, null, 0, 0), "zero weapon interval");
             var definitions = DataLoader.parseWeaponData();
             var weapon = definitions.requireWeapon(player.equippedWeapon());
             check("NONE".equals(definitions.atlas()) && "NONE".equals(weapon.animation().atlasKey()), "disabled atlas");
@@ -37,17 +41,17 @@ public final class DataLoaderTest {
             rejects(() -> WeaponAssets.of("missing", definitions), "unknown weapon");
             rejects(() -> WeaponAssets.of("sword", new WeaponsData("weapons.atlas", definitions.weapons())), "unsupported atlas");
             var visual = new WeaponsData.WeaponData(weapon.stats(),
-                new WeaponsData.WeaponData.WeaponAnimation(1, "sword", 3), weapon.sounds(), weapon.bounds());
+                new WeaponsData.WeaponData.WeaponAnimation(1, "sword", 3, .125f), weapon.sounds(), weapon.bounds());
             rejects(() -> new WeaponsData(null, java.util.Map.of("sword", visual)).requireWeapon("sword"), "unsupported region");
-            check("NONE".equals(new WeaponsData.WeaponData.WeaponAnimation(1, null, 0).atlasKey()), "default region");
+            check("NONE".equals(new WeaponsData.WeaponData.WeaponAnimation(1, null, 0, .125f).atlasKey()), "default region");
             var parsedStats = DataLoader.mapper.readValue("{\"damage\":1,\"cost\":0,\"hit_frame\":2}", WeaponsData.WeaponData.Stats.class);
-            var parsedAnimation = DataLoader.mapper.readValue("{\"speed\":1,\"sound_frame\":3}", WeaponsData.WeaponData.WeaponAnimation.class);
+            var parsedAnimation = DataLoader.mapper.readValue("{\"speed\":1,\"sound_frame\":3,\"frame_interval\":0.15}", WeaponsData.WeaponData.WeaponAnimation.class);
             check(parsedStats.hitFrame() == 2 && parsedAnimation.soundFrame() == 3, "zero-based frame JSON mapping");
             rejects(() -> new WeaponsData.WeaponData.Stats(10, 0, -1), "negative hit frame");
-            rejects(() -> new WeaponsData.WeaponData.WeaponAnimation(0, null, 0), "zero speed");
+            rejects(() -> new WeaponsData.WeaponData.WeaponAnimation(0, null, 0, .125f), "zero speed");
             rejects(() -> new WeaponsData.WeaponData.Sounds("", "hit.wav"), "empty sound");
-            rejects(() -> new PlayerData("player", 0, 100, "sword"), "zero move speed");
-            rejects(() -> new PlayerData("player", 1, 0, "sword"), "zero health");
+            rejects(() -> new PlayerData("player", 0, 100, "sword", new PlayerData.PlayerAnimation(.125f)), "zero move speed");
+            rejects(() -> new PlayerData("player", 1, 0, "sword", new PlayerData.PlayerAnimation(.125f)), "zero health");
             rejects(() -> new WeaponsData.WeaponData.Bounds(WeaponsData.WeaponData.BoundsType.RECT, 1, 0, 1, 2), "collapsed bounds");
             rejects(() -> new WeaponsData.WeaponData.Bounds(WeaponsData.WeaponData.BoundsType.RECT, Float.NaN, 0, 2, 2), "nonfinite bounds");
 
