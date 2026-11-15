@@ -38,7 +38,7 @@ public class AssetService implements Disposable {
     }
 
     @SuppressWarnings("unchecked")
-    private <T> Map<String, Entry<T>> entries(Class<T> type, String id) {
+    private <T> Map<String, Entry<T>> entriesFor(Class<T> type) {
         Map<?, ?> selected = switch (type) {
             case Class<?> assetType when assetType == Sound.class -> sounds;
             case Class<?> assetType when assetType == Music.class -> music;
@@ -46,15 +46,18 @@ public class AssetService implements Disposable {
             case Class<?> assetType when assetType == TiledMap.class -> maps;
             case null, default -> throw new IllegalArgumentException("Unsupported asset type: " + type);
         };
+        return (Map<String, Entry<T>>) selected;
+    }
+
+    private static void validateId(String id) {
         if (id == null || id.isBlank()) {
             throw new IllegalArgumentException("Asset logical ID must not be null or blank");
         }
-        return (Map<String, Entry<T>>) selected;
     }
 
     public <T> T load(Asset<T> asset) {
         queue(asset);
-        var entry = entries(asset.type(), asset.id()).get(asset.id());
+        var entry = entriesFor(asset.type()).get(asset.id());
         if (entry.value == null) { loadEntry(entry); }
         return get(asset.type(), asset.id());
     }
@@ -66,7 +69,7 @@ public class AssetService implements Disposable {
     }
 
     private <T> void queueChecked(Asset<T> asset) {
-        var table = entries(asset.type(), asset.id());
+        var table = entriesFor(asset.type());
         var existing = table.get(asset.id());
         if (existing != null) {
             if (!existing.definition.path().equals(asset.path())) {
@@ -83,7 +86,9 @@ public class AssetService implements Disposable {
     @SuppressWarnings("unchecked")
     public <T> T get(Class<T> type, String id) {
         requireOpen();
-        Entry<?> entry = entries(type, id).get(id);
+        var table = entriesFor(type);
+        validateId(id);
+        Entry<?> entry = table.get(id);
         if (entry == null || entry.value == null) {
             throw new IllegalStateException("Asset is not loaded: " + type.getSimpleName() + "[" + id + "]");
         }
@@ -91,13 +96,17 @@ public class AssetService implements Disposable {
     }
 
     public boolean isLoaded(Class<?> type, String id) {
-        var entry = entries(type, id).get(id);
+        var table = entriesFor(type);
+        validateId(id);
+        var entry = table.get(id);
         return entry != null && entry.value != null;
     }
 
     public void unload(Class<?> type, String id) {
         requireOpen();
-        var entry = entries(type, id).remove(id);
+        var table = entriesFor(type);
+        validateId(id);
+        var entry = table.remove(id);
         if (entry == null) { return; }
         queue.remove(entry);
         if (entry.value != null) { ((Disposable) entry.value).dispose(); }
@@ -117,7 +126,7 @@ public class AssetService implements Disposable {
             entry.value = asset.type().cast(Objects.requireNonNull(value, "Loader returned null"));
             queue.remove(entry);
         } catch (RuntimeException failure) {
-            entries(asset.type(), asset.id()).remove(asset.id());
+            entriesFor(asset.type()).remove(asset.id());
             queue.remove(entry);
             if (value instanceof Disposable resource) {
                 try { resource.dispose(); }
