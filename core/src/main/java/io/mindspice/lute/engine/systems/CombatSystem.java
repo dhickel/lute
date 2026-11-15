@@ -21,7 +21,7 @@ public class CombatSystem extends IteratingSystem implements ContactListener, En
     private final Map<Entity, Combat> activeAttacks = new IdentityHashMap<>();
 
     public CombatSystem(World world) {
-        super(Family.all(Combat.class, Physic.class, Transform.class, Facing.class).get());
+        super(Family.all(Combat.class, Animation2D.class, Physic.class, Transform.class, Facing.class).get());
         this.world = world;
     }
 
@@ -68,13 +68,23 @@ public class CombatSystem extends IteratingSystem implements ContactListener, En
         var health = Health.MAPPER.get(entity);
         boolean alive = health == null || health.isAlive();
         boolean requested = combat.consumeAttackRequest();
-        if (combat.isAttacking()) {
-            if (!alive || combat.advanceAttack(deltaTime)) {
-                stopAttack(entity);
-            }
+        var animation = Animation2D.MAPPER.get(entity);
+        if (!combat.isAttacking()) {
+            if (!requested || !alive) { return; }
+            animation.configureAttack(combat.getCurrentWeapon().animation());
+            combat.beginAttack();
+            activeAttacks.put(entity, combat);
             return;
         }
-        if (!requested || !alive) { return; }
+        int hitFrame = combat.getCurrentWeapon().hitFrame();
+        if (animation.isAttackReady() && hitFrame >= animation.getAnimation().getKeyFrames().length) {
+            throw new IllegalArgumentException("Weapon hit frame must be less than attack animation frame count");
+        }
+        if (!alive || (animation.isAttackReady() && animation.isFinished())) {
+            stopAttack(entity);
+            return;
+        }
+        if (combat.getSensor() != null || !animation.hasReachedFrame(hitFrame)) { return; }
 
         var body = Physic.MAPPER.get(entity).getBody();
         var size = Transform.MAPPER.get(entity).getSize();
@@ -87,8 +97,7 @@ public class CombatSystem extends IteratingSystem implements ContactListener, En
             definition.isSensor = true;
             var sensor = body.createFixture(definition);
             body.setAwake(true);
-            combat.beginAttack(sensor);
-            activeAttacks.put(entity, combat);
+            combat.setSensor(sensor);
             sensor.setUserData(new AttackSensor(entity, combat.getAttackId()));
         } finally {
             shape.dispose();
@@ -100,7 +109,7 @@ public class CombatSystem extends IteratingSystem implements ContactListener, En
         var combat = activeAttacks.remove(entity);
         if (combat == null || !combat.isAttacking()) { return; }
         var sensor = combat.getSensor();
-        sensor.getBody().destroyFixture(sensor);
+        if (sensor != null) { sensor.getBody().destroyFixture(sensor); }
         combat.endAttack();
     }
 

@@ -17,9 +17,9 @@ import com.badlogic.gdx.utils.GdxRuntimeException;
 import io.mindspice.lute.engine.assets.Asset;
 import io.mindspice.lute.engine.assets.AssetService;
 import io.mindspice.lute.engine.assets.MapAssets;
+import io.mindspice.lute.engine.assets.WeaponAssets;
 import io.mindspice.lute.engine.GameCore;
 import io.mindspice.lute.engine.components.CombatWeapon;
-import java.util.Objects;
 import io.mindspice.lute.engine.components.*;
 import io.mindspice.lute.engine.components.Transform;
 import io.mindspice.lute.engine.input.InputManager;
@@ -50,11 +50,14 @@ public class EntityFactory extends EntitySystem {
         if (!Float.isFinite(player.moveSpeed()) || player.moveSpeed() <= 0f) {
             throw new IllegalArgumentException("Player moveSpeed must be finite and positive");
         }
-        var weaponData = Objects.requireNonNull(data.weaponsData().weapons().get(player.equippedWeapon()),
-            "Unknown equipped weapon: " + player.equippedWeapon());
-        var bounds = Objects.requireNonNull(weaponData.bounds(), "weapon bounds");
-        var weapon = new CombatWeapon.Weapon(player.equippedWeapon(), weaponData.damage(), weaponData.attackSpeed(),
-            weaponData.attackDuration(), weaponData.boundsType(), new CombatWeapon.Bounds(bounds.x1(), bounds.y1(), bounds.x2(), bounds.y2()));
+        var weaponData = data.weaponsData().requireWeapon(player.equippedWeapon());
+        var sounds = WeaponAssets.of(player.equippedWeapon(), data.weaponsData());
+        var bounds = weaponData.bounds();
+        var attack = new Animation2D.Attack(weaponData.animation().speed(),
+            weaponData.animation().soundFrame(), sounds.attack().id());
+        var weapon = new CombatWeapon.Weapon(player.equippedWeapon(), weaponData.stats().damage(),
+            weaponData.stats().hitFrame(), attack, sounds.hit().id(), bounds.type(),
+            new CombatWeapon.Bounds(bounds.x1(), bounds.y1(), bounds.x2(), bounds.y2()));
 
         Entity entity = getEngine().createEntity();
         entity.add(new Graphic(region, Color.WHITE.cpy()));

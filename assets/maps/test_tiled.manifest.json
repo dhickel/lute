@@ -7,8 +7,5 @@
   "music_assets": {
     "TOWN": "town.ogg"
   },
-  "sound_assets": {
-    "SWORD_HIT": "sword_hit.wav",
-    "SWORD_SWING": "sword_hit.wav"
-  }
+  "sound_assets": {}
 }

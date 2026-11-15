@@ -12,6 +12,7 @@ import com.badlogic.gdx.utils.viewport.FitViewport;
 import com.badlogic.gdx.utils.viewport.Viewport;
 import io.mindspice.lute.engine.assets.AssetService;
 import io.mindspice.lute.engine.assets.MapAssets;
+import io.mindspice.lute.engine.assets.WeaponAssets;
 import io.mindspice.lute.engine.data.json.DataLoader;
 import io.mindspice.lute.engine.data.json.GameData;
 import io.mindspice.lute.engine.tiled.ManifestLoader;
@@ -25,6 +26,7 @@ import io.mindspice.lute.engine.singletons.GameConsts;
 import io.mindspice.lute.engine.util.Pair;
 
 import java.util.Arrays;
+import java.util.ArrayList;
 
 /**
  * {@link com.badlogic.gdx.ApplicationListener} implementation shared by all platforms.
@@ -46,6 +48,7 @@ public class GameCore extends Game {
 
     @Override
     public void create() {
+        GameConsts.loadSettings();
         Gdx.app.setLogLevel(Application.LOG_DEBUG);
 
         InputMap inputMap = InputMap.of(
@@ -80,8 +83,11 @@ public class GameCore extends Game {
         };
 
         MapAssets assets = ManifestLoader.parseMapManifest("test_tiled");
+        var initialAssets = new ArrayList<>(assets.all());
+        initialAssets.addAll(WeaponAssets.of(
+            gameData.playerData().equippedWeapon(), gameData.weaponsData()).all());
         this.screenManager = new ScreenManager(
-            Pair.of("InitialLoading", new LoadingScreen(assetService, switchToGameScreen, assets.all())),
+            Pair.of("InitialLoading", new LoadingScreen(assetService, switchToGameScreen, initialAssets)),
             Pair.of("GameScreen", new GameScreen(assets))
         );
 

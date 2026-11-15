@@ -4,8 +4,6 @@ import com.badlogic.ashley.core.Component;
 import com.badlogic.ashley.core.ComponentMapper;
 import com.badlogic.ashley.core.Entity;
 import com.badlogic.gdx.physics.box2d.Fixture;
-import io.mindspice.lute.engine.components.CombatWeapon;
-import io.mindspice.lute.engine.data.json.WeaponsData.WeaponData.BoundsType;
 
 import java.util.Collections;
 import java.util.IdentityHashMap;
@@ -17,7 +15,6 @@ public class Combat implements Component {
     private final CombatWeapon.Weapon currentWeapon;
     private boolean attackRequested;
     private boolean attacking;
-    private double attackElapsed;
     private Fixture sensor;
     private long attackId;
     private final Set<Entity> hitTargets = Collections.newSetFromMap(new IdentityHashMap<>());
@@ -41,22 +38,16 @@ public class Combat implements Component {
         return requested;
     }
 
-    public void beginAttack(Fixture sensor) {
-        this.sensor = Objects.requireNonNull(sensor, "sensor");
+    public void beginAttack() {
         attacking = true;
-        attackElapsed = 0;
         attackId++;
         hitTargets.clear();
     }
 
-    public boolean advanceAttack(float deltaTime) {
-        attackElapsed += deltaTime;
-        return attackElapsed >= currentWeapon.attackDuration();
-    }
+    public void setSensor(Fixture sensor) { this.sensor = Objects.requireNonNull(sensor, "sensor"); }
 
     public void endAttack() {
         attacking = false;
-        attackElapsed = 0;
         sensor = null;
         attackRequested = false;
         hitTargets.clear();

@@ -1,25 +1,28 @@
 {
-  "sword": {
-    "stats": {
-      "damage": 10,
-      "cost": 10,
-      "hit_frame": 2
-    },
-    "animation": {
-      "speed": 1,
-      "atlas_key": "NONE",
-      "sound_frame": 3
-    },
-    "sounds": {
-      "attack": "sword_swing.wav",
-      "hit": "sword_hit.wav"
-    },
-    "bounds": {
-      "type": "SEMICIRCLE",
-      "x1": 32,
-      "y1": 0,
-      "x2": 64,
-      "y2": 64
+  "atlas": "NONE",
+  "weapons": {
+    "sword": {
+      "stats": {
+        "damage": 10,
+        "cost": 10,
+        "hit_frame": 1
+      },
+      "animation": {
+        "speed": 1,
+        "atlas_key": "NONE",
+        "sound_frame": 2
+      },
+      "sounds": {
+        "attack": "sword_swing.wav",
+        "hit": "sword_hit.wav"
+      },
+      "bounds": {
+        "type": "SEMICIRCLE",
+        "x1": 32,
+        "y1": 0,
+        "x2": 64,
+        "y2": 64
+      }
     }
   }
 }

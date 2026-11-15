@@ -13,6 +13,8 @@ import io.mindspice.lute.engine.components.Animation2D;
 import io.mindspice.lute.engine.components.Facing;
 import io.mindspice.lute.engine.components.Graphic;
 
+import io.mindspice.lute.engine.events.Event;
+
 import java.util.HashMap;
 import java.util.Map;
 import java.util.WeakHashMap;
@@ -43,7 +45,12 @@ public class AnimationSystem extends IteratingSystem {
         } else { stateTime = anim2d.incAndGetStateTime(deltaTime); }
 
         Animation<TextureRegion> animation = anim2d.getAnimation();
+        anim2d.validateAttackFrames();
         animation.setPlayMode(anim2d.getPlayMode());
+        String soundId = anim2d.consumeAttackSound();
+        if (soundId != null) {
+            getEngine().getSystem(EventSystem.class).emitEvent(new Event.Sound.Play(soundId));
+        }
 
         TextureRegion keyFrame = animation.getKeyFrame(stateTime);
         Graphic.MAPPER.get(entity).setRegion(keyFrame);

@@ -40,7 +40,7 @@ public enum AnimationState implements State<Entity> {
             var animation = Animation2D.MAPPER.get(entity);
             animation.setType(Animation2D.AnimationType.ATTACK);
             animation.setMode(Animation.PlayMode.NORMAL);
-            animation.beginAttack(Combat.MAPPER.get(entity).getCurrentWeapon().attackSpeed());
+            animation.beginAttack();
         }
 
         @Override
