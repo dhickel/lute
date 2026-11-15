@@ -14,12 +14,13 @@ import io.mindspice.lute.engine.components.Facing;
 import io.mindspice.lute.engine.components.Graphic;
 
 import io.mindspice.lute.engine.events.Event;
+import io.mindspice.lute.engine.events.EventEmitter;
 
 import java.util.HashMap;
 import java.util.Map;
 import java.util.WeakHashMap;
 
-public class AnimationSystem extends IteratingSystem {
+public class AnimationSystem extends IteratingSystem implements EventEmitter {
     private final AssetService assetService;
     private final Map<CacheKey, Animation<TextureRegion>> animationCache;
     private final Map<Animation2D, TextureAtlas> currentAtlases = new WeakHashMap<>();
@@ -53,7 +54,7 @@ public class AnimationSystem extends IteratingSystem {
 
         String soundId = anim2d.consumeAttackSound();
         if (soundId != null) {
-            getEngine().getSystem(EventSystem.class).emitEvent(new Event.Sound.Play(soundId));
+            eventEmitter.accept(new Event.Sound.Play(soundId));
         }
 
         TextureRegion keyFrame = animation.getKeyFrame(stateTime);

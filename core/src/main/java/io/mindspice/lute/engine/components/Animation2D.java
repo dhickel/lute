@@ -22,14 +22,7 @@ public class Animation2D implements Component {
     private Attack attack;
     private boolean attackSoundEmitted;
 
-    public record Attack(float speed, int soundFrame, String soundId) {
-        public Attack {
-            if (!Float.isFinite(speed) || speed <= 0 || soundFrame < 0
-                || soundId == null || soundId.isBlank()) {
-                throw new IllegalArgumentException("Invalid attack animation timing or sound ID");
-            }
-        }
-    }
+    public record Attack(float speed, int soundFrame, String soundId) { }
 
     public void configureAttack(Attack attack) { this.attack = attack; }
 
