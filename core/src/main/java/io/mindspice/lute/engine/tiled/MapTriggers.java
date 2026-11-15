@@ -20,7 +20,10 @@ public record MapTriggers(List<Sensor> sensors, List<SpawnPoint> points, List<Sp
     public enum SensorType { GENERAL }
     public enum SpawnType { PLAYER, TELEPORT, NPC, ITEM }
 
-    public record Sensor(String name, SensorType type, Rectangle bounds, String targetMap, String targetSpawn) { }
+    public record DetectorGeometry(Vector2 center, float radius, List<float[]> polygons) {
+        public DetectorGeometry { polygons = List.copyOf(polygons); }
+    }
+    public record Sensor(String name, SensorType type, DetectorGeometry geometry, String targetMap, String targetSpawn) { }
     public record SpawnPoint(String name, SpawnType type, Vector2 position) { }
     public record SpawnArea(String name, SpawnType type, Rectangle bounds) { }
 
@@ -100,15 +103,16 @@ public record MapTriggers(List<Sensor> sensors, List<SpawnPoint> points, List<Sp
                                    List<SpawnPoint> points, List<SpawnArea> areas) {
         String name = object.getName();
         if (name == null || name.isBlank()) { throw invalid(object, "object name is required"); }
-        Object rotation = object.getProperties().get("rotation");
-        if (rotation != null && number(object, rotation, "rotation") != 0) {
-            throw invalid(object, "rotated trigger geometry is unsupported");
-        }
+        Object rotationProperty = object.getProperties().get("rotation");
+        float rotation = rotationProperty == null ? 0 : number(object, rotationProperty, "rotation");
         String type = text(object, "type");
+        if ((type.equals("SpawnArea") || type.equals("SpawnPoint")) && rotation != 0) {
+            throw invalid(object, "rotated spawn geometry is unsupported");
+        }
         switch (type) {
             case "Sensor" -> sensors.add(new Sensor(name, enumValue(object, "sensorType", SensorType.class),
-                bounds(object), null, null));
-            case "Teleport" -> sensors.add(new Sensor(name, SensorType.GENERAL, bounds(object),
+                DetectorGeometryParser.parse(object, rotation), null, null));
+            case "Teleport" -> sensors.add(new Sensor(name, SensorType.GENERAL, DetectorGeometryParser.parse(object, rotation),
                 text(object, "targetMap"), text(object, "targetSpawn")));
             case "SpawnPoint" -> {
                 if (!(object instanceof PointMapObject point)) {
@@ -131,10 +135,10 @@ public record MapTriggers(List<Sensor> sensors, List<SpawnPoint> points, List<Sp
     }
 
     private static Rectangle bounds(MapObject object) {
-        if (!(object instanceof RectangleMapObject rectangle)) {
+        if (object.getClass() != RectangleMapObject.class) {
             throw invalid(object, "requires rectangle geometry");
         }
-        var bounds = new Rectangle(rectangle.getRectangle());
+        var bounds = new Rectangle(((RectangleMapObject) object).getRectangle());
         validateBounds(object, bounds);
         bounds.set(bounds.x * GameConsts.UNIT_SCALE, bounds.y * GameConsts.UNIT_SCALE,
             bounds.width * GameConsts.UNIT_SCALE, bounds.height * GameConsts.UNIT_SCALE);

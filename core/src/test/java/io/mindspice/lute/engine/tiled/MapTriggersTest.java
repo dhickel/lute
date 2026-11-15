@@ -8,6 +8,13 @@ import com.badlogic.gdx.maps.objects.RectangleMapObject;
 import com.badlogic.gdx.maps.tiled.BaseTiledMapLoader;
 import com.badlogic.gdx.maps.tiled.TiledMap;
 import com.badlogic.gdx.math.Rectangle;
+import com.badlogic.gdx.math.Vector2;
+import com.badlogic.gdx.physics.box2d.BodyDef;
+import com.badlogic.gdx.physics.box2d.Box2D;
+import com.badlogic.gdx.physics.box2d.CircleShape;
+import com.badlogic.gdx.physics.box2d.PolygonShape;
+import com.badlogic.gdx.physics.box2d.World;
+import com.badlogic.gdx.utils.GdxNativesLoader;
 import com.badlogic.gdx.utils.JsonReader;
 import io.mindspice.lute.engine.singletons.GameConsts;
 import io.mindspice.lute.engine.tiled.MapTriggers.SensorType;
@@ -29,6 +36,7 @@ public final class MapTriggersTest {
             sampleMap();
             classDefaultsAndCoordinates();
             groupedLayers();
+            detectorShapes();
             invalidGeometry();
             invalidProperties();
             invalidNamesAndReferences();
@@ -75,7 +83,7 @@ public final class MapTriggersTest {
             var destination = triggers.teleportDestination(teleport.targetSpawn());
             near(destination.position().x, 560, "Sample teleport destination x pixels");
             near(destination.position().y, 240, "Sample teleport destination y pixels");
-            rectangle(teleport.bounds(), 432.667f / 32, (640 - 275.333f - 35.3333f) / 32,
+            geometryRectangle(teleport.geometry(), 432.667f / 32, (640 - 275.333f - 35.3333f) / 32,
                 34.6667f / 32, 35.3333f / 32);
             check(map.getLayers().get("Objects").getObjects().getCount() == 6,
                 "Unrelated sample tile objects must remain intact");
@@ -97,7 +105,7 @@ public final class MapTriggersTest {
             var sensor = triggers.sensors().getFirst();
             check(sensor.type() == SensorType.GENERAL && sensor.targetMap() == null && sensor.targetSpawn() == null,
                 "Generic sensor inherits GENERAL and has no teleport target");
-            rectangle(sensor.bounds(), 1, 17, 2, 1);
+            geometryRectangle(sensor.geometry(), 1, 17, 2, 1);
             var player = triggers.points().getFirst();
             check(player.type() == SpawnType.PLAYER, "SpawnPoint inherits PLAYER default");
             near(player.position().x, 96, "Point remains in pixels");
@@ -113,7 +121,7 @@ public final class MapTriggersTest {
             near(original.width, 64, "Parsing does not scale the map object's rectangle in place");
             original.x = 999;
             ((PointMapObject) map.getLayers().get("Trigger").getObjects().get("player")).getPoint().x = 999;
-            near(sensor.bounds().x, 1, "Parsed bounds do not alias the map");
+            near(sensor.geometry().polygons().getFirst()[0], 1, "Parsed geometry does not alias the map");
             near(player.position().x, 96, "Parsed point does not alias the map");
             rejects("missing public lookup", "TELEPORT SpawnPoint", () -> triggers.teleportDestination("absent"));
             rejects("non-teleport public lookup", "TELEPORT SpawnPoint", () -> triggers.teleportDestination("player"));
@@ -122,7 +130,7 @@ public final class MapTriggersTest {
         GameConsts.UNIT_SCALE = .5f;
         try {
             var triggers = parse(layer("Triggers", "", rectangle("sensor", "Sensor", "") + point("p", "NPC", "")));
-            rectangle(triggers.sensors().getFirst().bounds(), 16, 272, 32, 16);
+            geometryRectangle(triggers.sensors().getFirst().geometry(), 16, 272, 32, 16);
             near(triggers.points().getFirst().position().x, 96, "Point units do not depend on UNIT_SCALE");
         } finally { GameConsts.UNIT_SCALE = 1f / 32f; }
     }
@@ -144,13 +152,188 @@ public final class MapTriggersTest {
         invalid("tile trigger layer", "<layer name=\"Triggers\" width=\"1\" height=\"1\"><data encoding=\"csv\">0</data></layer>", "object layer");
     }
 
+    private static void detectorShapes() {
+        GdxNativesLoader.load();
+        Box2D.init();
+        for (String type : new String[]{"Sensor", "Teleport"}) {
+            for (float rotation : new float[]{0, 90, -30, 360}) {
+                String attributes = "x=\"64\" y=\"96\" width=\"64\" height=\"32\" rotation=\"" + rotation + "\"";
+                var rectangle = detector(type, attributes, "");
+                check(rectangle.polygons().size() == 1, "Rectangle remains one convex fixture");
+                outline(rectangle.polygons().getFirst(), new float[]{64, 512, 128, 512, 128, 544, 64, 544},
+                    64, 544, rotation);
+                nativeCoverage(rectangle, rotated(96, 528, 64, 544, rotation), true);
+
+                var ellipse = detector(type, attributes, "<ellipse/>");
+                check(ellipse.radius() == 0 && ellipse.polygons().size() == 1
+                    && ellipse.polygons().getFirst().length == 16, "Noncircular ellipse has exactly eight sides");
+                float[] ellipseOutline = new float[16];
+                for (int i = 0; i < 8; i++) {
+                    ellipseOutline[2 * i] = 96 + (float) Math.cos(i * Math.PI / 4) * 32;
+                    ellipseOutline[2 * i + 1] = 528 + (float) Math.sin(i * Math.PI / 4) * 16;
+                }
+                outline(ellipse.polygons().getFirst(), ellipseOutline, 64, 544, rotation);
+                nativeCoverage(ellipse, rotated(96, 528, 64, 544, rotation), true);
+
+                var circle = detector(type, attributes.replace("width=\"64\"", "width=\"32\""), "<ellipse/>");
+                check(circle.polygons().isEmpty(), "Circle uses a native circle, not a polygon");
+                near(circle.radius(), .5f, "Circle radius is in world units");
+                var center = rotated(80, 528, 64, 544, rotation);
+                near(circle.center().x, center.x, "Circle rotated center x");
+                near(circle.center().y, center.y, "Circle rotated center y");
+                nativeCoverage(circle, center, true);
+                nativeCoverage(circle, new Vector2(center.x + .6f, center.y), false);
+
+                var triangle = detector(type, attributes, "<polygon points=\"0,0 64,0 0,32\"/>");
+                check(triangle.polygons().size() == 1, "Triangle is one fixture");
+                outline(triangle.polygons().getFirst(), new float[]{64, 544, 128, 544, 64, 512}, 64, 544, rotation);
+                nativeCoverage(triangle, rotated(80, 536, 64, 544, rotation), true);
+
+                var concave = detector(type, attributes,
+                    "<polygon points=\"0,0 96,0 96,96 64,96 64,32 32,32 32,96 0,96\"/>");
+                check(concave.polygons().size() == 6, "Concave U outline is triangulated into six solid pieces");
+                near((float) area(concave), 7, "Triangulation preserves the U area without filling its notch");
+                nativeCoverage(concave, rotated(112, 480, 64, 544, rotation), false);
+                nativeCoverage(concave, rotated(80, 480, 64, 544, rotation), true);
+                nativeCoverage(concave, rotated(112, 528, 64, 544, rotation), true);
+
+                StringBuilder points = new StringBuilder();
+                double expectedArea = 0;
+                float[] decagon = new float[20];
+                for (int i = 0; i < 10; i++) {
+                    float x = (float) Math.cos(i * Math.PI / 5) * 64;
+                    float y = (float) Math.sin(i * Math.PI / 5) * 64;
+                    points.append(x).append(',').append(y).append(' ');
+                    decagon[2 * i] = x / 32;
+                    decagon[2 * i + 1] = -y / 32;
+                }
+                for (int i = 0; i < 10; i++) {
+                    int next = (i + 1) % 10;
+                    expectedArea += decagon[2 * i] * decagon[2 * next + 1] - decagon[2 * next] * decagon[2 * i + 1];
+                }
+                var many = detector(type, attributes, "<polygon points=\"" + points + "\"/>");
+                check(many.polygons().size() == 8, "More than eight vertices are split into convex pieces");
+                near((float) area(many), (float) Math.abs(expectedArea / 2), "Decagon decomposition preserves area");
+                nativeCoverage(many, rotated(64, 544, 64, 544, rotation), true);
+            }
+            var reversed = detector(type, "x=\"64\" y=\"96\"", "<polygon points=\"0,32 64,0 0,0\"/>");
+            near((float) area(reversed), 1, "Both polygon windings are supported");
+            for (float rotation : new float[]{0, 6.5f, 13.3f, 20, 90, 120}) {
+                var collinear = detector(type, "x=\"64\" y=\"96\" rotation=\"" + rotation + "\"",
+                    "<polygon points=\"0,0 32,0 64,0 64,32 0,32\"/>");
+                check(collinear.polygons().size() == 1 && collinear.polygons().getFirst().length == 8,
+                    "Redundant straight-edge vertices are removed before rotation, without tiny ears");
+                nativeCoverage(collinear, rotated(96, 528, 64, 544, rotation), true);
+            }
+        }
+    }
+
+    private static String detectorProperties(String type) {
+        return type.equals("Teleport") ? property("targetSpawn", "unused") + property("targetMap", "elsewhere") : "";
+    }
+
+    private static MapTriggers.DetectorGeometry detector(String type, String attributes, String shape) {
+        var sensors = parse(layer("Triggers", "", object("detector", type, attributes, detectorProperties(type), shape))).sensors();
+        check(sensors.size() == 1 && sensors.getFirst().type() == SensorType.GENERAL, "Each shape remains one GENERAL detector");
+        check(type.equals("Teleport") == (sensors.getFirst().targetMap() != null), "Teleport metadata survives geometry parsing");
+        return sensors.getFirst().geometry();
+    }
+
+    private static Vector2 rotated(float x, float y, float pivotX, float pivotY, float rotation) {
+        double radians = -rotation * Math.PI / 180;
+        return new Vector2((float) (pivotX + (x - pivotX) * Math.cos(radians) - (y - pivotY) * Math.sin(radians)) / 32,
+            (float) (pivotY + (x - pivotX) * Math.sin(radians) + (y - pivotY) * Math.cos(radians)) / 32);
+    }
+
+    private static void outline(float[] actual, float[] pixels, float pivotX, float pivotY, float rotation) {
+        check(actual.length == pixels.length, "Outline retains expected vertex count");
+        for (int i = 0; i < pixels.length; i += 2) {
+            var expected = rotated(pixels[i], pixels[i + 1], pivotX, pivotY, rotation);
+            boolean found = false;
+            for (int j = 0; j < actual.length; j += 2) {
+                if (Math.abs(actual[j] - expected.x) < .0001f && Math.abs(actual[j + 1] - expected.y) < .0001f) { found = true; }
+            }
+            check(found, "Outline matches Tiled clockwise rotation around loaded top-left/object anchor: " + expected);
+        }
+    }
+
+    private static double area(MapTriggers.DetectorGeometry geometry) {
+        double area = 0;
+        for (float[] polygon : geometry.polygons()) {
+            double pieceArea = 0;
+            for (int i = 0; i < polygon.length; i += 2) {
+                int next = (i + 2) % polygon.length;
+                pieceArea += (double) polygon[i] * polygon[next + 1] - (double) polygon[next] * polygon[i + 1];
+            }
+            check(pieceArea > 0, "Every convex piece is counterclockwise and nondegenerate");
+            area += pieceArea / 2;
+        }
+        return area;
+    }
+
+    private static void nativeCoverage(MapTriggers.DetectorGeometry geometry, Vector2 point, boolean expected) {
+        var world = new World(new Vector2(), true);
+        try {
+            var body = world.createBody(new BodyDef());
+            if (geometry.radius() > 0) {
+                var shape = new CircleShape();
+                try {
+                    shape.setPosition(geometry.center());
+                    shape.setRadius(geometry.radius());
+                    body.createFixture(shape, 0);
+                } finally { shape.dispose(); }
+            } else {
+                for (float[] polygon : geometry.polygons()) {
+                    check(polygon.length >= 6 && polygon.length <= 16, "Every fixture fits Box2D's vertex limit");
+                    var shape = new PolygonShape();
+                    try {
+                        shape.set(polygon);
+                        check(shape.getVertexCount() == polygon.length / 2, "Box2D keeps all supplied convex vertices");
+                        body.createFixture(shape, 0);
+                    } finally { shape.dispose(); }
+                }
+            }
+            boolean covered = false;
+            for (var fixture : body.getFixtureList()) { covered |= fixture.testPoint(point); }
+            check(covered == expected, "Native filled detector coverage at " + point + " should be " + expected);
+        } finally { world.dispose(); }
+    }
+
     private static void invalidGeometry() {
         for (String type : new String[]{"Sensor", "Teleport", "SpawnArea"}) {
-            String props = type.equals("Teleport") ? property("targetSpawn", "p") + property("targetMap", "elsewhere") : "";
-            invalid(type + " point", layer("Triggers", "", object("bad", type, "x=\"1\" y=\"2\"", props, "<point/>")), "rectangle");
-            for (String shape : new String[]{"<ellipse/>", "<polygon points=\"0,0 32,0 0,32\"/>", "<polyline points=\"0,0 32,32\"/>"}) {
-                invalid(type + " shape", layer("Triggers", "", object("bad", type,
+            String props = detectorProperties(type);
+            for (String shape : new String[]{"<point/>", "<polyline points=\"0,0 32,32\"/>",
+                "<text>not a detector</text>"}) {
+                invalid(type + " excluded shape", layer("Triggers", "", object("bad", type,
                     "x=\"1\" y=\"2\" width=\"32\" height=\"32\"", props, shape)), "rectangle");
+            }
+            invalid(type + " tile", "<tileset firstgid=\"1\" name=\"fixture\" tilewidth=\"32\" tileheight=\"32\" tilecount=\"1\" columns=\"1\">"
+                + "<image source=\"fixture.png\" width=\"32\" height=\"32\"/></tileset>"
+                + layer("Triggers", "", object("bad", type, "gid=\"1\" x=\"32\" y=\"64\"", props, "")), "rectangle");
+            if (type.equals("SpawnArea")) {
+                for (String shape : new String[]{"<ellipse/>", "<polygon points=\"0,0 32,0 0,32\"/>"}) {
+                    invalid("SpawnArea shape", layer("Triggers", "", object("bad", type,
+                        "width=\"32\" height=\"32\"", props, shape)), "rectangle");
+                }
+            }
+        }
+        for (String type : new String[]{"Sensor", "Teleport"}) {
+            for (String outline : new String[]{"0,0 32,32 0,32 32,0", "0,0 32,0 32,32 16,0 0,32",
+                "0,0 32,0 32,32 0,0", "0,0 32,0 16,0 16,32", "0,0 16,0 32,0",
+                "0,0 0,0 32,32", "0,0 0.001,0 0,0.001", "0,0 NaN,0 0,32", "0,0 32,Infinity 0,32"}) {
+                invalid(type + " invalid polygon", layer("Trigger", "", object("bad", type,
+                    "x=\"32\" y=\"64\"", detectorProperties(type), "<polygon points=\"" + outline + "\"/>")), "Trigger 'bad'");
+            }
+            for (String dimensions : new String[]{"width=\"0\" height=\"32\"", "width=\"32\" height=\"-1\"",
+                "width=\"NaN\" height=\"32\"", "width=\"32\" height=\"Infinity\""}) {
+                invalid(type + " invalid ellipse", layer("Trigger", "", object("bad", type, dimensions,
+                    detectorProperties(type), "<ellipse/>")), "Trigger 'bad'");
+            }
+            for (String shape : new String[]{"", "<ellipse/>", "<polygon points=\"0,0 32,0 0,32\"/>"}) {
+                for (String rotation : new String[]{"NaN", "Infinity"}) {
+                    invalid(type + " nonfinite rotation", layer("Trigger", "", object("bad", type,
+                        "width=\"32\" height=\"32\" rotation=\"" + rotation + "\"", detectorProperties(type), shape)), "finite");
+                }
             }
         }
         invalid("rectangle SpawnPoint", layer("Triggers", "", rectangle("bad", "SpawnPoint", "")), "point geometry");
@@ -167,7 +350,7 @@ public final class MapTriggersTest {
         invalid("point with height", layer("Triggers", "", point("bad", "NPC", "height=\"32\"")), "zero height");
         invalid("point with width", layer("Triggers", "", point("bad", "NPC", "width=\"32\"")), "zero width");
         for (String rotation : new String[]{"45", "NaN", "Infinity"}) {
-            invalid("rotated rectangle", layer("Triggers", "", object("bad", "Sensor",
+            invalid("rotated spawn rectangle", layer("Triggers", "", object("bad", "SpawnArea",
                 "width=\"32\" height=\"32\" rotation=\"" + rotation + "\"", "", "")), rotation.equals("45") ? "rotated" : "finite");
             invalid("rotated point", layer("Triggers", "", point("bad", "NPC", "rotation=\"" + rotation + "\"")),
                 rotation.equals("45") ? "rotated" : "finite");
@@ -294,6 +477,14 @@ public final class MapTriggersTest {
         throw new AssertionError(label + ": invalid trigger data was accepted");
     }
 
+    private static void geometryRectangle(MapTriggers.DetectorGeometry geometry, float x, float y, float width, float height) {
+        check(geometry.radius() == 0 && geometry.polygons().size() == 1, "Rectangle is polygon detector data");
+        float[] actual = geometry.polygons().getFirst();
+        float[] expected = {x, y, x + width, y, x + width, y + height, x, y + height};
+        check(actual.length == expected.length, "Rectangle has four vertices");
+        for (int i = 0; i < actual.length; i++) { near(actual[i], expected[i], "Rectangle world outline"); }
+    }
+
     private static void rectangle(Rectangle actual, float x, float y, float width, float height) {
         near(actual.x, x, "Rectangle world x");
         near(actual.y, y, "Rectangle world y");
@@ -326,9 +517,8 @@ public final class MapTriggersTest {
         TiledMap fixture(String layers) {
             root = xml.parse("<map orientation=\"orthogonal\" width=\"30\" height=\"20\" tilewidth=\"32\" tileheight=\"32\">"
                 + layers + "</map>");
-            return loadTiledMap(resolve("maps/trigger-parser-test.tmx"), parameters(), imagePath -> {
-                throw new AssertionError("Parser fixture must not load textures");
-            });
+            return loadTiledMap(resolve("maps/trigger-parser-test.tmx"), parameters(), imagePath ->
+                new TextureRegion(new DimensionTexture(32, 32)));
         }
 
         private static BaseTiledMapLoader.Parameters parameters() {

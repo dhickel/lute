@@ -6,9 +6,7 @@ import com.badlogic.ashley.core.EntityListener;
 import com.badlogic.ashley.core.EntitySystem;
 import com.badlogic.ashley.core.Family;
 import com.badlogic.gdx.Gdx;
-import com.badlogic.gdx.math.Circle;
 import com.badlogic.gdx.math.Intersector;
-import com.badlogic.gdx.math.Rectangle;
 import com.badlogic.gdx.math.Vector2;
 import com.badlogic.gdx.physics.box2d.*;
 import com.badlogic.gdx.utils.Disposable;
@@ -22,7 +20,9 @@ import io.mindspice.lute.engine.tiled.MapTriggers;
 
 import java.util.ArrayList;
 import java.util.Collections;
+import java.util.HashSet;
 import java.util.IdentityHashMap;
+import java.util.LinkedHashMap;
 import java.util.List;
 import java.util.Map;
 import java.util.Set;
@@ -30,6 +30,7 @@ import java.util.Set;
 /** Map-owned sensor contacts. Combat remains the world's sole contact listener. */
 public final class MapSensorSystem extends EntitySystem implements EntityListener, EventEmitter, Disposable {
     private static final Family PLAYERS = Family.all(Player.class, Physic.class, Transform.class).get();
+    private static final float OVERLAP_TOLERANCE = 10 * Math.ulp(1f); // Box2D's b2TestOverlap distance tolerance.
     private final World world;
     private final List<SensorBody> sensors = new ArrayList<>();
     private final List<ContactChange> pending = new ArrayList<>();
@@ -58,27 +59,42 @@ public final class MapSensorSystem extends EntitySystem implements EntityListene
         this.triggers = triggers;
         try {
             for (var sensor : triggers.sensors()) {
-                var bounds = sensor.bounds();
-                var definition = new BodyDef();
-                definition.position.set(bounds.x + bounds.width / 2, bounds.y + bounds.height / 2);
-                var body = world.createBody(definition);
+                var body = world.createBody(new BodyDef());
                 var owned = new SensorBody(sensor, body);
                 sensors.add(owned);
-                var shape = new PolygonShape();
-                try {
-                    shape.setAsBox(bounds.width / 2, bounds.height / 2);
-                    var fixture = new FixtureDef();
-                    fixture.shape = shape;
-                    fixture.isSensor = true;
-                    body.createFixture(fixture).setUserData(owned);
-                } finally {
-                    shape.dispose();
+                var geometry = sensor.geometry();
+                if (geometry.radius() > 0) {
+                    var shape = new CircleShape();
+                    try {
+                        shape.setPosition(geometry.center());
+                        shape.setRadius(geometry.radius());
+                        createFixture(owned, shape);
+                    } finally {
+                        shape.dispose();
+                    }
+                } else {
+                    var shape = new PolygonShape();
+                    try {
+                        for (var polygon : geometry.polygons()) {
+                            shape.set(polygon);
+                            createFixture(owned, shape);
+                        }
+                    } finally {
+                        shape.dispose();
+                    }
                 }
             }
         } catch (RuntimeException | Error failure) {
             clearMap();
             throw failure;
         }
+    }
+
+    private static void createFixture(SensorBody sensor, Shape shape) {
+        var definition = new FixtureDef();
+        definition.shape = shape;
+        definition.isSensor = true;
+        sensor.body.createFixture(definition).setUserData(sensor);
     }
 
     public void clearMap() {
@@ -100,9 +116,10 @@ public final class MapSensorSystem extends EntitySystem implements EntityListene
     }
 
     private void queueContact(Fixture sensor, Fixture fixture, boolean entered) {
-        if (sensor.getUserData() instanceof SensorBody owned && owned.live && !fixture.isSensor()
-            && fixture.getBody().getUserData() instanceof Entity player && players.containsKey(player)) {
-            pending.add(new ContactChange(owned, fixture, player, entered));
+        if (sensor.getUserData() instanceof SensorBody owned && owned.live
+            && fixture.getBody().getUserData() instanceof Entity player && players.containsKey(player)
+            && (!entered || !fixture.isSensor())) {
+            pending.add(new ContactChange(owned, fixturePair(sensor, fixture), player, entered));
         }
     }
 
@@ -114,38 +131,56 @@ public final class MapSensorSystem extends EntitySystem implements EntityListene
     // PhysicSystem also drains after EACH fixed tick, before interpolation or the next tick.
     void afterPhysicsStep() {
         if (world.isLocked()) { return; }
+        var previous = new LinkedHashMap<Occupancy, Boolean>();
         for (var sensor : sensors) {
             sensor.arrivals.removeIf(player -> !overlaps(sensor, player));
+            sensor.contacts.entrySet().removeIf(entry -> {
+                var player = entry.getKey();
+                previous.put(new Occupancy(sensor, player), true);
+                // Reconciled arrivals may never get a native end callback. Refresh the whole union:
+                // a move across an internal seam must not exit while new native pairs are pending.
+                var touching = touchingPairs(sensor, player);
+                entry.setValue(touching);
+                return touching.isEmpty();
+            });
         }
-        var entered = new ArrayList<ContactChange>();
         for (var change : pending) {
             var sensor = change.sensor();
-            if (!sensor.live || !players.containsKey(change.player())) { continue; }
-            boolean wasInside = sensor.contacts.containsKey(change.player());
-            if (change.entered()) {
-                sensor.contacts.computeIfAbsent(change.player(), ignored -> identitySet()).add(change.fixture());
-            } else {
-                var contacts = sensor.contacts.get(change.player());
-                // A teleport can move an existing pair back into the same sensor before Box2D retires it.
-                if (contacts != null && !overlaps(sensor.data.bounds(), change.fixture())) {
-                    contacts.remove(change.fixture());
-                    if (contacts.isEmpty()) { sensor.contacts.remove(change.player()); }
+            var player = change.player();
+            if (!sensor.live || !players.containsKey(player)) { continue; }
+            previous.putIfAbsent(new Occupancy(sensor, player), sensor.contacts.containsKey(player));
+            var pair = change.pair();
+            // Fixture removal can queue an end callback before its native shape is destroyed.
+            boolean touching = isLivePlayerFixture(player, pair) && overlaps(pair.detector(), pair.player());
+            if (change.entered() && touching) {
+                sensor.contacts.computeIfAbsent(player, ignored -> new HashSet<>()).add(pair);
+            } else if (!touching) {
+                var contacts = sensor.contacts.get(player);
+                if (contacts != null) {
+                    contacts.remove(pair);
+                    if (contacts.isEmpty()) { sensor.contacts.remove(player); }
                 }
-            }
-            boolean isInside = sensor.contacts.containsKey(change.player());
-            if (!wasInside && isInside) {
-                emitEnter(sensor, change.player());
-                entered.add(change);
-            } else if (wasInside && !isInside) {
-                emitExit(sensor, change.player());
             }
         }
         pending.clear();
 
+        // Decide once per fixed tick, after ALL fixture changes: a seam is not an exit/reentry.
+        var entered = new ArrayList<Occupancy>();
+        for (var entry : previous.entrySet()) {
+            var visit = entry.getKey();
+            boolean inside = visit.sensor().contacts.containsKey(visit.player());
+            if (!entry.getValue() && inside) {
+                emitEnter(visit.sensor(), visit.player());
+                entered.add(visit);
+            } else if (entry.getValue() && !inside) {
+                emitExit(visit.sensor(), visit.player());
+            }
+        }
+
         Set<Entity> moved = identitySet();
-        for (var change : entered) {
-            var sensor = change.sensor();
-            var player = change.player();
+        for (var visit : entered) {
+            var sensor = visit.sensor();
+            var player = visit.player();
             if (sensor.data.targetMap() == null || sensor.arrivals.contains(player) || moved.contains(player)
                 || !sensor.contacts.containsKey(player) || !overlaps(sensor, player)) { continue; }
             if (!"THIS".equalsIgnoreCase(sensor.data.targetMap())) {
@@ -173,10 +208,7 @@ public final class MapSensorSystem extends EntitySystem implements EntityListene
         // Reconcile immediately: teleports must not lose generic exit/enter events or activate arrival portals.
         for (var sensor : sensors) {
             boolean wasInside = sensor.contacts.containsKey(player);
-            Set<Fixture> touching = identitySet();
-            for (var fixture : body.getFixtureList()) {
-                if (!fixture.isSensor() && overlaps(sensor.data.bounds(), fixture)) { touching.add(fixture); }
-            }
+            var touching = touchingPairs(sensor, player);
             if (touching.isEmpty()) {
                 sensor.contacts.remove(player);
                 sensor.arrivals.remove(player);
@@ -189,36 +221,92 @@ public final class MapSensorSystem extends EntitySystem implements EntityListene
         }
     }
 
-    private boolean overlaps(SensorBody sensor, Entity player) {
+    private boolean isLivePlayerFixture(Entity player, FixturePair pair) {
+        var fixture = pair.player();
+        return players.get(player).getBody().getFixtureList().contains(fixture, true) && !fixture.isSensor()
+            && fixture.getShape() == pair.playerShape();
+    }
+
+    private static FixturePair fixturePair(Fixture detector, Fixture player) {
+        // Box2D pools Fixture wrappers. The cached Shape wrapper changes when a Fixture is reused.
+        return new FixturePair(detector, player, player.getShape());
+    }
+
+    private Set<FixturePair> touchingPairs(SensorBody sensor, Entity player) {
+        Set<FixturePair> touching = new HashSet<>();
         var physic = players.get(player);
-        if (physic == null) { return false; }
+        if (physic == null) { return touching; }
         for (var fixture : physic.getBody().getFixtureList()) {
-            if (!fixture.isSensor() && overlaps(sensor.data.bounds(), fixture)) { return true; }
+            if (fixture.isSensor()) { continue; }
+            for (var detector : sensor.body.getFixtureList()) {
+                if (overlaps(detector, fixture)) { touching.add(fixturePair(detector, fixture)); }
+            }
+        }
+        return touching;
+    }
+
+    private boolean overlaps(SensorBody sensor, Entity player) {
+        return !touchingPairs(sensor, player).isEmpty();
+    }
+
+    // Use the actual convex fixtures for both contacts and teleport reconciliation, never their AABBs.
+    // Polygon skin radii matter too: native sensor contacts include these rounded edges.
+    private static boolean overlaps(Fixture first, Fixture second) {
+        var a = first.getShape();
+        var b = second.getShape();
+        float radius = a.getRadius() + b.getRadius() + OVERLAP_TOLERANCE;
+        if (a instanceof CircleShape circleA && b instanceof CircleShape circleB) {
+            var center = first.getBody().getWorldPoint(circleA.getPosition()).cpy();
+            return center.dst2(second.getBody().getWorldPoint(circleB.getPosition())) <= radius * radius;
+        }
+        if (a instanceof PolygonShape polygonA && b instanceof PolygonShape polygonB) {
+            var verticesA = worldVertices(first, polygonA);
+            var verticesB = worldVertices(second, polygonB);
+            if (Intersector.overlapConvexPolygons(verticesA, verticesB, null)) { return true; }
+            for (int i = 0; i < verticesA.length; i += 2) {
+                if (nearOutline(verticesB, verticesA[i], verticesA[i + 1], radius)) { return true; }
+            }
+            for (int i = 0; i < verticesB.length; i += 2) {
+                if (nearOutline(verticesA, verticesB[i], verticesB[i + 1], radius)) { return true; }
+            }
+            return false;
+        }
+        if (a instanceof CircleShape circle && b instanceof PolygonShape polygon) {
+            return circlePolygon(first, circle, second, polygon, radius);
+        }
+        if (a instanceof PolygonShape polygon && b instanceof CircleShape circle) {
+            return circlePolygon(second, circle, first, polygon, radius);
+        }
+        throw new IllegalStateException("Unsupported player fixture shape: " + b.getType());
+    }
+
+    private static boolean circlePolygon(Fixture circleFixture, CircleShape circle,
+                                         Fixture polygonFixture, PolygonShape polygon, float radius) {
+        var center = circleFixture.getBody().getWorldPoint(circle.getPosition());
+        var vertices = worldVertices(polygonFixture, polygon);
+        return Intersector.isPointInPolygon(vertices, 0, vertices.length, center.x, center.y)
+            || nearOutline(vertices, center.x, center.y, radius);
+    }
+
+    private static boolean nearOutline(float[] vertices, float x, float y, float radius) {
+        for (int i = 0; i < vertices.length; i += 2) {
+            int next = (i + 2) % vertices.length;
+            if (Intersector.distanceSegmentPoint(vertices[i], vertices[i + 1], vertices[next], vertices[next + 1], x, y)
+                <= radius) { return true; }
         }
         return false;
     }
 
-    private static boolean overlaps(Rectangle bounds, Fixture fixture) {
-        var body = fixture.getBody();
-        return switch (fixture.getShape()) {
-            case PolygonShape shape -> {
-                float[] vertices = new float[shape.getVertexCount() * 2];
-                var point = new Vector2();
-                for (int i = 0; i < shape.getVertexCount(); i++) {
-                    shape.getVertex(i, point);
-                    point.set(body.getWorldPoint(point));
-                    vertices[i * 2] = point.x;
-                    vertices[i * 2 + 1] = point.y;
-                }
-                float x = bounds.x, y = bounds.y, right = x + bounds.width, top = y + bounds.height;
-                yield Intersector.overlapConvexPolygons(vertices, new float[]{x, y, right, y, right, top, x, top}, null);
-            }
-            case CircleShape shape -> {
-                var center = body.getWorldPoint(shape.getPosition());
-                yield Intersector.overlaps(new Circle(center, shape.getRadius()), bounds);
-            }
-            default -> throw new IllegalStateException("Unsupported player fixture shape: " + fixture.getShape().getType());
-        };
+    private static float[] worldVertices(Fixture fixture, PolygonShape shape) {
+        var vertices = new float[shape.getVertexCount() * 2];
+        var point = new Vector2();
+        for (int i = 0; i < shape.getVertexCount(); i++) {
+            shape.getVertex(i, point);
+            point.set(fixture.getBody().getWorldPoint(point));
+            vertices[i * 2] = point.x;
+            vertices[i * 2 + 1] = point.y;
+        }
+        return vertices;
     }
 
     private void emitEnter(SensorBody sensor, Entity player) {
@@ -257,7 +345,7 @@ public final class MapSensorSystem extends EntitySystem implements EntityListene
     private static final class SensorBody {
         final MapTriggers.Sensor data;
         final Body body;
-        final Map<Entity, Set<Fixture>> contacts = new IdentityHashMap<>();
+        final Map<Entity, Set<FixturePair>> contacts = new IdentityHashMap<>();
         final Set<Entity> arrivals = identitySet();
         boolean live = true;
 
@@ -267,5 +355,7 @@ public final class MapSensorSystem extends EntitySystem implements EntityListene
         }
     }
 
-    private record ContactChange(SensorBody sensor, Fixture fixture, Entity player, boolean entered) { }
+    private record FixturePair(Fixture detector, Fixture player, Shape playerShape) { }
+    private record ContactChange(SensorBody sensor, FixturePair pair, Entity player, boolean entered) { }
+    private record Occupancy(SensorBody sensor, Entity player) { }
 }

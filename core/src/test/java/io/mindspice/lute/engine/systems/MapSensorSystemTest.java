@@ -12,14 +12,19 @@ import com.badlogic.gdx.maps.MapLayer;
 import com.badlogic.gdx.maps.MapObject;
 import com.badlogic.gdx.maps.objects.PointMapObject;
 import com.badlogic.gdx.maps.objects.RectangleMapObject;
+import com.badlogic.gdx.maps.tiled.BaseTiledMapLoader;
 import com.badlogic.gdx.maps.tiled.TiledMap;
+import com.badlogic.gdx.math.Intersector;
 import com.badlogic.gdx.math.Vector2;
 import com.badlogic.gdx.physics.box2d.Body;
 import com.badlogic.gdx.physics.box2d.BodyDef;
 import com.badlogic.gdx.physics.box2d.Box2D;
+import com.badlogic.gdx.physics.box2d.CircleShape;
+import com.badlogic.gdx.physics.box2d.Fixture;
 import com.badlogic.gdx.physics.box2d.FixtureDef;
 import com.badlogic.gdx.physics.box2d.PolygonShape;
 import com.badlogic.gdx.physics.box2d.World;
+import com.badlogic.gdx.utils.Array;
 import com.badlogic.gdx.utils.GdxNativesLoader;
 import io.mindspice.lute.engine.GameCore;
 import io.mindspice.lute.engine.assets.Asset;
@@ -38,6 +43,7 @@ import io.mindspice.lute.engine.events.Event;
 import io.mindspice.lute.engine.input.InputManager;
 import io.mindspice.lute.engine.input.InputMap;
 import io.mindspice.lute.engine.singletons.GameConsts;
+import io.mindspice.lute.engine.tiled.FixedTmxMapLoader;
 import io.mindspice.lute.engine.tiled.MapTriggers;
 
 import java.lang.reflect.Proxy;
@@ -87,6 +93,13 @@ public final class MapSensorSystemTest {
             initialPlayerAndDataOnlyMarkers();
             eventDrivenPlayerSpawn();
             invalidMapLoadCleansPartialBodies();
+            tiledNativeShapesAndRotation();
+            tiledCompoundSeams();
+            tiledTeleportShapeUnions();
+            tiledTeleportPolygonSkin();
+            compoundFixtureDestructionAndCleanup();
+            teleportArrivalFixtureDestroyedBeforeContactDiscovery();
+            nativeOverlapTolerance();
             System.out.println("MapSensorSystemTest: " + checks
                 + " checks passed (native Box2D; no graphics context)");
         } finally {
@@ -418,6 +431,451 @@ public final class MapSensorSystemTest {
         }
     }
 
+    private static void tiledNativeShapesAndRotation() {
+        for (String type : List.of("Sensor", "Teleport")) {
+            // Expected vertices are independent world-space values, not copied from parsed geometry.
+            verifyTiledShape(type, "rectangle", "", 8, 4, 0,
+                new float[]{10, 16, 18, 16, 18, 20, 10, 20}, 14, 18, 19, 18, 4);
+            verifyTiledShape(type, "rotated-rectangle", "", 8, 4, 90,
+                new float[]{6, 20, 6, 12, 10, 12, 10, 20}, 8, 16, 14, 18, 4);
+            verifyTiledShape(type, "circle", "<ellipse/>", 4, 4, 0,
+                null, 12, 18, 10.2f, 16.2f, 0);
+            verifyTiledShape(type, "rotated-circle", "<ellipse/>", 4, 4, 90,
+                null, 8, 18, 12, 18, 0);
+            verifyTiledShape(type, "ellipse", "<ellipse/>", 8, 4, 0,
+                null, 14, 18, 17.7f, 19.7f, 8);
+            verifyTiledShape(type, "rotated-ellipse", "<ellipse/>", 8, 4, 90,
+                new float[]{8, 12, 6.5857863f, 13.171573f, 6, 16, 6.5857863f, 18.828426f,
+                    8, 20, 9.414214f, 18.828426f, 10, 16, 9.414214f, 13.171573f},
+                8, 16, 14, 18, 8);
+            verifyTiledShape(type, "rotated-polygon", polygon(0, 0, 8, 0, 0, 4), 0, 0, 90,
+                new float[]{10, 20, 10, 12, 6, 20}, 9, 18, 12, 19, 3);
+            verifyTiledShape(type, "concave", concavePolygon(), 0, 0, 0,
+                null, 11, 15, 15, 15, -1);
+            verifyTiledShape(type, "twelve-vertices", twelveVertexPolygon(), 0, 0, 0,
+                null, 14, 16, 10.2f, 12.2f, -1);
+        }
+    }
+
+    private static void verifyTiledShape(String type, String name, String shape, float width, float height,
+                                          float rotation, float[] expectedVertices, float insideX, float insideY,
+                                          float outsideX, float outsideY, int vertexCount) {
+        try (var game = new Harness()) {
+            game.load(xmlMap(detectorXml(name, type, 10, 20, width, height, rotation, shape, "elsewhere", "unused")));
+            var detector = detectorBodies(game).getFirst();
+            var fixtures = detector.getFixtureList();
+            check(detectorBodies(game).size() == 1, type + " " + name + " owns one detector body");
+            if (vertexCount < 0) { check(fixtures.size > 1, name + " decomposes into multiple solid fixtures"); }
+            else { check(fixtures.size == 1, type + " " + name + " creates exactly one native fixture"); }
+            for (var fixture : fixtures) {
+                check(fixture.isSensor(), type + " " + name + " is a non-blocking native sensor");
+                if (vertexCount == 0) {
+                    check(fixture.getShape() instanceof CircleShape, name + " uses native CircleShape");
+                    var circle = (CircleShape) fixture.getShape();
+                    near(2, circle.getRadius(), name + " native circle radius");
+                    var center = detector.getWorldPoint(circle.getPosition());
+                    near(insideX, center.x, name + " native circle center X");
+                    near(insideY, center.y, name + " native circle center Y");
+                } else {
+                    check(fixture.getShape() instanceof PolygonShape, name + " is solid PolygonShape, never ChainShape");
+                    var polygon = (PolygonShape) fixture.getShape();
+                    check(polygon.getVertexCount() >= 3 && polygon.getVertexCount() <= 8,
+                        name + " respects native convex vertex limits");
+                    if (vertexCount > 0) { check(polygon.getVertexCount() == vertexCount, name + " fixed vertex count"); }
+                    if (expectedVertices != null) { expectVertices(fixture, expectedVertices, name); }
+                }
+            }
+            var player = game.shapePlayer(insideX, insideY, true, 1, 0);
+            game.tick(STEP * 2);
+            check(game.countEnter(name) == 1, type + " " + name + " detects a player wholly inside its filled interior");
+            game.move(player, outsideX, outsideY);
+            game.tick(STEP * 2);
+            check(game.countExit(name) == 1, type + " " + name + " excludes empty notch/corner or unrotated location");
+            game.move(player, insideX, insideY);
+            game.tick(STEP * 2);
+            check(game.countEnter(name) == 2 && game.countExit(name) == 1, type + " " + name + " reenters once");
+        }
+    }
+
+    private static void tiledCompoundSeams() {
+        for (String type : List.of("Sensor", "Teleport")) {
+            for (String shape : List.of(concavePolygon(), twelveVertexPolygon())) {
+                for (int playerFixtures : new int[]{1, 2}) {
+                    try (var game = new Harness()) {
+                        game.load(xmlMap(detectorXml("compound", type, 10, 20, 0, 0, 0,
+                            shape, "elsewhere", "unused")));
+                        var detector = detectorBodies(game).getFirst();
+                        var seam = internalSeam(detector);
+                        var player = game.shapePlayer(seam[0].x, seam[0].y, true, playerFixtures, 0);
+                        game.tick(STEP * 2);
+                        check(touchingDetectorFixtures(game, detector, player) >= 2,
+                            "A single physical player fixture really straddles two native detector fixtures");
+                        check(game.countEnter("compound") == 1, "All detector/player fixture pairs form one logical entry");
+                        game.move(player, seam[1].x, seam[1].y);
+                        game.tick(STEP * 2);
+                        check(touchingDetectorFixtures(game, detector, player) == 1,
+                            "Moving off the seam loses one detector contact while retaining another");
+                        check(game.countExit("compound") == 0, "Losing one detector pair cannot exit the logical union");
+                        // Cross directly between disjoint fixture interiors in one fixed tick.
+                        game.move(player, seam[2].x, seam[2].y);
+                        game.tick(STEP);
+                        check(touchingDetectorFixtures(game, detector, player) == 1,
+                            "Same-tick seam crossing finishes in the other fixture interior");
+                        check(game.countEnter("compound") == 1 && game.countExit("compound") == 0,
+                            "Batched native end/begin across a seam does not exit/reenter");
+                        game.move(player, 30, 30);
+                        game.tick(STEP * 2);
+                        check(game.countExit("compound") == 1, "Leaving every compound fixture exits exactly once");
+                        game.move(player, seam[0].x, seam[0].y);
+                        game.tick(STEP * 2);
+                        check(game.countEnter("compound") == 2, "Compound reentry creates one new visit");
+                    }
+                }
+            }
+        }
+    }
+
+    private static void tiledTeleportShapeUnions() {
+        for (boolean circlePlayer : new boolean[]{false, true}) {
+            for (boolean landInside : new boolean[]{false, true}) {
+                for (String kind : List.of("circle", "ellipse", "polygon", "compound", "many-vertices")) {
+                    try (var game = new Harness()) {
+                        String shape = switch (kind) {
+                            case "circle", "ellipse" -> "<ellipse/>";
+                            case "polygon" -> polygon(0, 0, 8, 0, 0, 8);
+                            case "many-vertices" -> twelveVertexPolygon();
+                            default -> concavePolygon();
+                        };
+                        float width = kind.equals("circle") || kind.equals("ellipse") ? 8 : 0;
+                        float height = kind.equals("circle") ? 8 : kind.equals("ellipse") ? 4 : 0;
+                        var inside = switch (kind) {
+                            case "circle", "many-vertices" -> new Vector2(24, 26);
+                            case "ellipse" -> new Vector2(24, 28);
+                            case "polygon" -> new Vector2(22, 28);
+                            default -> new Vector2(21, 25);
+                        };
+                        var outside = switch (kind) {
+                            case "circle", "many-vertices" -> new Vector2(20.3f, 22.3f);
+                            case "ellipse" -> new Vector2(20.3f, 26.3f);
+                            case "polygon" -> new Vector2(26, 24);
+                            default -> new Vector2(25, 25);
+                        };
+                        var landing = landInside ? inside : outside;
+                        String departureShape = kind.equals("many-vertices") ? twelveVertexPolygon() : concavePolygon();
+                        game.load(xmlMap(
+                            detectorXml("departure-room", "Sensor", 2, 10, 0, 0, 0, departureShape, null, null),
+                            detectorXml("departure", "Teleport", 2, 10, 0, 0, 0, departureShape, "THIS", "landing"),
+                            detectorXml("arrival-room", "Sensor", 20, 30, width, height, 0, shape, null, null),
+                            detectorXml("arrival", "Teleport", 20, 30, width, height, 0, shape, "THIS", "return"),
+                            spawnXml("landing", landing.x + 1, landing.y + 1.5f), spawnXml("return", 4, 7.5f)));
+                        var player = game.shapePlayer(3, 6, circlePlayer, 2, .7f);
+                        var original = body(player);
+                        game.tick(STEP * 2);
+                        position(player, landing.x, landing.y, kind + " exact shape-union arrival");
+                        check(body(player) == original, "Shape teleport retains the native player body");
+                        near(.7f, original.getAngle(), "Teleport preserves a rotated physical player's angle");
+                        check(game.countEnter("departure-room") == 1 && game.countExit("departure-room") == 1,
+                            "Teleport out of a compound preserves generic enter/exit exactly once");
+                        check(game.countEnter("departure") == 1 && game.countExit("departure") == 1,
+                            "Teleport out of a compound retires every old fixture pair");
+                        check(game.countEnter("arrival-room") == (landInside ? 1 : 0)
+                            && game.countEnter("arrival") == (landInside ? 1 : 0),
+                            kind + " reconciliation uses actual fixture union, not its AABB");
+                        game.tick(STEP * 8);
+                        position(player, landing.x, landing.y, kind + " arrival does not bounce or use stale source contacts");
+                        check(game.countExit("arrival") == 0, "Suppressed native arrivals remain one continuous visit");
+                        if (landInside) {
+                            game.move(player, 35, 35);
+                            game.tick(STEP * 2);
+                            check(game.countExit("arrival") == 1 && game.countExit("arrival-room") == 1,
+                                "Genuine shape exit clears arrival suppression and generic occupancy");
+                        }
+                        game.move(player, inside.x, inside.y);
+                        game.tick(STEP * 2);
+                        position(player, 3, 6, kind + " arrival activates on genuine entry/reentry");
+                        check(game.countEnter("arrival") == (landInside ? 2 : 1)
+                            && game.countExit("arrival") == (landInside ? 2 : 1),
+                            "Arrival activation emits one typed enter/exit for each actual visit");
+                        check(game.countEnter("arrival-room") == (landInside ? 2 : 1)
+                            && game.countExit("arrival-room") == (landInside ? 2 : 1),
+                            "Generic events survive both shape arrival and departure");
+                        game.tick(STEP * 5);
+                        position(player, 3, 6, "Compound return arrival stays suppressed until a real exit");
+                        check(game.countEnter("departure-room") == 2 && game.countExit("departure-room") == 1,
+                            "Returning to compound immediately restores generic occupancy without duplicates");
+                    }
+                }
+            }
+        }
+    }
+
+    private static void tiledTeleportPolygonSkin() {
+        for (boolean circlePlayer : new boolean[]{false, true}) {
+            try (var game = new Harness()) {
+                // The player outline is just outside the rectangle, but within native polygon skin.
+                float landingX = circlePlayer ? 28.085f : 28.135f;
+                game.load(xmlMap(
+                    detectorXml("departure", "Teleport", 2, 10, 4, 8, 0, "", "THIS", "landing"),
+                    detectorXml("arrival-room", "Sensor", 20, 30, 8, 8, 0, "", null, null),
+                    detectorXml("arrival", "Teleport", 20, 30, 8, 8, 0, "", "THIS", "return"),
+                    spawnXml("landing", landingX + 1, 27.5f), spawnXml("return", 4, 7.5f)));
+                var player = game.shapePlayer(3, 6, circlePlayer, 1, 0);
+                game.tick(STEP * 2);
+                position(player, landingX, 26, "Polygon-skin arrival is reconciled without bouncing");
+                check(game.countEnter("arrival-room") == 1 && game.countEnter("arrival") == 1,
+                    "Immediate arrival overlap includes native polygon skin for circle and polygon players");
+                game.tick(STEP * 5);
+                check(game.countEnter("arrival-room") == 1 && game.countExit("arrival-room") == 0
+                    && game.countEnter("arrival") == 1 && game.countExit("arrival") == 0,
+                    "Native skin contacts match reconciled arrivals without duplicate events");
+                position(player, landingX, 26, "Skin-only arrival stays suppressed across native steps");
+                game.move(player, landingX + .1f, 26);
+                game.tick(STEP * 2);
+                check(game.countExit("arrival") == 1 && game.countExit("arrival-room") == 1,
+                    "Moving beyond polygon skin genuinely exits both arrival detectors");
+                game.move(player, landingX, 26);
+                game.tick(STEP * 2);
+                position(player, 3, 6, "Reentering only the native polygon skin activates the portal");
+            }
+        }
+    }
+
+    private static void compoundFixtureDestructionAndCleanup() {
+        for (boolean drainFirst : new boolean[]{false, true}) {
+            try (var game = new Harness()) {
+                game.load(xmlMap(detectorXml("compound", "Sensor", 10, 20, 0, 0, 0,
+                    concavePolygon(), null, null)));
+                var detector = detectorBodies(game).getFirst();
+                var seam = internalSeam(detector)[0];
+                var player = game.shapePlayer(seam.x, seam.y, true, 2, 0);
+                game.step();
+                if (drainFirst) { game.sensors.update(0); game.flush(); }
+                var body = body(player);
+                body.destroyFixture(body.getFixtureList().first());
+                game.sensors.update(0);
+                game.flush();
+                check(game.countEnter("compound") == 1 && game.countExit("compound") == 0,
+                    "Destroyed player fixture cannot invalidate the surviving compound contacts");
+                body.destroyFixture(body.getFixtureList().first());
+                game.sensors.update(0);
+                game.flush();
+                check(game.countExit("compound") == 1, "Destroying the last physical fixture exits compound once");
+                circleFixture(body, 0, 0, .08f);
+                body.setAwake(true);
+                game.tick(STEP * 2);
+                check(game.countEnter("compound") == 2, "New physical fixture can reenter after destruction");
+                int before = game.world.getBodyCount();
+                game.sensors.clearMap();
+                game.sensors.clearMap();
+                game.flush();
+                check(game.world.getBodyCount() == before - 1, "Compound cleanup destroys one body and all of its fixtures");
+                check(game.countExit("compound") == 2, "Repeated compound cleanup emits only one final exit");
+                game.tick(STEP * 2);
+                check(game.countEnter("compound") == 2 && game.countExit("compound") == 2,
+                    "Destroyed compound callbacks do not resurrect occupancy");
+            }
+        }
+    }
+
+    private static void teleportArrivalFixtureDestroyedBeforeContactDiscovery() {
+        for (boolean reuseBeforeDrain : new boolean[]{false, true}) {
+            try (var game = new Harness()) {
+                game.load(xmlMap(
+                    detectorXml("departure", "Teleport", 2, 10, 0, 0, 0, concavePolygon(), "THIS", "landing"),
+                    detectorXml("arrival-room", "Sensor", 20, 30, 0, 0, 0, concavePolygon(), null, null),
+                    detectorXml("arrival", "Teleport", 20, 30, 0, 0, 0, concavePolygon(), "THIS", "return"),
+                    spawnXml("landing", 22, 26.5f), spawnXml("return", 4, 7.5f)));
+                var player = game.shapePlayer(3, 6, true, 1, 0);
+                game.step();
+                game.sensors.update(0);
+                game.flush();
+                position(player, 21, 25, "Single source step reconciles a compound arrival before native discovery");
+                check(game.countEnter("arrival") == 1 && game.countEnter("arrival-room") == 1,
+                    "Compound arrival immediately enters portal and generic sensor");
+                var body = body(player);
+                body.destroyFixture(body.getFixtureList().first());
+                if (reuseBeforeDrain) {
+                    circleFixture(body, 0, 0, .08f);
+                    game.move(player, 35, 35);
+                }
+                // No native destination contact ever existed, hence no native destination end callback.
+                game.sensors.update(0);
+                game.flush();
+                check(game.countExit("arrival") == 1 && game.countExit("arrival-room") == 1,
+                    "Destroying an undiscovered arrival fixture retires occupancy without an end callback");
+                if (!reuseBeforeDrain) { circleFixture(body, 0, 0, .08f); }
+                game.move(player, 35, 35);
+                game.tick(STEP * 2);
+                game.move(player, 21, 25);
+                game.tick(STEP * 2);
+                position(player, 3, 6, "Replacement physical fixture reenters and activates the arrival portal");
+                check(game.countEnter("arrival") == 2 && game.countExit("arrival") == 2
+                    && game.countEnter("arrival-room") == 2 && game.countExit("arrival-room") == 2,
+                    "Replacement fixtures, including pooled wrappers, preserve exactly one new logical visit");
+            }
+        }
+    }
+
+    private static void nativeOverlapTolerance() {
+        for (String type : List.of("Sensor", "Teleport")) {
+            try (var game = new Harness()) {
+                game.load(xmlMap(detectorXml("tangent", type, 9, 11, 2, 2, 0, "<ellipse/>", "elsewhere", "unused")));
+                var player = game.shapePlayer(Math.nextUp(12f), 10, true, 0, 0);
+                circleFixture(body(player), 0, 0, 1);
+                game.step();
+                check(touchingDetectorFixtures(game, detectorBodies(game).getFirst(), player) == 1,
+                    "Native sensor sees the tiny positive distance beyond summed circle radii");
+                game.sensors.update(0);
+                game.flush();
+                check(game.countEnter("tangent") == 1, "Java occupancy accepts native overlap tolerance");
+                game.move(player, 11.5f, 10);
+                game.tick(STEP * 2);
+                check(game.countEnter("tangent") == 1 && game.countExit("tangent") == 0,
+                    "Moving inward without a replacement native begin retains one logical entry");
+                game.move(player, 14, 10);
+                game.tick(STEP * 2);
+                check(game.countExit("tangent") == 1, "Moving beyond native tolerance exits once");
+            }
+        }
+    }
+
+    private static List<Body> detectorBodies(Harness game) {
+        var bodies = new Array<Body>();
+        game.world.getBodies(bodies);
+        var result = new ArrayList<Body>();
+        for (var body : bodies) {
+            if (body.getType() == BodyDef.BodyType.StaticBody && body.getFixtureList().size > 0
+                && body.getFixtureList().first().isSensor()) { result.add(body); }
+        }
+        return result;
+    }
+
+    private static float[] vertices(Fixture fixture) {
+        var shape = (PolygonShape) fixture.getShape();
+        var result = new float[shape.getVertexCount() * 2];
+        var point = new Vector2();
+        for (int i = 0; i < shape.getVertexCount(); i++) {
+            shape.getVertex(i, point);
+            point.set(fixture.getBody().getWorldPoint(point));
+            result[i * 2] = point.x;
+            result[i * 2 + 1] = point.y;
+        }
+        return result;
+    }
+
+    private static void expectVertices(Fixture fixture, float[] expected, String label) {
+        var actual = vertices(fixture);
+        check(actual.length == expected.length, label + " expected native vertex count");
+        for (int i = 0; i < expected.length; i += 2) {
+            boolean found = false;
+            for (int j = 0; j < actual.length; j += 2) {
+                if (Math.abs(expected[i] - actual[j]) < .0002f && Math.abs(expected[i + 1] - actual[j + 1]) < .0002f) {
+                    found = true;
+                    break;
+                }
+            }
+            check(found, label + " contains expected rotated world vertex " + expected[i] + "," + expected[i + 1]);
+        }
+    }
+
+    private static Vector2[] internalSeam(Body detector) {
+        // Find a shared edge with room on both sides; decomposition order is deliberately not contractual.
+        for (var first : detector.getFixtureList()) {
+            var a = vertices(first);
+            for (var second : detector.getFixtureList()) {
+                if (first == second) { continue; }
+                var b = vertices(second);
+                for (int i = 0; i < a.length; i += 2) {
+                    int nextA = (i + 2) % a.length;
+                    for (int j = 0; j < b.length; j += 2) {
+                        int nextB = (j + 2) % b.length;
+                        if (Vector2.dst2(a[i], a[i + 1], b[nextB], b[nextB + 1]) > .000001f
+                            || Vector2.dst2(a[nextA], a[nextA + 1], b[j], b[j + 1]) > .000001f) { continue; }
+                        var middle = new Vector2((a[i] + a[nextA]) / 2, (a[i + 1] + a[nextA + 1]) / 2);
+                        var normal = new Vector2(a[nextA] - a[i], a[nextA + 1] - a[i + 1]).nor().rotate90(1).scl(.3f);
+                        var sideA = middle.cpy().add(normal);
+                        var sideB = middle.cpy().sub(normal);
+                        if (Intersector.isPointInPolygon(a, 0, a.length, sideA.x, sideA.y)
+                            && Intersector.isPointInPolygon(b, 0, b.length, sideB.x, sideB.y)) {
+                            return new Vector2[]{middle, sideA, sideB};
+                        }
+                    }
+                }
+            }
+        }
+        throw new AssertionError("Compound fixture geometry must contain an internal shared edge");
+    }
+
+    private static int touchingDetectorFixtures(Harness game, Body detector, Entity player) {
+        var touching = new java.util.HashSet<Fixture>();
+        for (var contact : game.world.getContactList()) {
+            if (!contact.isTouching()) { continue; }
+            if (contact.getFixtureA().getBody() == detector && contact.getFixtureB().getBody() == body(player)) {
+                touching.add(contact.getFixtureA());
+            } else if (contact.getFixtureB().getBody() == detector && contact.getFixtureA().getBody() == body(player)) {
+                touching.add(contact.getFixtureB());
+            }
+        }
+        return touching.size();
+    }
+
+    private static String polygon(float... worldOffsets) {
+        var points = new StringBuilder();
+        for (int i = 0; i < worldOffsets.length; i += 2) {
+            if (i > 0) { points.append(' '); }
+            points.append(pixels(worldOffsets[i])).append(',').append(pixels(worldOffsets[i + 1]));
+        }
+        return "<polygon points=\"" + points + "\"/>";
+    }
+
+    private static String concavePolygon() { return polygon(0, 0, 8, 0, 8, 2, 2, 2, 2, 8, 0, 8); }
+
+    private static String twelveVertexPolygon() {
+        return polygon(8, 4, 7.464102f, 6, 6, 7.464102f, 4, 8, 2, 7.464102f, .535898f, 6,
+            0, 4, .535898f, 2, 2, .535898f, 4, 0, 6, .535898f, 7.464102f, 2);
+    }
+
+    private static String detectorXml(String name, String type, float anchorX, float anchorY,
+                                      float width, float height, float rotation, String shape,
+                                      String targetMap, String targetSpawn) {
+        String properties = type.equals("Teleport")
+            ? "<property name=\"targetMap\" value=\"" + targetMap + "\"/><property name=\"targetSpawn\" value=\"" + targetSpawn + "\"/>"
+            : "<property name=\"sensorType\" value=\"GENERAL\"/>";
+        return "<object name=\"" + name + "\" type=\"" + type + "\" x=\"" + pixels(anchorX)
+            + "\" y=\"" + (2048 - pixels(anchorY)) + "\" width=\"" + pixels(width) + "\" height=\"" + pixels(height)
+            + "\" rotation=\"" + rotation + "\"><properties>" + properties + "</properties>" + shape + "</object>";
+    }
+
+    private static String spawnXml(String name, float x, float y) {
+        return "<object name=\"" + name + "\" type=\"SpawnPoint\" x=\"" + pixels(x) + "\" y=\"" + (2048 - pixels(y))
+            + "\"><properties><property name=\"spawnType\" value=\"TELEPORT\"/></properties><point/></object>";
+    }
+
+    private static TiledMap xmlMap(String... objects) { return new XmlLoader().loadObjects(String.join("", objects)); }
+
+    private static final class XmlLoader extends FixedTmxMapLoader {
+        XmlLoader() { super(FileHandle::new); }
+
+        TiledMap loadObjects(String objects) {
+            root = xml.parse("<map orientation=\"orthogonal\" width=\"64\" height=\"64\" tilewidth=\"32\" tileheight=\"32\">"
+                + "<objectgroup name=\"Triggers\">" + objects + "</objectgroup></map>");
+            return loadTiledMap(new FileHandle("native-sensor-test.tmx"), new BaseTiledMapLoader.Parameters(),
+                path -> { throw new AssertionError("Geometry-only XML must not request textures: " + path); });
+        }
+    }
+
+    private static void circleFixture(Body body, float x, float y, float radius) {
+        var shape = new CircleShape();
+        try {
+            shape.setPosition(new Vector2(x, y));
+            shape.setRadius(radius);
+            var definition = new FixtureDef();
+            definition.shape = shape;
+            definition.density = 1;
+            body.createFixture(definition);
+        } finally { shape.dispose(); }
+    }
+
     private static float pixels(float worldUnits) { return worldUnits / GameConsts.UNIT_SCALE; }
 
     private static TiledMap map(MapObject... objects) {
@@ -606,6 +1064,26 @@ public final class MapSensorSystemTest {
         }
         Entity entity(float x, float y, boolean player, boolean sensor, int fixtures) {
             var entity = createEntity(x, y, player, sensor, fixtures);
+            engine.addEntity(entity);
+            return entity;
+        }
+        Entity shapePlayer(float x, float y, boolean circle, int fixtures, float angle) {
+            var entity = createEntity(x, y, true, false, 0);
+            var body = body(entity);
+            for (int i = 0; i < fixtures; i++) {
+                if (circle) { circleFixture(body, 0, i * .02f, .08f); }
+                else {
+                    var shape = new PolygonShape();
+                    try {
+                        shape.setAsBox(.12f, .06f, new Vector2(0, i * .02f), 0);
+                        var definition = new FixtureDef();
+                        definition.shape = shape;
+                        definition.density = 1;
+                        body.createFixture(definition);
+                    } finally { shape.dispose(); }
+                }
+            }
+            body.setTransform(x, y, angle);
             engine.addEntity(entity);
             return entity;
         }
