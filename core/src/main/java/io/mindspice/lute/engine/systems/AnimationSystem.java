@@ -34,8 +34,11 @@ public class AnimationSystem extends IteratingSystem {
     protected void processEntity(Entity entity, float deltaTime) {
         Animation2D anim2d = Animation2D.MAPPER.get(entity);
         Facing.Direction fDirection = Facing.MAPPER.get(entity).getDirection();
+
         TextureAtlas atlas = assetService.get(TextureAtlas.class, anim2d.getAtlasId());
-        animationCache.keySet().removeIf(key -> key.atlasId().equals(anim2d.getAtlasId()) && key.atlas() != atlas);
+        animationCache.keySet().removeIf(key
+            -> key.atlasId().equals(anim2d.getAtlasId()) && key.atlas() != atlas
+        );
 
         final float stateTime;
         if (anim2d.isDirty() || fDirection != anim2d.getFdirection() || currentAtlases.get(anim2d) != atlas) {
@@ -47,6 +50,7 @@ public class AnimationSystem extends IteratingSystem {
         Animation<TextureRegion> animation = anim2d.getAnimation();
         anim2d.validateAttackFrames();
         animation.setPlayMode(anim2d.getPlayMode());
+
         String soundId = anim2d.consumeAttackSound();
         if (soundId != null) {
             getEngine().getSystem(EventSystem.class).emitEvent(new Event.Sound.Play(soundId));
@@ -54,8 +58,6 @@ public class AnimationSystem extends IteratingSystem {
 
         TextureRegion keyFrame = animation.getKeyFrame(stateTime);
         Graphic.MAPPER.get(entity).setRegion(keyFrame);
-
-
     }
 
     public void updateAnimation(Animation2D anim2d, Facing.Direction fDir) {

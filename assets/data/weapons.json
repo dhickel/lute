@@ -5,12 +5,12 @@
       "stats": {
         "damage": 10,
         "cost": 10,
-        "hit_frame": 1
+        "hit_frame": 0
       },
       "animation": {
         "speed": 1,
         "atlas_key": "NONE",
-        "sound_frame": 2
+        "sound_frame": 0
       },
       "sounds": {
         "attack": "sword_swing.wav",

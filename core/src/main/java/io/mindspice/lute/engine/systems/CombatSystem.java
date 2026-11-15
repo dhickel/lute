@@ -48,9 +48,12 @@ public class CombatSystem extends IteratingSystem implements ContactListener, En
         if (world.isLocked()) { return; }
         for (var hit : pendingHits) {
             if (!getEngine().getEntities().contains(hit.attacker(), true)
-                || !getEngine().getEntities().contains(hit.target(), true)) { continue; }
+                || !getEngine().getEntities().contains(hit.target(), true)) {
+                continue;
+            }
             var combat = Combat.MAPPER.get(hit.attacker());
             var health = Health.MAPPER.get(hit.target());
+
             var attackerHealth = Health.MAPPER.get(hit.attacker());
             if ((attackerHealth == null || attackerHealth.isAlive())
                 && combat != null && combat.isAttacking() && combat.getAttackId() == hit.attackId()
