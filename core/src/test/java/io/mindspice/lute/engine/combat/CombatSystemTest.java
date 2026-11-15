@@ -287,10 +287,16 @@ public final class CombatSystemTest {
                 Facing.MAPPER.get(player).setDirection(direction);
                 state.requestAttack(); engine.update(0); engine.update(0);
                 check(animation.getAnimation().getKeyFrames().length == 4, "Real atlas attack frames " + direction);
-                check(state.getSensor() == null, "Real weapon waits until hit frame");
-                engine.update(.25f);
-                check(state.getSensor() != null, "Real atlas hit frame");
-                engine.update(.25f); engine.update(0);
+                int hitFrame = state.getCurrentWeapon().hitFrame();
+                float speed = state.getCurrentWeapon().animation().speed();
+                check((state.getSensor() != null) == (hitFrame == 0), "Real weapon frame-zero hitbox");
+                if (hitFrame > 0) {
+                    engine.update((hitFrame - .5f) * animation.getFrameDuration() / speed);
+                    check(state.getSensor() == null, "Real weapon waits until hit frame");
+                    engine.update(.51f * animation.getFrameDuration() / speed);
+                    check(state.getSensor() != null, "Real atlas hit frame");
+                }
+                engine.update(1f / speed); engine.update(0);
                 check(!state.isAttacking(), "Real animation completion");
                 check(animation.getAnimation().getKeyFrames().length == 6, "Idle frames restored");
             }

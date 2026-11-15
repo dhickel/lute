@@ -31,7 +31,7 @@ public class Animation2D implements Component {
         }
     }
 
-    public void configureAttack(Attack attack) { this.attack = java.util.Objects.requireNonNull(attack); }
+    public void configureAttack(Attack attack) { this.attack = attack; }
 
     public void validateAttackFrames() {
         if (attack != null && type == AnimationType.ATTACK) {

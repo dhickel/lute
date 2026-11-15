@@ -21,8 +21,13 @@ public final class DataLoaderTest {
             var definitions = DataLoader.parseWeaponData();
             var weapon = definitions.requireWeapon(player.equippedWeapon());
             check("NONE".equals(definitions.atlas()) && "NONE".equals(weapon.animation().atlasKey()), "disabled atlas");
-            check(weapon.stats().damage() == 10 && weapon.stats().cost() == 10 && weapon.stats().hitFrame() == 1, "stats");
-            check(weapon.animation().speed() == 1 && weapon.animation().soundFrame() == 2, "animation timing");
+            var authored = DataLoader.mapper.readTree(Files.readString(java.nio.file.Path.of("assets/data/weapons.json")))
+                .get("weapons").get(player.equippedWeapon());
+            check(weapon.stats().damage() == authored.get("stats").get("damage").asInt()
+                && weapon.stats().cost() == authored.get("stats").get("cost").asInt()
+                && weapon.stats().hitFrame() == authored.get("stats").get("hit_frame").asInt(), "authored stats");
+            check(weapon.animation().speed() == (float) authored.get("animation").get("speed").asDouble()
+                && weapon.animation().soundFrame() == authored.get("animation").get("sound_frame").asInt(), "authored animation timing");
             check(weapon.bounds().type() == WeaponsData.WeaponData.BoundsType.SEMICIRCLE, "bounds type");
             var selected = WeaponAssets.of("sword", definitions);
             check(selected.all().size() == 2, "only selected weapon assets");
@@ -35,6 +40,9 @@ public final class DataLoaderTest {
                 new WeaponsData.WeaponData.WeaponAnimation(1, "sword", 3), weapon.sounds(), weapon.bounds());
             rejects(() -> new WeaponsData(null, java.util.Map.of("sword", visual)).requireWeapon("sword"), "unsupported region");
             check("NONE".equals(new WeaponsData.WeaponData.WeaponAnimation(1, null, 0).atlasKey()), "default region");
+            var parsedStats = DataLoader.mapper.readValue("{\"damage\":1,\"cost\":0,\"hit_frame\":2}", WeaponsData.WeaponData.Stats.class);
+            var parsedAnimation = DataLoader.mapper.readValue("{\"speed\":1,\"sound_frame\":3}", WeaponsData.WeaponData.WeaponAnimation.class);
+            check(parsedStats.hitFrame() == 2 && parsedAnimation.soundFrame() == 3, "zero-based frame JSON mapping");
             rejects(() -> new WeaponsData.WeaponData.Stats(10, 0, -1), "negative hit frame");
             rejects(() -> new WeaponsData.WeaponData.WeaponAnimation(0, null, 0), "zero speed");
             rejects(() -> new WeaponsData.WeaponData.Sounds("", "hit.wav"), "empty sound");

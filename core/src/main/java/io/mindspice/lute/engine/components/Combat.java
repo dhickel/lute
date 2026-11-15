@@ -44,7 +44,7 @@ public class Combat implements Component {
         hitTargets.clear();
     }
 
-    public void setSensor(Fixture sensor) { this.sensor = Objects.requireNonNull(sensor, "sensor"); }
+    public void setSensor(Fixture sensor) { this.sensor = sensor; }
 
     public void endAttack() {
         attacking = false;
