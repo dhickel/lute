@@ -105,7 +105,7 @@ public class AssetService implements Disposable {
 
     public boolean update() {
         requireOpen();
-        if (!queue.isEmpty()) { loadEntry(queue.iterator().next()); }
+        if (!queue.isEmpty()) { loadEntry(queue.getFirst()); }
         return queue.isEmpty();
     }
 
