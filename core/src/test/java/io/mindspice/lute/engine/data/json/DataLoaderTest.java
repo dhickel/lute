@@ -20,9 +20,9 @@ public final class DataLoaderTest {
             check(player.maxHealth() == 100 && player.moveSpeed() == 4, "player stats");
             check(player.animation().frameInterval() == .125f && player.animation().speed() == 1
                 && player.animation().atlasKey().equals("player") && player.animation().soundFrame() == 0, "player animation schema");
-            check(player.sounds().get("move").equals("sword_hit.wav") && player.sounds().get("damage").equals("sword_hit.wav"), "player sound definitions");
-            rejects(() -> new PlayerData("player", 1, 100, "sword", player.animation(), java.util.Map.of("move", "hit")), "missing damage sound");
-            rejects(() -> new PlayerData("player", 1, 100, "sword", player.animation(), java.util.Map.of("move", "", "damage", "hit")), "empty move sound");
+            check(player.sounds().move().equals("sword_hit.wav") && player.sounds().damage().equals("sword_hit.wav"), "player sound definitions");
+            rejects(() -> new PlayerData.Sounds("hit", null), "missing damage sound");
+            rejects(() -> new PlayerData.Sounds("", "hit"), "empty move sound");
             rejects(() -> new AnimationData(1, "player", 0, 0), "zero player interval");
             rejects(() -> new AnimationData(1, "player", 0, Float.NaN), "nonfinite player interval");
             rejects(() -> new AnimationData(1, null, 0, 0), "zero weapon interval");
@@ -55,8 +55,8 @@ public final class DataLoaderTest {
             rejects(() -> new WeaponsData.WeaponData.Stats(10, 0, -1), "negative hit frame");
             rejects(() -> new AnimationData(0, null, 0, .125f), "zero speed");
             rejects(() -> new WeaponsData.WeaponData.Sounds("", "hit.wav"), "empty sound");
-            rejects(() -> new PlayerData("player", 0, 100, "sword", new AnimationData(1, "player", 0, .125f), java.util.Map.of("move", "hit", "damage", "hit")), "zero move speed");
-            rejects(() -> new PlayerData("player", 1, 0, "sword", new AnimationData(1, "player", 0, .125f), java.util.Map.of("move", "hit", "damage", "hit")), "zero health");
+            rejects(() -> new PlayerData("player", 0, 100, "sword", new AnimationData(1, "player", 0, .125f), new PlayerData.Sounds("hit", "hit")), "zero move speed");
+            rejects(() -> new PlayerData("player", 1, 0, "sword", new AnimationData(1, "player", 0, .125f), new PlayerData.Sounds("hit", "hit")), "zero health");
             rejects(() -> new WeaponsData.WeaponData.Bounds(WeaponsData.WeaponData.BoundsType.RECT, 1, 0, 1, 2), "collapsed bounds");
             rejects(() -> new WeaponsData.WeaponData.Bounds(WeaponsData.WeaponData.BoundsType.RECT, Float.NaN, 0, 2, 2), "nonfinite bounds");
 
