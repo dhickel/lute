@@ -6,7 +6,7 @@ import com.badlogic.ashley.systems.IteratingSystem;
 import io.mindspice.lute.engine.components.Combat;
 import io.mindspice.lute.engine.components.Controller;
 import io.mindspice.lute.engine.components.Move;
-import io.mindspice.lute.engine.events.Event;
+import io.mindspice.lute.engine.input.InputAction;
 import io.mindspice.lute.engine.events.EventEmitter;
 
 public class ControllerSystem extends IteratingSystem implements EventEmitter {
@@ -28,9 +28,12 @@ public class ControllerSystem extends IteratingSystem implements EventEmitter {
                 case MOVE_DOWN -> moveEntity(entity, 0f, -direction, state == 1);
                 case MOVE_LEFT -> moveEntity(entity, -direction, 0f, state == 1);
                 case MOVE_RIGHT -> moveEntity(entity, direction, 0f, state == 1);
-                case ATTACK -> {
+                case ATTACK_PRIMARY, ATTACK_SECONDARY -> {
                     var combat = Combat.MAPPER.get(entity);
-                    if (state == 1 && combat != null) { combat.requestAttack(); }
+                    if (state == 1 && combat != null) {
+                        combat.requestAttack(action == InputAction.ATTACK_PRIMARY
+                            ? Combat.AttackSlot.PRIMARY : Combat.AttackSlot.SECONDARY);
+                    }
                 }
             }
         });

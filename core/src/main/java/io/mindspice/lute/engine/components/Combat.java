@@ -11,8 +11,9 @@ import java.util.Set;
 
 public class Combat implements Component {
     public static final ComponentMapper<Combat> MAPPER = ComponentMapper.getFor(Combat.class);
-    private final CombatWeapon.Weapon currentWeapon;
-    private boolean attackRequested;
+    private CombatWeapon.Weapon currentWeapon;
+    private AttackSlot attackRequested;
+    private CombatWeapon.Attack activeAttack;
     private boolean attacking;
     private Fixture sensor;
     private long attackId;
@@ -27,17 +28,29 @@ public class Combat implements Component {
     public Fixture getSensor() { return sensor; }
     public long getAttackId() { return attackId; }
 
-    public void requestAttack() {
-        if (!isAttacking()) { attackRequested = true; }
+    public enum AttackSlot { PRIMARY, SECONDARY }
+
+    public boolean hasAttackRequest() { return attackRequested != null; }
+    public CombatWeapon.Attack getActiveAttack() { return activeAttack; }
+
+    public boolean setWeapon(CombatWeapon.Weapon weapon) {
+        if (attacking || hasAttackRequest()) { return false; }
+        currentWeapon = weapon;
+        return true;
     }
 
-    public boolean consumeAttackRequest() {
-        boolean requested = attackRequested;
-        attackRequested = false;
+    public void requestAttack(AttackSlot slot) {
+        if (!isAttacking() && attackRequested == null) { attackRequested = slot; }
+    }
+
+    public AttackSlot consumeAttackRequest() {
+        var requested = attackRequested;
+        attackRequested = null;
         return requested;
     }
 
-    public void beginAttack() {
+    public void beginAttack(CombatWeapon.Attack attack) {
+        activeAttack = attack;
         attacking = true;
         attackId++;
         hitTargets.clear();
@@ -48,7 +61,8 @@ public class Combat implements Component {
     public void endAttack() {
         attacking = false;
         sensor = null;
-        attackRequested = false;
+        attackRequested = null;
+        activeAttack = null;
         hitTargets.clear();
     }
 

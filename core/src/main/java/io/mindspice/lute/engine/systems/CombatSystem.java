@@ -9,6 +9,7 @@ import com.badlogic.gdx.math.Vector2;
 import com.badlogic.gdx.physics.box2d.*;
 import io.mindspice.lute.engine.components.*;
 import io.mindspice.lute.engine.components.Transform;
+import io.mindspice.lute.engine.data.json.WeaponsData.WeaponData.CollisionType;
 
 import java.util.ArrayList;
 import java.util.IdentityHashMap;
@@ -58,7 +59,7 @@ public class CombatSystem extends IteratingSystem implements ContactListener, En
             if ((attackerHealth == null || attackerHealth.isAlive())
                 && combat != null && combat.isAttacking() && combat.getAttackId() == hit.attackId()
                 && health != null && health.isAlive() && combat.markHit(hit.target())) {
-                health.damage(combat.getCurrentWeapon().damage());
+                health.damage(combat.getActiveAttack().damage());
             }
         }
         pendingHits.clear();
@@ -70,28 +71,31 @@ public class CombatSystem extends IteratingSystem implements ContactListener, En
         var combat = Combat.MAPPER.get(entity);
         var health = Health.MAPPER.get(entity);
         boolean alive = health == null || health.isAlive();
-        boolean requested = combat.consumeAttackRequest();
+        var requested = combat.consumeAttackRequest();
         var animation = Animation2D.MAPPER.get(entity);
         if (!combat.isAttacking()) {
-            if (!requested || !alive) { return; }
-            animation.configureAttack(combat.getCurrentWeapon().animation());
-            combat.beginAttack();
+            if (requested == null || !alive) { return; }
+            var weapon = combat.getCurrentWeapon();
+            var attack = requested == Combat.AttackSlot.PRIMARY ? weapon.primary() : weapon.secondary();
+            animation.configureAttack(attack.animation());
+            combat.beginAttack(attack);
             activeAttacks.put(entity, combat);
             return;
         }
-        int hitFrame = combat.getCurrentWeapon().hitFrame();
+        var attack = combat.getActiveAttack();
         if (!alive || (animation.isAttackReady() && animation.isFinished())) {
             stopAttack(entity);
             return;
         }
-        if (combat.getSensor() != null || !animation.hasReachedFrame(hitFrame)) { return; }
+        if (attack.collisionType() != CollisionType.MELEE
+            || combat.getSensor() != null || !animation.hasReachedFrame(attack.hitFrame())) { return; }
 
         var body = Physic.MAPPER.get(entity).getBody();
         var size = Transform.MAPPER.get(entity).getSize();
         var anchor = new Vector2(size.x * 0.5f, size.y * 0.5f);
         var shape = new PolygonShape();
         try {
-            shape.set(combat.getCurrentWeapon().vertices(anchor, Facing.MAPPER.get(entity).getDirection()));
+            shape.set(attack.vertices(anchor, Facing.MAPPER.get(entity).getDirection()));
             var definition = new FixtureDef();
             definition.shape = shape;
             definition.isSensor = true;

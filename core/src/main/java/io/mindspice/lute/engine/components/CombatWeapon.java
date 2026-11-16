@@ -4,13 +4,16 @@ import com.badlogic.gdx.math.MathUtils;
 import com.badlogic.gdx.math.Vector2;
 import io.mindspice.lute.engine.singletons.GameConsts;
 import io.mindspice.lute.engine.data.json.WeaponsData.WeaponData.BoundsType;
+import io.mindspice.lute.engine.data.json.WeaponsData.WeaponData.CollisionType;
 
 public final class CombatWeapon {
     private CombatWeapon() {}
     public record Bounds(float x1, float y1, float x2, float y2) { }
 
-    public record Weapon(String id, float damage, int hitFrame, Animation2D.Attack animation, String hitSoundId,
-                         BoundsType shape, Bounds bounds) {
+    public record Weapon(String id, String atlasKey, Attack primary, Attack secondary) { }
+
+    public record Attack(String weaponId, float damage, int hitFrame, Animation2D.Attack animation, String hitSoundId,
+                         BoundsType shape, Bounds bounds, CollisionType collisionType) {
         public void validateGeometry(Vector2 anchor) {
             for (var direction : Facing.Direction.values()) {
                 validatePolygon(vertices(anchor, direction));

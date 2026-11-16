@@ -65,11 +65,18 @@ public class AnimationSystem extends IteratingSystem implements EventEmitter {
     }
 
     public static void validateAttackFrames(Animation2D anim2d, TextureAtlas atlas) {
-        if (anim2d.getMinimumAttackFrames() == 0) { return; }
-        for (var direction : Facing.Direction.values()) {
-            var key = anim2d.getAtlasKey() + "/attack_" + direction.atlasKey;
-            if (atlas.findRegions(key).size < anim2d.getMinimumAttackFrames()) {
-                throw new IllegalArgumentException("Attack animation has too few frames for " + key);
+        for (var requirement : anim2d.getRequiredAttackFrames().entrySet()) {
+            for (var direction : Facing.Direction.values()) {
+                var key = anim2d.regionKey(requirement.getKey(), direction);
+                var frames = atlas.findRegions(key);
+                if (frames.size < requirement.getValue()) {
+                    throw new IllegalArgumentException("Attack animation has too few frames for " + key);
+                }
+                for (var frame : frames) {
+                    if (frame.getRegionWidth() != 64 || frame.getRegionHeight() != 64) {
+                        throw new IllegalArgumentException("Character frames must be 64x64: " + key);
+                    }
+                }
             }
         }
     }
@@ -78,12 +85,13 @@ public class AnimationSystem extends IteratingSystem implements EventEmitter {
         TextureAtlas atlas = assetService.get(TextureAtlas.class, anim2d.getAtlasId());
         String atlasKey = anim2d.getAtlasKey();
         Animation2D.AnimationType type = anim2d.getType();
-        var cacheKey = new CacheKey(atlas, anim2d.getAtlasId(), atlasKey, type, fDir);
+        String action = anim2d.getAction();
+        var cacheKey = new CacheKey(atlas, anim2d.getAtlasId(), atlasKey, action, fDir);
 
         Array<TextureAtlas.AtlasRegion> frames = animationCache.computeIfAbsent(cacheKey, k -> {
             String combinedKey = type == Animation2D.AnimationType.DEFAULT
                 ? atlasKey
-                : atlasKey + "/" + type.atlasKey + "_" + fDir.atlasKey;
+                : anim2d.regionKey(action, fDir);
             Array<TextureAtlas.AtlasRegion> regions = atlas.findRegions(combinedKey);
 
 
@@ -100,7 +108,7 @@ public class AnimationSystem extends IteratingSystem implements EventEmitter {
         TextureAtlas atlas,
         String atlasId,
         String atlasKey,
-        Animation2D.AnimationType type,
+        String action,
         Facing.Direction fDirection
     ) {
     }

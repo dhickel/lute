@@ -2,10 +2,16 @@
   "name": "player",
   "max_health": 100,
   "move_speed": 4.0,
-  "equipped_weapon" : "sword",
+  "loadout": {
+    "head": "basic",
+    "body": "basic",
+    "hands": "basic",
+    "feet": "basic",
+    "weapon": "basic_sword"
+  },
   "animation": {
     "speed": 1,
-    "atlas_key": "player",
+    "atlas_key": "",
     "sound_frame": 0,
     "frame_interval": 0.125
   },

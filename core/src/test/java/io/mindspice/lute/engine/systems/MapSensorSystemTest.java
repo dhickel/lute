@@ -252,14 +252,16 @@ public final class MapSensorSystemTest {
             game.load(map(sensor("feet", 2.4f, 4, 1.2f, .6f), sensor("attack-only", 4, 5, .5f, .5f)));
             var player = game.entity(2, 4, true, false, 1);
             var target = game.entity(3.2f, 4.75f, false, false, 2);
-            var weapon = new CombatWeapon.Weapon("test", 10, 0,
-                new Animation2D.Attack(1, .125f, 0, "attack"), "hit", BoundsType.RECT,
-                new CombatWeapon.Bounds(pixels(1), 0, pixels(3), pixels(2)));
+            var attack = new CombatWeapon.Attack("test", 10, 0,
+                new Animation2D.Attack("jab", 1, .125f, 0, "attack"), "hit", BoundsType.RECT,
+                new CombatWeapon.Bounds(pixels(1), 0, pixels(3), pixels(2)),
+                io.mindspice.lute.engine.data.json.WeaponsData.WeaponData.CollisionType.MELEE);
+            var weapon = new CombatWeapon.Weapon("test", "melee/test", attack, attack);
             var animation = new Animation2D("unused", "unused", Animation2D.AnimationType.IDLE,
                 Animation.PlayMode.NORMAL, 1, .125f);
             player.add(new Combat(weapon)).add(animation);
             Facing.MAPPER.get(player).setDirection(Facing.Direction.RIGHT);
-            Combat.MAPPER.get(player).requestAttack();
+            Combat.MAPPER.get(player).requestAttack(Combat.AttackSlot.PRIMARY);
             game.combat.update(0);
             animation.setType(Animation2D.AnimationType.ATTACK);
             animation.beginAttack();

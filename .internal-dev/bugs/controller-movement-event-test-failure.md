@@ -22,7 +22,7 @@ The current test expects one movement event after pressing movement. Whether tha
 
 ## Evidence
 
-Controller source SHA-256: `a00965b54e9888086f873a18c4e5b75fef2116e390de081b95980eade0a64fee`. Input test SHA-256: `1428a7f1a668e1fa0d598897b6af859beaa842d79e769faf10226483640ff01d`. Root reproduced the focused baseline failure; full check also reports this failure. During the weapon asset/settings refactor, the identical 1,235-check failure was reproduced again from preserved baseline commit `a1d69f3` in `/tmp/lute-baseline-0Haiat`. `check` excluding `core:inputSystemTest` and desktop compilation pass for the refactor.
+Controller source SHA-256: `a00965b54e9888086f873a18c4e5b75fef2116e390de081b95980eade0a64fee`. Input test SHA-256: `1428a7f1a668e1fa0d598897b6af859beaa842d79e769faf10226483640ff01d`. Root reproduced the focused baseline failure; full check also reports this failure. During the weapon asset/settings refactor, the identical 1,235-check failure was reproduced again from preserved baseline commit `a1d69f3` in `/tmp/lute-baseline-0Haiat`. `check` excluding `core:inputSystemTest` and desktop compilation pass for the refactor. During composite-loadout implementation, the same failure was reproduced from an isolated Git archive of baseline `c79e830`; evidence is `/tmp/lute-phase2-baseline-input.log`. The composite attack input tests pass separately; no movement-event contract change is included.
 
 ## Impact
 

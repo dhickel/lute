@@ -783,8 +783,10 @@ public final class AssetServiceTest {
                 engine.addSystem(audio);
                 var manifest = ManifestLoader.parseMapManifest("test_tiled");
                 var weapons = io.mindspice.lute.engine.data.json.DataLoader.parseWeaponData();
-                var weaponSounds = WeaponAssets.of("sword", weapons);
-                weaponSounds.all().forEach(service::load);
+                var weaponSounds = WeaponAssets.of("basic_sword", weapons);
+                for (String id : weapons.weapons().keySet()) {
+                    WeaponAssets.of(id, weapons).all().forEach(service::load);
+                }
                 manifest.musicAssets().values().forEach(service::load);
                 var sound = backend.resource(service.get(Sound.class, weaponSounds.attack().id()));
                 events.emitEvent(new Event.Sound.Play(weaponSounds.attack().id()));
@@ -797,6 +799,15 @@ public final class AssetServiceTest {
                 events.emitEvent(new Event.Sound.PlayAtVolume(weaponSounds.attack().id(), .5f));
                 events.update(0);
                 check(Math.abs(sound.volume - .2f) < .0001f, "Key-based sound playback must preserve volume scaling");
+                for (String id : weapons.weapons().keySet()) {
+                    for (var definition : WeaponAssets.of(id, weapons).all()) {
+                        var resource = backend.resource(service.get(Sound.class, definition.id()));
+                        int previousPlays = resource.plays;
+                        events.emitEvent(new Event.Sound.Play(definition.id()));
+                        events.update(0);
+                        check(resource.plays == previousPlays + 1, "Switchable weapon sound resolves: " + definition.id());
+                    }
+                }
                 var music = backend.resource(service.get(Music.class, "TOWN"));
                 check(music.plays == 1 && music.looping && music.volume == .5f,
                     "Map start music must resolve and play the TOWN key");

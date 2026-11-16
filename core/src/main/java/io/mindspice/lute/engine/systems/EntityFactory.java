@@ -18,6 +18,8 @@ import io.mindspice.lute.engine.assets.Asset;
 import io.mindspice.lute.engine.assets.AssetService;
 import io.mindspice.lute.engine.assets.MapAssets;
 import io.mindspice.lute.engine.assets.WeaponAssets;
+import io.mindspice.lute.engine.assets.CharacterAssets;
+import io.mindspice.lute.engine.data.json.WeaponsData;
 import io.mindspice.lute.engine.GameCore;
 import io.mindspice.lute.engine.components.CombatWeapon;
 import io.mindspice.lute.engine.components.*;
@@ -27,6 +29,11 @@ import io.mindspice.lute.engine.singletons.GameConsts;
 import io.mindspice.lute.engine.tiled.properties.PhysicObjectProps;
 import io.mindspice.lute.engine.tiled.properties.AnimatedPhysicObjectProps;
 import io.mindspice.lute.engine.tiled.TiledPhysics;
+
+import java.util.HashMap;
+import java.util.List;
+import java.util.Map;
+import java.util.Set;
 
 public class EntityFactory extends EntitySystem {
     private final World world;
@@ -43,26 +50,21 @@ public class EntityFactory extends EntitySystem {
         var facing = Facing.Direction.RIGHT;
         var data = GameCore.INSTANCE.getGameData();
         var playerAnimation = data.playerData().animation();
-        var atlas = mapAssets.atlasAsset();
+        var atlas = CharacterAssets.CHARACTER;
         var animation = createAnimation(atlas, playerAnimation.atlasKey(),
             Animation2D.AnimationType.IDLE, playerAnimation.speed(), playerAnimation.frameInterval(), facing);
         var region = animation.getAnimation().getKeyFrame(0f);
         var transform = createTransform(pixelPosition, region);
         var player = data.playerData();
-        var weaponData = data.weaponsData().requireWeapon(player.equippedWeapon());
-        var sounds = WeaponAssets.of(player.equippedWeapon(), data.weaponsData());
-        var bounds = weaponData.bounds();
-        var attack = new Animation2D.Attack(weaponData.animation().speed(), weaponData.animation().frameInterval(),
-            weaponData.animation().soundFrame(), sounds.attack().id());
-        var weapon = new CombatWeapon.Weapon(player.equippedWeapon(), weaponData.stats().damage(),
-            weaponData.stats().hitFrame(), attack, sounds.hit().id(), bounds.type(),
-            new CombatWeapon.Bounds(bounds.x1(), bounds.y1(), bounds.x2(), bounds.y2()));
-
-        animation.setMinimumAttackFrames((long) Math.max(weapon.hitFrame(), attack.soundFrame()) + 1);
-        AnimationSystem.validateAttackFrames(animation,
-            assetService.get(TextureAtlas.class, animation.getAtlasId()));
         var size = transform.getSize();
-        weapon.validateGeometry(new Vector2(size.x * 0.5f, size.y * 0.5f));
+        var weapons = createWeapons(data.weaponsData(), animation, new Vector2(size.x * 0.5f, size.y * 0.5f));
+        String weaponId = player.loadout().weapon() == null ? "unarmed" : player.loadout().weapon();
+        var weapon = weapons.get(weaponId);
+        if (weapon == null) { throw new IllegalArgumentException("Unknown weapon: " + weaponId); }
+        var combat = new Combat(weapon);
+        var equipment = new Loadout.Equipment(player.loadout().head(), player.loadout().body(),
+            player.loadout().hands(), player.loadout().feet());
+        var loadout = new Loadout(equipment, combat, weapons, this::validateEquipment);
 
         Entity entity = getEngine().createEntity();
         entity.add(new Graphic(region, Color.WHITE.cpy()));
@@ -71,13 +73,81 @@ public class EntityFactory extends EntitySystem {
         entity.add(new Facing(facing));
         entity.add(new Move(player.moveSpeed()));
         entity.add(new Health(player.maxHealth()));
-        entity.add(new Combat(weapon));
+        entity.add(combat);
+        entity.add(loadout);
         entity.add(animation);
         entity.add(new AnimationPlayer(entity));
         entity.add(createPhysics(transform.getPosition(), entity));
         entity.add(new CameraFollow());
         entity.add(Controller.forInputManager(inputManager));
         return entity;
+    }
+
+    private Map<String, CombatWeapon.Weapon> createWeapons(WeaponsData definitions, Animation2D animation, Vector2 anchor) {
+        var weapons = new HashMap<String, CombatWeapon.Weapon>();
+        var requiredFrames = new HashMap<String, Long>();
+        requiredFrames.put("idle", 1L);
+        requiredFrames.put("walk", 1L);
+        for (var entry : definitions.weapons().entrySet()) {
+            String id = entry.getKey();
+            var definition = entry.getValue();
+            var sounds = WeaponAssets.of(id, definitions);
+            var primary = createAttack(id, definition.attackStats().primary(), sounds, anchor, requiredFrames);
+            var secondary = createAttack(id, definition.attackStats().secondary(), sounds, anchor, requiredFrames);
+            if (!id.equals("unarmed")) {
+                validateLayer(CharacterAssets.WEAPONS, definition.atlasKey(),
+                    Set.copyOf(List.of("idle", "walk", primary.animation().action(), secondary.animation().action())));
+            }
+            weapons.put(id, new CombatWeapon.Weapon(id, definition.atlasKey(), primary, secondary));
+        }
+        animation.setRequiredAttackFrames(requiredFrames);
+        AnimationSystem.validateAttackFrames(animation, assetService.get(TextureAtlas.class, animation.getAtlasId()));
+        return Map.copyOf(weapons);
+    }
+
+    private CombatWeapon.Attack createAttack(String id, WeaponsData.WeaponData.AttackData data, WeaponAssets sounds,
+                                             Vector2 anchor, Map<String, Long> requiredFrames) {
+        var settings = data.animation();
+        var animation = new Animation2D.Attack(settings.atlasKey(), settings.speed(), settings.frameInterval(),
+            settings.soundFrame(), sounds.attack().id());
+        var bounds = data.bounds();
+        var attack = new CombatWeapon.Attack(id, data.stats().damage(), data.stats().hitFrame(), animation,
+            sounds.hit().id(), bounds.type(), new CombatWeapon.Bounds(bounds.x1(), bounds.y1(), bounds.x2(), bounds.y2()),
+            data.collisionType());
+        attack.validateGeometry(anchor);
+        long minimum = (long) Math.max(attack.hitFrame(), animation.soundFrame()) + 1;
+        requiredFrames.merge(animation.action(), minimum, Math::max);
+        return attack;
+    }
+
+    private void validateEquipment(Loadout.Equipment equipment) {
+        if (equipment == null) { throw new IllegalArgumentException("Equipment is required"); }
+        var actions = Set.of("idle", "walk", "slash", "jab", "shot");
+        validateLayer(CharacterAssets.HEAD, equipment.head(), actions);
+        validateLayer(CharacterAssets.BODY, equipment.body(), actions);
+        validateLayer(CharacterAssets.HANDS, equipment.hands(), actions);
+        validateLayer(CharacterAssets.FEET, equipment.feet(), actions);
+    }
+
+    private void validateLayer(Asset.Atlas asset, String prefix, Set<String> actions) {
+        if (prefix == null || prefix.isBlank()) { throw new IllegalArgumentException("Equipment region prefix is required"); }
+        var base = assetService.get(TextureAtlas.class, CharacterAssets.CHARACTER.id());
+        var atlas = assetService.get(TextureAtlas.class, asset.id());
+        for (String action : actions) {
+            for (var direction : Facing.Direction.values()) {
+                String suffix = action + "_" + direction.atlasKey;
+                var reference = base.findRegions(suffix);
+                var frames = atlas.findRegions(prefix + "/" + suffix);
+                if (reference.isEmpty() || frames.size != reference.size) {
+                    throw new IllegalArgumentException("Layer frame count must match character: " + asset.id() + "/" + prefix + "/" + suffix);
+                }
+                for (var frame : frames) {
+                    if (frame.getRegionWidth() != 64 || frame.getRegionHeight() != 64) {
+                        throw new IllegalArgumentException("Layer frames must be 64x64: " + asset.id() + "/" + prefix + "/" + suffix);
+                    }
+                }
+            }
+        }
     }
 
     public Entity getPhysicObjectEntity(PhysicObjectProps props, TiledMapTileMapObject object, MapAssets mapAssets) {
@@ -146,7 +216,7 @@ public class EntityFactory extends EntitySystem {
         if (animType == Animation2D.AnimationType.DEFAULT) {
             animationKey = atlasKey;
         } else {
-            animationKey = atlasKey + "/" + animType.atlasKey + "_" + facing.atlasKey;
+            animationKey = (atlasKey.isEmpty() ? "" : atlasKey + "/") + animType.atlasKey + "_" + facing.atlasKey;
         }
         var regions = assetService.get(TextureAtlas.class, atlas.id()).findRegions(animationKey);
         if (regions.isEmpty()) {

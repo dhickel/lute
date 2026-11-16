@@ -7,29 +7,70 @@ import java.util.Objects;
 
 public record WeaponsData(String atlas, Map<String, WeaponData> weapons) {
     public WeaponsData {
-        atlas = atlas == null ? "NONE" : atlas;
-        if (atlas.isBlank()) { throw new IllegalArgumentException("Weapon atlas must be a path or NONE"); }
+        if (atlas == null || atlas.isBlank() || "NONE".equals(atlas)) {
+            throw new IllegalArgumentException("A common weapon atlas is required");
+        }
         weapons = Map.copyOf(Objects.requireNonNull(weapons, "weapons"));
+        if (!weapons.containsKey("unarmed")) {
+            throw new IllegalArgumentException("An explicit unarmed definition is required");
+        }
+        weapons.forEach((id, weapon) -> {
+            if (id.isBlank()) { throw new IllegalArgumentException("Weapon ID is required"); }
+            boolean unarmed = id.equals("unarmed");
+            if (unarmed != weapon.atlasKey().equals("NONE")) {
+                throw new IllegalArgumentException("Only unarmed uses atlas_key NONE");
+            }
+            var primary = weapon.attackStats().primary();
+            var secondary = weapon.attackStats().secondary();
+            if (!secondary.animation().atlasKey().equals("jab") || secondary.collisionType() != WeaponData.CollisionType.MELEE
+                || (unarmed && (!primary.animation().atlasKey().equals("jab")
+                    || primary.collisionType() != WeaponData.CollisionType.MELEE))) {
+                throw new IllegalArgumentException("Secondary and unarmed attacks must be melee jabs");
+            }
+        });
     }
 
     public WeaponData requireWeapon(String id) {
         var weapon = weapons.get(id);
         if (weapon == null) { throw new IllegalArgumentException("Unknown weapon: " + id); }
-        if (!"NONE".equals(atlas) || !"NONE".equals(weapon.animation().atlasKey())) {
-            throw new IllegalArgumentException("Separate weapon atlas rendering is not supported yet: " + id);
-        }
         return weapon;
     }
 
-    public record WeaponData(Stats stats, AnimationData animation, Sounds sounds, Bounds bounds) {
+    public record WeaponData(@JsonProperty("attack_stats") AttackStats attackStats, Sounds sounds,
+                             @JsonProperty("atlas_key") String atlasKey) {
         public WeaponData {
-            Objects.requireNonNull(stats, "stats");
-            Objects.requireNonNull(animation, "animation");
+            Objects.requireNonNull(attackStats, "attack_stats");
             Objects.requireNonNull(sounds, "sounds");
-            Objects.requireNonNull(bounds, "bounds");
+            if (atlasKey == null || atlasKey.isBlank()) {
+                throw new IllegalArgumentException("Weapon atlas_key is required");
+            }
         }
 
-        public record Stats(int damage, int cost, @JsonProperty("hit_frame") int hitFrame) {
+        public record AttackStats(AttackData primary, AttackData secondary) {
+            public AttackStats {
+                Objects.requireNonNull(primary, "attack_stats.primary");
+                Objects.requireNonNull(secondary, "attack_stats.secondary");
+            }
+        }
+
+        public record AttackData(AnimationData animation, Bounds bounds, Stats stats,
+                                 @JsonProperty("collision_type") CollisionType collisionType) {
+            public AttackData {
+                Objects.requireNonNull(animation, "animation");
+                Objects.requireNonNull(bounds, "bounds");
+                Objects.requireNonNull(stats, "stats");
+                Objects.requireNonNull(collisionType, "collision_type");
+                String action = animation.atlasKey();
+                if (!(action.equals("slash") || action.equals("jab") || action.equals("shot"))
+                    || (action.equals("shot") != (collisionType == CollisionType.PROJECTILE))) {
+                    throw new IllegalArgumentException("Attack action must be melee slash/jab or projectile shot");
+                }
+            }
+        }
+
+        public record Stats(@JsonProperty(value = "damage", required = true) int damage,
+                            @JsonProperty(value = "cost", required = true) int cost,
+                            @JsonProperty(value = "hit_frame", required = true) int hitFrame) {
             public Stats {
                 if (damage <= 0 || cost < 0 || hitFrame < 0) {
                     throw new IllegalArgumentException("Weapon damage must be positive; cost and hit_frame must be nonnegative");
@@ -45,7 +86,11 @@ public record WeaponsData(String atlas, Map<String, WeaponData> weapons) {
             }
         }
 
-        public record Bounds(BoundsType type, float x1, float y1, float x2, float y2) {
+        public record Bounds(BoundsType type,
+                             @JsonProperty(value = "x1", required = true) float x1,
+                             @JsonProperty(value = "y1", required = true) float y1,
+                             @JsonProperty(value = "x2", required = true) float x2,
+                             @JsonProperty(value = "y2", required = true) float y2) {
             public Bounds {
                 Objects.requireNonNull(type, "bounds.type");
                 if (!Float.isFinite(x1) || !Float.isFinite(y1) || !Float.isFinite(x2) || !Float.isFinite(y2)
@@ -55,5 +100,6 @@ public record WeaponsData(String atlas, Map<String, WeaponData> weapons) {
             }
         }
         public enum BoundsType { SEMICIRCLE, TRIANGLE, RECT }
+        public enum CollisionType { MELEE, PROJECTILE }
     }
 }

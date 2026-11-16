@@ -24,7 +24,8 @@ import io.mindspice.lute.engine.data.json.DataLoader;
 import io.mindspice.lute.engine.data.json.AnimationData;
 import io.mindspice.lute.engine.data.json.GameData;
 import io.mindspice.lute.engine.data.json.WeaponsData;
-import io.mindspice.lute.engine.data.json.WeaponsData.WeaponData.BoundsType;
+import io.mindspice.lute.engine.data.json.WeaponsData.WeaponData;
+import io.mindspice.lute.engine.data.json.WeaponsData.WeaponData.*;
 import io.mindspice.lute.engine.events.Event;
 import io.mindspice.lute.engine.input.*;
 import io.mindspice.lute.engine.singletons.GameConsts;
@@ -50,6 +51,8 @@ public final class CombatSystemTest {
         frameTiming();
         speedAndSkippedFrames();
         movementAndInput();
+        attackSlotsAndLoadout();
+        independentAttacksAndGeometry();
         contacts();
         cleanup();
         geometryAndHealth();
@@ -72,7 +75,7 @@ public final class CombatSystemTest {
     private static void animationIntervals() {
         var animation = new Animation2D("OBJECTS", "player", Animation2D.AnimationType.IDLE,
             Animation.PlayMode.LOOP, 1, .125f);
-        animation.configureAttack(new Animation2D.Attack(2, .3f, 1, "sound"));
+        animation.configureAttack(new Animation2D.Attack("jab", 2, .3f, 1, "sound"));
         animation.beginAttack();
         animation.setType(Animation2D.AnimationType.ATTACK);
         animation.setAnimation(new Animation<>(animation.getFrameDuration(), new TextureRegion(), new TextureRegion()),
@@ -157,8 +160,8 @@ public final class CombatSystemTest {
             game.attack();
             long id = game.combat().getAttackId();
             game.input(InputAction.MOVE_RIGHT, 0); game.input(InputAction.MOVE_UP, 1);
-            game.input(InputAction.ATTACK, 0); game.update(.125f);
-            game.input(InputAction.ATTACK, 1); game.update(.125f);
+            game.input(InputAction.ATTACK_PRIMARY, 0); game.update(.125f);
+            game.input(InputAction.ATTACK_PRIMARY, 1); game.update(.125f);
             check(game.combat().getAttackId() == id, "Busy press does not restart attack");
             check(Facing.MAPPER.get(game.player).getDirection() == Facing.Direction.RIGHT, "Facing locked during attack");
             check(game.body().getLinearVelocity().isZero(), "Movement locked during attack");
@@ -169,6 +172,124 @@ public final class CombatSystemTest {
             check(game.fsm().getCurrentState() == AnimationState.IDLE, "Release returns to idle");
             game.attack();
             check(game.combat().getAttackId() == id + 1, "New press starts a new attack");
+        }
+    }
+
+    private static void attackSlotsAndLoadout() {
+        var sword = new CombatWeapon.Weapon("basic_sword", "melee/basic_sword",
+            attack("basic_sword", "slash", 1, 2, 1, BoundsType.SEMICIRCLE, CollisionType.MELEE),
+            attack("basic_sword", "jab", 1, 2, 1, BoundsType.TRIANGLE, CollisionType.MELEE));
+        var bow = new CombatWeapon.Weapon("basic_bow", "ranged/basic_bow",
+            attack("basic_bow", "shot", 1, 2, 1, BoundsType.RECT, CollisionType.PROJECTILE),
+            attack("basic_bow", "jab", 1, 2, 1, BoundsType.TRIANGLE, CollisionType.MELEE));
+        var jab = attack("unarmed", "jab", 1, 2, 1, BoundsType.RECT, CollisionType.MELEE);
+        var unarmed = new CombatWeapon.Weapon("unarmed", "NONE", jab, jab);
+        var catalog = Map.of("basic_sword", sword, "basic_bow", bow, "unarmed", unarmed);
+        var equipment = new Loadout.Equipment("basic", "basic", "basic", "basic");
+        var changed = new Loadout.Equipment("other", "other", "other", "other");
+        for (var weapon : catalog.values()) {
+            for (var action : new InputAction[]{InputAction.ATTACK_PRIMARY, InputAction.ATTACK_SECONDARY}) {
+                try (var game = new Harness(1, 0, 0)) {
+                    check(game.combat().setWeapon(weapon), "Inactive combat accepts weapon");
+                    var loadout = new Loadout(equipment, game.combat(), catalog, value -> {
+                        if (!value.equals(equipment) && !value.equals(changed)) {
+                            throw new IllegalArgumentException("Unknown equipment");
+                        }
+                    });
+                    game.player.add(loadout);
+                    var target = game.target(2, false);
+                    var expected = action == InputAction.ATTACK_PRIMARY ? weapon.primary() : weapon.secondary();
+                    game.attack(action);
+                    check(game.combat().getActiveAttack() == expected, "Input selects immutable attack snapshot: " + action);
+                    game.combat().requestAttack(Combat.AttackSlot.SECONDARY);
+                    check(!game.combat().hasAttackRequest() && game.combat().getActiveAttack() == expected,
+                        "Busy request neither queues nor replaces active attack");
+                    check(!game.combat().setWeapon(sword) && !loadout.equipWeapon("basic_sword") && !loadout.equip(changed),
+                        "Weapon and equipment changes rejected during attack");
+                    check(loadout.getEquipment().equals(equipment) && game.combat().getActiveAttack() == expected,
+                        "Rejected switch preserves equipment and snapshot");
+                    int fixtures = game.body().getFixtureList().size;
+                    for (int frame = 1; frame <= 3; frame++) {
+                        game.update(.125f);
+                        game.step(); game.combatSystem.update(0);
+                        check(game.combat().isAttacking(), "Attack plays through frame " + frame);
+                        if (expected.collisionType() == CollisionType.PROJECTILE) {
+                            check(game.combat().getSensor() == null && game.body().getFixtureList().size == fixtures,
+                                "Bow shot creates no sensor throughout animation");
+                            near(100, Health.MAPPER.get(target).getCurrent(), "Bow shot deals no contact damage");
+                            check(game.engine.getEntities().size() == 2, "Bow shot spawns no projectile entity");
+                        }
+                    }
+                    if (expected.collisionType() == CollisionType.MELEE) {
+                        near(90, Health.MAPPER.get(target).getCurrent(), "Selected melee attack deals damage once");
+                    }
+                    game.events.update(0);
+                    check(game.sounds.stream().filter(s -> s.equals(expected.animation().soundId())).count() == 1,
+                        "Selected attack sound emitted once");
+                    game.update(.125f); game.update(0);
+                    check(!game.combat().isAttacking() && game.combat().getSensor() == null, "Selected attack completes normally");
+                    check(loadout.equip(changed) && loadout.getEquipment().equals(changed), "Inactive equipment switch accepted");
+                    check(loadout.equipWeapon("basic_bow") && loadout.getWeaponId().equals("basic_bow")
+                        && game.combat().getCurrentWeapon() == bow, "Inactive bow switch accepted");
+                    check(loadout.equipWeapon(null) && loadout.getWeaponId() == null
+                        && game.combat().getCurrentWeapon() == unarmed, "Null switch selects explicit unarmed catalog entry");
+                    rejects(() -> loadout.equipWeapon("missing"), "Unknown loadout weapon");
+                    check(game.combat().getCurrentWeapon() == unarmed && loadout.getWeaponId() == null,
+                        "Invalid switch preserves current weapon");
+                    game.combat().requestAttack(Combat.AttackSlot.SECONDARY);
+                    game.combat().requestAttack(Combat.AttackSlot.PRIMARY);
+                    check(!loadout.equipWeapon("basic_sword") && !loadout.equip(equipment)
+                        && !game.combat().setWeapon(sword), "Pending request locks loadout before attack begins");
+                    check(game.combat().consumeAttackRequest() == Combat.AttackSlot.SECONDARY,
+                        "Pending request retains selected slot");
+                    check(game.combat().consumeAttackRequest() == null, "Consumed request is cleared");
+                    check(loadout.equipWeapon("basic_sword") && loadout.equip(equipment), "Switch unlocked after request consumed");
+                }
+            }
+        }
+    }
+
+    private static void independentAttacksAndGeometry() {
+        var primary = new CombatWeapon.Attack("test", 41, 0,
+            new Animation2D.Attack("slash", 1, .125f, 1, "primary"), "hit", BoundsType.RECT,
+            new CombatWeapon.Bounds(32, 16, 72, 48), CollisionType.MELEE);
+        var secondary = new CombatWeapon.Attack("test", 17, 2,
+            new Animation2D.Attack("jab", 1, .125f, 3, "secondary"), "hit", BoundsType.TRIANGLE,
+            new CombatWeapon.Bounds(32, 24, 56, 40), CollisionType.MELEE);
+        for (var input : new InputAction[]{InputAction.ATTACK_PRIMARY, InputAction.ATTACK_SECONDARY}) {
+            try (var game = new Harness(1, 0, 0)) {
+                game.combat().setWeapon(new CombatWeapon.Weapon("test", "melee/test", primary, secondary));
+                var near = game.target(2, false);
+                var far = game.target(1, false);
+                Physic.MAPPER.get(near).getBody().setTransform(1.5f, 1, 0);
+                Physic.MAPPER.get(far).getBody().setTransform(2.1f, 1, 0);
+                boolean first = input == InputAction.ATTACK_PRIMARY;
+                var expected = first ? primary : secondary;
+                game.attack(input);
+                check(game.animation().getAction().equals(expected.animation().action()), "Selected action reaches animation");
+                check((game.combat().getSensor() != null) == first, "Independent hit-frame start");
+                game.events.update(0);
+                check(game.sounds.isEmpty(), "Neither nonzero cue plays at frame zero");
+                game.update(.125f); game.events.update(0);
+                check(game.sounds.equals(first ? List.of("primary") : List.of()), "Distinct first-frame sound cue");
+                game.update(.125f);
+                var polygon = (PolygonShape) game.combat().getSensor().getShape();
+                check(polygon.getVertexCount() == (first ? 4 : 3), "Selected attack owns its actual fixture shape");
+                var point = new Vector2();
+                float tip = Float.NEGATIVE_INFINITY;
+                for (int i = 0; i < polygon.getVertexCount(); i++) {
+                    polygon.getVertex(i, point); tip = Math.max(tip, point.x);
+                }
+                near(first ? 2.25f : 1.75f, tip, "Independent configured reach");
+                game.step(); game.combatSystem.update(0);
+                near(100 - expected.damage(), Health.MAPPER.get(near).getCurrent(), "Independent selected damage, once per target");
+                near(first ? 59 : 100, Health.MAPPER.get(far).getCurrent(), "Only longer primary reaches distant target");
+                game.update(.125f); game.events.update(0);
+                check(game.sounds.equals(List.of(first ? "primary" : "secondary")), "Independent secondary cue reached once");
+                game.update(0); game.events.update(0);
+                check(game.sounds.size() == 1, "Independent cue is not repeated");
+                game.finish();
+            }
         }
     }
 
@@ -235,7 +356,7 @@ public final class CombatSystemTest {
     private static void geometryAndHealth() {
         var anchor = new Vector2(1, 1);
         for (var shape : BoundsType.values()) {
-            var weapon = weapon(1, 0, 0, shape);
+            var weapon = weapon(1, 0, 0, shape).primary();
             for (var facing : Facing.Direction.values()) {
                 var vertices = weapon.vertices(anchor, facing);
                 check(vertices.length >= 3 && vertices.length <= 8, "Native vertex limit");
@@ -245,8 +366,8 @@ public final class CombatSystemTest {
             }
             for (var bounds : new CombatWeapon.Bounds[]{new CombatWeapon.Bounds(0, 0, .001f, .001f),
                 new CombatWeapon.Bounds(0, 0, 1e24f, 64), new CombatWeapon.Bounds(0, 0, 1e15f, 1e15f)}) {
-                var unsafe = new CombatWeapon.Weapon("bad", 10, 0, new Animation2D.Attack(1, .125f, 0, "sound"),
-                    "hit", shape, bounds);
+                var unsafe = new CombatWeapon.Attack("bad", 10, 0, new Animation2D.Attack("slash", 1, .125f, 0, "sound"),
+                    "hit", shape, bounds, CollisionType.MELEE);
                 rejects(() -> unsafe.validateGeometry(anchor), "Unsafe geometry");
             }
         }
@@ -273,11 +394,15 @@ public final class CombatSystemTest {
                 region.left, region.top, region.width, region.height).index = region.index;
         }
         var world = new World(Vector2.Zero, true);
-        TextureAtlas[] loaded = {atlas};
+        var shared = sharedAtlases();
+        TextureAtlas[] loaded = {shared.get(CharacterAssets.CHARACTER.id())};
         var assets = new AssetService(FileHandle::new) {
             @Override public <T> T get(Class<T> type, String id) {
-                check(type == TextureAtlas.class && id.equals("OBJECTS"), "Factory uses logical atlas key");
-                return type.cast(loaded[0]);
+                check(type == TextureAtlas.class, "Factory resolves typed atlases");
+                var result = id.equals("OBJECTS") ? atlas
+                    : id.equals(CharacterAssets.CHARACTER.id()) ? loaded[0] : shared.get(id);
+                check(result != null, "Factory uses declared logical atlas key: " + id);
+                return type.cast(result);
             }
         };
         var input = new InputManager(InputMap.of());
@@ -301,33 +426,55 @@ public final class CombatSystemTest {
             var animatedObject = factory.getAnimatedPhysicObjectEntity(objectProps, object, map);
             check(Animation2D.MAPPER.get(animatedObject).getType() == Animation2D.AnimationType.DEFAULT,
                 "Animated environmental objects start in DEFAULT");
-            var original = data.weaponsData().requireWeapon(data.playerData().equippedWeapon());
-            for (boolean hit : new boolean[]{true, false}) {
-                for (int invalid : new int[]{4, Integer.MAX_VALUE}) {
-                    var stats = original.stats();
-                    var anim = original.animation();
-                    var bad = new WeaponsData.WeaponData(
-                        new WeaponsData.WeaponData.Stats(stats.damage(), stats.cost(), hit ? invalid : 0),
-                        new AnimationData(anim.speed(), anim.atlasKey(), hit ? 0 : invalid, anim.frameInterval()),
-                        original.sounds(), original.bounds());
-                    field.set(GameCore.INSTANCE, new GameData(data.playerData(),
-                        new WeaponsData("NONE", Map.of(data.playerData().equippedWeapon(), bad))));
-                    rejects(() -> factory.getPlayerEntity(new Vector2(320, 640), map), "Out of range cue frame");
+            for (var id : data.weaponsData().weapons().keySet()) {
+                for (boolean primary : new boolean[]{true, false}) {
+                    var weapon = data.weaponsData().requireWeapon(id);
+                    var original = primary ? weapon.attackStats().primary() : weapon.attackStats().secondary();
+                    for (boolean hit : new boolean[]{true, false}) {
+                        for (int invalid : new int[]{8, Integer.MAX_VALUE}) {
+                            var bad = withCues(original, hit ? invalid : 0, hit ? 0 : invalid);
+                            field.set(GameCore.INSTANCE, replaceAttack(data, id, primary, bad));
+                            rejects(() -> factory.getPlayerEntity(new Vector2(320, 640), map),
+                                "Out of range cue in complete catalog: " + id + "/" + primary + "/" + hit);
+                        }
+                    }
+                    var badBounds = new WeaponData.Bounds(BoundsType.RECT, 0, 0, .001f, .001f);
+                    var badGeometry = new AttackData(original.animation(), badBounds, original.stats(), original.collisionType());
+                    field.set(GameCore.INSTANCE, replaceAttack(data, id, primary, badGeometry));
+                    rejects(() -> factory.getPlayerEntity(new Vector2(320, 640), map), "Unsafe catalog Box2D geometry");
                 }
             }
-            var badBounds = new WeaponsData.WeaponData.Bounds(BoundsType.RECT, 0, 0, .001f, .001f);
-            var badGeometry = new WeaponsData.WeaponData(original.stats(), original.animation(), original.sounds(), badBounds);
-            field.set(GameCore.INSTANCE, new GameData(data.playerData(),
-                new WeaponsData("NONE", Map.of(data.playerData().equippedWeapon(), badGeometry))));
-            rejects(() -> factory.getPlayerEntity(new Vector2(320, 640), map), "Unsafe Box2D geometry");
-            var stats = original.stats();
-            var anim = original.animation();
-            var cues = new WeaponsData.WeaponData(
-                new WeaponsData.WeaponData.Stats(stats.damage(), stats.cost(), 2),
-                new AnimationData(anim.speed(), anim.atlasKey(), 3, anim.frameInterval()),
-                original.sounds(), original.bounds());
-            field.set(GameCore.INSTANCE, new GameData(data.playerData(),
-                new WeaponsData("NONE", Map.of(data.playerData().equippedWeapon(), cues))));
+            field.set(GameCore.INSTANCE, data);
+            for (var asset : CharacterAssets.all(data.weaponsData().atlas())) {
+                var candidate = shared.get(asset.id());
+                String prefix = asset == CharacterAssets.CHARACTER ? ""
+                    : asset.id().equals(CharacterAssets.WEAPONS.id()) ? "melee/basic_sword/" : "basic/";
+                var frame = sourceFrame(candidate, prefix + "idle_down");
+                int width = frame.getRegionWidth();
+                try {
+                    frame.setRegionWidth(32);
+                    rejects(() -> factory.getPlayerEntity(new Vector2(320, 640), map),
+                        "Invalid loaded frame geometry: " + asset.id());
+                } finally { frame.setRegionWidth(width); }
+            }
+            for (var asset : List.of(CharacterAssets.HEAD, CharacterAssets.BODY, CharacterAssets.HANDS,
+                CharacterAssets.FEET, CharacterAssets.WEAPONS)) {
+                var candidate = shared.get(asset.id());
+                String key = asset == CharacterAssets.WEAPONS ? "ranged/basic_bow/jab_up" : "basic/shot_up";
+                var frame = sourceFrame(candidate, key);
+                candidate.getRegions().removeValue(frame, true);
+                try {
+                    rejects(() -> factory.getPlayerEntity(new Vector2(320, 640), map),
+                        "Missing directional layer frame: " + asset.id());
+                } finally { candidate.getRegions().add(frame); }
+            }
+            var cues = data;
+            for (var id : data.weaponsData().weapons().keySet()) {
+                var attacks = data.weaponsData().requireWeapon(id).attackStats();
+                cues = replaceAttack(cues, id, true, withCues(attacks.primary(), 6, 7));
+                cues = replaceAttack(cues, id, false, withCues(attacks.secondary(), 6, 7));
+            }
+            field.set(GameCore.INSTANCE, cues);
             var player = factory.getPlayerEntity(new Vector2(320, 640), map);
             check(player.getComponent(Player.class) != null, "Real player factory declares map-sensor participation");
             var transform = Transform.MAPPER.get(player);
@@ -344,50 +491,114 @@ public final class CombatSystemTest {
             var animation = Animation2D.MAPPER.get(player);
             var state = Combat.MAPPER.get(player);
             near(100, Health.MAPPER.get(player).getCurrent(), "Factory player stats");
-            check(state.getCurrentWeapon().animation().soundId().equals("weapon/sword/attack"), "Factory passes resolved sound ID");
-            for (var direction : Facing.Direction.values()) {
-                Facing.MAPPER.get(player).setDirection(direction);
-                state.requestAttack(); engine.update(0); engine.update(0);
-                check(animation.getAnimation().getKeyFrames().length == 4, "Real atlas attack frames " + direction);
-                int hitFrame = state.getCurrentWeapon().hitFrame();
-                float speed = state.getCurrentWeapon().animation().speed();
-                check((state.getSensor() != null) == (hitFrame == 0), "Real weapon frame-zero hitbox");
-                if (hitFrame > 0) {
-                    engine.update((hitFrame - .5f) * animation.getFrameDuration() / speed);
-                    check(state.getSensor() == null, "Real weapon waits until hit frame");
-                    engine.update(.51f * animation.getFrameDuration() / speed);
-                    check(state.getSensor() != null, "Real atlas hit frame");
+            check(state.getCurrentWeapon().primary().animation().soundId().equals("weapon/basic_sword/attack"),
+                "Factory passes resolved sound ID");
+            var loadout = Loadout.MAPPER.get(player);
+            check(loadout != null && loadout.getWeaponId().equals("basic_sword"), "Factory installs default runtime loadout");
+            var originalEquipment = loadout.getEquipment();
+            rejects(() -> loadout.equip(new Loadout.Equipment("missing", "basic", "basic", "basic")),
+                "Equipment switching validates loaded atlas regions");
+            rejects(() -> loadout.equip(new Loadout.Equipment(null, "basic", "basic", "basic")),
+                "Equipment switching validates missing metadata");
+            check(loadout.getEquipment().equals(originalEquipment), "Invalid equipment switch is atomic");
+            check(loadout.equip(originalEquipment), "Valid loaded equipment is accepted");
+            for (String id : new String[]{"basic_sword", "basic_bow", null}) {
+                check(loadout.equipWeapon(id), "Factory loadout selects weapon");
+                for (var slot : Combat.AttackSlot.values()) {
+                    for (var direction : Facing.Direction.values()) {
+                        Facing.MAPPER.get(player).setDirection(direction);
+                        state.requestAttack(slot); engine.update(0); engine.update(0);
+                        var active = state.getActiveAttack();
+                        check(animation.getAnimation().getKeyFrames().length == 8, "Flat action atlas frames " + direction);
+                        check(active.animation().action().equals(id == null || slot == Combat.AttackSlot.SECONDARY
+                            ? "jab" : id.equals("basic_bow") ? "shot" : "slash"), "Factory selects action");
+                        float speed = active.animation().speed();
+                        check(state.getSensor() == null, "Factory attack waits for hit cue");
+                        engine.update(5.5f * animation.getFrameDuration() / speed);
+                        check(state.getSensor() == null, "No sensor before hit cue");
+                        engine.update(.51f * animation.getFrameDuration() / speed);
+                        check((state.getSensor() != null) == (active.collisionType() == CollisionType.MELEE),
+                            "Factory melee activates while projectile remains sensor-free");
+                        engine.update(2 * animation.getFrameDuration() / speed); engine.update(0);
+                        check(!state.isAttacking(), "Factory action completes");
+                        check(animation.getAnimation().getKeyFrames().length == 8, "Idle frames restored");
+                    }
                 }
-                engine.update(1f / speed); engine.update(0);
-                check(!state.isAttacking(), "Real animation completion");
-                check(animation.getAnimation().getKeyFrames().length == 6, "Idle frames restored");
             }
-            check(animation.getMinimumAttackFrames() == 4, "Factory carries both cue requirements");
             var shortAtlas = new TextureAtlas();
             var replacement = new TextureAtlas();
             try {
-                for (var frame : atlas.getRegions()) {
+                for (var frame : shared.get(CharacterAssets.CHARACTER.id()).getRegions()) {
                     replacement.addRegion(frame.name, frame).index = frame.index;
-                    if (!frame.name.equals("player/attack_up") || frame.index < 3) {
-                        shortAtlas.addRegion(frame.name, frame).index = frame.index;
-                    }
                 }
                 var previousAnimation = animation.getAnimation();
-                loaded[0] = shortAtlas;
-                rejects(() -> engine.update(0), "Reload with too-short non-facing attack animation");
-                check(animation.getAnimation() == previousAnimation, "Invalid reload does not install animation");
-                rejects(() -> engine.update(0), "Invalid reload remains unaccepted on retry");
+                for (var action : new String[]{"slash", "jab", "shot"}) {
+                    for (var direction : Facing.Direction.values()) {
+                        shortAtlas.getRegions().clear();
+                        var key = action + "_" + direction.name().toLowerCase(java.util.Locale.ROOT);
+                        for (var frame : replacement.getRegions()) {
+                            if (!frame.name.equals(key) || frame.index < 7) {
+                                shortAtlas.addRegion(frame.name, frame).index = frame.index;
+                            }
+                        }
+                        loaded[0] = shortAtlas;
+                        rejects(() -> engine.update(0), "Reload validates all catalog actions and facings: " + key);
+                        check(animation.getAnimation() == previousAnimation, "Invalid reload does not install animation");
+                        rejects(() -> engine.update(0), "Invalid reload remains unaccepted on retry");
+                    }
+                }
                 loaded[0] = replacement;
                 engine.update(0);
                 check(animation.getAnimation() != previousAnimation, "Valid replacement reloads existing entity");
                 Facing.MAPPER.get(player).setDirection(Facing.Direction.UP);
-                state.requestAttack(); engine.update(0); engine.update(0);
-                check(animation.getAnimation().getKeyFrames().length == 4, "Valid replacement supports attack playback");
+                state.requestAttack(Combat.AttackSlot.SECONDARY); engine.update(0); engine.update(0);
+                check(animation.getAnimation().getKeyFrames().length == 8, "Valid replacement supports action playback");
             } finally { shortAtlas.dispose(); replacement.dispose(); }
         } finally {
             engine.removeAllEntities(); world.dispose(); assets.dispose(); atlas.dispose(); input.dispose();
+            shared.values().forEach(TextureAtlas::dispose);
             field.set(GameCore.INSTANCE, previous); bindEngine(previousEngine); Gdx.files = files;
         }
+    }
+
+    private static AttackData withCues(AttackData attack, int hitFrame, int soundFrame) {
+        var animation = attack.animation();
+        var stats = attack.stats();
+        return new AttackData(new AnimationData(animation.speed(), animation.atlasKey(), soundFrame, animation.frameInterval()),
+            attack.bounds(), new Stats(stats.damage(), stats.cost(), hitFrame), attack.collisionType());
+    }
+
+    private static GameData replaceAttack(GameData data, String id, boolean primary, AttackData replacement) {
+        var weapons = new java.util.HashMap<>(data.weaponsData().weapons());
+        var original = weapons.get(id);
+        var attacks = original.attackStats();
+        var changed = new AttackStats(primary ? replacement : attacks.primary(), primary ? attacks.secondary() : replacement);
+        weapons.put(id, new WeaponData(changed, original.sounds(), original.atlasKey()));
+        return new GameData(data.playerData(), new WeaponsData(data.weaponsData().atlas(), weapons));
+    }
+
+    private static TextureAtlas.AtlasRegion sourceFrame(TextureAtlas atlas, String key) {
+        for (var region : atlas.getRegions()) {
+            if (region.name.equals(key)) { return region; }
+        }
+        throw new AssertionError("Missing atlas source frame: " + key);
+    }
+
+    private static Map<String, TextureAtlas> sharedAtlases() {
+        var atlases = new java.util.HashMap<String, TextureAtlas>();
+        for (var asset : CharacterAssets.all("weapons.atlas")) {
+            var atlas = new TextureAtlas();
+            var file = new FileHandle("assets/" + asset.path());
+            var data = new TextureAtlas.TextureAtlasData(file, file.parent(), false);
+            for (var region : data.getRegions()) {
+                // Deliberately omit cast: the runtime must work without magic assets.
+                if (region.name.startsWith("cast_") || region.name.contains("/cast_")) { continue; }
+                atlas.addRegion(region.name, new DimensionTexture((int) region.page.width, (int) region.page.height),
+                    region.left, region.top, region.width, region.height).index = region.index;
+            }
+            atlases.put(asset.id(), atlas);
+        }
+        return atlases;
     }
 
     private static void atlasReload() {
@@ -413,8 +624,15 @@ public final class CombatSystemTest {
     }
 
     private static CombatWeapon.Weapon weapon(float speed, int hit, int sound, BoundsType shape) {
-        return new CombatWeapon.Weapon("test", 10, hit, new Animation2D.Attack(speed, .125f, sound, "weapon/test/attack"),
-            "weapon/test/hit", shape, new CombatWeapon.Bounds(32, 0, 72, 64));
+        var primary = attack("test", "slash", speed, hit, sound, shape, CollisionType.MELEE);
+        var secondary = attack("test", "jab", speed, hit, sound, shape, CollisionType.MELEE);
+        return new CombatWeapon.Weapon("test", "melee/test", primary, secondary);
+    }
+    private static CombatWeapon.Attack attack(String id, String action, float speed, int hit, int sound,
+                                               BoundsType shape, CollisionType collisionType) {
+        return new CombatWeapon.Attack(id, 10, hit,
+            new Animation2D.Attack(action, speed, .125f, sound, "weapon/" + id + "/attack"),
+            "weapon/" + id + "/hit", shape, new CombatWeapon.Bounds(32, 0, 72, 64), collisionType);
     }
     private static void check(boolean condition, String message) {
         checks++;
@@ -491,7 +709,8 @@ public final class CombatSystemTest {
             engine.addEntity(entity); return entity;
         }
         void input(InputAction action, int state) { Controller.MAPPER.get(player).getInputListener().offer(action, state); }
-        void attack() { input(InputAction.ATTACK, 0); update(0); input(InputAction.ATTACK, 1); update(0); update(0); }
+        void attack() { attack(InputAction.ATTACK_PRIMARY); }
+        void attack(InputAction action) { input(action, 0); update(0); input(action, 1); update(0); update(0); }
         void update(float delta) { engine.update(delta); }
         void step() { world.step(STEP, 6, 2); }
         void finish() { update(1); update(0); check(!combat().isAttacking(), "Attack finishes"); }
