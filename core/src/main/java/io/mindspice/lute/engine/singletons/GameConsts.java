@@ -22,7 +22,7 @@ public final class GameConsts {
     public static String SOUND_PATH = "audio/";
     public static String MUSIC_PATH = "audio/";
     public static String OBJECT_PATH = "objects/";
-    public static String ATLAS_PATH = "atlases/";
+    public static String ATLAS_PATH = "objects/packed/";
 
     public static void loadSettings() {
         try (var file = Gdx.files.internal("game.settings.json").read()) {

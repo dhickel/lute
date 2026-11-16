@@ -267,7 +267,7 @@ public final class CombatSystemTest {
                 throw new UnsupportedOperationException(method.getName());
             });
         var atlas = new TextureAtlas();
-        var atlasFile = new FileHandle("assets/atlases/test_tiled.atlas");
+        var atlasFile = new FileHandle("assets/objects/packed/objects.atlas");
         for (var region : new TextureAtlas.TextureAtlasData(atlasFile, atlasFile.parent(), false).getRegions()) {
             atlas.addRegion(region.name, new DimensionTexture((int) region.page.width, (int) region.page.height),
                 region.left, region.top, region.width, region.height).index = region.index;
@@ -292,7 +292,7 @@ public final class CombatSystemTest {
             var combat = new CombatSystem(world); engine.addSystem(combat);
             var factory = new EntityFactory(world, assets, input); engine.addSystem(factory);
             var map = new MapAssets(Asset.Map.of("test", "test_tiled.tmx"), "",
-                Asset.Atlas.of("OBJECTS", "test_tiled.atlas"), Map.of(), Map.of());
+                Asset.Atlas.of("OBJECTS", "objects.atlas"), Map.of(), Map.of());
             var tile = new StaticTiledMapTile(new TextureRegion(new DimensionTexture(160, 256)));
             tile.getObjects().add(new RectangleMapObject(0, 0, 32, 32));
             var object = new TiledMapTileMapObject(tile, false, false);

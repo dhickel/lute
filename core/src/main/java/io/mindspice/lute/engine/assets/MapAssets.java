@@ -30,8 +30,8 @@ public record MapAssets(
 
     public List<Asset<?>> all() {
         List<Asset<?>> assets = new ArrayList<>();
-        assets.add(atlasAsset);
         assets.add(mapAsset);
+        assets.add(atlasAsset);
         assets.addAll(musicAssets.values());
         assets.addAll(soundAssets.values());
         return assets;
