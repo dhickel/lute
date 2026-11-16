@@ -73,10 +73,10 @@ public final class TexturePackerTool {
                 throw new IllegalArgumentException("Runtime generation requires the maps/, atlases/, data/, audio/ layout");
             }
             int maps = 0;
-            try (var directories = Files.list(raw)) {
+            try (var directories = Files.list(raw.resolve("maps"))) {
                 for (Path directory : directories.filter(Files::isDirectory).sorted().toList()) {
                     if (!Files.isDirectory(directory.resolve("objects"))) { continue; }
-                    generateMap(directory, stage);
+                    generateMap(raw, directory, stage);
                     maps++;
                 }
             }
@@ -190,7 +190,7 @@ public final class TexturePackerTool {
         }
     }
 
-    private static void generateMap(Path directory, Path stage) throws IOException {
+    private static void generateMap(Path raw, Path directory, Path stage) throws IOException {
         String name = directory.getFileName().toString();
         Path objects = directory.resolve("objects");
         Path map = directory.resolve(name + ".tmx");
@@ -244,15 +244,15 @@ public final class TexturePackerTool {
         var xml = new XmlReader();
         Element root = xml.parse(new FileHandle(map.toFile()));
         copy(map, runtimeMap.resolve(name + ".tmx"));
-        copy(manifest, stage.resolve("maps").resolve(name + ".manifest.json"));
+        copy(manifest, runtimeMap.resolve(name + ".manifest.json"));
         for (Element tileset : root.getChildrenByName("tileset")) {
             String source = tileset.getAttribute("source", null);
-            Path definition = source == null ? map : inside(directory, map.getParent().resolve(source));
+            Path definition = source == null ? map : mapDependency(raw, directory, map.getParent().resolve(source));
             Element element = source == null ? tileset : xml.parse(new FileHandle(definition.toFile()));
-            if (source != null) { copy(definition, runtimeMap.resolve(directory.relativize(definition))); }
+            if (source != null) { copy(definition, stage.resolve(raw.relativize(definition))); }
             Element sheet = element.getChildByName("image");
             if (sheet != null) {
-                copyImage(directory, runtimeMap, definition, sheet);
+                copyImage(raw, directory, stage, definition, sheet);
             } else {
                 for (Element tile : element.getChildrenByName("tile")) {
                     Element image = tile.getChildByName("image");
@@ -270,7 +270,7 @@ public final class TexturePackerTool {
         }
         for (Element layer : root.getChildrenByNameRecursively("imagelayer")) {
             Element image = layer.getChildByName("image");
-            if (image != null) { copyImage(directory, runtimeMap, map, image); }
+            if (image != null) { copyImage(raw, directory, stage, map, image); }
         }
     }
 
@@ -295,9 +295,17 @@ public final class TexturePackerTool {
         throw new IllegalArgumentException("Missing packed region for " + source);
     }
 
-    private static void copyImage(Path sourceRoot, Path runtimeMap, Path definition, Element image) throws IOException {
-        Path source = inside(sourceRoot, definition.getParent().resolve(image.getAttribute("source")));
-        copy(source, runtimeMap.resolve(sourceRoot.relativize(source)));
+    private static void copyImage(Path raw, Path mapDirectory, Path stage, Path definition, Element image) throws IOException {
+        Path source = mapDependency(raw, mapDirectory, definition.getParent().resolve(image.getAttribute("source")));
+        copy(source, stage.resolve(raw.relativize(source)));
+    }
+
+    private static Path mapDependency(Path raw, Path mapDirectory, Path candidate) {
+        Path path = inside(raw, candidate);
+        if (!path.startsWith(mapDirectory) && !path.startsWith(raw.resolve("tilesets"))) {
+            throw new IllegalArgumentException("Map dependency must be in its map or shared tilesets: " + path);
+        }
+        return path;
     }
 
     private static Path inside(Path root, Path candidate) {

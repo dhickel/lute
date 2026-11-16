@@ -11,7 +11,7 @@ This project was generated with a template including simple application launcher
 
 ## Runtime assets
 
-Edit source assets in `raw_assets/`, not the generated files in `assets/`. Shared settings and the Tiled project live at the source root; `data/` and `audio/` contain shared game data and sounds. Each map directory, such as `raw_assets/test_tiled/`, contains a matching TMX and manifest, its tilesets, and an `objects/` directory with source images and `pack.json`. The manifest must name `<map>.atlas` and `<map>/<map>.tmx`, and include `music_assets` and `sound_assets` objects, even when empty.
+Edit source assets in `raw_assets/`, not the generated files in `assets/`. Shared settings and the Tiled project live at the source root; `data/` and `audio/` contain shared game data and sounds. Each map directory, such as `raw_assets/maps/test_tiled/`, contains a matching TMX and manifest and an `objects/` directory with source images and `pack.json`. Shared terrain tilesets live under `raw_assets/tilesets/` and can be referenced by multiple maps. The manifest must name `<map>.atlas` and `<map>/<map>.tmx`, and include `music_assets` and `sound_assets` objects, even when empty.
 
 After changing source assets, manually run from the repository root:
 
@@ -19,13 +19,13 @@ After changing source assets, manually run from the repository root:
 ./raw_assets/generate-runtime-assets.sh
 ```
 
-The script invokes `:util:generateRuntimeAssets`; generation is not automatic when running or building the game. It copies shared files, generates a per-map object atlas under `assets/atlases/`, and publishes maps and required terrain images under `assets/maps/`. Object image collections resolve through the atlas at runtime; terrain sheets remain separate. Object packing must preserve paths, indexes, dimensions, and orientation: do not enable rotation, whitespace stripping, path flattening, or nested pack settings.
+The script invokes `:util:generateRuntimeAssets`; generation is not automatic when running or building the game. It copies shared files, generates a per-map object atlas under `assets/atlases/`, and publishes map directories under `assets/maps/` and referenced shared tilesets under `assets/tilesets/`. Object image collections resolve through the atlas at runtime; terrain sheets remain separate. Object packing must preserve paths, indexes, dimensions, and orientation: do not enable rotation, whitespace stripping, path flattening, or nested pack settings.
 
 ### Per-map generation
 
 `TexturePackerTool.generateMap` processes each source directory containing `objects/`. It validates that the matching manifest references `<map>.atlas` and `<map>/<map>.tmx` and supplies music and sound asset objects (snake_case or camelCase names are accepted). It reads `objects/pack.json` and requires indexes and combined subdirectories, a single unscaled output with no scale suffix, and no rotation, whitespace stripping, path flattening, or nested `pack.json` overrides.
 
-The method packs `objects/` into a temporary atlas, reads it back, and rejects duplicate region name/index pairs. It stages the atlas and pages under `atlases/`, the TMX and referenced external tilesets under `maps/<map>/`, and the manifest under `maps/`. Terrain sheet and image-layer images are copied with their map-relative paths; object collection images are packed rather than copied. Referenced paths must stay inside the relevant source directory.
+The method packs `objects/` into a temporary atlas, reads it back, and rejects duplicate region name/index pairs. It stages the atlas and pages under `atlases/`, and the TMX and manifest together under `maps/<map>/`. Referenced tileset definitions, terrain sheets, and image-layer images retain their source-relative paths, including shared files under `tilesets/`; object collection images are packed rather than copied. Map dependencies must stay within the map's own directory or the shared `tilesets/` directory.
 
 For each image-collection tile, generation requires an existing image under `objects/` and a collection definition directly in that directory. It resolves the atlas key from the image's relative path without its extension, interpreting a trailing `_<number>` as the region index. The corresponding region must exist, be unrotated and untrimmed, and match the image dimensions declared in the tileset.
 

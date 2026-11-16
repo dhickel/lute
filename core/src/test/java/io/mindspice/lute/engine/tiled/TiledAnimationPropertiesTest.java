@@ -103,7 +103,7 @@ public final class TiledAnimationPropertiesTest {
     }
     private static final class PropertyLoader extends FixedTmxMapLoader {
         PropertyLoader() { super(path -> new FileHandle(path.startsWith("maps/")
-            ? "raw_assets/test_tiled/" + path.substring(5) : "raw_assets/" + path)); }
+            ? "raw_assets/maps/test_tiled/" + path.substring(5) : "raw_assets/" + path)); }
         TiledMap loadProperties(String path, BaseTiledMapLoader.Parameters parameters) {
             return load(path, parameters, false);
         }

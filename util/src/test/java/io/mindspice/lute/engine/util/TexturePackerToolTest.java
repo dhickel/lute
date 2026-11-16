@@ -45,9 +45,11 @@ public final class TexturePackerToolTest {
                 check(hasRegion(atlas, "house", -1), "Static region name must remain stable");
                 check(hasRegion(atlas, "tree/tree", 0), "Nested indexed region names must remain stable");
                 check(Files.exists(output.resolve("maps/" + name + "/objects/objects.tsx")), "Retain TSX definitions");
-                check(Files.exists(output.resolve("maps/" + name + "/terrain.png")), "Retain terrain images");
+                check(Files.exists(output.resolve("tilesets/shared/terrain.png")), "Retain shared terrain image");
+                check(Files.exists(output.resolve("tilesets/shared/terrain.tsx")), "Retain shared terrain definition");
+                check(Files.exists(output.resolve("maps/" + name + "/" + name + ".manifest.json")), "Manifest remains with map");
                 check(!Files.exists(output.resolve("maps/" + name + "/objects/house.png")), "Never publish object source PNGs");
-                check(Files.exists(raw.resolve(name + "/objects/house.png")), "Generation must retain editable source");
+                check(Files.exists(raw.resolve("maps/" + name + "/objects/house.png")), "Generation must retain editable source");
             }
             String before = Files.readString(output.resolve("atlases/alpha.atlas"));
             TexturePackerTool.generate(raw, output);
@@ -62,26 +64,26 @@ public final class TexturePackerToolTest {
             Files.createSymbolicLink(raw.resolve("linked"), output);
             rejects(() -> TexturePackerTool.generate(raw, output));
             Files.delete(raw.resolve("linked"));
-            Files.delete(raw.resolve("beta/objects/house.png"));
+            Files.delete(raw.resolve("maps/beta/objects/house.png"));
             rejects(() -> TexturePackerTool.generate(raw, output));
             check(Files.readString(output.resolve("atlases/alpha.atlas")).equals(before), "Failed generation must not publish earlier maps");
             check(Files.readString(sentinel).equals("do not touch"), "Failure must not remove unrelated files");
             createMap(raw, "beta");
-            Files.writeString(raw.resolve("beta/objects/pack.json"), "{\"rotation\":true}");
+            Files.writeString(raw.resolve("maps/beta/objects/pack.json"), "{\"rotation\":true}");
             rejects(() -> TexturePackerTool.generate(raw, output));
             createMap(raw, "beta");
-            Files.writeString(raw.resolve("beta/objects/tree/pack.json"), "{\"rotation\":true}");
+            Files.writeString(raw.resolve("maps/beta/objects/tree/pack.json"), "{\"rotation\":true}");
             rejects(() -> TexturePackerTool.generate(raw, output));
-            Files.delete(raw.resolve("beta/objects/tree/pack.json"));
-            Path manifest = raw.resolve("beta/beta.manifest.json");
+            Files.delete(raw.resolve("maps/beta/objects/tree/pack.json"));
+            Path manifest = raw.resolve("maps/beta/beta.manifest.json");
             Files.writeString(manifest, Files.readString(manifest).replace("\"sound_assets\":{}", "\"sound_assets\":null"));
             rejects(() -> TexturePackerTool.generate(raw, output));
             createMap(raw, "beta");
             Files.writeString(manifest, Files.readString(manifest).replace("\"atlasAsset\":", "\"atlas_asset\":\"wrong.atlas\",\"atlasAsset\":"));
             rejects(() -> TexturePackerTool.generate(raw, output));
             createMap(raw, "beta");
-            Path map = raw.resolve("beta/beta.tmx");
-            Files.writeString(map, Files.readString(map).replace("terrain.png", "../outside.png"));
+            Path map = raw.resolve("maps/beta/beta.tmx");
+            Files.writeString(map, Files.readString(map).replace("../../tilesets/shared/terrain.tsx", "../../../outside.tsx"));
             rejects(() -> TexturePackerTool.generate(raw, output));
             try (var paths = Files.list(directory)) {
                 check(paths.noneMatch(path -> path.getFileName().toString().startsWith(".runtime-assets-")),
@@ -111,21 +113,21 @@ public final class TexturePackerToolTest {
         createInputs(raw);
         createMap(raw, "alpha");
         createMap(raw, "beta");
-        Path settings = raw.resolve("alpha/objects/pack.json");
+        Path settings = raw.resolve("maps/alpha/objects/pack.json");
         Files.writeString(settings, Files.readString(settings).replace("\"alias\":false", "\"alias\":false, \"maxWidth\":16, \"maxHeight\":16"));
         TexturePackerTool.generate(raw, output);
         check(Files.exists(output.resolve("atlases/alpha2.png")), "Fixture must generate multiple atlas pages");
         Files.createDirectories(output.resolve("unowned/empty"));
         Files.writeString(output.resolve("unowned/notes"), "preserve me");
         Files.writeString(output.resolve("game.tiled-session"), "session bytes");
-        Files.delete(raw.resolve("alpha/objects/tree/tree_00.png"));
-        Path tsx = raw.resolve("alpha/objects/objects.tsx");
+        Files.delete(raw.resolve("maps/alpha/objects/tree/tree_00.png"));
+        Path tsx = raw.resolve("maps/alpha/objects/objects.tsx");
         Files.writeString(tsx, Files.readString(tsx).replace(
             "<tile id=\"1\"><image width=\"8\" height=\"8\" source=\"tree/tree_00.png\"/></tile>", ""));
-        deleteTree(raw.resolve("beta"));
+        deleteTree(raw.resolve("maps/beta"));
         TexturePackerTool.generate(raw, output);
         check(!Files.exists(output.resolve("atlases/alpha2.png")), "Obsolete owned atlas pages must be removed");
-        check(!Files.exists(output.resolve("atlases/beta.atlas")) && !Files.exists(output.resolve("maps/beta.manifest.json")),
+        check(!Files.exists(output.resolve("atlases/beta.atlas")) && !Files.exists(output.resolve("maps/beta/beta.manifest.json")),
             "Removed maps must not leave owned runtime assets");
         check(Files.readString(output.resolve("unowned/notes")).equals("preserve me"), "Unowned nested files must survive");
         check(Files.isDirectory(output.resolve("unowned/empty")), "Unowned empty directories must survive");
@@ -156,12 +158,12 @@ public final class TexturePackerToolTest {
         createInputs(raw);
         createMap(raw, "alpha");
         createMap(raw, "alpha2");
-        Path settings = raw.resolve("alpha/objects/pack.json");
+        Path settings = raw.resolve("maps/alpha/objects/pack.json");
         Files.writeString(settings, Files.readString(settings).replace("\"alias\":false", "\"alias\":false, \"maxWidth\":16, \"maxHeight\":16"));
         rejects(() -> TexturePackerTool.generate(raw, output));
         check(!Files.exists(output), "Atlas page collisions between map names must fail before publication");
-        deleteTree(raw.resolve("alpha2"));
-        Files.copy(raw.resolve("alpha/objects/tree/tree_00.png"), raw.resolve("alpha/objects/tree/tree_0.png"));
+        deleteTree(raw.resolve("maps/alpha2"));
+        Files.copy(raw.resolve("maps/alpha/objects/tree/tree_00.png"), raw.resolve("maps/alpha/objects/tree/tree_0.png"));
         rejects(() -> TexturePackerTool.generate(raw, output));
         check(!Files.exists(output), "Duplicate logical frame indexes must fail before publication");
     }
@@ -201,7 +203,7 @@ public final class TexturePackerToolTest {
     }
 
     private static void createMap(Path raw, String name) throws IOException {
-        Path map = raw.resolve(name);
+        Path map = raw.resolve("maps").resolve(name);
         Files.createDirectories(map.resolve("objects/tree"));
         var image = new BufferedImage(8, 8, BufferedImage.TYPE_INT_ARGB);
         for (int y = 0; y < 8; y++) {
@@ -209,7 +211,10 @@ public final class TexturePackerToolTest {
         }
         ImageIO.write(image, "png", map.resolve("objects/house.png").toFile());
         ImageIO.write(image, "png", map.resolve("objects/tree/tree_00.png").toFile());
-        ImageIO.write(image, "png", map.resolve("terrain.png").toFile());
+        Path shared = raw.resolve("tilesets/shared");
+        Files.createDirectories(shared);
+        ImageIO.write(image, "png", shared.resolve("terrain.png").toFile());
+        Files.writeString(shared.resolve("terrain.tsx"), "<tileset name=\"terrain\"><image source=\"terrain.png\"/></tileset>");
         Files.writeString(map.resolve("objects/pack.json"), """
             {"rotation":false, "stripWhitespaceX":false, "stripWhitespaceY":false,
              "flattenPaths":false, "combineSubdirectories":true, "useIndexes":true, "alias":false}
@@ -218,7 +223,7 @@ public final class TexturePackerToolTest {
             "{\"map_asset\":\"" + name + "/" + name + ".tmx\",\"atlasAsset\":\"" + name + ".atlas\",\"music_assets\":{},\"sound_assets\":{}}");
         Files.writeString(map.resolve(name + ".tmx"), """
             <map><tileset firstgid="1" source="objects/objects.tsx"/>
-              <tileset firstgid="3" name="terrain"><image source="terrain.png"/></tileset></map>
+              <tileset firstgid="3" source="../../tilesets/shared/terrain.tsx"/></map>
             """);
         Files.writeString(map.resolve("objects/objects.tsx"), """
             <tileset><tile id="0"><image width="8" height="8" source="house.png"/></tile>

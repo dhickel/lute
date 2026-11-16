@@ -529,7 +529,7 @@ public final class AssetServiceTest {
     }
 
     private static void partialLoadTextureFailure(Backend backend, FileHandle directory, boolean atlas, String phase) {
-        var source = new FileHandle("raw_assets/test_tiled/objects/player/idle_up_02.png");
+        var source = new FileHandle("raw_assets/maps/test_tiled/objects/player/idle_up_02.png");
         source.copyTo(directory.child("first.png"));
         directory.child("second.png").delete();
         if (!"allocation".equals(phase)) { source.copyTo(directory.child("second.png")); }
@@ -645,7 +645,7 @@ public final class AssetServiceTest {
 
     private static Asset.Map tutorialMap(String id) {
         // Keep the original composite implementation as the standalone-texture benchmark baseline.
-        return new Asset.Map(id, perType ? "maps/test_tiled/test_tiled.tmx" : "../raw_assets/test_tiled/test_tiled.tmx");
+        return new Asset.Map(id, perType ? "maps/test_tiled/test_tiled.tmx" : "../raw_assets/maps/test_tiled/test_tiled.tmx");
     }
 
     private static void loadEmptyMapAtlas(AssetStorage service, FileHandle directory, String id) {

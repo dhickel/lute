@@ -65,7 +65,7 @@ public final class AssetStorageBenchmark {
         rows.add("fork,phase,dataset,working,ids,implementation,sample,operations,ns_per_op,bytes_per_op,checksum");
         FileHandle fixture = new FileHandle(Files.createTempDirectory("lute-bench-fixture-").toFile());
         try {
-            new FileHandle("raw_assets/test_tiled/objects/player/idle_up_02.png").copyTo(fixture.child("tile.png"));
+            new FileHandle("raw_assets/maps/test_tiled/objects/player/idle_up_02.png").copyTo(fixture.child("tile.png"));
             fixture.child("tile.atlas").writeString("""
                 tile.png
                 size: 32, 32

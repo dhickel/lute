@@ -20,7 +20,7 @@ public class ManifestLoader {
                 || mapName.equals(".") || mapName.equals("..")) {
             throw new IllegalArgumentException("Map manifest name must be a non-blank directory name, not a path");
         }
-        String filePath = GameConsts.MAPS_PATH + mapName + ".manifest.json";
+        String filePath = GameConsts.MAPS_PATH + mapName + "/" + mapName + ".manifest.json";
 
         AssetManifest manifest = null;
         try (var file = Gdx.files.internal(filePath).read()) {
