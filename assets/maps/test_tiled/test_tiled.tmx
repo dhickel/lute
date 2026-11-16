@@ -1,0 +1,50 @@
+<?xml version="1.0" encoding="UTF-8"?>
+<map version="1.10" tiledversion="1.12.2" orientation="orthogonal" renderorder="right-down" width="30" height="20" tilewidth="32" tileheight="32" infinite="0" nextlayerid="8" nextobjectid="21">
+ <tileset firstgid="1" source="tilesets/ancient_forest/ancient-forest-main.tsx"/>
+ <tileset firstgid="2647" source="tilesets/ancient_forest/old_tree1.tsx"/>
+ <tileset firstgid="2659" source="objects/objects.tsx"/>
+ <layer id="1" name="Ground" width="30" height="20">
+  <data encoding="base64" compression="zlib">
+   eJxdVkuO00AULKkluh1bYsElAHGASaT4kx2XQMABJpEcx9lxmUz2fMQKEEvOgDgFINao5Sp1zSystrvft9571R4DcIflqQPQBiAGYA9gF4AhAFUAmgCMAUgBOHH/xL0rljXrzgHoAtAH4ByAreneYPnO69n2G9qtaDfrrmi/4vcYik7PdQ3ggMVvlt8w5o7yOaeK+WSfWX4KwAUlxp5yZ3ufLP7Z3mVzT5nO8hNOK8qtGdcxALd8r3k+2JNlcw7CYOB31ump0xPbbDNSrrY6jIxjMmwV58D8a64X2j2wZgPPsr8j7axR9s/USaZzh1KDmT4rym1p60TdbGdHncZ015RVHRR/zX46Wu7qh1vzu6FMQ72JNoXRSPk9ip1jKJgmnqtH1Icnxiu/KRQcO9b4aHXcsTaOqeo5UNbjqS32reWu3hspPzGemvvR4lCO6ueBskfGov6oQ8n/bP03c184am4T89FcDqa3N35IVnvNTaR/xSecDihc8TgBT9ISs3LtietAH5rzK2d5MpzXPN+wD8QVk/Xqjc12w3zltzUe2dpcqVaT2RqtB9S/mrXK7AuPjnLS+/Fo8fsyLXsXlFpOFrvjfYfSS631ifitslrIv7isDWXus993qfRbTTn1d8v8xUEdcetpe2Y8yuVCPhI3adZm4pUom/1+TsCvWJ6fcdG7kkNmvstWZEwb4zvVoTXO31kvrq0W2d77BHxIwKcEfOSaH3H/hvLKQ1irn7KNLxH4GoFvEfgeCw9dySGVcbXmqCFeV2LinNobj+Rz5dfbbOb33xH4E4G/EfgXFztnzo56sbM7pWNOmomL1XjHuqp2uwer7tGafp8l4HkCXqTSd4pL+IpjG6tza2fyteK55kqY3Rom+fspfcrvDePf2gzq3hVXKgf9Z4x29yaTbQy7FXESN71KwOsEvEnA23Sff7bGiSvLvX1g1++i1QN+1PnG7qC8/x+48L0s
+  </data>
+ </layer>
+ <layer id="2" name="Buildings" width="30" height="20">
+  <data encoding="base64" compression="zlib">
+   eJzdkrkuRWEUhb+1Q2PoSAzRcK9erTF0lBqFYr+CxvAIGoVerTE8AmK4nsMQQ7hXg+iEeyV/5B7OlhPESk7O2uvs/1/5knMruBNUBbWGT+dakldz+HTOyu8FgwZDBiWDcsOncznJSzl8OmflwwazRm5dCq4E18n7RtCa/4o3zRmsBnoHMnZHg71rwd6ZJrsjLTAf7I3yrvwh3vVf5N0I9kZ5dw32DLoE3ar7fYODwB18g/fB4NFgSjCtun8yeA72RnmLUpS3KBXJ2yl8Uviy8B3hF8L7DW+2WyRvh/AJ4UvCt4WfC+/L6C2St134uPBF4VvCz4T3/gBvm/Ax4QvCN4WfCu/5Ad6I/sP/HNEr76HBsUHF4KjxvM+VJP+YffXtszMnBi8bEW+w
+  </data>
+ </layer>
+ <objectgroup id="6" name="Objects">
+  <object id="7" gid="2665" x="248.33" y="562.177" width="160" height="224"/>
+  <object id="8" gid="2666" x="73.9502" y="476.759" width="160" height="256"/>
+  <object id="9" gid="2666" x="691.94" y="337.401" width="160" height="256"/>
+  <object id="10" gid="2666" x="192.879" y="322.809" width="160" height="256"/>
+  <object id="13" gid="2666" x="765.632" y="584.014" width="160" height="256"/>
+  <object id="14" gid="2666" x="430.735" y="591.31" width="160" height="256"/>
+ </objectgroup>
+ <objectgroup id="5" name="Triggers">
+  <object id="20" name="TestSensor" type="Sensor" x="340" y="500" width="64" height="48">
+   <properties>
+    <property name="sensorType" propertytype="SensorType" value="GENERAL"/>
+   </properties>
+  </object>
+  <object id="1" name="Teleport" type="Teleport" x="432.667" y="275.333" width="34.6667" height="35.3333">
+   <properties>
+    <property name="targetMap" value="THIS"/>
+    <property name="targetSpawn" value="TeleportDestination"/>
+   </properties>
+  </object>
+  <object id="18" name="PlayerSpawn" type="SpawnPoint" x="302.248" y="561.672">
+   <properties>
+    <property name="spawnType" propertytype="SpawnType" value="PLAYER"/>
+   </properties>
+   <point/>
+  </object>
+  <object id="19" name="TeleportDestination" type="SpawnPoint" x="560" y="400">
+   <properties>
+    <property name="spawnType" propertytype="SpawnType" value="TELEPORT"/>
+   </properties>
+   <point/>
+  </object>
+ </objectgroup>
+ <objectgroup id="7" name="Collisions" offsetx="-8.33333" offsety="-54"/>
+</map>

@@ -1,7 +1,7 @@
 {
-  "map_asset": "test_tiled.tmx",
+  "map_asset": "test_tiled/test_tiled.tmx",
   "start_music": "TOWN",
-  "atlasAsset": "objects.atlas",
+  "atlasAsset": "test_tiled.atlas",
   "music_assets": {
     "TOWN": "town.ogg"
   },

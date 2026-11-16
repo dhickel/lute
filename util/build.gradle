@@ -1,6 +1,30 @@
 [compileJava, compileTestJava]*.options*.encoding = 'UTF-8'
 eclipse.project.name = appName + '-util'
 
+tasks.register('generateRuntimeAssets', JavaExec) {
+  dependsOn classes
+  classpath = sourceSets.main.runtimeClasspath
+  mainClass = 'io.mindspice.lute.engine.util.TexturePackerTool'
+  workingDir = rootProject.projectDir
+  args rootProject.file('raw_assets').absolutePath, rootProject.file('assets').absolutePath
+  if (providers.gradleProperty('runtimeAssetsAdoptIdentical').orNull == 'true') {
+    args '--adopt-identical'
+  }
+  jvmArgs '-Djava.awt.headless=true'
+}
+
+tasks.named('test') {
+  failOnNoDiscoveredTests = false
+}
+
+tasks.register('texturePackerToolTest', JavaExec) {
+  dependsOn testClasses
+  classpath = sourceSets.test.runtimeClasspath
+  mainClass = 'io.mindspice.lute.engine.util.TexturePackerToolTest'
+  jvmArgs '-Djava.awt.headless=true'
+}
+check.dependsOn texturePackerToolTest
+
 dependencies {
   api "com.badlogicgames.gdx:gdx:$gdxVersion"
   api "com.badlogicgames.gdx:gdx-tools:$gdxVersion"

@@ -16,8 +16,9 @@ public class ManifestLoader {
     public static final JsonMapper mapper = JsonMapper.builder().build();
 
     public static MapAssets parseMapManifest(String mapName) {
-        if (mapName == null || mapName.isBlank()) {
-            throw new IllegalArgumentException("Map manifest name must not be null or blank");
+        if (mapName == null || mapName.isBlank() || mapName.contains("/") || mapName.contains("\\")
+                || mapName.equals(".") || mapName.equals("..")) {
+            throw new IllegalArgumentException("Map manifest name must be a non-blank directory name, not a path");
         }
         String filePath = GameConsts.MAPS_PATH + mapName + ".manifest.json";
 
@@ -28,6 +29,9 @@ public class ManifestLoader {
             throw new GdxRuntimeException("Failed to read file at path: " + filePath, e);
         }
 
+        if (manifest == null || manifest.musicAssets() == null || manifest.soundAssets() == null) {
+            throw new IllegalArgumentException("Map manifest must include music_assets and sound_assets (empty objects are allowed): " + filePath);
+        }
         Asset.Map mapAsset = Asset.Map.of(mapName, manifest.mapAsset());
 
         Asset.Atlas atlasAsset = Asset.Atlas.of(mapName, manifest.atlasAsset());
