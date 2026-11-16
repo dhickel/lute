@@ -36,11 +36,10 @@ public record WeaponsData(String atlas, Map<String, WeaponData> weapons) {
         return weapon;
     }
 
-    public record WeaponData(@JsonProperty("attack_stats") AttackStats attackStats, Sounds sounds,
+    public record WeaponData(@JsonProperty("attack_stats") AttackStats attackStats,
                              @JsonProperty("atlas_key") String atlasKey) {
         public WeaponData {
             Objects.requireNonNull(attackStats, "attack_stats");
-            Objects.requireNonNull(sounds, "sounds");
             if (atlasKey == null || atlasKey.isBlank()) {
                 throw new IllegalArgumentException("Weapon atlas_key is required");
             }
@@ -53,9 +52,10 @@ public record WeaponsData(String atlas, Map<String, WeaponData> weapons) {
             }
         }
 
-        public record AttackData(AnimationData animation, Bounds bounds, Stats stats,
+        public record AttackData(AnimationData animation, Bounds bounds, Stats stats, Sounds sounds,
                                  @JsonProperty("collision_type") CollisionType collisionType) {
             public AttackData {
+                Objects.requireNonNull(sounds, "sounds");
                 Objects.requireNonNull(animation, "animation");
                 Objects.requireNonNull(bounds, "bounds");
                 Objects.requireNonNull(stats, "stats");
@@ -82,6 +82,13 @@ public record WeaponsData(String atlas, Map<String, WeaponData> weapons) {
             public Sounds {
                 if (attack == null || attack.isBlank() || hit == null || hit.isBlank()) {
                     throw new IllegalArgumentException("Weapon attack and hit sound paths are required");
+                }
+                for (String path : new String[]{attack, hit}) {
+                    if (path.startsWith("/") || path.contains("\\") || path.contains(":")
+                        || java.util.Arrays.stream(path.split("/", -1))
+                            .anyMatch(part -> part.isBlank() || part.equals(".") || part.equals(".."))) {
+                        throw new IllegalArgumentException("Weapon sounds must be relative audio file paths");
+                    }
                 }
             }
         }

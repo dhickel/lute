@@ -3,18 +3,16 @@
   "weapons": {
     "basic_sword": {
       "atlas_key": "melee/basic_sword",
-      "sounds": {
-        "attack": "sword_swing.wav",
-        "hit": "sword_hit.wav"
-      },
       "attack_stats": {
         "primary": {
+          "sounds": { "attack": "sword_swing.wav", "hit": "sword_hit.wav" },
           "animation": { "speed": 1, "atlas_key": "slash", "sound_frame": 0, "frame_interval": 0.15 },
           "bounds": { "type": "SEMICIRCLE", "x1": 32, "y1": 0, "x2": 64, "y2": 64 },
           "stats": { "damage": 10, "cost": 10, "hit_frame": 0 },
           "collision_type": "MELEE"
         },
         "secondary": {
+          "sounds": { "attack": "sword_swing.wav", "hit": "sword_hit.wav" },
           "animation": { "speed": 1.25, "atlas_key": "jab", "sound_frame": 1, "frame_interval": 0.1 },
           "bounds": { "type": "TRIANGLE", "x1": 32, "y1": 20, "x2": 56, "y2": 44 },
           "stats": { "damage": 5, "cost": 5, "hit_frame": 2 },
@@ -24,18 +22,16 @@
     },
     "basic_bow": {
       "atlas_key": "ranged/basic_bow",
-      "sounds": {
-        "attack": "sword_swing.wav",
-        "hit": "sword_hit.wav"
-      },
       "attack_stats": {
         "primary": {
+          "sounds": { "attack": "sword_swing.wav", "hit": "sword_hit.wav" },
           "animation": { "speed": 1, "atlas_key": "shot", "sound_frame": 2, "frame_interval": 0.125 },
           "bounds": { "type": "RECT", "x1": 32, "y1": 20, "x2": 80, "y2": 44 },
           "stats": { "damage": 40, "cost": 10, "hit_frame": 3 },
           "collision_type": "PROJECTILE"
         },
         "secondary": {
+          "sounds": { "attack": "sword_swing.wav", "hit": "sword_hit.wav" },
           "animation": { "speed": 1.25, "atlas_key": "jab", "sound_frame": 1, "frame_interval": 0.1 },
           "bounds": { "type": "TRIANGLE", "x1": 32, "y1": 20, "x2": 56, "y2": 44 },
           "stats": { "damage": 4, "cost": 5, "hit_frame": 2 },
@@ -45,18 +41,16 @@
     },
     "unarmed": {
       "atlas_key": "NONE",
-      "sounds": {
-        "attack": "sword_swing.wav",
-        "hit": "sword_hit.wav"
-      },
       "attack_stats": {
         "primary": {
+          "sounds": { "attack": "sword_swing.wav", "hit": "sword_hit.wav" },
           "animation": { "speed": 1.25, "atlas_key": "jab", "sound_frame": 1, "frame_interval": 0.1 },
           "bounds": { "type": "RECT", "x1": 32, "y1": 24, "x2": 48, "y2": 40 },
           "stats": { "damage": 3, "cost": 0, "hit_frame": 2 },
           "collision_type": "MELEE"
         },
         "secondary": {
+          "sounds": { "attack": "sword_swing.wav", "hit": "sword_hit.wav" },
           "animation": { "speed": 1.25, "atlas_key": "jab", "sound_frame": 1, "frame_interval": 0.1 },
           "bounds": { "type": "RECT", "x1": 32, "y1": 24, "x2": 48, "y2": 40 },
           "stats": { "damage": 3, "cost": 0, "hit_frame": 2 },

@@ -103,7 +103,7 @@ public final class CombatSystemTest {
             check(game.sounds.isEmpty(), "No attack sound before frame 3");
             game.update(.125f);
             game.events.update(0);
-            check(game.sounds.equals(List.of("weapon/test/attack")), "Frame 3 emits resolved attack sound once");
+            check(game.sounds.equals(List.of("weapon/test/primary/attack")), "Frame 3 emits resolved attack sound once");
             game.update(0); game.events.update(0);
             check(game.sounds.size() == 1, "Same frame cannot repeat sound");
             game.update(.125f);
@@ -439,7 +439,7 @@ public final class CombatSystemTest {
                         }
                     }
                     var badBounds = new WeaponData.Bounds(BoundsType.RECT, 0, 0, .001f, .001f);
-                    var badGeometry = new AttackData(original.animation(), badBounds, original.stats(), original.collisionType());
+                    var badGeometry = new AttackData(original.animation(), badBounds, original.stats(), original.sounds(), original.collisionType());
                     field.set(GameCore.INSTANCE, replaceAttack(data, id, primary, badGeometry));
                     rejects(() -> factory.getPlayerEntity(new Vector2(320, 640), map), "Unsafe catalog Box2D geometry");
                 }
@@ -491,7 +491,7 @@ public final class CombatSystemTest {
             var animation = Animation2D.MAPPER.get(player);
             var state = Combat.MAPPER.get(player);
             near(100, Health.MAPPER.get(player).getCurrent(), "Factory player stats");
-            check(state.getCurrentWeapon().primary().animation().soundId().equals("weapon/basic_sword/attack"),
+            check(state.getCurrentWeapon().primary().animation().soundId().equals("weapon/basic_sword/primary/attack"),
                 "Factory passes resolved sound ID");
             var loadout = Loadout.MAPPER.get(player);
             check(loadout != null && loadout.getWeaponId().equals("basic_sword"), "Factory installs default runtime loadout");
@@ -509,6 +509,11 @@ public final class CombatSystemTest {
                         Facing.MAPPER.get(player).setDirection(direction);
                         state.requestAttack(slot); engine.update(0); engine.update(0);
                         var active = state.getActiveAttack();
+                        String soundPrefix = "weapon/" + (id == null ? "unarmed" : id) + "/"
+                            + (slot == Combat.AttackSlot.PRIMARY ? "primary" : "secondary");
+                        check(active.animation().soundId().equals(soundPrefix + "/attack")
+                            && active.hitSoundId().equals(soundPrefix + "/hit"),
+                            "Accepted snapshot retains selected attack sound identities");
                         check(animation.getAnimation().getKeyFrames().length == 8, "Flat action atlas frames " + direction);
                         check(active.animation().action().equals(id == null || slot == Combat.AttackSlot.SECONDARY
                             ? "jab" : id.equals("basic_bow") ? "shot" : "slash"), "Factory selects action");
@@ -565,7 +570,7 @@ public final class CombatSystemTest {
         var animation = attack.animation();
         var stats = attack.stats();
         return new AttackData(new AnimationData(animation.speed(), animation.atlasKey(), soundFrame, animation.frameInterval()),
-            attack.bounds(), new Stats(stats.damage(), stats.cost(), hitFrame), attack.collisionType());
+            attack.bounds(), new Stats(stats.damage(), stats.cost(), hitFrame), attack.sounds(), attack.collisionType());
     }
 
     private static GameData replaceAttack(GameData data, String id, boolean primary, AttackData replacement) {
@@ -573,7 +578,7 @@ public final class CombatSystemTest {
         var original = weapons.get(id);
         var attacks = original.attackStats();
         var changed = new AttackStats(primary ? replacement : attacks.primary(), primary ? attacks.secondary() : replacement);
-        weapons.put(id, new WeaponData(changed, original.sounds(), original.atlasKey()));
+        weapons.put(id, new WeaponData(changed, original.atlasKey()));
         return new GameData(data.playerData(), new WeaponsData(data.weaponsData().atlas(), weapons));
     }
 
@@ -630,9 +635,10 @@ public final class CombatSystemTest {
     }
     private static CombatWeapon.Attack attack(String id, String action, float speed, int hit, int sound,
                                                BoundsType shape, CollisionType collisionType) {
+        String soundPrefix = "weapon/" + id + (action.equals("jab") ? "/secondary" : "/primary");
         return new CombatWeapon.Attack(id, 10, hit,
-            new Animation2D.Attack(action, speed, .125f, sound, "weapon/" + id + "/attack"),
-            "weapon/" + id + "/hit", shape, new CombatWeapon.Bounds(32, 0, 72, 64), collisionType);
+            new Animation2D.Attack(action, speed, .125f, sound, soundPrefix + "/attack"),
+            soundPrefix + "/hit", shape, new CombatWeapon.Bounds(32, 0, 72, 64), collisionType);
     }
     private static void check(boolean condition, String message) {
         checks++;

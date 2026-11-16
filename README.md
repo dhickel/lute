@@ -21,6 +21,8 @@ After changing source assets, manually run from the repository root:
 
 The script invokes `:util:generateRuntimeAssets`; generation is not automatic when running or building the game. It copies shared files, generates a per-map object atlas under `assets/atlases/`, and publishes map directories under `assets/maps/` and referenced shared tilesets under `assets/tilesets/`. Object image collections resolve through the atlas at runtime; terrain sheets remain separate. Object packing must preserve paths, indexes, dimensions, and orientation: do not enable rotation, whitespace stripping, path flattening, or nested pack settings.
 
+Character sprites come from `raw_assets/sprites/` and generate six shared atlases under `assets/atlases/`: character, head, body, hands, feet, and weapons. Each atlas can span multiple texture pages. Character action regions are flat, such as `slash_up`; equipment regions include the item prefix, such as `basic/shot_up`. The common weapons atlas retains melee and ranged prefixes, such as `melee/basic_sword` and `ranged/basic_bow`. These generated atlases are runtime outputs, not source assets. See the [composite character specification](.internal-dev/specifications/composite-characters.md) for composition and loadout behavior.
+
 ### Per-map generation
 
 `TexturePackerTool.generateMap` processes each source directory containing `objects/`. It validates that the matching manifest references `<map>.atlas` and `<map>/<map>.tmx` and supplies music and sound asset objects (snake_case or camelCase names are accepted). It reads `objects/pack.json` and requires indexes and combined subdirectories, a single unscaled output with no scale suffix, and no rotation, whitespace stripping, path flattening, or nested `pack.json` overrides.

@@ -93,8 +93,8 @@ public class EntityFactory extends EntitySystem {
             String id = entry.getKey();
             var definition = entry.getValue();
             var sounds = WeaponAssets.of(id, definitions);
-            var primary = createAttack(id, definition.attackStats().primary(), sounds, anchor, requiredFrames);
-            var secondary = createAttack(id, definition.attackStats().secondary(), sounds, anchor, requiredFrames);
+            var primary = createAttack(id, definition.attackStats().primary(), sounds.primary(), anchor, requiredFrames);
+            var secondary = createAttack(id, definition.attackStats().secondary(), sounds.secondary(), anchor, requiredFrames);
             if (!id.equals("unarmed")) {
                 validateLayer(CharacterAssets.WEAPONS, definition.atlasKey(),
                     Set.copyOf(List.of("idle", "walk", primary.animation().action(), secondary.animation().action())));
@@ -106,7 +106,7 @@ public class EntityFactory extends EntitySystem {
         return Map.copyOf(weapons);
     }
 
-    private CombatWeapon.Attack createAttack(String id, WeaponsData.WeaponData.AttackData data, WeaponAssets sounds,
+    private CombatWeapon.Attack createAttack(String id, WeaponsData.WeaponData.AttackData data, WeaponAssets.AttackSounds sounds,
                                              Vector2 anchor, Map<String, Long> requiredFrames) {
         var settings = data.animation();
         var animation = new Animation2D.Attack(settings.atlasKey(), settings.speed(), settings.frameInterval(),

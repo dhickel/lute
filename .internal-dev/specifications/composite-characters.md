@@ -1,7 +1,7 @@
 # Composite Characters
 
 ## Purpose
-A character consists of a base sprite and equipped head, body, hands, feet, and weapon layers. Phases 1, 2, and 3 are implemented; final integration validation pending. Phase 4 is queued.
+A character consists of a base sprite and equipped head, body, hands, feet, and weapon layers. Phases 1–4 are implemented; independent final integration validation remains pending.
 
 ## Intended Contract
 ### Composition and loadout
@@ -17,7 +17,7 @@ Generated runtime resources are build outputs; raw assets are the source. Map-ow
 ### Attacks
 Space triggers the primary attack: sword slash or bow shot. Shift triggers the secondary jab. Without a weapon, both keys trigger a hand jab.
 
-Weapon `attack_stats` contains separate `primary` and `secondary` records, each with animation, bounds, stats, collision type, and its own attack and hit sound paths. Each attack resolves its own logical sound IDs, distinct by weapon and attack slot; existing audio is reused. Per-attack sounds are approved for phase 4 and not yet implemented. Keep projectile collision data for future bow execution. A bow shot plays its animation but creates no projectile and deals no damage.
+Weapon `attack_stats` contains separate `primary` and `secondary` records, each with animation, bounds, stats, collision type, and its own `sounds.attack` and `sounds.hit` paths. Sound IDs are `weapon/<id>/<primary|secondary>/<attack|hit>`. Initial loading includes both sounds for every configured attack, including unarmed. Existing WAV files are approved for reuse; hit sounds are loaded but not played. Keep projectile collision data for future bow execution. A bow shot plays its animation but creates no projectile and deals no damage.
 
 Melee attacks retain animation-driven hit timing and sensor lifetime. Validate authored data at its loading boundary and animation and geometry constraints where data meets loaded assets.
 
@@ -32,7 +32,7 @@ Compose visible characters into distinct offscreen cells. Batch atlas layers acr
 Use correct premultiplied-alpha handling so transparent edges remain correct during both composition and final rendering.
 
 ## Validation
-Verify asset generation and multipage region resolution, default and switched loadouts, aligned animation in all directions, both attack keys with sword, bow, and no weapon, and bow's lack of projectile and damage. Verify overlapping characters and ordinary objects at different depths, including weapon overlap and transparent edges. Exercise resource loading and disposal. Senior focused real-GL evidence reports 9,917 gameplay checks, 384 framebuffer comparisons across two weapon pages, and 1,402 synthetic checks; independent final integration validation is pending. Phase 4 must validate per-attack sound selection and IDs.
+Verify asset generation and multipage region resolution, default and switched loadouts, aligned animation in all directions, both attack keys with sword, bow, and no weapon, and bow's lack of projectile and damage. Verify overlapping characters and ordinary objects at different depths, including weapon overlap and transparent edges. Exercise resource loading and disposal. Senior focused real-GL evidence reports 9,917 gameplay checks, 384 framebuffer comparisons across two weapon pages, and 1,402 synthetic checks; independent final integration validation is pending. Verify per-attack sound selection and IDs in final integration validation.
 
 ## Open Questions
 None needed to establish the accepted contract; final integration validation remains pending.

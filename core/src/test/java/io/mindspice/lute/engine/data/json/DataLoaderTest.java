@@ -111,18 +111,18 @@ public final class DataLoaderTest {
         bad.put("", sword);
         rejects(() -> new WeaponsData("weapons.atlas", bad), "empty weapon ID");
         var disabled = new HashMap<>(definitions.weapons());
-        disabled.put("basic_sword", new WeaponData(sword.attackStats(), sword.sounds(), "NONE"));
+        disabled.put("basic_sword", new WeaponData(sword.attackStats(), "NONE"));
         rejects(() -> new WeaponsData("weapons.atlas", disabled), "armed weapon without visual prefix");
-        rejects(() -> new WeaponData(null, sword.sounds(), sword.atlasKey()), "missing attack stats");
-        rejects(() -> new WeaponData(sword.attackStats(), sword.sounds(), " "), "blank weapon prefix");
+        rejects(() -> new WeaponData(null, sword.atlasKey()), "missing attack stats");
+        rejects(() -> new WeaponData(sword.attackStats(), " "), "blank weapon prefix");
         rejects(() -> new AttackStats(null, primary), "missing primary");
         rejects(() -> new AttackStats(primary, null), "missing secondary");
-        rejects(() -> new AttackData(primary.animation(), primary.bounds(), primary.stats(), null), "missing collision type");
+        rejects(() -> new AttackData(primary.animation(), primary.bounds(), primary.stats(), primary.sounds(), null), "missing collision type");
         rejects(() -> new AttackData(new AnimationData(1, "melee/basic_sword/slash", 0, .125f),
-            primary.bounds(), primary.stats(), CollisionType.MELEE), "prefixed animation action");
+            primary.bounds(), primary.stats(), primary.sounds(), CollisionType.MELEE), "prefixed animation action");
         rejects(() -> new AttackData(new AnimationData(1, "shot", 0, .125f),
-            primary.bounds(), primary.stats(), CollisionType.MELEE), "shot marked melee");
-        rejects(() -> new AttackData(primary.animation(), primary.bounds(), primary.stats(), CollisionType.PROJECTILE),
+            primary.bounds(), primary.stats(), primary.sounds(), CollisionType.MELEE), "shot marked melee");
+        rejects(() -> new AttackData(primary.animation(), primary.bounds(), primary.stats(), primary.sounds(), CollisionType.PROJECTILE),
             "slash marked projectile");
         rejects(() -> new Stats(10, 0, -1), "negative hit frame");
         rejects(() -> new Stats(0, 0, 0), "zero damage");
@@ -132,6 +132,27 @@ public final class DataLoaderTest {
         rejects(() -> new AnimationData(1, "", 0, 0), "zero base interval");
         rejects(() -> new AnimationData(1, "jab", 0, Float.NaN), "nonfinite interval");
         rejects(() -> new Sounds("", "hit.wav"), "empty attack sound");
+        for (String invalid : new String[]{" ", "../sword_hit.wav", "/sword_hit.wav", "audio//hit.wav"}) {
+            rejects(() -> new Sounds(invalid, "sword_hit.wav"), "invalid attack sound path");
+            rejects(() -> new Sounds("sword_swing.wav", invalid), "invalid hit sound path");
+        }
+        for (String field : new String[]{"attack", "hit"}) {
+            for (String invalid : new String[]{"null", "\" \"", "{}", "\"../bad.wav\""}) {
+                rejects(() -> {
+                    var tree = DataLoader.mapper.valueToTree(definitions);
+                    var sounds = (tools.jackson.databind.node.ObjectNode)
+                        tree.at("/weapons/basic_sword/attack_stats/secondary/sounds");
+                    sounds.set(field, DataLoader.mapper.readTree(invalid));
+                    DataLoader.mapper.treeToValue(tree, WeaponsData.class);
+                }, "invalid secondary " + field);
+            }
+        }
+        rejects(() -> {
+            var tree = DataLoader.mapper.valueToTree(definitions);
+            ((tools.jackson.databind.node.ObjectNode)
+                tree.at("/weapons/basic_sword/attack_stats/secondary")).remove("sounds");
+            DataLoader.mapper.treeToValue(tree, WeaponsData.class);
+        }, "missing secondary sounds");
         rejects(() -> new Bounds(BoundsType.RECT, 1, 0, 1, 2), "collapsed bounds");
         rejects(() -> new Bounds(BoundsType.RECT, Float.NaN, 0, 2, 2), "nonfinite bounds");
         rejects(() -> DataLoader.mapper.readValue("{\"head\":\"basic\",\"body\":\"basic\",\"hands\":\"basic\"}",
@@ -150,9 +171,9 @@ public final class DataLoaderTest {
 
     private static void assetIds(WeaponsData definitions) {
         var sounds = WeaponAssets.of("basic_sword", definitions);
-        check(sounds.all().size() == 2 && sounds.attack().path().equals("audio/sword_swing.wav")
-            && sounds.hit().path().equals("audio/sword_hit.wav"), "weapon sounds");
-        check(!sounds.attack().id().equals(sounds.hit().id()), "distinct runtime sound IDs");
+        check(sounds.all().size() == 4 && sounds.primary().attack().path().equals("audio/sword_swing.wav")
+            && sounds.primary().hit().path().equals("audio/sword_hit.wav"), "weapon sounds");
+        check(sounds.all().stream().map(a -> a.id()).distinct().count() == 4, "distinct runtime sound IDs");
         check(sounds.all().stream().allMatch(a -> a.id().startsWith("weapon/basic_sword/")), "selected weapon sound IDs");
         rejects(() -> WeaponAssets.of("missing", definitions), "unknown weapon assets");
         var atlases = CharacterAssets.all(definitions.atlas());

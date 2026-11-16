@@ -23,6 +23,8 @@ Character atlas region names are flat, such as `idle_down` and `slash_up`. Equip
 
 Raw sprites are source assets; generated atlases and their texture pages are runtime build outputs. Preserve that ownership distinction when regenerating or cleaning outputs.
 
+Per-attack sound tests must distinguish logical ownership from filenames: assign different paths to attack slots to verify selection, and also test shared paths with distinct `weapon/<id>/<slot>/<cue>` IDs. Matching WAV filenames alone cannot prove the right slot was selected; different IDs sharing a path own independent loads.
+
 The compositor batches by actual texture page, not merely atlas identity: an atlas can span pages. It composes each character into a separate offscreen cell with a transparent gutter, then sorts the completed character with world objects. Composition uses straight-alpha sources and produces premultiplied alpha; the world pass uses premultiplied blending and tint for those cells. Tests cover translucent edges, overlapping cells, page changes, multiple targets, gutters and target growth.
 
 Game GL tests must initialize the real `GameCore` and its `EventSystem`: `EventListener` helpers use the global engine, not a separately constructed test engine. The gameplay test starts the real loading and map path before its synthetic renderer checks.
@@ -30,7 +32,7 @@ Game GL tests must initialize the real `GameCore` and its `EventSystem`: `EventL
 `RenderSystem` requires an idle `Batch` and restores its documented batch and touched GL state. Raw custom GL callers must rebind their own vertex inputs after the renderer; arbitrary external vertex-pointer restoration is not guaranteed. GL3 is not required: VAO and separate read/draw framebuffer restoration are conditional when available. This describes the current engine boundary, not a new feature.
 
 ## Project Relevance
-The inventory observations describe current raw files. Phases 1, 2, and 3 are implemented; final integration validation pending. Senior focused real-GL evidence reports 9,917 gameplay checks, 384 framebuffer comparisons across two real weapon pages, and 1,402 synthetic checks. The root inspected `/tmp/lute-phase3-characters.png` and reported it correct; independent final validation is still pending.
+The inventory observations describe current raw files. Phases 1–4 are implemented; final integration validation remains pending. Senior focused real-GL evidence reports 9,917 gameplay checks, 384 framebuffer comparisons across two real weapon pages, and 1,402 synthetic checks. The root inspected `/tmp/lute-phase3-characters.png` and reported it correct; independent final validation is still pending.
 
 Continue to test multipage atlases, overlapping characters and world objects at different depths, transparent edges, synchronized layer frames, and switching between sword, bow, and no weapon. Test missing cast assets rather than assuming every action exists for every weapon.
 
