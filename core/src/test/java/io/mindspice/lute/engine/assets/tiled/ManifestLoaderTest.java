@@ -36,7 +36,19 @@ public final class ManifestLoaderTest {
                 throw new AssertionError("Tutorial map must not own weapon sounds");
             }
             checkAsset(assets.musicAssets().get("TOWN"), "TOWN music");
-            if (!assets.all().contains(assets.atlasAsset())) { throw new AssertionError("Single atlas must be queued"); }
+            if (!assets.all().get(0).equals(assets.atlasAsset()) || !assets.all().get(1).equals(assets.mapAsset())) {
+                throw new AssertionError("Atlas must load before the map that borrows its regions");
+            }
+            if (!assets.mapAsset().path().equals("maps/test_tiled/test_tiled.tmx")
+                    || !assets.atlasAsset().path().equals("atlases/test_tiled.atlas")) {
+                throw new AssertionError("Manifest must resolve generated per-map runtime assets");
+            }
+            for (String name : new String[]{null, "", " ", "../test_tiled", "test_tiled/map", "..", "test\\tiled"}) {
+                try {
+                    ManifestLoader.parseMapManifest(name);
+                    throw new AssertionError("Invalid manifest name must fail before reading a file");
+                } catch (IllegalArgumentException expected) { /* expected */ }
+            }
             try {
                 new MapAssets(assets.mapAsset(), assets.startMusic(), null, assets.musicAssets(), assets.soundAssets());
                 throw new AssertionError("Missing atlas must be rejected");

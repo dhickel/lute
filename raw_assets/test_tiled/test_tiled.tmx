@@ -1,8 +1,8 @@
 <?xml version="1.0" encoding="UTF-8"?>
 <map version="1.10" tiledversion="1.12.2" orientation="orthogonal" renderorder="right-down" width="30" height="20" tilewidth="32" tileheight="32" infinite="0" nextlayerid="8" nextobjectid="21">
- <tileset firstgid="1" source="../tilesets/ancient_forest/ancient-forest-main.tsx"/>
- <tileset firstgid="2647" source="../tilesets/ancient_forest/old_tree1.tsx"/>
- <tileset firstgid="2659" source="../objects/objects.tsx"/>
+ <tileset firstgid="1" source="tilesets/ancient_forest/ancient-forest-main.tsx"/>
+ <tileset firstgid="2647" source="tilesets/ancient_forest/old_tree1.tsx"/>
+ <tileset firstgid="2659" source="objects/objects.tsx"/>
  <layer id="1" name="Ground" width="30" height="20">
   <data encoding="base64" compression="zlib">
    eJxdVkuO00AULKkluh1bYsElAHGASaT4kx2XQMABJpEcx9lxmUz2fMQKEEvOgDgFINao5Sp1zSystrvft9571R4DcIflqQPQBiAGYA9gF4AhAFUAmgCMAUgBOHH/xL0rljXrzgHoAtAH4ByAreneYPnO69n2G9qtaDfrrmi/4vcYik7PdQ3ggMVvlt8w5o7yOaeK+WSfWX4KwAUlxp5yZ3ufLP7Z3mVzT5nO8hNOK8qtGdcxALd8r3k+2JNlcw7CYOB31ump0xPbbDNSrrY6jIxjMmwV58D8a64X2j2wZgPPsr8j7axR9s/USaZzh1KDmT4rym1p60TdbGdHncZ015RVHRR/zX46Wu7qh1vzu6FMQ72JNoXRSPk9ip1jKJgmnqtH1Icnxiu/KRQcO9b4aHXcsTaOqeo5UNbjqS32reWu3hspPzGemvvR4lCO6ueBskfGov6oQ8n/bP03c184am4T89FcDqa3N35IVnvNTaR/xSecDihc8TgBT9ISs3LtietAH5rzK2d5MpzXPN+wD8QVk/Xqjc12w3zltzUe2dpcqVaT2RqtB9S/mrXK7AuPjnLS+/Fo8fsyLXsXlFpOFrvjfYfSS631ifitslrIv7isDWXus993qfRbTTn1d8v8xUEdcetpe2Y8yuVCPhI3adZm4pUom/1+TsCvWJ6fcdG7kkNmvstWZEwb4zvVoTXO31kvrq0W2d77BHxIwKcEfOSaH3H/hvLKQ1irn7KNLxH4GoFvEfgeCw9dySGVcbXmqCFeV2LinNobj+Rz5dfbbOb33xH4E4G/EfgXFztnzo56sbM7pWNOmomL1XjHuqp2uwer7tGafp8l4HkCXqTSd4pL+IpjG6tza2fyteK55kqY3Rom+fspfcrvDePf2gzq3hVXKgf9Z4x29yaTbQy7FXESN71KwOsEvEnA23Sff7bGiSvLvX1g1++i1QN+1PnG7qC8/x+48L0s

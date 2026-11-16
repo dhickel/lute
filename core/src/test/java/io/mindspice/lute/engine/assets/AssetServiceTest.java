@@ -102,8 +102,8 @@ public final class AssetServiceTest {
     }
 
     private static void assetValues() {
-        checkAsset(Asset.Map.of("world", "test_tiled.tmx"), "world", "maps/test_tiled.tmx", TiledMap.class);
-        checkAsset(Asset.Atlas.of("sprites", "objects.atlas"), "sprites", "objects/packed/objects.atlas", TextureAtlas.class);
+        checkAsset(Asset.Map.of("world", "test_tiled/test_tiled.tmx"), "world", "maps/test_tiled/test_tiled.tmx", TiledMap.class);
+        checkAsset(Asset.Atlas.of("sprites", "test_tiled.atlas"), "sprites", "atlases/test_tiled.atlas", TextureAtlas.class);
         checkAsset(Asset.Music.of("theme", "theme.ogg"), "theme", "audio/theme.ogg", Music.class);
         checkAsset(Asset.Sound.of("hit", "hit.wav"), "hit", "audio/hit.wav", Sound.class);
         checkAsset(new Asset.Map("world", "custom/world.tmx"), "world", "custom/world.tmx", TiledMap.class);
@@ -252,9 +252,9 @@ public final class AssetServiceTest {
         try {
             service.load(Asset.Sound.of("prefix", "prefix.wav"));
             var sound = Asset.Sound.of("ordered", "ordered.wav");
-            var atlas = Asset.Atlas.of("ordered", "objects.atlas");
+            var atlas = Asset.Atlas.of("ordered", "test_tiled.atlas");
             var music = Asset.Music.of("ordered", "ordered.ogg");
-            var map = Asset.Map.of("ordered", "test_tiled.tmx");
+            var map = tutorialMap("ordered");
             service.queue(sound);
             service.queue(atlas);
             service.queue(music);
@@ -266,9 +266,16 @@ public final class AssetServiceTest {
             check(!service.update() && service.isLoaded(Sound.class, "ordered"), "First queued type must load first");
             check(!service.isLoaded(TiledMap.class, "ordered") && !service.isLoaded(TextureAtlas.class, "ordered"),
                 "An update must not load later types");
-            check(!service.update() && service.isLoaded(TiledMap.class, "ordered"), "Global queue order must cross type maps");
-            check(!service.isLoaded(TextureAtlas.class, "ordered"), "Requeued atlas must remain at the tail");
-            check(service.update() && service.isLoaded(TextureAtlas.class, "ordered"), "Final mixed-type item completes immediately");
+            if (perType) {
+                rejectsRuntime(service::update, "Map must reject a queued-but-unloaded atlas without loading it implicitly");
+                check(!service.isLoaded(TiledMap.class, "ordered"), "Map failure must clear the failed key");
+                check(service.update(), "Atlas must remain queued after map failure");
+                service.load(map);
+            } else {
+                check(!service.update() && service.isLoaded(TiledMap.class, "ordered"), "Global queue order must cross type maps");
+                check(!service.isLoaded(TextureAtlas.class, "ordered"), "Requeued atlas must remain at the tail");
+                check(service.update() && service.isLoaded(TextureAtlas.class, "ordered"), "Final mixed-type item completes immediately");
+            }
             service.debugDiagnostics();
             check(backend.diagnostics.lines().count() == 5,
                 "Diagnostics must contain each registered entry once after cancellation/requeue");
@@ -324,7 +331,7 @@ public final class AssetServiceTest {
             service.load(queuedDirect);
             check(service.isLoaded(Sound.class, queuedDirect.id()), "Explicit retry of queued-then-direct failure must succeed");
 
-            var missingAtlas = new Asset.Atlas("missing-atlas", "objects/packed/does-not-exist.atlas");
+            var missingAtlas = new Asset.Atlas("missing-atlas", "atlases/does-not-exist.atlas");
             service.queue(missingAtlas);
             rejectsRuntime(service::update, "Actual atlas loader failures must propagate");
             check(!service.isLoaded(TextureAtlas.class, missingAtlas.id()), "Failed atlas must not be registered");
@@ -363,7 +370,7 @@ public final class AssetServiceTest {
     private static void atlasReloadAndMapOwnership(Backend backend) {
         var service = newService(backend.resolver());
         try {
-            var atlasAsset = Asset.Atlas.of("shared", "objects.atlas");
+            var atlasAsset = Asset.Atlas.of("shared", "test_tiled.atlas");
             TextureAtlas first = service.load(atlasAsset);
             var region = first.findRegion("player/idle_right");
             check(region != null, "Direct atlas branch must parse the actual packed regions");
@@ -383,8 +390,32 @@ public final class AssetServiceTest {
             Set<Integer> reloadedTextures = textureHandles(reloaded);
             check(java.util.Collections.disjoint(firstTextures, reloadedTextures), "Reload must create new texture ownership");
 
+            if (perType) {
+                var houseRegion = reloaded.findRegion("house");
+                reloaded.getRegions().removeValue(houseRegion, true);
+                int beforeFailure = backend.nextTexture;
+                RuntimeException failure = captureRuntime(() -> service.load(tutorialMap("shared")),
+                    "Missing packed objects must fail without falling back to standalone source PNGs");
+                check(failure.getCause().getMessage().contains("Missing object atlas region for 'house.png'"),
+                    "Missing region error must identify the authored source image");
+                Set<Integer> failedTextures = backend.handlesSince(beforeFailure);
+                check(failedTextures.size() == 2, "Map must allocate only the two terrain textures before processing objects");
+                backend.checkDeletedOnce(failedTextures, "Failed map must clean up its terrain textures");
+                for (int handle : reloadedTextures) {
+                    check(backend.textureDisposals.getOrDefault(handle, 0) == 0, "Failed map must not dispose borrowed atlas");
+                }
+                check(service.update() && !service.isLoaded(TiledMap.class, "shared"), "Failed map requires explicit retry");
+                reloaded.getRegions().add(houseRegion);
+                var indexedDecoy = new TextureAtlas.AtlasRegion(houseRegion);
+                indexedDecoy.name = "old_tree1/old_tree1_00";
+                indexedDecoy.index = 0;
+                reloaded.getRegions().insert(0, indexedDecoy);
+                var staticDecoy = new TextureAtlas.AtlasRegion(houseRegion);
+                staticDecoy.index = 0;
+                reloaded.getRegions().insert(0, staticDecoy);
+            }
             int beforeMap = backend.nextTexture;
-            TiledMap map = service.load(Asset.Map.of("shared", "test_tiled.tmx"));
+            TiledMap map = service.load(tutorialMap("shared"));
             check(service.get(TiledMap.class, "shared") == map, "Map and atlas must coexist under the same logical ID");
             check(service.get(TextureAtlas.class, "shared") == reloaded, "Map loading must not replace the atlas");
             check(map.getLayers().get("Objects") != null && map.getLayers().get("Triggers") != null,
@@ -402,23 +433,73 @@ public final class AssetServiceTest {
                 }
             }
             check(!mapTextures.isEmpty(), "Actual map loading must create tile textures");
-            check(mapTextures.size() == backend.nextTexture - beforeMap,
+            Set<Integer> ownedMapTextures = new HashSet<>(mapTextures);
+            ownedMapTextures.removeAll(reloadedTextures);
+            check(ownedMapTextures.size() == backend.nextTexture - beforeMap,
                 "Every texture allocated by the actual map loader must be represented in its tilesets");
-            check(java.util.Collections.disjoint(mapTextures, reloadedTextures), "Map must own its textures independently of the atlas");
+            if (perType) {
+                check(mapTextures.containsAll(reloadedTextures), "Object tiles must borrow atlas textures");
+                rejectsRuntime(() -> service.unload(TextureAtlas.class, "shared"), "A live map prevents atlas unload");
+                check(service.get(TextureAtlas.class, "shared") == reloaded, "Rejected unload must leave owner intact");
+                var tree = map.getTileSets().getTileSet("objects").getTile(2666);
+                check(tree.getTextureRegion() == reloaded.findRegion("old_tree1/old_tree1", 0),
+                    "Indexed TSX image must resolve to the exact packed region");
+                var house = map.getTileSets().getTileSet("objects").getTile(2665);
+                check(house.getTextureRegion() == reloaded.findRegion("house", -1),
+                    "Static image must resolve the exact unindexed region, not the first region with that name");
+                check(tree.getObjects().getCount() == 1, "Object collision shapes must survive atlas loading");
+                check(map.getTileSets().getTileSet("old_tree1").getTile(2656)
+                        instanceof com.badlogic.gdx.maps.tiled.tiles.AnimatedTiledMapTile,
+                    "Terrain native Tiled animations must remain animated");
+            } else {
+                check(java.util.Collections.disjoint(mapTextures, reloadedTextures), "Legacy baseline owns standalone textures");
+            }
             for (int handle : mapTextures) {
                 check(backend.textureDisposals.getOrDefault(handle, 0) == 0, "Map textures must remain alive while loaded");
             }
             service.unload(TiledMap.class, "shared");
-            backend.checkDeletedOnce(mapTextures, "Map unload must dispose owned textures");
+            backend.checkDeletedOnce(ownedMapTextures, "Map unload must dispose owned textures");
             check(!service.isLoaded(TiledMap.class, "shared"), "Map unload must clear lookup");
             service.unload(TiledMap.class, "shared");
-            backend.checkDeletedOnce(mapTextures, "Repeated map unload");
+            backend.checkDeletedOnce(ownedMapTextures, "Repeated map unload");
+            if (perType) {
+                var house = reloaded.findRegion("house", -1);
+                for (String invalid : List.of("rotation", "trimming", "dimensions")) {
+                    int beforeFailure = backend.nextTexture;
+                    int width = house.originalWidth;
+                    int regionWidth = house.getRegionWidth();
+                    if (invalid.equals("rotation")) { house.rotate = true; }
+                    if (invalid.equals("trimming")) { house.originalWidth++; }
+                    if (invalid.equals("dimensions")) { house.setRegionWidth(regionWidth + 1); }
+                    try {
+                        rejectsRuntime(() -> service.load(tutorialMap("shared")), "Unsafe packed " + invalid + " must fail");
+                        backend.checkDeletedOnce(backend.handlesSince(beforeFailure), "Invalid region " + invalid + " cleanup");
+                    } finally {
+                        house.rotate = false;
+                        house.originalWidth = width;
+                        house.setRegionWidth(regionWidth);
+                    }
+                }
+                TextureAtlas otherAtlas = service.load(Asset.Atlas.of("other-map", "test_tiled.atlas"));
+                TiledMap otherMap = service.load(tutorialMap("other-map"));
+                TiledMap restoredMap = service.load(tutorialMap("shared"));
+                check(otherMap.getTileSets().getTile(2665).getTextureRegion() == otherAtlas.findRegion("house", -1),
+                    "Each map must resolve repeated region names from its own atlas");
+                check(restoredMap.getTileSets().getTile(2665).getTextureRegion() == house,
+                    "A second map must not replace the first map's regions");
+                service.unload(TiledMap.class, "other-map");
+                service.unload(TextureAtlas.class, "other-map");
+                for (int handle : reloadedTextures) {
+                    check(backend.textureDisposals.getOrDefault(handle, 0) == 0, "Other map unload must not dispose this atlas");
+                }
+                service.unload(TiledMap.class, "shared");
+            }
             for (int handle : reloadedTextures) {
                 check(backend.textureDisposals.getOrDefault(handle, 0) == 0, "Unloading map must leave atlas textures alive");
             }
             service.dispose();
             backend.checkDeletedOnce(reloadedTextures, "Service dispose must dispose reloaded atlas textures");
-            backend.checkDeletedOnce(mapTextures, "Service dispose must not dispose previously unloaded map again");
+            backend.checkDeletedOnce(ownedMapTextures, "Service dispose must not dispose previously unloaded map again");
         } finally {
             service.dispose();
         }
@@ -448,7 +529,7 @@ public final class AssetServiceTest {
     }
 
     private static void partialLoadTextureFailure(Backend backend, FileHandle directory, boolean atlas, String phase) {
-        var source = new FileHandle("assets/objects/player/idle_up_02.png");
+        var source = new FileHandle("raw_assets/test_tiled/objects/player/idle_up_02.png");
         source.copyTo(directory.child("first.png"));
         directory.child("second.png").delete();
         if (!"allocation".equals(phase)) { source.copyTo(directory.child("second.png")); }
@@ -473,6 +554,7 @@ public final class AssetServiceTest {
             : new Asset.Map("partial-map", directory.child("partial.tmx").path());
         var service = newService(path -> new java.io.File(path).isAbsolute()
             ? new FileHandle(path) : backend.resolver().resolve(path));
+        if (!atlas) { loadEmptyMapAtlas(service, directory, asset.id()); }
         String operation = (atlas ? "Atlas " : "TMX ") + phase;
         int firstHandle = backend.nextTexture;
         if (Set.of("construction", "filter", "wrap").contains(phase)) {
@@ -546,6 +628,7 @@ public final class AssetServiceTest {
         file.writeString(file.readString().replace("source=\"second.png\"", "source=\"first.png\""), false);
         var service = newService(path -> new java.io.File(path).isAbsolute()
             ? new FileHandle(path) : backend.resolver().resolve(path));
+        loadEmptyMapAtlas(service, directory, "shared-texture");
         int firstHandle = backend.nextTexture;
         try {
             TiledMap map = service.load(new Asset.Map("shared-texture", file.path()));
@@ -560,16 +643,28 @@ public final class AssetServiceTest {
         }
     }
 
+    private static Asset.Map tutorialMap(String id) {
+        // Keep the original composite implementation as the standalone-texture benchmark baseline.
+        return new Asset.Map(id, perType ? "maps/test_tiled/test_tiled.tmx" : "../raw_assets/test_tiled/test_tiled.tmx");
+    }
+
+    private static void loadEmptyMapAtlas(AssetStorage service, FileHandle directory, String id) {
+        if (!perType) { return; }
+        FileHandle empty = directory.child("empty.atlas");
+        empty.writeString("", false);
+        service.load(new Asset.Atlas(id, empty.path()));
+    }
+
     private static void writePartialMap(FileHandle directory, boolean invalidProperty) {
         directory.child("partial.tmx").writeString("""
             <?xml version="1.0" encoding="UTF-8"?>
             <map orientation="orthogonal" width="1" height="1" tilewidth="8" tileheight="8">
               %s
-              <tileset firstgid="1" name="first" tilewidth="8" tileheight="8" tilecount="1" columns="0">
-                <tile id="0"><image width="8" height="8" source="first.png"/></tile>
+              <tileset firstgid="1" name="first" tilewidth="32" tileheight="32" tilecount="1" columns="1">
+                <image width="32" height="32" source="first.png"/>
               </tileset>
-              <tileset firstgid="2" name="second" tilewidth="8" tileheight="8" tilecount="1" columns="0">
-                <tile id="0"><image width="8" height="8" source="second.png"/></tile>
+              <tileset firstgid="2" name="second" tilewidth="32" tileheight="32" tilecount="1" columns="1">
+                <image width="32" height="32" source="second.png"/>
               </tileset>
             </map>
             """.formatted(invalidProperty
@@ -594,7 +689,7 @@ public final class AssetServiceTest {
 
     private static void animationReload(Backend backend) {
         var service = new AssetService(backend.resolver());
-        var definition = Asset.Atlas.of("OBJECTS", "objects.atlas");
+        var definition = Asset.Atlas.of("OBJECTS", "test_tiled.atlas");
         var engine = new Engine();
         engine.addSystem(new AnimationSystem(service));
         var animation = new Animation2D("OBJECTS", "player", Animation2D.AnimationType.IDLE,
