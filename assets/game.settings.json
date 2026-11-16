@@ -11,5 +11,5 @@
   "soundPath": "audio/",
   "musicPath": "audio/",
   "objectPath": "objects/",
-  "atlasPath": "objects/packed/"
+  "atlasPath": "atlases/"
 }

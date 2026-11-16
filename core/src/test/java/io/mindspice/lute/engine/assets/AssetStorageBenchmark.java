@@ -65,14 +65,14 @@ public final class AssetStorageBenchmark {
         rows.add("fork,phase,dataset,working,ids,implementation,sample,operations,ns_per_op,bytes_per_op,checksum");
         FileHandle fixture = new FileHandle(Files.createTempDirectory("lute-bench-fixture-").toFile());
         try {
-            new FileHandle("assets/objects/player/idle_up_02.png").copyTo(fixture.child("tile.png"));
+            new FileHandle("raw_assets/maps/test_tiled/objects/player/idle_up_02.png").copyTo(fixture.child("tile.png"));
             fixture.child("tile.atlas").writeString("""
                 tile.png
                 size: 32, 32
                 format: RGBA8888
                 filter: Nearest, Nearest
                 tile
-                  bounds: 0, 0, 8, 8
+                  bounds: 0, 0, 32, 32
                 """, false);
             fixture.child("tile.tmx").writeString("""
                 <?xml version="1.0" encoding="UTF-8"?>
@@ -89,7 +89,7 @@ public final class AssetStorageBenchmark {
                 String dataset = size == 0 ? "bundle-" + assets.size() : "balanced-" + size;
                 System.out.println(dataset + " types=" + assets.stream().collect(java.util.stream.Collectors.groupingBy(
                     asset -> asset.type().getSimpleName(), java.util.stream.Collectors.counting())));
-                var stores = new AssetStorage[]{AssetStorage.create(false, resolver(backend)), AssetStorage.create(true, resolver(backend))};
+                var stores = new AssetStorage[]{AssetStorage.create(false, resolver(backend, true)), AssetStorage.create(true, resolver(backend, false))};
                 try {
                     for (var store : stores) { assets.forEach(store::load); }
                     // Same mixed query ordering and ID representation for both implementations.
@@ -142,8 +142,11 @@ public final class AssetStorageBenchmark {
         System.out.println("checksums passed; sink=" + sink);
     }
 
-    private static com.badlogic.gdx.assets.loaders.FileHandleResolver resolver(AssetServiceTest.Backend backend) {
-        return path -> new java.io.File(path).isAbsolute() ? new FileHandle(path) : backend.resolver().resolve(path);
+    private static com.badlogic.gdx.assets.loaders.FileHandleResolver resolver(AssetServiceTest.Backend backend, boolean sourceMaps) {
+        // The original composite benchmark retains direct source-texture map loading.
+        return path -> sourceMaps && path.startsWith("maps/test_tiled/")
+            ? new FileHandle("raw_assets/" + path.substring(5))
+            : new java.io.File(path).isAbsolute() ? new FileHandle(path) : backend.resolver().resolve(path);
     }
 
     private static List<Asset<?>> assets(int size, FileHandle fixture) {

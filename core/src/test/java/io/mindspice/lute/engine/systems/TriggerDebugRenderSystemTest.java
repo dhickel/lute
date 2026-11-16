@@ -403,7 +403,8 @@ public final class TriggerDebugRenderSystemTest {
     }
 
     private static final class GeometryLoader extends FixedTmxMapLoader {
-        GeometryLoader() { super(path -> new FileHandle("assets/" + path)); }
+        GeometryLoader() { super(path -> new FileHandle(path.startsWith("maps/")
+            ? "raw_assets/maps/test_tiled/" + path.substring(5) : "raw_assets/" + path)); }
 
         TiledMap loadSavedMap() {
             var asset = io.mindspice.lute.engine.assets.Asset.Map.of("TEST", "test_tiled.tmx");

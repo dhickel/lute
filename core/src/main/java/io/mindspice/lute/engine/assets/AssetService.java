@@ -96,6 +96,9 @@ public class AssetService implements Disposable {
     public void unload(Class<?> type, String id) {
         requireOpen();
         var table = entriesFor(type);
+        if (type == TextureAtlas.class && isLoaded(TiledMap.class, id)) {
+            throw new IllegalStateException("Unload map before its borrowed atlas: " + id);
+        }
         var entry = table.remove(id);
         if (entry == null) { return; }
         queue.remove(entry);
@@ -134,7 +137,7 @@ public class AssetService implements Disposable {
             case Asset.Map map -> {
                 var parameters = new BaseTiledMapLoader.Parameters();
                 parameters.projectFilePath = GameConsts.PROJECT_PATH;
-                yield new FixedTmxMapLoader(resolver).load(map.path(), parameters);
+                yield new FixedTmxMapLoader(resolver, get(TextureAtlas.class, map.id())).load(map.path(), parameters);
             }
         };
     }
@@ -149,7 +152,8 @@ public class AssetService implements Disposable {
     }
 
     private Stream<Entry<?>> allEntries() {
-        return Stream.of(sounds, music, atlases, maps).flatMap(table -> table.values().stream());
+        // Maps borrow atlas regions, so dispose maps before their atlas owners.
+        return Stream.of(maps, atlases, sounds, music).flatMap(table -> table.values().stream());
     }
 
     private static String key(Asset<?> asset) { return asset.type().getSimpleName() + "[" + asset.id() + "]"; }

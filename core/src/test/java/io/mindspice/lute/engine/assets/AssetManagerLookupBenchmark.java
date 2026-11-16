@@ -99,8 +99,8 @@ public final class AssetManagerLookupBenchmark {
         var rows = new ArrayList<String>();
         rows.add("fork,phase,dataset,working,strings,implementation,sample,operations,ns_per_op,bytes_per_op,checksum");
         try {
-            new FileHandle("assets/objects/player/idle_up_02.png").copyTo(fixture.child("tile.png"));
-            String atlas = "tile.png\nsize: 32, 32\nformat: RGBA8888\nfilter: Nearest, Nearest\ntile\n  bounds: 0, 0, 8, 8\n";
+            new FileHandle("raw_assets/maps/test_tiled/objects/player/idle_up_02.png").copyTo(fixture.child("tile.png"));
+            String atlas = "tile.png\nsize: 32, 32\nformat: RGBA8888\nfilter: Nearest, Nearest\ntile\n  bounds: 0, 0, 32, 32\n";
             String map = "<?xml version=\"1.0\" encoding=\"UTF-8\"?><map orientation=\"orthogonal\" width=\"1\" height=\"1\" tilewidth=\"8\" tileheight=\"8\"><tileset firstgid=\"1\" name=\"tile\" tilewidth=\"8\" tileheight=\"8\" tilecount=\"1\" columns=\"0\"><tile id=\"0\"><image width=\"32\" height=\"32\" source=\"tile.png\"/></tile></tileset></map>";
             for (int size : new int[]{4, 256, 4096}) {
                 var backend = new AssetServiceTest.Backend();
