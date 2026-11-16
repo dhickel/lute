@@ -31,10 +31,12 @@ Game GL tests must initialize the real `GameCore` and its `EventSystem`: `EventL
 
 `RenderSystem` requires an idle `Batch` and restores its documented batch and touched GL state. Raw custom GL callers must rebind their own vertex inputs after the renderer; arbitrary external vertex-pointer restoration is not guaranteed. GL3 is not required: VAO and separate read/draw framebuffer restoration are conditional when available. This describes the current engine boundary, not a new feature.
 
+Sorted path-order staging of pack inputs is necessary for reproducible atlas output; repeat generation in the [integration report](../reviews/2026-11-16-composite-character-integration.md) preserved bytes and all 29 ownership hashes. The desktop test source set uses JavaExec tests rather than discovered JUnit tests, so `lwjgl3:test` permits no discovered tests; run `:lwjgl3:compositeRenderTest` for the actual GL integration checks.
+
 ## Project Relevance
-The inventory observations describe current raw files. Phases 1–4 are implemented; final integration validation remains pending. Senior focused real-GL evidence reports 9,917 gameplay checks, 384 framebuffer comparisons across two real weapon pages, and 1,402 synthetic checks. The root inspected `/tmp/lute-phase3-characters.png` and reported it correct; independent final validation is still pending.
+The inventory observations describe current raw files. Phases 1–4 and final integration validation passed. The integration report records 9,917 gameplay checks, 384 framebuffer comparisons across two real weapon pages, and 1,402 synthetic checks. The unfiltered check retains the separately tracked controller movement-event failure.
 
 Continue to test multipage atlases, overlapping characters and world objects at different depths, transparent edges, synchronized layer frames, and switching between sword, bow, and no weapon. Test missing cast assets rather than assuming every action exists for every weapon.
 
 ## Open Questions
-Independent final integration validation remains pending.
+None identified for this asset inventory.

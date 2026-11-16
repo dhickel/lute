@@ -1,7 +1,7 @@
 # Composite Characters
 
 ## Purpose
-A character consists of a base sprite and equipped head, body, hands, feet, and weapon layers. Phases 1–4 are implemented; independent final integration validation remains pending.
+A character consists of a base sprite and equipped head, body, hands, feet, and weapon layers. Phases 1–4 are implemented and accepted by [final integration validation](../reviews/2026-11-16-composite-character-integration.md).
 
 ## Intended Contract
 ### Composition and loadout
@@ -32,7 +32,7 @@ Compose visible characters into distinct offscreen cells. Batch atlas layers acr
 Use correct premultiplied-alpha handling so transparent edges remain correct during both composition and final rendering.
 
 ## Validation
-Verify asset generation and multipage region resolution, default and switched loadouts, aligned animation in all directions, both attack keys with sword, bow, and no weapon, and bow's lack of projectile and damage. Verify overlapping characters and ordinary objects at different depths, including weapon overlap and transparent edges. Exercise resource loading and disposal. Senior focused real-GL evidence reports 9,917 gameplay checks, 384 framebuffer comparisons across two weapon pages, and 1,402 synthetic checks; independent final integration validation is pending. Verify per-attack sound selection and IDs in final integration validation.
+Verify asset generation and multipage region resolution, default and switched loadouts, aligned animation in all directions, both attack keys with sword, bow, and no weapon, and bow's lack of projectile and damage. Verify overlapping characters and ordinary objects at different depths, including weapon overlap and transparent edges. Exercise resource loading and disposal. The final integration report records 9,917 gameplay checks, 384 framebuffer comparisons across two weapon pages, 1,402 synthetic real-GL checks, and per-attack sound selection and ID validation. The unfiltered check fails only the separately tracked controller movement-event test; the check excluding that task passes.
 
 ## Open Questions
-None needed to establish the accepted contract; final integration validation remains pending.
+None needed to establish the accepted contract.

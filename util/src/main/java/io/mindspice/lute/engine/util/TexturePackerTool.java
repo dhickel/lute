@@ -261,8 +261,13 @@ public final class TexturePackerTool {
                 throw new IllegalArgumentException("Nested pack.json overrides are not supported: " + objects);
             }
         }
+        // TexturePacker compares same-named frames from different subdirectories as equal and
+        // preserves the filesystem traversal order. Copying in sorted path order makes that
+        // otherwise incidental tie deterministic for generated runtime assets.
+        Path normalized = Files.createTempDirectory(stage.getParent(), "normalized-");
+        copyTree(objects, normalized);
         Path packed = Files.createTempDirectory(stage.getParent(), "packed-");
-        TexturePacker.process(packSettings, objects.toString(), packed.toString(), name);
+        TexturePacker.process(packSettings, normalized.toString(), packed.toString(), name);
         var atlas = new TextureAtlasData(new FileHandle(packed.resolve(name + ".atlas").toFile()),
             new FileHandle(packed.toFile()), false);
         var keys = new HashSet<String>();

@@ -1,0 +1,3086 @@
+# Composite character PR targets appendix
+
+## Scope
+
+Inventory of task changes against `origin/master`, including tracked staged and unstaged changes and this untracked appendix. Unrelated `util/build` worktree changes are excluded. This appendix exposes the complete asset scope because the PR body cannot accommodate all paths.
+
+## Findings
+
+Character layers, equipment, attack definitions, atlas generation and offscreen rendering are represented below. All four phases and [final integration](2026-11-16-composite-character-integration.md) passed; bow projectile execution remains deferred. The unfiltered check retains the separately tracked issue #6 failure.
+
+## Risk Assessment
+
+- Generated multipage atlases and authored frames must remain in sync; repeat generation and ownership hashes passed integration validation.
+- Offscreen rendering and graphics state interact with platform GL behavior; real-GL integration tests passed on the tested environment.
+- Bow primary is animation-only, not projectile damage.
+
+## Recommendations
+
+- Review the full patch and the linked integration evidence before merge.
+- Keep this appendix linked from the PR Targets section.
+
+## Follow-ups
+
+- Resolve the separately tracked input-test failure and rerun the unfiltered check.
+- Bow projectile execution remains deferred.
+
+## Targets
+
+- `.internal-dev/bugs/controller-movement-event-test-failure.md`
+  - Updates the tracked movement-event failure status.
+- `.internal-dev/changelogs/2026-11-16-authored-sprite-checkpoint.md` (new)
+  - Records the authored sprite and map checkpoint, its scope and validation.
+- `.internal-dev/changelogs/2026-11-16-composite-atlas-pipeline.md` (new)
+  - Records sprite atlas generation, ownership and validation.
+- `.internal-dev/changelogs/2026-11-16-loadout-primary-secondary-attacks.md` (new)
+  - Records loadout and attack implementation and phase validation, including the baseline input-test failure.
+- `.internal-dev/changelogs/2026-11-16-offscreen-composite-rendering.md` (new)
+  - Records offscreen composition, rendering and phase validation.
+- `.internal-dev/knowledge/composite-sprite-assets.md` (new)
+  - Documents sprite source and atlas layout and asset-related operational gotchas.
+- `.internal-dev/specifications/composite-characters.md` (new)
+  - Defines composition, loadout, sprite assets and attack contracts.
+  - Documents constraints and validation expectations.
+- `.internal-dev/specifications/decisions.md`
+  - Updates relevant asset and combat decisions.
+  - Records composite rendering design and tradeoffs.
+- `.internal-dev/specifications/deferred-features.md`
+  - Records bow projectile execution as deferred; bow primary currently animates without projectile damage.
+- `.internal-dev/specifications/horizon-ideas.md`
+  - Updates future-facing character equipment ideas.
+- `.internal-dev/specifications/index.md`
+  - Indexes the composite-character specification.
+- `README.md`
+  - Describes character sprite source, shared generated atlases, naming and multipage outputs.
+  - Links the composite-character contract.
+- `assets/.runtime-assets-owned`
+  - Tracks generated atlas descriptors and all owned page files.
+- `assets/atlases/body.atlas` (new)
+  - Generated body.atlas atlas descriptor with region and page metadata.
+- `assets/atlases/body.png` (new)
+  - Generated body.png texture page for its corresponding sprite atlas.
+- `assets/atlases/character.atlas` (new)
+  - Generated character.atlas atlas descriptor with region and page metadata.
+- `assets/atlases/character.png` (new)
+  - Generated character.png texture page for its corresponding sprite atlas.
+- `assets/atlases/feet.atlas` (new)
+  - Generated feet.atlas atlas descriptor with region and page metadata.
+- `assets/atlases/feet.png` (new)
+  - Generated feet.png texture page for its corresponding sprite atlas.
+- `assets/atlases/hands.atlas` (new)
+  - Generated hands.atlas atlas descriptor with region and page metadata.
+- `assets/atlases/hands.png` (new)
+  - Generated hands.png texture page for its corresponding sprite atlas.
+- `assets/atlases/head.atlas` (new)
+  - Generated head.atlas atlas descriptor with region and page metadata.
+- `assets/atlases/head.png` (new)
+  - Generated head.png texture page for its corresponding sprite atlas.
+- `assets/atlases/weapons.atlas` (new)
+  - Generated weapons.atlas atlas descriptor with region and page metadata.
+- `assets/atlases/weapons.png` (new)
+  - Generated weapons.png texture page for its corresponding sprite atlas.
+- `assets/atlases/weapons2.png` (new)
+  - Generated weapons2.png texture page for its corresponding sprite atlas.
+- `assets/data/player.json`
+  - Configures player equipment and weapon loadout.
+  - Uses the flat character atlas region prefix.
+- `assets/data/weapons.json`
+  - Defines a shared weapon atlas and per-weapon region prefixes.
+  - Defines primary and secondary attack animation, sound, geometry, stats and collision type for sword, bow and unarmed.
+- `assets/game.tiled-session`
+  - Updates Tiled editor session state and recently opened resources.
+- `assets/maps/test_tiled/objects/objects.tsx`
+  - Removes the unused player tile and its collision object.
+  - Adjusts the tree collision ellipse and preserves the authored Tiled checkpoint.
+- `core/src/main/java/io/mindspice/lute/engine/GameCore.java`
+  - Binds primary and secondary attack keys.
+  - Queues shared character atlases and per-attack weapon sounds.
+- `core/src/main/java/io/mindspice/lute/engine/assets/CharacterAssets.java` (new)
+  - Defines the shared character, equipment and weapon atlas assets.
+  - Builds the atlas load list using the configured weapon atlas.
+- `core/src/main/java/io/mindspice/lute/engine/assets/WeaponAssets.java`
+  - Builds distinct primary and secondary attack and hit sound assets for each weapon.
+  - Collects sound assets for loading.
+- `core/src/main/java/io/mindspice/lute/engine/components/Animation2D.java`
+  - Tracks active attack action and its animation settings.
+  - Exposes direction-specific atlas region keys, animation time and frame index.
+  - Stores required frame counts for attack validation.
+- `core/src/main/java/io/mindspice/lute/engine/components/Combat.java`
+  - Tracks primary or secondary requests and the active attack.
+  - Prevents weapon changes during an attack or pending request.
+- `core/src/main/java/io/mindspice/lute/engine/components/CombatWeapon.java`
+  - Represents weapons with separate primary and secondary attacks.
+  - Carries per-attack damage, animation, sound, collision and geometry.
+- `core/src/main/java/io/mindspice/lute/engine/components/CompositeCharacter.java` (new)
+  - Marks entities for composite-character rendering.
+- `core/src/main/java/io/mindspice/lute/engine/components/Controller.java`
+  - Tracks input state for primary and secondary attacks.
+- `core/src/main/java/io/mindspice/lute/engine/components/Loadout.java` (new)
+  - Stores equipped clothing and the selected combat weapon.
+  - Validates equipment and rejects changes while an attack is active or requested.
+  - Supports unarmed selection and rejects unknown weapon IDs.
+- `core/src/main/java/io/mindspice/lute/engine/data/json/AnimationData.java`
+  - Validates animation settings and supports the flat atlas key.
+- `core/src/main/java/io/mindspice/lute/engine/data/json/PlayerData.java`
+  - Loads and validates player equipment and optional weapon.
+  - Requires a flat character atlas prefix.
+- `core/src/main/java/io/mindspice/lute/engine/data/json/WeaponsData.java`
+  - Loads common atlas and separate primary and secondary attack definitions.
+  - Validates weapon IDs, unarmed and melee-jab constraints, action and collision compatibility.
+  - Validates attack fields and relative sound paths.
+- `core/src/main/java/io/mindspice/lute/engine/input/InputAction.java`
+  - Splits attack input into primary and secondary actions.
+- `core/src/main/java/io/mindspice/lute/engine/screen/GameScreen.java`
+  - Provides the asset service to the render system for composition.
+- `core/src/main/java/io/mindspice/lute/engine/systems/AnimationSystem.java`
+  - Selects and caches animations by active action and direction.
+  - Validates required attack frame counts and character frame dimensions.
+- `core/src/main/java/io/mindspice/lute/engine/systems/CharacterCompositor.java` (new)
+  - Composes visible character and equipment layers into offscreen framebuffer cells, ordered by facing.
+  - Batches layer draws by rank and texture page and manages multiple targets.
+  - Validates indexed untrimmed frames, refreshes atlas caches and restores graphics state.
+  - Culls transformed characters against the camera and disposes resources.
+- `core/src/main/java/io/mindspice/lute/engine/systems/CombatSystem.java`
+  - Selects primary or secondary attack requests and configures attack animation.
+  - Uses active attack damage, geometry and hit timing for melee.
+  - Does not create melee collision for projectile attacks.
+- `core/src/main/java/io/mindspice/lute/engine/systems/ControllerSystem.java`
+  - Routes attack key presses to the requested primary or secondary combat slot.
+- `core/src/main/java/io/mindspice/lute/engine/systems/EntityFactory.java`
+  - Builds player combat, composite marker and equipment loadout from data.
+  - Builds per-weapon attack definitions and sounds.
+  - Validates weapon geometry, required character frames and equipment atlas layers.
+- `core/src/main/java/io/mindspice/lute/engine/systems/RenderState.java` (new)
+  - Captures and restores graphics bindings, viewport, blending, masks and related GL state.
+  - Handles state associated with released framebuffer and shader resources.
+- `core/src/main/java/io/mindspice/lute/engine/systems/RenderSystem.java`
+  - Composes characters before rendering and draws their resulting regions in the world.
+  - Sorts world rendering by depth while preserving sprite appearance.
+  - Manages compositor lifecycle.
+- `core/src/test/java/io/mindspice/lute/engine/assets/AssetServiceTest.java`
+  - Exercises asset loading and weapon sound identities for the shared atlas and attack slots.
+- `core/src/test/java/io/mindspice/lute/engine/combat/CombatSystemTest.java`
+  - Exercises primary and secondary attacks, loadout changes and combat collision behavior.
+  - Covers attack timing, geometry and relevant rejection cases.
+- `core/src/test/java/io/mindspice/lute/engine/data/json/DataLoaderTest.java`
+  - Exercises player loadout and weapon attack data loading.
+  - Covers invalid weapon, animation, collision and sound inputs.
+- `core/src/test/java/io/mindspice/lute/engine/systems/MapSensorSystemTest.java`
+  - Updates combat fixtures for the weapon and attack data model.
+- `docs/asset-service.md`
+  - Updates asset service documentation for shared character atlases and weapon sounds.
+- `lwjgl3/build.gradle`
+  - Adds desktop composite graphics JavaExec test execution configuration.
+  - Permits zero discovered JUnit tests for the JavaExec-only desktop test sources.
+- `lwjgl3/src/test/java/io/mindspice/lute/engine/lwjgl3/CompositeGameTest.java` (new)
+  - Exercises composite characters in a desktop game context using generated assets.
+- `lwjgl3/src/test/java/io/mindspice/lute/engine/lwjgl3/CompositeRenderTest.java` (new)
+  - Exercises offscreen composite pixel output, layer order and animation.
+  - Covers rendering state, visibility, batching and resource behavior.
+- `raw_assets/data/player.json`
+  - Configures player equipment and weapon loadout.
+  - Uses the flat character atlas region prefix.
+- `raw_assets/data/weapons.json`
+  - Defines a shared weapon atlas and per-weapon region prefixes.
+  - Defines primary and secondary attack animation, sound, geometry, stats and collision type for sword, bow and unarmed.
+- `raw_assets/game.tiled-session` (new)
+  - Updates Tiled editor session state and recently opened resources.
+- `raw_assets/maps/test_tiled/objects/objects.tsx`
+  - Removes the unused player tile and its collision object.
+  - Adjusts the tree collision ellipse in the authored map checkpoint.
+- `raw_assets/sprites/body/basic/cast_down_00.png` (new)
+  - Authored animation layer/frame source preserved for atlas generation.
+- `raw_assets/sprites/body/basic/cast_down_01.png` (new)
+  - Authored animation layer/frame source preserved for atlas generation.
+- `raw_assets/sprites/body/basic/cast_down_02.png` (new)
+  - Authored animation layer/frame source preserved for atlas generation.
+- `raw_assets/sprites/body/basic/cast_down_03.png` (new)
+  - Authored animation layer/frame source preserved for atlas generation.
+- `raw_assets/sprites/body/basic/cast_down_04.png` (new)
+  - Authored animation layer/frame source preserved for atlas generation.
+- `raw_assets/sprites/body/basic/cast_down_05.png` (new)
+  - Authored animation layer/frame source preserved for atlas generation.
+- `raw_assets/sprites/body/basic/cast_down_06.png` (new)
+  - Authored animation layer/frame source preserved for atlas generation.
+- `raw_assets/sprites/body/basic/cast_down_07.png` (new)
+  - Authored animation layer/frame source preserved for atlas generation.
+- `raw_assets/sprites/body/basic/cast_left_00.png` (new)
+  - Authored animation layer/frame source preserved for atlas generation.
+- `raw_assets/sprites/body/basic/cast_left_01.png` (new)
+  - Authored animation layer/frame source preserved for atlas generation.
+- `raw_assets/sprites/body/basic/cast_left_02.png` (new)
+  - Authored animation layer/frame source preserved for atlas generation.
+- `raw_assets/sprites/body/basic/cast_left_03.png` (new)
+  - Authored animation layer/frame source preserved for atlas generation.
+- `raw_assets/sprites/body/basic/cast_left_04.png` (new)
+  - Authored animation layer/frame source preserved for atlas generation.
+- `raw_assets/sprites/body/basic/cast_left_05.png` (new)
+  - Authored animation layer/frame source preserved for atlas generation.
+- `raw_assets/sprites/body/basic/cast_left_06.png` (new)
+  - Authored animation layer/frame source preserved for atlas generation.
+- `raw_assets/sprites/body/basic/cast_left_07.png` (new)
+  - Authored animation layer/frame source preserved for atlas generation.
+- `raw_assets/sprites/body/basic/cast_right_00.png` (new)
+  - Authored animation layer/frame source preserved for atlas generation.
+- `raw_assets/sprites/body/basic/cast_right_01.png` (new)
+  - Authored animation layer/frame source preserved for atlas generation.
+- `raw_assets/sprites/body/basic/cast_right_02.png` (new)
+  - Authored animation layer/frame source preserved for atlas generation.
+- `raw_assets/sprites/body/basic/cast_right_03.png` (new)
+  - Authored animation layer/frame source preserved for atlas generation.
+- `raw_assets/sprites/body/basic/cast_right_04.png` (new)
+  - Authored animation layer/frame source preserved for atlas generation.
+- `raw_assets/sprites/body/basic/cast_right_05.png` (new)
+  - Authored animation layer/frame source preserved for atlas generation.
+- `raw_assets/sprites/body/basic/cast_right_06.png` (new)
+  - Authored animation layer/frame source preserved for atlas generation.
+- `raw_assets/sprites/body/basic/cast_right_07.png` (new)
+  - Authored animation layer/frame source preserved for atlas generation.
+- `raw_assets/sprites/body/basic/cast_up_00.png` (new)
+  - Authored animation layer/frame source preserved for atlas generation.
+- `raw_assets/sprites/body/basic/cast_up_01.png` (new)
+  - Authored animation layer/frame source preserved for atlas generation.
+- `raw_assets/sprites/body/basic/cast_up_02.png` (new)
+  - Authored animation layer/frame source preserved for atlas generation.
+- `raw_assets/sprites/body/basic/cast_up_03.png` (new)
+  - Authored animation layer/frame source preserved for atlas generation.
+- `raw_assets/sprites/body/basic/cast_up_04.png` (new)
+  - Authored animation layer/frame source preserved for atlas generation.
+- `raw_assets/sprites/body/basic/cast_up_05.png` (new)
+  - Authored animation layer/frame source preserved for atlas generation.
+- `raw_assets/sprites/body/basic/cast_up_06.png` (new)
+  - Authored animation layer/frame source preserved for atlas generation.
+- `raw_assets/sprites/body/basic/cast_up_07.png` (new)
+  - Authored animation layer/frame source preserved for atlas generation.
+- `raw_assets/sprites/body/basic/death_down_00.png` (new)
+  - Authored animation layer/frame source preserved for atlas generation.
+- `raw_assets/sprites/body/basic/death_down_01.png` (new)
+  - Authored animation layer/frame source preserved for atlas generation.
+- `raw_assets/sprites/body/basic/death_down_02.png` (new)
+  - Authored animation layer/frame source preserved for atlas generation.
+- `raw_assets/sprites/body/basic/death_down_03.png` (new)
+  - Authored animation layer/frame source preserved for atlas generation.
+- `raw_assets/sprites/body/basic/death_down_04.png` (new)
+  - Authored animation layer/frame source preserved for atlas generation.
+- `raw_assets/sprites/body/basic/death_down_05.png` (new)
+  - Authored animation layer/frame source preserved for atlas generation.
+- `raw_assets/sprites/body/basic/death_down_06.png` (new)
+  - Authored animation layer/frame source preserved for atlas generation.
+- `raw_assets/sprites/body/basic/death_down_07.png` (new)
+  - Authored animation layer/frame source preserved for atlas generation.
+- `raw_assets/sprites/body/basic/death_left_00.png` (new)
+  - Authored animation layer/frame source preserved for atlas generation.
+- `raw_assets/sprites/body/basic/death_left_01.png` (new)
+  - Authored animation layer/frame source preserved for atlas generation.
+- `raw_assets/sprites/body/basic/death_left_02.png` (new)
+  - Authored animation layer/frame source preserved for atlas generation.
+- `raw_assets/sprites/body/basic/death_left_03.png` (new)
+  - Authored animation layer/frame source preserved for atlas generation.
+- `raw_assets/sprites/body/basic/death_left_04.png` (new)
+  - Authored animation layer/frame source preserved for atlas generation.
+- `raw_assets/sprites/body/basic/death_left_05.png` (new)
+  - Authored animation layer/frame source preserved for atlas generation.
+- `raw_assets/sprites/body/basic/death_left_06.png` (new)
+  - Authored animation layer/frame source preserved for atlas generation.
+- `raw_assets/sprites/body/basic/death_left_07.png` (new)
+  - Authored animation layer/frame source preserved for atlas generation.
+- `raw_assets/sprites/body/basic/death_right_00.png` (new)
+  - Authored animation layer/frame source preserved for atlas generation.
+- `raw_assets/sprites/body/basic/death_right_01.png` (new)
+  - Authored animation layer/frame source preserved for atlas generation.
+- `raw_assets/sprites/body/basic/death_right_02.png` (new)
+  - Authored animation layer/frame source preserved for atlas generation.
+- `raw_assets/sprites/body/basic/death_right_03.png` (new)
+  - Authored animation layer/frame source preserved for atlas generation.
+- `raw_assets/sprites/body/basic/death_right_04.png` (new)
+  - Authored animation layer/frame source preserved for atlas generation.
+- `raw_assets/sprites/body/basic/death_right_05.png` (new)
+  - Authored animation layer/frame source preserved for atlas generation.
+- `raw_assets/sprites/body/basic/death_right_06.png` (new)
+  - Authored animation layer/frame source preserved for atlas generation.
+- `raw_assets/sprites/body/basic/death_right_07.png` (new)
+  - Authored animation layer/frame source preserved for atlas generation.
+- `raw_assets/sprites/body/basic/death_up_00.png` (new)
+  - Authored animation layer/frame source preserved for atlas generation.
+- `raw_assets/sprites/body/basic/death_up_01.png` (new)
+  - Authored animation layer/frame source preserved for atlas generation.
+- `raw_assets/sprites/body/basic/death_up_02.png` (new)
+  - Authored animation layer/frame source preserved for atlas generation.
+- `raw_assets/sprites/body/basic/death_up_03.png` (new)
+  - Authored animation layer/frame source preserved for atlas generation.
+- `raw_assets/sprites/body/basic/death_up_04.png` (new)
+  - Authored animation layer/frame source preserved for atlas generation.
+- `raw_assets/sprites/body/basic/death_up_05.png` (new)
+  - Authored animation layer/frame source preserved for atlas generation.
+- `raw_assets/sprites/body/basic/death_up_06.png` (new)
+  - Authored animation layer/frame source preserved for atlas generation.
+- `raw_assets/sprites/body/basic/death_up_07.png` (new)
+  - Authored animation layer/frame source preserved for atlas generation.
+- `raw_assets/sprites/body/basic/idle_down_00.png` (new)
+  - Authored animation layer/frame source preserved for atlas generation.
+- `raw_assets/sprites/body/basic/idle_down_01.png` (new)
+  - Authored animation layer/frame source preserved for atlas generation.
+- `raw_assets/sprites/body/basic/idle_down_02.png` (new)
+  - Authored animation layer/frame source preserved for atlas generation.
+- `raw_assets/sprites/body/basic/idle_down_03.png` (new)
+  - Authored animation layer/frame source preserved for atlas generation.
+- `raw_assets/sprites/body/basic/idle_down_04.png` (new)
+  - Authored animation layer/frame source preserved for atlas generation.
+- `raw_assets/sprites/body/basic/idle_down_05.png` (new)
+  - Authored animation layer/frame source preserved for atlas generation.
+- `raw_assets/sprites/body/basic/idle_down_06.png` (new)
+  - Authored animation layer/frame source preserved for atlas generation.
+- `raw_assets/sprites/body/basic/idle_down_07.png` (new)
+  - Authored animation layer/frame source preserved for atlas generation.
+- `raw_assets/sprites/body/basic/idle_left_00.png` (new)
+  - Authored animation layer/frame source preserved for atlas generation.
+- `raw_assets/sprites/body/basic/idle_left_01.png` (new)
+  - Authored animation layer/frame source preserved for atlas generation.
+- `raw_assets/sprites/body/basic/idle_left_02.png` (new)
+  - Authored animation layer/frame source preserved for atlas generation.
+- `raw_assets/sprites/body/basic/idle_left_03.png` (new)
+  - Authored animation layer/frame source preserved for atlas generation.
+- `raw_assets/sprites/body/basic/idle_left_04.png` (new)
+  - Authored animation layer/frame source preserved for atlas generation.
+- `raw_assets/sprites/body/basic/idle_left_05.png` (new)
+  - Authored animation layer/frame source preserved for atlas generation.
+- `raw_assets/sprites/body/basic/idle_left_06.png` (new)
+  - Authored animation layer/frame source preserved for atlas generation.
+- `raw_assets/sprites/body/basic/idle_left_07.png` (new)
+  - Authored animation layer/frame source preserved for atlas generation.
+- `raw_assets/sprites/body/basic/idle_right_00.png` (new)
+  - Authored animation layer/frame source preserved for atlas generation.
+- `raw_assets/sprites/body/basic/idle_right_01.png` (new)
+  - Authored animation layer/frame source preserved for atlas generation.
+- `raw_assets/sprites/body/basic/idle_right_02.png` (new)
+  - Authored animation layer/frame source preserved for atlas generation.
+- `raw_assets/sprites/body/basic/idle_right_03.png` (new)
+  - Authored animation layer/frame source preserved for atlas generation.
+- `raw_assets/sprites/body/basic/idle_right_04.png` (new)
+  - Authored animation layer/frame source preserved for atlas generation.
+- `raw_assets/sprites/body/basic/idle_right_05.png` (new)
+  - Authored animation layer/frame source preserved for atlas generation.
+- `raw_assets/sprites/body/basic/idle_right_06.png` (new)
+  - Authored animation layer/frame source preserved for atlas generation.
+- `raw_assets/sprites/body/basic/idle_right_07.png` (new)
+  - Authored animation layer/frame source preserved for atlas generation.
+- `raw_assets/sprites/body/basic/idle_up_00.png` (new)
+  - Authored animation layer/frame source preserved for atlas generation.
+- `raw_assets/sprites/body/basic/idle_up_01.png` (new)
+  - Authored animation layer/frame source preserved for atlas generation.
+- `raw_assets/sprites/body/basic/idle_up_02.png` (new)
+  - Authored animation layer/frame source preserved for atlas generation.
+- `raw_assets/sprites/body/basic/idle_up_03.png` (new)
+  - Authored animation layer/frame source preserved for atlas generation.
+- `raw_assets/sprites/body/basic/idle_up_04.png` (new)
+  - Authored animation layer/frame source preserved for atlas generation.
+- `raw_assets/sprites/body/basic/idle_up_05.png` (new)
+  - Authored animation layer/frame source preserved for atlas generation.
+- `raw_assets/sprites/body/basic/idle_up_06.png` (new)
+  - Authored animation layer/frame source preserved for atlas generation.
+- `raw_assets/sprites/body/basic/idle_up_07.png` (new)
+  - Authored animation layer/frame source preserved for atlas generation.
+- `raw_assets/sprites/body/basic/jab_down_00.png` (new)
+  - Authored animation layer/frame source preserved for atlas generation.
+- `raw_assets/sprites/body/basic/jab_down_01.png` (new)
+  - Authored animation layer/frame source preserved for atlas generation.
+- `raw_assets/sprites/body/basic/jab_down_02.png` (new)
+  - Authored animation layer/frame source preserved for atlas generation.
+- `raw_assets/sprites/body/basic/jab_down_03.png` (new)
+  - Authored animation layer/frame source preserved for atlas generation.
+- `raw_assets/sprites/body/basic/jab_down_04.png` (new)
+  - Authored animation layer/frame source preserved for atlas generation.
+- `raw_assets/sprites/body/basic/jab_down_05.png` (new)
+  - Authored animation layer/frame source preserved for atlas generation.
+- `raw_assets/sprites/body/basic/jab_down_06.png` (new)
+  - Authored animation layer/frame source preserved for atlas generation.
+- `raw_assets/sprites/body/basic/jab_down_07.png` (new)
+  - Authored animation layer/frame source preserved for atlas generation.
+- `raw_assets/sprites/body/basic/jab_left_00.png` (new)
+  - Authored animation layer/frame source preserved for atlas generation.
+- `raw_assets/sprites/body/basic/jab_left_01.png` (new)
+  - Authored animation layer/frame source preserved for atlas generation.
+- `raw_assets/sprites/body/basic/jab_left_02.png` (new)
+  - Authored animation layer/frame source preserved for atlas generation.
+- `raw_assets/sprites/body/basic/jab_left_03.png` (new)
+  - Authored animation layer/frame source preserved for atlas generation.
+- `raw_assets/sprites/body/basic/jab_left_04.png` (new)
+  - Authored animation layer/frame source preserved for atlas generation.
+- `raw_assets/sprites/body/basic/jab_left_05.png` (new)
+  - Authored animation layer/frame source preserved for atlas generation.
+- `raw_assets/sprites/body/basic/jab_left_06.png` (new)
+  - Authored animation layer/frame source preserved for atlas generation.
+- `raw_assets/sprites/body/basic/jab_left_07.png` (new)
+  - Authored animation layer/frame source preserved for atlas generation.
+- `raw_assets/sprites/body/basic/jab_right_00.png` (new)
+  - Authored animation layer/frame source preserved for atlas generation.
+- `raw_assets/sprites/body/basic/jab_right_01.png` (new)
+  - Authored animation layer/frame source preserved for atlas generation.
+- `raw_assets/sprites/body/basic/jab_right_02.png` (new)
+  - Authored animation layer/frame source preserved for atlas generation.
+- `raw_assets/sprites/body/basic/jab_right_03.png` (new)
+  - Authored animation layer/frame source preserved for atlas generation.
+- `raw_assets/sprites/body/basic/jab_right_04.png` (new)
+  - Authored animation layer/frame source preserved for atlas generation.
+- `raw_assets/sprites/body/basic/jab_right_05.png` (new)
+  - Authored animation layer/frame source preserved for atlas generation.
+- `raw_assets/sprites/body/basic/jab_right_06.png` (new)
+  - Authored animation layer/frame source preserved for atlas generation.
+- `raw_assets/sprites/body/basic/jab_right_07.png` (new)
+  - Authored animation layer/frame source preserved for atlas generation.
+- `raw_assets/sprites/body/basic/jab_up_00.png` (new)
+  - Authored animation layer/frame source preserved for atlas generation.
+- `raw_assets/sprites/body/basic/jab_up_01.png` (new)
+  - Authored animation layer/frame source preserved for atlas generation.
+- `raw_assets/sprites/body/basic/jab_up_02.png` (new)
+  - Authored animation layer/frame source preserved for atlas generation.
+- `raw_assets/sprites/body/basic/jab_up_03.png` (new)
+  - Authored animation layer/frame source preserved for atlas generation.
+- `raw_assets/sprites/body/basic/jab_up_04.png` (new)
+  - Authored animation layer/frame source preserved for atlas generation.
+- `raw_assets/sprites/body/basic/jab_up_05.png` (new)
+  - Authored animation layer/frame source preserved for atlas generation.
+- `raw_assets/sprites/body/basic/jab_up_06.png` (new)
+  - Authored animation layer/frame source preserved for atlas generation.
+- `raw_assets/sprites/body/basic/jab_up_07.png` (new)
+  - Authored animation layer/frame source preserved for atlas generation.
+- `raw_assets/sprites/body/basic/shot_down_00.png` (new)
+  - Authored animation layer/frame source preserved for atlas generation.
+- `raw_assets/sprites/body/basic/shot_down_01.png` (new)
+  - Authored animation layer/frame source preserved for atlas generation.
+- `raw_assets/sprites/body/basic/shot_down_02.png` (new)
+  - Authored animation layer/frame source preserved for atlas generation.
+- `raw_assets/sprites/body/basic/shot_down_03.png` (new)
+  - Authored animation layer/frame source preserved for atlas generation.
+- `raw_assets/sprites/body/basic/shot_down_04.png` (new)
+  - Authored animation layer/frame source preserved for atlas generation.
+- `raw_assets/sprites/body/basic/shot_down_05.png` (new)
+  - Authored animation layer/frame source preserved for atlas generation.
+- `raw_assets/sprites/body/basic/shot_down_06.png` (new)
+  - Authored animation layer/frame source preserved for atlas generation.
+- `raw_assets/sprites/body/basic/shot_down_07.png` (new)
+  - Authored animation layer/frame source preserved for atlas generation.
+- `raw_assets/sprites/body/basic/shot_left_00.png` (new)
+  - Authored animation layer/frame source preserved for atlas generation.
+- `raw_assets/sprites/body/basic/shot_left_01.png` (new)
+  - Authored animation layer/frame source preserved for atlas generation.
+- `raw_assets/sprites/body/basic/shot_left_02.png` (new)
+  - Authored animation layer/frame source preserved for atlas generation.
+- `raw_assets/sprites/body/basic/shot_left_03.png` (new)
+  - Authored animation layer/frame source preserved for atlas generation.
+- `raw_assets/sprites/body/basic/shot_left_04.png` (new)
+  - Authored animation layer/frame source preserved for atlas generation.
+- `raw_assets/sprites/body/basic/shot_left_05.png` (new)
+  - Authored animation layer/frame source preserved for atlas generation.
+- `raw_assets/sprites/body/basic/shot_left_06.png` (new)
+  - Authored animation layer/frame source preserved for atlas generation.
+- `raw_assets/sprites/body/basic/shot_left_07.png` (new)
+  - Authored animation layer/frame source preserved for atlas generation.
+- `raw_assets/sprites/body/basic/shot_right_00.png` (new)
+  - Authored animation layer/frame source preserved for atlas generation.
+- `raw_assets/sprites/body/basic/shot_right_01.png` (new)
+  - Authored animation layer/frame source preserved for atlas generation.
+- `raw_assets/sprites/body/basic/shot_right_02.png` (new)
+  - Authored animation layer/frame source preserved for atlas generation.
+- `raw_assets/sprites/body/basic/shot_right_03.png` (new)
+  - Authored animation layer/frame source preserved for atlas generation.
+- `raw_assets/sprites/body/basic/shot_right_04.png` (new)
+  - Authored animation layer/frame source preserved for atlas generation.
+- `raw_assets/sprites/body/basic/shot_right_05.png` (new)
+  - Authored animation layer/frame source preserved for atlas generation.
+- `raw_assets/sprites/body/basic/shot_right_06.png` (new)
+  - Authored animation layer/frame source preserved for atlas generation.
+- `raw_assets/sprites/body/basic/shot_right_07.png` (new)
+  - Authored animation layer/frame source preserved for atlas generation.
+- `raw_assets/sprites/body/basic/shot_up_00.png` (new)
+  - Authored animation layer/frame source preserved for atlas generation.
+- `raw_assets/sprites/body/basic/shot_up_01.png` (new)
+  - Authored animation layer/frame source preserved for atlas generation.
+- `raw_assets/sprites/body/basic/shot_up_02.png` (new)
+  - Authored animation layer/frame source preserved for atlas generation.
+- `raw_assets/sprites/body/basic/shot_up_03.png` (new)
+  - Authored animation layer/frame source preserved for atlas generation.
+- `raw_assets/sprites/body/basic/shot_up_04.png` (new)
+  - Authored animation layer/frame source preserved for atlas generation.
+- `raw_assets/sprites/body/basic/shot_up_05.png` (new)
+  - Authored animation layer/frame source preserved for atlas generation.
+- `raw_assets/sprites/body/basic/shot_up_06.png` (new)
+  - Authored animation layer/frame source preserved for atlas generation.
+- `raw_assets/sprites/body/basic/shot_up_07.png` (new)
+  - Authored animation layer/frame source preserved for atlas generation.
+- `raw_assets/sprites/body/basic/slash_down_00.png` (new)
+  - Authored animation layer/frame source preserved for atlas generation.
+- `raw_assets/sprites/body/basic/slash_down_01.png` (new)
+  - Authored animation layer/frame source preserved for atlas generation.
+- `raw_assets/sprites/body/basic/slash_down_02.png` (new)
+  - Authored animation layer/frame source preserved for atlas generation.
+- `raw_assets/sprites/body/basic/slash_down_03.png` (new)
+  - Authored animation layer/frame source preserved for atlas generation.
+- `raw_assets/sprites/body/basic/slash_down_04.png` (new)
+  - Authored animation layer/frame source preserved for atlas generation.
+- `raw_assets/sprites/body/basic/slash_down_05.png` (new)
+  - Authored animation layer/frame source preserved for atlas generation.
+- `raw_assets/sprites/body/basic/slash_down_06.png` (new)
+  - Authored animation layer/frame source preserved for atlas generation.
+- `raw_assets/sprites/body/basic/slash_down_07.png` (new)
+  - Authored animation layer/frame source preserved for atlas generation.
+- `raw_assets/sprites/body/basic/slash_left_00.png` (new)
+  - Authored animation layer/frame source preserved for atlas generation.
+- `raw_assets/sprites/body/basic/slash_left_01.png` (new)
+  - Authored animation layer/frame source preserved for atlas generation.
+- `raw_assets/sprites/body/basic/slash_left_02.png` (new)
+  - Authored animation layer/frame source preserved for atlas generation.
+- `raw_assets/sprites/body/basic/slash_left_03.png` (new)
+  - Authored animation layer/frame source preserved for atlas generation.
+- `raw_assets/sprites/body/basic/slash_left_04.png` (new)
+  - Authored animation layer/frame source preserved for atlas generation.
+- `raw_assets/sprites/body/basic/slash_left_05.png` (new)
+  - Authored animation layer/frame source preserved for atlas generation.
+- `raw_assets/sprites/body/basic/slash_left_06.png` (new)
+  - Authored animation layer/frame source preserved for atlas generation.
+- `raw_assets/sprites/body/basic/slash_left_07.png` (new)
+  - Authored animation layer/frame source preserved for atlas generation.
+- `raw_assets/sprites/body/basic/slash_right_00.png` (new)
+  - Authored animation layer/frame source preserved for atlas generation.
+- `raw_assets/sprites/body/basic/slash_right_01.png` (new)
+  - Authored animation layer/frame source preserved for atlas generation.
+- `raw_assets/sprites/body/basic/slash_right_02.png` (new)
+  - Authored animation layer/frame source preserved for atlas generation.
+- `raw_assets/sprites/body/basic/slash_right_03.png` (new)
+  - Authored animation layer/frame source preserved for atlas generation.
+- `raw_assets/sprites/body/basic/slash_right_04.png` (new)
+  - Authored animation layer/frame source preserved for atlas generation.
+- `raw_assets/sprites/body/basic/slash_right_05.png` (new)
+  - Authored animation layer/frame source preserved for atlas generation.
+- `raw_assets/sprites/body/basic/slash_right_06.png` (new)
+  - Authored animation layer/frame source preserved for atlas generation.
+- `raw_assets/sprites/body/basic/slash_right_07.png` (new)
+  - Authored animation layer/frame source preserved for atlas generation.
+- `raw_assets/sprites/body/basic/slash_up_00.png` (new)
+  - Authored animation layer/frame source preserved for atlas generation.
+- `raw_assets/sprites/body/basic/slash_up_01.png` (new)
+  - Authored animation layer/frame source preserved for atlas generation.
+- `raw_assets/sprites/body/basic/slash_up_02.png` (new)
+  - Authored animation layer/frame source preserved for atlas generation.
+- `raw_assets/sprites/body/basic/slash_up_03.png` (new)
+  - Authored animation layer/frame source preserved for atlas generation.
+- `raw_assets/sprites/body/basic/slash_up_04.png` (new)
+  - Authored animation layer/frame source preserved for atlas generation.
+- `raw_assets/sprites/body/basic/slash_up_05.png` (new)
+  - Authored animation layer/frame source preserved for atlas generation.
+- `raw_assets/sprites/body/basic/slash_up_06.png` (new)
+  - Authored animation layer/frame source preserved for atlas generation.
+- `raw_assets/sprites/body/basic/slash_up_07.png` (new)
+  - Authored animation layer/frame source preserved for atlas generation.
+- `raw_assets/sprites/body/basic/walk_down_00.png` (new)
+  - Authored animation layer/frame source preserved for atlas generation.
+- `raw_assets/sprites/body/basic/walk_down_01.png` (new)
+  - Authored animation layer/frame source preserved for atlas generation.
+- `raw_assets/sprites/body/basic/walk_down_02.png` (new)
+  - Authored animation layer/frame source preserved for atlas generation.
+- `raw_assets/sprites/body/basic/walk_down_03.png` (new)
+  - Authored animation layer/frame source preserved for atlas generation.
+- `raw_assets/sprites/body/basic/walk_down_04.png` (new)
+  - Authored animation layer/frame source preserved for atlas generation.
+- `raw_assets/sprites/body/basic/walk_down_05.png` (new)
+  - Authored animation layer/frame source preserved for atlas generation.
+- `raw_assets/sprites/body/basic/walk_down_06.png` (new)
+  - Authored animation layer/frame source preserved for atlas generation.
+- `raw_assets/sprites/body/basic/walk_down_07.png` (new)
+  - Authored animation layer/frame source preserved for atlas generation.
+- `raw_assets/sprites/body/basic/walk_left_00.png` (new)
+  - Authored animation layer/frame source preserved for atlas generation.
+- `raw_assets/sprites/body/basic/walk_left_01.png` (new)
+  - Authored animation layer/frame source preserved for atlas generation.
+- `raw_assets/sprites/body/basic/walk_left_02.png` (new)
+  - Authored animation layer/frame source preserved for atlas generation.
+- `raw_assets/sprites/body/basic/walk_left_03.png` (new)
+  - Authored animation layer/frame source preserved for atlas generation.
+- `raw_assets/sprites/body/basic/walk_left_04.png` (new)
+  - Authored animation layer/frame source preserved for atlas generation.
+- `raw_assets/sprites/body/basic/walk_left_05.png` (new)
+  - Authored animation layer/frame source preserved for atlas generation.
+- `raw_assets/sprites/body/basic/walk_left_06.png` (new)
+  - Authored animation layer/frame source preserved for atlas generation.
+- `raw_assets/sprites/body/basic/walk_left_07.png` (new)
+  - Authored animation layer/frame source preserved for atlas generation.
+- `raw_assets/sprites/body/basic/walk_right_00.png` (new)
+  - Authored animation layer/frame source preserved for atlas generation.
+- `raw_assets/sprites/body/basic/walk_right_01.png` (new)
+  - Authored animation layer/frame source preserved for atlas generation.
+- `raw_assets/sprites/body/basic/walk_right_02.png` (new)
+  - Authored animation layer/frame source preserved for atlas generation.
+- `raw_assets/sprites/body/basic/walk_right_03.png` (new)
+  - Authored animation layer/frame source preserved for atlas generation.
+- `raw_assets/sprites/body/basic/walk_right_04.png` (new)
+  - Authored animation layer/frame source preserved for atlas generation.
+- `raw_assets/sprites/body/basic/walk_right_05.png` (new)
+  - Authored animation layer/frame source preserved for atlas generation.
+- `raw_assets/sprites/body/basic/walk_right_06.png` (new)
+  - Authored animation layer/frame source preserved for atlas generation.
+- `raw_assets/sprites/body/basic/walk_right_07.png` (new)
+  - Authored animation layer/frame source preserved for atlas generation.
+- `raw_assets/sprites/body/basic/walk_up_00.png` (new)
+  - Authored animation layer/frame source preserved for atlas generation.
+- `raw_assets/sprites/body/basic/walk_up_01.png` (new)
+  - Authored animation layer/frame source preserved for atlas generation.
+- `raw_assets/sprites/body/basic/walk_up_02.png` (new)
+  - Authored animation layer/frame source preserved for atlas generation.
+- `raw_assets/sprites/body/basic/walk_up_03.png` (new)
+  - Authored animation layer/frame source preserved for atlas generation.
+- `raw_assets/sprites/body/basic/walk_up_04.png` (new)
+  - Authored animation layer/frame source preserved for atlas generation.
+- `raw_assets/sprites/body/basic/walk_up_05.png` (new)
+  - Authored animation layer/frame source preserved for atlas generation.
+- `raw_assets/sprites/body/basic/walk_up_06.png` (new)
+  - Authored animation layer/frame source preserved for atlas generation.
+- `raw_assets/sprites/body/basic/walk_up_07.png` (new)
+  - Authored animation layer/frame source preserved for atlas generation.
+- `raw_assets/sprites/character/cast_down_00.png` (new)
+  - Authored animation layer/frame source preserved for atlas generation.
+- `raw_assets/sprites/character/cast_down_01.png` (new)
+  - Authored animation layer/frame source preserved for atlas generation.
+- `raw_assets/sprites/character/cast_down_02.png` (new)
+  - Authored animation layer/frame source preserved for atlas generation.
+- `raw_assets/sprites/character/cast_down_03.png` (new)
+  - Authored animation layer/frame source preserved for atlas generation.
+- `raw_assets/sprites/character/cast_down_04.png` (new)
+  - Authored animation layer/frame source preserved for atlas generation.
+- `raw_assets/sprites/character/cast_down_05.png` (new)
+  - Authored animation layer/frame source preserved for atlas generation.
+- `raw_assets/sprites/character/cast_down_06.png` (new)
+  - Authored animation layer/frame source preserved for atlas generation.
+- `raw_assets/sprites/character/cast_down_07.png` (new)
+  - Authored animation layer/frame source preserved for atlas generation.
+- `raw_assets/sprites/character/cast_left_00.png` (new)
+  - Authored animation layer/frame source preserved for atlas generation.
+- `raw_assets/sprites/character/cast_left_01.png` (new)
+  - Authored animation layer/frame source preserved for atlas generation.
+- `raw_assets/sprites/character/cast_left_02.png` (new)
+  - Authored animation layer/frame source preserved for atlas generation.
+- `raw_assets/sprites/character/cast_left_03.png` (new)
+  - Authored animation layer/frame source preserved for atlas generation.
+- `raw_assets/sprites/character/cast_left_04.png` (new)
+  - Authored animation layer/frame source preserved for atlas generation.
+- `raw_assets/sprites/character/cast_left_05.png` (new)
+  - Authored animation layer/frame source preserved for atlas generation.
+- `raw_assets/sprites/character/cast_left_06.png` (new)
+  - Authored animation layer/frame source preserved for atlas generation.
+- `raw_assets/sprites/character/cast_left_07.png` (new)
+  - Authored animation layer/frame source preserved for atlas generation.
+- `raw_assets/sprites/character/cast_right_00.png` (new)
+  - Authored animation layer/frame source preserved for atlas generation.
+- `raw_assets/sprites/character/cast_right_01.png` (new)
+  - Authored animation layer/frame source preserved for atlas generation.
+- `raw_assets/sprites/character/cast_right_02.png` (new)
+  - Authored animation layer/frame source preserved for atlas generation.
+- `raw_assets/sprites/character/cast_right_03.png` (new)
+  - Authored animation layer/frame source preserved for atlas generation.
+- `raw_assets/sprites/character/cast_right_04.png` (new)
+  - Authored animation layer/frame source preserved for atlas generation.
+- `raw_assets/sprites/character/cast_right_05.png` (new)
+  - Authored animation layer/frame source preserved for atlas generation.
+- `raw_assets/sprites/character/cast_right_06.png` (new)
+  - Authored animation layer/frame source preserved for atlas generation.
+- `raw_assets/sprites/character/cast_right_07.png` (new)
+  - Authored animation layer/frame source preserved for atlas generation.
+- `raw_assets/sprites/character/cast_up_00.png` (new)
+  - Authored animation layer/frame source preserved for atlas generation.
+- `raw_assets/sprites/character/cast_up_01.png` (new)
+  - Authored animation layer/frame source preserved for atlas generation.
+- `raw_assets/sprites/character/cast_up_02.png` (new)
+  - Authored animation layer/frame source preserved for atlas generation.
+- `raw_assets/sprites/character/cast_up_03.png` (new)
+  - Authored animation layer/frame source preserved for atlas generation.
+- `raw_assets/sprites/character/cast_up_04.png` (new)
+  - Authored animation layer/frame source preserved for atlas generation.
+- `raw_assets/sprites/character/cast_up_05.png` (new)
+  - Authored animation layer/frame source preserved for atlas generation.
+- `raw_assets/sprites/character/cast_up_06.png` (new)
+  - Authored animation layer/frame source preserved for atlas generation.
+- `raw_assets/sprites/character/cast_up_07.png` (new)
+  - Authored animation layer/frame source preserved for atlas generation.
+- `raw_assets/sprites/character/death_down_00.png` (new)
+  - Authored animation layer/frame source preserved for atlas generation.
+- `raw_assets/sprites/character/death_down_01.png` (new)
+  - Authored animation layer/frame source preserved for atlas generation.
+- `raw_assets/sprites/character/death_down_02.png` (new)
+  - Authored animation layer/frame source preserved for atlas generation.
+- `raw_assets/sprites/character/death_down_03.png` (new)
+  - Authored animation layer/frame source preserved for atlas generation.
+- `raw_assets/sprites/character/death_down_04.png` (new)
+  - Authored animation layer/frame source preserved for atlas generation.
+- `raw_assets/sprites/character/death_down_05.png` (new)
+  - Authored animation layer/frame source preserved for atlas generation.
+- `raw_assets/sprites/character/death_down_06.png` (new)
+  - Authored animation layer/frame source preserved for atlas generation.
+- `raw_assets/sprites/character/death_down_07.png` (new)
+  - Authored animation layer/frame source preserved for atlas generation.
+- `raw_assets/sprites/character/death_left_00.png` (new)
+  - Authored animation layer/frame source preserved for atlas generation.
+- `raw_assets/sprites/character/death_left_01.png` (new)
+  - Authored animation layer/frame source preserved for atlas generation.
+- `raw_assets/sprites/character/death_left_02.png` (new)
+  - Authored animation layer/frame source preserved for atlas generation.
+- `raw_assets/sprites/character/death_left_03.png` (new)
+  - Authored animation layer/frame source preserved for atlas generation.
+- `raw_assets/sprites/character/death_left_04.png` (new)
+  - Authored animation layer/frame source preserved for atlas generation.
+- `raw_assets/sprites/character/death_left_05.png` (new)
+  - Authored animation layer/frame source preserved for atlas generation.
+- `raw_assets/sprites/character/death_left_06.png` (new)
+  - Authored animation layer/frame source preserved for atlas generation.
+- `raw_assets/sprites/character/death_left_07.png` (new)
+  - Authored animation layer/frame source preserved for atlas generation.
+- `raw_assets/sprites/character/death_right_00.png` (new)
+  - Authored animation layer/frame source preserved for atlas generation.
+- `raw_assets/sprites/character/death_right_01.png` (new)
+  - Authored animation layer/frame source preserved for atlas generation.
+- `raw_assets/sprites/character/death_right_02.png` (new)
+  - Authored animation layer/frame source preserved for atlas generation.
+- `raw_assets/sprites/character/death_right_03.png` (new)
+  - Authored animation layer/frame source preserved for atlas generation.
+- `raw_assets/sprites/character/death_right_04.png` (new)
+  - Authored animation layer/frame source preserved for atlas generation.
+- `raw_assets/sprites/character/death_right_05.png` (new)
+  - Authored animation layer/frame source preserved for atlas generation.
+- `raw_assets/sprites/character/death_right_06.png` (new)
+  - Authored animation layer/frame source preserved for atlas generation.
+- `raw_assets/sprites/character/death_right_07.png` (new)
+  - Authored animation layer/frame source preserved for atlas generation.
+- `raw_assets/sprites/character/death_up_00.png` (new)
+  - Authored animation layer/frame source preserved for atlas generation.
+- `raw_assets/sprites/character/death_up_01.png` (new)
+  - Authored animation layer/frame source preserved for atlas generation.
+- `raw_assets/sprites/character/death_up_02.png` (new)
+  - Authored animation layer/frame source preserved for atlas generation.
+- `raw_assets/sprites/character/death_up_03.png` (new)
+  - Authored animation layer/frame source preserved for atlas generation.
+- `raw_assets/sprites/character/death_up_04.png` (new)
+  - Authored animation layer/frame source preserved for atlas generation.
+- `raw_assets/sprites/character/death_up_05.png` (new)
+  - Authored animation layer/frame source preserved for atlas generation.
+- `raw_assets/sprites/character/death_up_06.png` (new)
+  - Authored animation layer/frame source preserved for atlas generation.
+- `raw_assets/sprites/character/death_up_07.png` (new)
+  - Authored animation layer/frame source preserved for atlas generation.
+- `raw_assets/sprites/character/idle_down_00.png` (new)
+  - Authored animation layer/frame source preserved for atlas generation.
+- `raw_assets/sprites/character/idle_down_01.png` (new)
+  - Authored animation layer/frame source preserved for atlas generation.
+- `raw_assets/sprites/character/idle_down_02.png` (new)
+  - Authored animation layer/frame source preserved for atlas generation.
+- `raw_assets/sprites/character/idle_down_03.png` (new)
+  - Authored animation layer/frame source preserved for atlas generation.
+- `raw_assets/sprites/character/idle_down_04.png` (new)
+  - Authored animation layer/frame source preserved for atlas generation.
+- `raw_assets/sprites/character/idle_down_05.png` (new)
+  - Authored animation layer/frame source preserved for atlas generation.
+- `raw_assets/sprites/character/idle_down_06.png` (new)
+  - Authored animation layer/frame source preserved for atlas generation.
+- `raw_assets/sprites/character/idle_down_07.png` (new)
+  - Authored animation layer/frame source preserved for atlas generation.
+- `raw_assets/sprites/character/idle_left_00.png` (new)
+  - Authored animation layer/frame source preserved for atlas generation.
+- `raw_assets/sprites/character/idle_left_01.png` (new)
+  - Authored animation layer/frame source preserved for atlas generation.
+- `raw_assets/sprites/character/idle_left_02.png` (new)
+  - Authored animation layer/frame source preserved for atlas generation.
+- `raw_assets/sprites/character/idle_left_03.png` (new)
+  - Authored animation layer/frame source preserved for atlas generation.
+- `raw_assets/sprites/character/idle_left_04.png` (new)
+  - Authored animation layer/frame source preserved for atlas generation.
+- `raw_assets/sprites/character/idle_left_05.png` (new)
+  - Authored animation layer/frame source preserved for atlas generation.
+- `raw_assets/sprites/character/idle_left_06.png` (new)
+  - Authored animation layer/frame source preserved for atlas generation.
+- `raw_assets/sprites/character/idle_left_07.png` (new)
+  - Authored animation layer/frame source preserved for atlas generation.
+- `raw_assets/sprites/character/idle_right_00.png` (new)
+  - Authored animation layer/frame source preserved for atlas generation.
+- `raw_assets/sprites/character/idle_right_01.png` (new)
+  - Authored animation layer/frame source preserved for atlas generation.
+- `raw_assets/sprites/character/idle_right_02.png` (new)
+  - Authored animation layer/frame source preserved for atlas generation.
+- `raw_assets/sprites/character/idle_right_03.png` (new)
+  - Authored animation layer/frame source preserved for atlas generation.
+- `raw_assets/sprites/character/idle_right_04.png` (new)
+  - Authored animation layer/frame source preserved for atlas generation.
+- `raw_assets/sprites/character/idle_right_05.png` (new)
+  - Authored animation layer/frame source preserved for atlas generation.
+- `raw_assets/sprites/character/idle_right_06.png` (new)
+  - Authored animation layer/frame source preserved for atlas generation.
+- `raw_assets/sprites/character/idle_right_07.png` (new)
+  - Authored animation layer/frame source preserved for atlas generation.
+- `raw_assets/sprites/character/idle_up_00.png` (new)
+  - Authored animation layer/frame source preserved for atlas generation.
+- `raw_assets/sprites/character/idle_up_01.png` (new)
+  - Authored animation layer/frame source preserved for atlas generation.
+- `raw_assets/sprites/character/idle_up_02.png` (new)
+  - Authored animation layer/frame source preserved for atlas generation.
+- `raw_assets/sprites/character/idle_up_03.png` (new)
+  - Authored animation layer/frame source preserved for atlas generation.
+- `raw_assets/sprites/character/idle_up_04.png` (new)
+  - Authored animation layer/frame source preserved for atlas generation.
+- `raw_assets/sprites/character/idle_up_05.png` (new)
+  - Authored animation layer/frame source preserved for atlas generation.
+- `raw_assets/sprites/character/idle_up_06.png` (new)
+  - Authored animation layer/frame source preserved for atlas generation.
+- `raw_assets/sprites/character/idle_up_07.png` (new)
+  - Authored animation layer/frame source preserved for atlas generation.
+- `raw_assets/sprites/character/jab_down_00.png` (new)
+  - Authored animation layer/frame source preserved for atlas generation.
+- `raw_assets/sprites/character/jab_down_01.png` (new)
+  - Authored animation layer/frame source preserved for atlas generation.
+- `raw_assets/sprites/character/jab_down_02.png` (new)
+  - Authored animation layer/frame source preserved for atlas generation.
+- `raw_assets/sprites/character/jab_down_03.png` (new)
+  - Authored animation layer/frame source preserved for atlas generation.
+- `raw_assets/sprites/character/jab_down_04.png` (new)
+  - Authored animation layer/frame source preserved for atlas generation.
+- `raw_assets/sprites/character/jab_down_05.png` (new)
+  - Authored animation layer/frame source preserved for atlas generation.
+- `raw_assets/sprites/character/jab_down_06.png` (new)
+  - Authored animation layer/frame source preserved for atlas generation.
+- `raw_assets/sprites/character/jab_down_07.png` (new)
+  - Authored animation layer/frame source preserved for atlas generation.
+- `raw_assets/sprites/character/jab_left_00.png` (new)
+  - Authored animation layer/frame source preserved for atlas generation.
+- `raw_assets/sprites/character/jab_left_01.png` (new)
+  - Authored animation layer/frame source preserved for atlas generation.
+- `raw_assets/sprites/character/jab_left_02.png` (new)
+  - Authored animation layer/frame source preserved for atlas generation.
+- `raw_assets/sprites/character/jab_left_03.png` (new)
+  - Authored animation layer/frame source preserved for atlas generation.
+- `raw_assets/sprites/character/jab_left_04.png` (new)
+  - Authored animation layer/frame source preserved for atlas generation.
+- `raw_assets/sprites/character/jab_left_05.png` (new)
+  - Authored animation layer/frame source preserved for atlas generation.
+- `raw_assets/sprites/character/jab_left_06.png` (new)
+  - Authored animation layer/frame source preserved for atlas generation.
+- `raw_assets/sprites/character/jab_left_07.png` (new)
+  - Authored animation layer/frame source preserved for atlas generation.
+- `raw_assets/sprites/character/jab_right_00.png` (new)
+  - Authored animation layer/frame source preserved for atlas generation.
+- `raw_assets/sprites/character/jab_right_01.png` (new)
+  - Authored animation layer/frame source preserved for atlas generation.
+- `raw_assets/sprites/character/jab_right_02.png` (new)
+  - Authored animation layer/frame source preserved for atlas generation.
+- `raw_assets/sprites/character/jab_right_03.png` (new)
+  - Authored animation layer/frame source preserved for atlas generation.
+- `raw_assets/sprites/character/jab_right_04.png` (new)
+  - Authored animation layer/frame source preserved for atlas generation.
+- `raw_assets/sprites/character/jab_right_05.png` (new)
+  - Authored animation layer/frame source preserved for atlas generation.
+- `raw_assets/sprites/character/jab_right_06.png` (new)
+  - Authored animation layer/frame source preserved for atlas generation.
+- `raw_assets/sprites/character/jab_right_07.png` (new)
+  - Authored animation layer/frame source preserved for atlas generation.
+- `raw_assets/sprites/character/jab_up_00.png` (new)
+  - Authored animation layer/frame source preserved for atlas generation.
+- `raw_assets/sprites/character/jab_up_01.png` (new)
+  - Authored animation layer/frame source preserved for atlas generation.
+- `raw_assets/sprites/character/jab_up_02.png` (new)
+  - Authored animation layer/frame source preserved for atlas generation.
+- `raw_assets/sprites/character/jab_up_03.png` (new)
+  - Authored animation layer/frame source preserved for atlas generation.
+- `raw_assets/sprites/character/jab_up_04.png` (new)
+  - Authored animation layer/frame source preserved for atlas generation.
+- `raw_assets/sprites/character/jab_up_05.png` (new)
+  - Authored animation layer/frame source preserved for atlas generation.
+- `raw_assets/sprites/character/jab_up_06.png` (new)
+  - Authored animation layer/frame source preserved for atlas generation.
+- `raw_assets/sprites/character/jab_up_07.png` (new)
+  - Authored animation layer/frame source preserved for atlas generation.
+- `raw_assets/sprites/character/shot_down_00.png` (new)
+  - Authored animation layer/frame source preserved for atlas generation.
+- `raw_assets/sprites/character/shot_down_01.png` (new)
+  - Authored animation layer/frame source preserved for atlas generation.
+- `raw_assets/sprites/character/shot_down_02.png` (new)
+  - Authored animation layer/frame source preserved for atlas generation.
+- `raw_assets/sprites/character/shot_down_03.png` (new)
+  - Authored animation layer/frame source preserved for atlas generation.
+- `raw_assets/sprites/character/shot_down_04.png` (new)
+  - Authored animation layer/frame source preserved for atlas generation.
+- `raw_assets/sprites/character/shot_down_05.png` (new)
+  - Authored animation layer/frame source preserved for atlas generation.
+- `raw_assets/sprites/character/shot_down_06.png` (new)
+  - Authored animation layer/frame source preserved for atlas generation.
+- `raw_assets/sprites/character/shot_down_07.png` (new)
+  - Authored animation layer/frame source preserved for atlas generation.
+- `raw_assets/sprites/character/shot_left_00.png` (new)
+  - Authored animation layer/frame source preserved for atlas generation.
+- `raw_assets/sprites/character/shot_left_01.png` (new)
+  - Authored animation layer/frame source preserved for atlas generation.
+- `raw_assets/sprites/character/shot_left_02.png` (new)
+  - Authored animation layer/frame source preserved for atlas generation.
+- `raw_assets/sprites/character/shot_left_03.png` (new)
+  - Authored animation layer/frame source preserved for atlas generation.
+- `raw_assets/sprites/character/shot_left_04.png` (new)
+  - Authored animation layer/frame source preserved for atlas generation.
+- `raw_assets/sprites/character/shot_left_05.png` (new)
+  - Authored animation layer/frame source preserved for atlas generation.
+- `raw_assets/sprites/character/shot_left_06.png` (new)
+  - Authored animation layer/frame source preserved for atlas generation.
+- `raw_assets/sprites/character/shot_left_07.png` (new)
+  - Authored animation layer/frame source preserved for atlas generation.
+- `raw_assets/sprites/character/shot_right_00.png` (new)
+  - Authored animation layer/frame source preserved for atlas generation.
+- `raw_assets/sprites/character/shot_right_01.png` (new)
+  - Authored animation layer/frame source preserved for atlas generation.
+- `raw_assets/sprites/character/shot_right_02.png` (new)
+  - Authored animation layer/frame source preserved for atlas generation.
+- `raw_assets/sprites/character/shot_right_03.png` (new)
+  - Authored animation layer/frame source preserved for atlas generation.
+- `raw_assets/sprites/character/shot_right_04.png` (new)
+  - Authored animation layer/frame source preserved for atlas generation.
+- `raw_assets/sprites/character/shot_right_05.png` (new)
+  - Authored animation layer/frame source preserved for atlas generation.
+- `raw_assets/sprites/character/shot_right_06.png` (new)
+  - Authored animation layer/frame source preserved for atlas generation.
+- `raw_assets/sprites/character/shot_right_07.png` (new)
+  - Authored animation layer/frame source preserved for atlas generation.
+- `raw_assets/sprites/character/shot_up_00.png` (new)
+  - Authored animation layer/frame source preserved for atlas generation.
+- `raw_assets/sprites/character/shot_up_01.png` (new)
+  - Authored animation layer/frame source preserved for atlas generation.
+- `raw_assets/sprites/character/shot_up_02.png` (new)
+  - Authored animation layer/frame source preserved for atlas generation.
+- `raw_assets/sprites/character/shot_up_03.png` (new)
+  - Authored animation layer/frame source preserved for atlas generation.
+- `raw_assets/sprites/character/shot_up_04.png` (new)
+  - Authored animation layer/frame source preserved for atlas generation.
+- `raw_assets/sprites/character/shot_up_05.png` (new)
+  - Authored animation layer/frame source preserved for atlas generation.
+- `raw_assets/sprites/character/shot_up_06.png` (new)
+  - Authored animation layer/frame source preserved for atlas generation.
+- `raw_assets/sprites/character/shot_up_07.png` (new)
+  - Authored animation layer/frame source preserved for atlas generation.
+- `raw_assets/sprites/character/slash_down_00.png` (new)
+  - Authored animation layer/frame source preserved for atlas generation.
+- `raw_assets/sprites/character/slash_down_01.png` (new)
+  - Authored animation layer/frame source preserved for atlas generation.
+- `raw_assets/sprites/character/slash_down_02.png` (new)
+  - Authored animation layer/frame source preserved for atlas generation.
+- `raw_assets/sprites/character/slash_down_03.png` (new)
+  - Authored animation layer/frame source preserved for atlas generation.
+- `raw_assets/sprites/character/slash_down_04.png` (new)
+  - Authored animation layer/frame source preserved for atlas generation.
+- `raw_assets/sprites/character/slash_down_05.png` (new)
+  - Authored animation layer/frame source preserved for atlas generation.
+- `raw_assets/sprites/character/slash_down_06.png` (new)
+  - Authored animation layer/frame source preserved for atlas generation.
+- `raw_assets/sprites/character/slash_down_07.png` (new)
+  - Authored animation layer/frame source preserved for atlas generation.
+- `raw_assets/sprites/character/slash_left_00.png` (new)
+  - Authored animation layer/frame source preserved for atlas generation.
+- `raw_assets/sprites/character/slash_left_01.png` (new)
+  - Authored animation layer/frame source preserved for atlas generation.
+- `raw_assets/sprites/character/slash_left_02.png` (new)
+  - Authored animation layer/frame source preserved for atlas generation.
+- `raw_assets/sprites/character/slash_left_03.png` (new)
+  - Authored animation layer/frame source preserved for atlas generation.
+- `raw_assets/sprites/character/slash_left_04.png` (new)
+  - Authored animation layer/frame source preserved for atlas generation.
+- `raw_assets/sprites/character/slash_left_05.png` (new)
+  - Authored animation layer/frame source preserved for atlas generation.
+- `raw_assets/sprites/character/slash_left_06.png` (new)
+  - Authored animation layer/frame source preserved for atlas generation.
+- `raw_assets/sprites/character/slash_left_07.png` (new)
+  - Authored animation layer/frame source preserved for atlas generation.
+- `raw_assets/sprites/character/slash_right_00.png` (new)
+  - Authored animation layer/frame source preserved for atlas generation.
+- `raw_assets/sprites/character/slash_right_01.png` (new)
+  - Authored animation layer/frame source preserved for atlas generation.
+- `raw_assets/sprites/character/slash_right_02.png` (new)
+  - Authored animation layer/frame source preserved for atlas generation.
+- `raw_assets/sprites/character/slash_right_03.png` (new)
+  - Authored animation layer/frame source preserved for atlas generation.
+- `raw_assets/sprites/character/slash_right_04.png` (new)
+  - Authored animation layer/frame source preserved for atlas generation.
+- `raw_assets/sprites/character/slash_right_05.png` (new)
+  - Authored animation layer/frame source preserved for atlas generation.
+- `raw_assets/sprites/character/slash_right_06.png` (new)
+  - Authored animation layer/frame source preserved for atlas generation.
+- `raw_assets/sprites/character/slash_right_07.png` (new)
+  - Authored animation layer/frame source preserved for atlas generation.
+- `raw_assets/sprites/character/slash_up_00.png` (new)
+  - Authored animation layer/frame source preserved for atlas generation.
+- `raw_assets/sprites/character/slash_up_01.png` (new)
+  - Authored animation layer/frame source preserved for atlas generation.
+- `raw_assets/sprites/character/slash_up_02.png` (new)
+  - Authored animation layer/frame source preserved for atlas generation.
+- `raw_assets/sprites/character/slash_up_03.png` (new)
+  - Authored animation layer/frame source preserved for atlas generation.
+- `raw_assets/sprites/character/slash_up_04.png` (new)
+  - Authored animation layer/frame source preserved for atlas generation.
+- `raw_assets/sprites/character/slash_up_05.png` (new)
+  - Authored animation layer/frame source preserved for atlas generation.
+- `raw_assets/sprites/character/slash_up_06.png` (new)
+  - Authored animation layer/frame source preserved for atlas generation.
+- `raw_assets/sprites/character/slash_up_07.png` (new)
+  - Authored animation layer/frame source preserved for atlas generation.
+- `raw_assets/sprites/character/walk_down_00.png` (new)
+  - Authored animation layer/frame source preserved for atlas generation.
+- `raw_assets/sprites/character/walk_down_01.png` (new)
+  - Authored animation layer/frame source preserved for atlas generation.
+- `raw_assets/sprites/character/walk_down_02.png` (new)
+  - Authored animation layer/frame source preserved for atlas generation.
+- `raw_assets/sprites/character/walk_down_03.png` (new)
+  - Authored animation layer/frame source preserved for atlas generation.
+- `raw_assets/sprites/character/walk_down_04.png` (new)
+  - Authored animation layer/frame source preserved for atlas generation.
+- `raw_assets/sprites/character/walk_down_05.png` (new)
+  - Authored animation layer/frame source preserved for atlas generation.
+- `raw_assets/sprites/character/walk_down_06.png` (new)
+  - Authored animation layer/frame source preserved for atlas generation.
+- `raw_assets/sprites/character/walk_down_07.png` (new)
+  - Authored animation layer/frame source preserved for atlas generation.
+- `raw_assets/sprites/character/walk_left_00.png` (new)
+  - Authored animation layer/frame source preserved for atlas generation.
+- `raw_assets/sprites/character/walk_left_01.png` (new)
+  - Authored animation layer/frame source preserved for atlas generation.
+- `raw_assets/sprites/character/walk_left_02.png` (new)
+  - Authored animation layer/frame source preserved for atlas generation.
+- `raw_assets/sprites/character/walk_left_03.png` (new)
+  - Authored animation layer/frame source preserved for atlas generation.
+- `raw_assets/sprites/character/walk_left_04.png` (new)
+  - Authored animation layer/frame source preserved for atlas generation.
+- `raw_assets/sprites/character/walk_left_05.png` (new)
+  - Authored animation layer/frame source preserved for atlas generation.
+- `raw_assets/sprites/character/walk_left_06.png` (new)
+  - Authored animation layer/frame source preserved for atlas generation.
+- `raw_assets/sprites/character/walk_left_07.png` (new)
+  - Authored animation layer/frame source preserved for atlas generation.
+- `raw_assets/sprites/character/walk_right_00.png` (new)
+  - Authored animation layer/frame source preserved for atlas generation.
+- `raw_assets/sprites/character/walk_right_01.png` (new)
+  - Authored animation layer/frame source preserved for atlas generation.
+- `raw_assets/sprites/character/walk_right_02.png` (new)
+  - Authored animation layer/frame source preserved for atlas generation.
+- `raw_assets/sprites/character/walk_right_03.png` (new)
+  - Authored animation layer/frame source preserved for atlas generation.
+- `raw_assets/sprites/character/walk_right_04.png` (new)
+  - Authored animation layer/frame source preserved for atlas generation.
+- `raw_assets/sprites/character/walk_right_05.png` (new)
+  - Authored animation layer/frame source preserved for atlas generation.
+- `raw_assets/sprites/character/walk_right_06.png` (new)
+  - Authored animation layer/frame source preserved for atlas generation.
+- `raw_assets/sprites/character/walk_right_07.png` (new)
+  - Authored animation layer/frame source preserved for atlas generation.
+- `raw_assets/sprites/character/walk_up_00.png` (new)
+  - Authored animation layer/frame source preserved for atlas generation.
+- `raw_assets/sprites/character/walk_up_01.png` (new)
+  - Authored animation layer/frame source preserved for atlas generation.
+- `raw_assets/sprites/character/walk_up_02.png` (new)
+  - Authored animation layer/frame source preserved for atlas generation.
+- `raw_assets/sprites/character/walk_up_03.png` (new)
+  - Authored animation layer/frame source preserved for atlas generation.
+- `raw_assets/sprites/character/walk_up_04.png` (new)
+  - Authored animation layer/frame source preserved for atlas generation.
+- `raw_assets/sprites/character/walk_up_05.png` (new)
+  - Authored animation layer/frame source preserved for atlas generation.
+- `raw_assets/sprites/character/walk_up_06.png` (new)
+  - Authored animation layer/frame source preserved for atlas generation.
+- `raw_assets/sprites/character/walk_up_07.png` (new)
+  - Authored animation layer/frame source preserved for atlas generation.
+- `raw_assets/sprites/feet/basic/cast_down_00.png` (new)
+  - Authored animation layer/frame source preserved for atlas generation.
+- `raw_assets/sprites/feet/basic/cast_down_01.png` (new)
+  - Authored animation layer/frame source preserved for atlas generation.
+- `raw_assets/sprites/feet/basic/cast_down_02.png` (new)
+  - Authored animation layer/frame source preserved for atlas generation.
+- `raw_assets/sprites/feet/basic/cast_down_03.png` (new)
+  - Authored animation layer/frame source preserved for atlas generation.
+- `raw_assets/sprites/feet/basic/cast_down_04.png` (new)
+  - Authored animation layer/frame source preserved for atlas generation.
+- `raw_assets/sprites/feet/basic/cast_down_05.png` (new)
+  - Authored animation layer/frame source preserved for atlas generation.
+- `raw_assets/sprites/feet/basic/cast_down_06.png` (new)
+  - Authored animation layer/frame source preserved for atlas generation.
+- `raw_assets/sprites/feet/basic/cast_down_07.png` (new)
+  - Authored animation layer/frame source preserved for atlas generation.
+- `raw_assets/sprites/feet/basic/cast_left_00.png` (new)
+  - Authored animation layer/frame source preserved for atlas generation.
+- `raw_assets/sprites/feet/basic/cast_left_01.png` (new)
+  - Authored animation layer/frame source preserved for atlas generation.
+- `raw_assets/sprites/feet/basic/cast_left_02.png` (new)
+  - Authored animation layer/frame source preserved for atlas generation.
+- `raw_assets/sprites/feet/basic/cast_left_03.png` (new)
+  - Authored animation layer/frame source preserved for atlas generation.
+- `raw_assets/sprites/feet/basic/cast_left_04.png` (new)
+  - Authored animation layer/frame source preserved for atlas generation.
+- `raw_assets/sprites/feet/basic/cast_left_05.png` (new)
+  - Authored animation layer/frame source preserved for atlas generation.
+- `raw_assets/sprites/feet/basic/cast_left_06.png` (new)
+  - Authored animation layer/frame source preserved for atlas generation.
+- `raw_assets/sprites/feet/basic/cast_left_07.png` (new)
+  - Authored animation layer/frame source preserved for atlas generation.
+- `raw_assets/sprites/feet/basic/cast_right_00.png` (new)
+  - Authored animation layer/frame source preserved for atlas generation.
+- `raw_assets/sprites/feet/basic/cast_right_01.png` (new)
+  - Authored animation layer/frame source preserved for atlas generation.
+- `raw_assets/sprites/feet/basic/cast_right_02.png` (new)
+  - Authored animation layer/frame source preserved for atlas generation.
+- `raw_assets/sprites/feet/basic/cast_right_03.png` (new)
+  - Authored animation layer/frame source preserved for atlas generation.
+- `raw_assets/sprites/feet/basic/cast_right_04.png` (new)
+  - Authored animation layer/frame source preserved for atlas generation.
+- `raw_assets/sprites/feet/basic/cast_right_05.png` (new)
+  - Authored animation layer/frame source preserved for atlas generation.
+- `raw_assets/sprites/feet/basic/cast_right_06.png` (new)
+  - Authored animation layer/frame source preserved for atlas generation.
+- `raw_assets/sprites/feet/basic/cast_right_07.png` (new)
+  - Authored animation layer/frame source preserved for atlas generation.
+- `raw_assets/sprites/feet/basic/cast_up_00.png` (new)
+  - Authored animation layer/frame source preserved for atlas generation.
+- `raw_assets/sprites/feet/basic/cast_up_01.png` (new)
+  - Authored animation layer/frame source preserved for atlas generation.
+- `raw_assets/sprites/feet/basic/cast_up_02.png` (new)
+  - Authored animation layer/frame source preserved for atlas generation.
+- `raw_assets/sprites/feet/basic/cast_up_03.png` (new)
+  - Authored animation layer/frame source preserved for atlas generation.
+- `raw_assets/sprites/feet/basic/cast_up_04.png` (new)
+  - Authored animation layer/frame source preserved for atlas generation.
+- `raw_assets/sprites/feet/basic/cast_up_05.png` (new)
+  - Authored animation layer/frame source preserved for atlas generation.
+- `raw_assets/sprites/feet/basic/cast_up_06.png` (new)
+  - Authored animation layer/frame source preserved for atlas generation.
+- `raw_assets/sprites/feet/basic/cast_up_07.png` (new)
+  - Authored animation layer/frame source preserved for atlas generation.
+- `raw_assets/sprites/feet/basic/death_down_00.png` (new)
+  - Authored animation layer/frame source preserved for atlas generation.
+- `raw_assets/sprites/feet/basic/death_down_01.png` (new)
+  - Authored animation layer/frame source preserved for atlas generation.
+- `raw_assets/sprites/feet/basic/death_down_02.png` (new)
+  - Authored animation layer/frame source preserved for atlas generation.
+- `raw_assets/sprites/feet/basic/death_down_03.png` (new)
+  - Authored animation layer/frame source preserved for atlas generation.
+- `raw_assets/sprites/feet/basic/death_down_04.png` (new)
+  - Authored animation layer/frame source preserved for atlas generation.
+- `raw_assets/sprites/feet/basic/death_down_05.png` (new)
+  - Authored animation layer/frame source preserved for atlas generation.
+- `raw_assets/sprites/feet/basic/death_down_06.png` (new)
+  - Authored animation layer/frame source preserved for atlas generation.
+- `raw_assets/sprites/feet/basic/death_down_07.png` (new)
+  - Authored animation layer/frame source preserved for atlas generation.
+- `raw_assets/sprites/feet/basic/death_left_00.png` (new)
+  - Authored animation layer/frame source preserved for atlas generation.
+- `raw_assets/sprites/feet/basic/death_left_01.png` (new)
+  - Authored animation layer/frame source preserved for atlas generation.
+- `raw_assets/sprites/feet/basic/death_left_02.png` (new)
+  - Authored animation layer/frame source preserved for atlas generation.
+- `raw_assets/sprites/feet/basic/death_left_03.png` (new)
+  - Authored animation layer/frame source preserved for atlas generation.
+- `raw_assets/sprites/feet/basic/death_left_04.png` (new)
+  - Authored animation layer/frame source preserved for atlas generation.
+- `raw_assets/sprites/feet/basic/death_left_05.png` (new)
+  - Authored animation layer/frame source preserved for atlas generation.
+- `raw_assets/sprites/feet/basic/death_left_06.png` (new)
+  - Authored animation layer/frame source preserved for atlas generation.
+- `raw_assets/sprites/feet/basic/death_left_07.png` (new)
+  - Authored animation layer/frame source preserved for atlas generation.
+- `raw_assets/sprites/feet/basic/death_right_00.png` (new)
+  - Authored animation layer/frame source preserved for atlas generation.
+- `raw_assets/sprites/feet/basic/death_right_01.png` (new)
+  - Authored animation layer/frame source preserved for atlas generation.
+- `raw_assets/sprites/feet/basic/death_right_02.png` (new)
+  - Authored animation layer/frame source preserved for atlas generation.
+- `raw_assets/sprites/feet/basic/death_right_03.png` (new)
+  - Authored animation layer/frame source preserved for atlas generation.
+- `raw_assets/sprites/feet/basic/death_right_04.png` (new)
+  - Authored animation layer/frame source preserved for atlas generation.
+- `raw_assets/sprites/feet/basic/death_right_05.png` (new)
+  - Authored animation layer/frame source preserved for atlas generation.
+- `raw_assets/sprites/feet/basic/death_right_06.png` (new)
+  - Authored animation layer/frame source preserved for atlas generation.
+- `raw_assets/sprites/feet/basic/death_right_07.png` (new)
+  - Authored animation layer/frame source preserved for atlas generation.
+- `raw_assets/sprites/feet/basic/death_up_00.png` (new)
+  - Authored animation layer/frame source preserved for atlas generation.
+- `raw_assets/sprites/feet/basic/death_up_01.png` (new)
+  - Authored animation layer/frame source preserved for atlas generation.
+- `raw_assets/sprites/feet/basic/death_up_02.png` (new)
+  - Authored animation layer/frame source preserved for atlas generation.
+- `raw_assets/sprites/feet/basic/death_up_03.png` (new)
+  - Authored animation layer/frame source preserved for atlas generation.
+- `raw_assets/sprites/feet/basic/death_up_04.png` (new)
+  - Authored animation layer/frame source preserved for atlas generation.
+- `raw_assets/sprites/feet/basic/death_up_05.png` (new)
+  - Authored animation layer/frame source preserved for atlas generation.
+- `raw_assets/sprites/feet/basic/death_up_06.png` (new)
+  - Authored animation layer/frame source preserved for atlas generation.
+- `raw_assets/sprites/feet/basic/death_up_07.png` (new)
+  - Authored animation layer/frame source preserved for atlas generation.
+- `raw_assets/sprites/feet/basic/idle_down_00.png` (new)
+  - Authored animation layer/frame source preserved for atlas generation.
+- `raw_assets/sprites/feet/basic/idle_down_01.png` (new)
+  - Authored animation layer/frame source preserved for atlas generation.
+- `raw_assets/sprites/feet/basic/idle_down_02.png` (new)
+  - Authored animation layer/frame source preserved for atlas generation.
+- `raw_assets/sprites/feet/basic/idle_down_03.png` (new)
+  - Authored animation layer/frame source preserved for atlas generation.
+- `raw_assets/sprites/feet/basic/idle_down_04.png` (new)
+  - Authored animation layer/frame source preserved for atlas generation.
+- `raw_assets/sprites/feet/basic/idle_down_05.png` (new)
+  - Authored animation layer/frame source preserved for atlas generation.
+- `raw_assets/sprites/feet/basic/idle_down_06.png` (new)
+  - Authored animation layer/frame source preserved for atlas generation.
+- `raw_assets/sprites/feet/basic/idle_down_07.png` (new)
+  - Authored animation layer/frame source preserved for atlas generation.
+- `raw_assets/sprites/feet/basic/idle_left_00.png` (new)
+  - Authored animation layer/frame source preserved for atlas generation.
+- `raw_assets/sprites/feet/basic/idle_left_01.png` (new)
+  - Authored animation layer/frame source preserved for atlas generation.
+- `raw_assets/sprites/feet/basic/idle_left_02.png` (new)
+  - Authored animation layer/frame source preserved for atlas generation.
+- `raw_assets/sprites/feet/basic/idle_left_03.png` (new)
+  - Authored animation layer/frame source preserved for atlas generation.
+- `raw_assets/sprites/feet/basic/idle_left_04.png` (new)
+  - Authored animation layer/frame source preserved for atlas generation.
+- `raw_assets/sprites/feet/basic/idle_left_05.png` (new)
+  - Authored animation layer/frame source preserved for atlas generation.
+- `raw_assets/sprites/feet/basic/idle_left_06.png` (new)
+  - Authored animation layer/frame source preserved for atlas generation.
+- `raw_assets/sprites/feet/basic/idle_left_07.png` (new)
+  - Authored animation layer/frame source preserved for atlas generation.
+- `raw_assets/sprites/feet/basic/idle_right_00.png` (new)
+  - Authored animation layer/frame source preserved for atlas generation.
+- `raw_assets/sprites/feet/basic/idle_right_01.png` (new)
+  - Authored animation layer/frame source preserved for atlas generation.
+- `raw_assets/sprites/feet/basic/idle_right_02.png` (new)
+  - Authored animation layer/frame source preserved for atlas generation.
+- `raw_assets/sprites/feet/basic/idle_right_03.png` (new)
+  - Authored animation layer/frame source preserved for atlas generation.
+- `raw_assets/sprites/feet/basic/idle_right_04.png` (new)
+  - Authored animation layer/frame source preserved for atlas generation.
+- `raw_assets/sprites/feet/basic/idle_right_05.png` (new)
+  - Authored animation layer/frame source preserved for atlas generation.
+- `raw_assets/sprites/feet/basic/idle_right_06.png` (new)
+  - Authored animation layer/frame source preserved for atlas generation.
+- `raw_assets/sprites/feet/basic/idle_right_07.png` (new)
+  - Authored animation layer/frame source preserved for atlas generation.
+- `raw_assets/sprites/feet/basic/idle_up_00.png` (new)
+  - Authored animation layer/frame source preserved for atlas generation.
+- `raw_assets/sprites/feet/basic/idle_up_01.png` (new)
+  - Authored animation layer/frame source preserved for atlas generation.
+- `raw_assets/sprites/feet/basic/idle_up_02.png` (new)
+  - Authored animation layer/frame source preserved for atlas generation.
+- `raw_assets/sprites/feet/basic/idle_up_03.png` (new)
+  - Authored animation layer/frame source preserved for atlas generation.
+- `raw_assets/sprites/feet/basic/idle_up_04.png` (new)
+  - Authored animation layer/frame source preserved for atlas generation.
+- `raw_assets/sprites/feet/basic/idle_up_05.png` (new)
+  - Authored animation layer/frame source preserved for atlas generation.
+- `raw_assets/sprites/feet/basic/idle_up_06.png` (new)
+  - Authored animation layer/frame source preserved for atlas generation.
+- `raw_assets/sprites/feet/basic/idle_up_07.png` (new)
+  - Authored animation layer/frame source preserved for atlas generation.
+- `raw_assets/sprites/feet/basic/jab_down_00.png` (new)
+  - Authored animation layer/frame source preserved for atlas generation.
+- `raw_assets/sprites/feet/basic/jab_down_01.png` (new)
+  - Authored animation layer/frame source preserved for atlas generation.
+- `raw_assets/sprites/feet/basic/jab_down_02.png` (new)
+  - Authored animation layer/frame source preserved for atlas generation.
+- `raw_assets/sprites/feet/basic/jab_down_03.png` (new)
+  - Authored animation layer/frame source preserved for atlas generation.
+- `raw_assets/sprites/feet/basic/jab_down_04.png` (new)
+  - Authored animation layer/frame source preserved for atlas generation.
+- `raw_assets/sprites/feet/basic/jab_down_05.png` (new)
+  - Authored animation layer/frame source preserved for atlas generation.
+- `raw_assets/sprites/feet/basic/jab_down_06.png` (new)
+  - Authored animation layer/frame source preserved for atlas generation.
+- `raw_assets/sprites/feet/basic/jab_down_07.png` (new)
+  - Authored animation layer/frame source preserved for atlas generation.
+- `raw_assets/sprites/feet/basic/jab_left_00.png` (new)
+  - Authored animation layer/frame source preserved for atlas generation.
+- `raw_assets/sprites/feet/basic/jab_left_01.png` (new)
+  - Authored animation layer/frame source preserved for atlas generation.
+- `raw_assets/sprites/feet/basic/jab_left_02.png` (new)
+  - Authored animation layer/frame source preserved for atlas generation.
+- `raw_assets/sprites/feet/basic/jab_left_03.png` (new)
+  - Authored animation layer/frame source preserved for atlas generation.
+- `raw_assets/sprites/feet/basic/jab_left_04.png` (new)
+  - Authored animation layer/frame source preserved for atlas generation.
+- `raw_assets/sprites/feet/basic/jab_left_05.png` (new)
+  - Authored animation layer/frame source preserved for atlas generation.
+- `raw_assets/sprites/feet/basic/jab_left_06.png` (new)
+  - Authored animation layer/frame source preserved for atlas generation.
+- `raw_assets/sprites/feet/basic/jab_left_07.png` (new)
+  - Authored animation layer/frame source preserved for atlas generation.
+- `raw_assets/sprites/feet/basic/jab_right_00.png` (new)
+  - Authored animation layer/frame source preserved for atlas generation.
+- `raw_assets/sprites/feet/basic/jab_right_01.png` (new)
+  - Authored animation layer/frame source preserved for atlas generation.
+- `raw_assets/sprites/feet/basic/jab_right_02.png` (new)
+  - Authored animation layer/frame source preserved for atlas generation.
+- `raw_assets/sprites/feet/basic/jab_right_03.png` (new)
+  - Authored animation layer/frame source preserved for atlas generation.
+- `raw_assets/sprites/feet/basic/jab_right_04.png` (new)
+  - Authored animation layer/frame source preserved for atlas generation.
+- `raw_assets/sprites/feet/basic/jab_right_05.png` (new)
+  - Authored animation layer/frame source preserved for atlas generation.
+- `raw_assets/sprites/feet/basic/jab_right_06.png` (new)
+  - Authored animation layer/frame source preserved for atlas generation.
+- `raw_assets/sprites/feet/basic/jab_right_07.png` (new)
+  - Authored animation layer/frame source preserved for atlas generation.
+- `raw_assets/sprites/feet/basic/jab_up_00.png` (new)
+  - Authored animation layer/frame source preserved for atlas generation.
+- `raw_assets/sprites/feet/basic/jab_up_01.png` (new)
+  - Authored animation layer/frame source preserved for atlas generation.
+- `raw_assets/sprites/feet/basic/jab_up_02.png` (new)
+  - Authored animation layer/frame source preserved for atlas generation.
+- `raw_assets/sprites/feet/basic/jab_up_03.png` (new)
+  - Authored animation layer/frame source preserved for atlas generation.
+- `raw_assets/sprites/feet/basic/jab_up_04.png` (new)
+  - Authored animation layer/frame source preserved for atlas generation.
+- `raw_assets/sprites/feet/basic/jab_up_05.png` (new)
+  - Authored animation layer/frame source preserved for atlas generation.
+- `raw_assets/sprites/feet/basic/jab_up_06.png` (new)
+  - Authored animation layer/frame source preserved for atlas generation.
+- `raw_assets/sprites/feet/basic/jab_up_07.png` (new)
+  - Authored animation layer/frame source preserved for atlas generation.
+- `raw_assets/sprites/feet/basic/shot_down_00.png` (new)
+  - Authored animation layer/frame source preserved for atlas generation.
+- `raw_assets/sprites/feet/basic/shot_down_01.png` (new)
+  - Authored animation layer/frame source preserved for atlas generation.
+- `raw_assets/sprites/feet/basic/shot_down_02.png` (new)
+  - Authored animation layer/frame source preserved for atlas generation.
+- `raw_assets/sprites/feet/basic/shot_down_03.png` (new)
+  - Authored animation layer/frame source preserved for atlas generation.
+- `raw_assets/sprites/feet/basic/shot_down_04.png` (new)
+  - Authored animation layer/frame source preserved for atlas generation.
+- `raw_assets/sprites/feet/basic/shot_down_05.png` (new)
+  - Authored animation layer/frame source preserved for atlas generation.
+- `raw_assets/sprites/feet/basic/shot_down_06.png` (new)
+  - Authored animation layer/frame source preserved for atlas generation.
+- `raw_assets/sprites/feet/basic/shot_down_07.png` (new)
+  - Authored animation layer/frame source preserved for atlas generation.
+- `raw_assets/sprites/feet/basic/shot_left_00.png` (new)
+  - Authored animation layer/frame source preserved for atlas generation.
+- `raw_assets/sprites/feet/basic/shot_left_01.png` (new)
+  - Authored animation layer/frame source preserved for atlas generation.
+- `raw_assets/sprites/feet/basic/shot_left_02.png` (new)
+  - Authored animation layer/frame source preserved for atlas generation.
+- `raw_assets/sprites/feet/basic/shot_left_03.png` (new)
+  - Authored animation layer/frame source preserved for atlas generation.
+- `raw_assets/sprites/feet/basic/shot_left_04.png` (new)
+  - Authored animation layer/frame source preserved for atlas generation.
+- `raw_assets/sprites/feet/basic/shot_left_05.png` (new)
+  - Authored animation layer/frame source preserved for atlas generation.
+- `raw_assets/sprites/feet/basic/shot_left_06.png` (new)
+  - Authored animation layer/frame source preserved for atlas generation.
+- `raw_assets/sprites/feet/basic/shot_left_07.png` (new)
+  - Authored animation layer/frame source preserved for atlas generation.
+- `raw_assets/sprites/feet/basic/shot_right_00.png` (new)
+  - Authored animation layer/frame source preserved for atlas generation.
+- `raw_assets/sprites/feet/basic/shot_right_01.png` (new)
+  - Authored animation layer/frame source preserved for atlas generation.
+- `raw_assets/sprites/feet/basic/shot_right_02.png` (new)
+  - Authored animation layer/frame source preserved for atlas generation.
+- `raw_assets/sprites/feet/basic/shot_right_03.png` (new)
+  - Authored animation layer/frame source preserved for atlas generation.
+- `raw_assets/sprites/feet/basic/shot_right_04.png` (new)
+  - Authored animation layer/frame source preserved for atlas generation.
+- `raw_assets/sprites/feet/basic/shot_right_05.png` (new)
+  - Authored animation layer/frame source preserved for atlas generation.
+- `raw_assets/sprites/feet/basic/shot_right_06.png` (new)
+  - Authored animation layer/frame source preserved for atlas generation.
+- `raw_assets/sprites/feet/basic/shot_right_07.png` (new)
+  - Authored animation layer/frame source preserved for atlas generation.
+- `raw_assets/sprites/feet/basic/shot_up_00.png` (new)
+  - Authored animation layer/frame source preserved for atlas generation.
+- `raw_assets/sprites/feet/basic/shot_up_01.png` (new)
+  - Authored animation layer/frame source preserved for atlas generation.
+- `raw_assets/sprites/feet/basic/shot_up_02.png` (new)
+  - Authored animation layer/frame source preserved for atlas generation.
+- `raw_assets/sprites/feet/basic/shot_up_03.png` (new)
+  - Authored animation layer/frame source preserved for atlas generation.
+- `raw_assets/sprites/feet/basic/shot_up_04.png` (new)
+  - Authored animation layer/frame source preserved for atlas generation.
+- `raw_assets/sprites/feet/basic/shot_up_05.png` (new)
+  - Authored animation layer/frame source preserved for atlas generation.
+- `raw_assets/sprites/feet/basic/shot_up_06.png` (new)
+  - Authored animation layer/frame source preserved for atlas generation.
+- `raw_assets/sprites/feet/basic/shot_up_07.png` (new)
+  - Authored animation layer/frame source preserved for atlas generation.
+- `raw_assets/sprites/feet/basic/slash_down_00.png` (new)
+  - Authored animation layer/frame source preserved for atlas generation.
+- `raw_assets/sprites/feet/basic/slash_down_01.png` (new)
+  - Authored animation layer/frame source preserved for atlas generation.
+- `raw_assets/sprites/feet/basic/slash_down_02.png` (new)
+  - Authored animation layer/frame source preserved for atlas generation.
+- `raw_assets/sprites/feet/basic/slash_down_03.png` (new)
+  - Authored animation layer/frame source preserved for atlas generation.
+- `raw_assets/sprites/feet/basic/slash_down_04.png` (new)
+  - Authored animation layer/frame source preserved for atlas generation.
+- `raw_assets/sprites/feet/basic/slash_down_05.png` (new)
+  - Authored animation layer/frame source preserved for atlas generation.
+- `raw_assets/sprites/feet/basic/slash_down_06.png` (new)
+  - Authored animation layer/frame source preserved for atlas generation.
+- `raw_assets/sprites/feet/basic/slash_down_07.png` (new)
+  - Authored animation layer/frame source preserved for atlas generation.
+- `raw_assets/sprites/feet/basic/slash_left_00.png` (new)
+  - Authored animation layer/frame source preserved for atlas generation.
+- `raw_assets/sprites/feet/basic/slash_left_01.png` (new)
+  - Authored animation layer/frame source preserved for atlas generation.
+- `raw_assets/sprites/feet/basic/slash_left_02.png` (new)
+  - Authored animation layer/frame source preserved for atlas generation.
+- `raw_assets/sprites/feet/basic/slash_left_03.png` (new)
+  - Authored animation layer/frame source preserved for atlas generation.
+- `raw_assets/sprites/feet/basic/slash_left_04.png` (new)
+  - Authored animation layer/frame source preserved for atlas generation.
+- `raw_assets/sprites/feet/basic/slash_left_05.png` (new)
+  - Authored animation layer/frame source preserved for atlas generation.
+- `raw_assets/sprites/feet/basic/slash_left_06.png` (new)
+  - Authored animation layer/frame source preserved for atlas generation.
+- `raw_assets/sprites/feet/basic/slash_left_07.png` (new)
+  - Authored animation layer/frame source preserved for atlas generation.
+- `raw_assets/sprites/feet/basic/slash_right_00.png` (new)
+  - Authored animation layer/frame source preserved for atlas generation.
+- `raw_assets/sprites/feet/basic/slash_right_01.png` (new)
+  - Authored animation layer/frame source preserved for atlas generation.
+- `raw_assets/sprites/feet/basic/slash_right_02.png` (new)
+  - Authored animation layer/frame source preserved for atlas generation.
+- `raw_assets/sprites/feet/basic/slash_right_03.png` (new)
+  - Authored animation layer/frame source preserved for atlas generation.
+- `raw_assets/sprites/feet/basic/slash_right_04.png` (new)
+  - Authored animation layer/frame source preserved for atlas generation.
+- `raw_assets/sprites/feet/basic/slash_right_05.png` (new)
+  - Authored animation layer/frame source preserved for atlas generation.
+- `raw_assets/sprites/feet/basic/slash_right_06.png` (new)
+  - Authored animation layer/frame source preserved for atlas generation.
+- `raw_assets/sprites/feet/basic/slash_right_07.png` (new)
+  - Authored animation layer/frame source preserved for atlas generation.
+- `raw_assets/sprites/feet/basic/slash_up_00.png` (new)
+  - Authored animation layer/frame source preserved for atlas generation.
+- `raw_assets/sprites/feet/basic/slash_up_01.png` (new)
+  - Authored animation layer/frame source preserved for atlas generation.
+- `raw_assets/sprites/feet/basic/slash_up_02.png` (new)
+  - Authored animation layer/frame source preserved for atlas generation.
+- `raw_assets/sprites/feet/basic/slash_up_03.png` (new)
+  - Authored animation layer/frame source preserved for atlas generation.
+- `raw_assets/sprites/feet/basic/slash_up_04.png` (new)
+  - Authored animation layer/frame source preserved for atlas generation.
+- `raw_assets/sprites/feet/basic/slash_up_05.png` (new)
+  - Authored animation layer/frame source preserved for atlas generation.
+- `raw_assets/sprites/feet/basic/slash_up_06.png` (new)
+  - Authored animation layer/frame source preserved for atlas generation.
+- `raw_assets/sprites/feet/basic/slash_up_07.png` (new)
+  - Authored animation layer/frame source preserved for atlas generation.
+- `raw_assets/sprites/feet/basic/walk_down_00.png` (new)
+  - Authored animation layer/frame source preserved for atlas generation.
+- `raw_assets/sprites/feet/basic/walk_down_01.png` (new)
+  - Authored animation layer/frame source preserved for atlas generation.
+- `raw_assets/sprites/feet/basic/walk_down_02.png` (new)
+  - Authored animation layer/frame source preserved for atlas generation.
+- `raw_assets/sprites/feet/basic/walk_down_03.png` (new)
+  - Authored animation layer/frame source preserved for atlas generation.
+- `raw_assets/sprites/feet/basic/walk_down_04.png` (new)
+  - Authored animation layer/frame source preserved for atlas generation.
+- `raw_assets/sprites/feet/basic/walk_down_05.png` (new)
+  - Authored animation layer/frame source preserved for atlas generation.
+- `raw_assets/sprites/feet/basic/walk_down_06.png` (new)
+  - Authored animation layer/frame source preserved for atlas generation.
+- `raw_assets/sprites/feet/basic/walk_down_07.png` (new)
+  - Authored animation layer/frame source preserved for atlas generation.
+- `raw_assets/sprites/feet/basic/walk_left_00.png` (new)
+  - Authored animation layer/frame source preserved for atlas generation.
+- `raw_assets/sprites/feet/basic/walk_left_01.png` (new)
+  - Authored animation layer/frame source preserved for atlas generation.
+- `raw_assets/sprites/feet/basic/walk_left_02.png` (new)
+  - Authored animation layer/frame source preserved for atlas generation.
+- `raw_assets/sprites/feet/basic/walk_left_03.png` (new)
+  - Authored animation layer/frame source preserved for atlas generation.
+- `raw_assets/sprites/feet/basic/walk_left_04.png` (new)
+  - Authored animation layer/frame source preserved for atlas generation.
+- `raw_assets/sprites/feet/basic/walk_left_05.png` (new)
+  - Authored animation layer/frame source preserved for atlas generation.
+- `raw_assets/sprites/feet/basic/walk_left_06.png` (new)
+  - Authored animation layer/frame source preserved for atlas generation.
+- `raw_assets/sprites/feet/basic/walk_left_07.png` (new)
+  - Authored animation layer/frame source preserved for atlas generation.
+- `raw_assets/sprites/feet/basic/walk_right_00.png` (new)
+  - Authored animation layer/frame source preserved for atlas generation.
+- `raw_assets/sprites/feet/basic/walk_right_01.png` (new)
+  - Authored animation layer/frame source preserved for atlas generation.
+- `raw_assets/sprites/feet/basic/walk_right_02.png` (new)
+  - Authored animation layer/frame source preserved for atlas generation.
+- `raw_assets/sprites/feet/basic/walk_right_03.png` (new)
+  - Authored animation layer/frame source preserved for atlas generation.
+- `raw_assets/sprites/feet/basic/walk_right_04.png` (new)
+  - Authored animation layer/frame source preserved for atlas generation.
+- `raw_assets/sprites/feet/basic/walk_right_05.png` (new)
+  - Authored animation layer/frame source preserved for atlas generation.
+- `raw_assets/sprites/feet/basic/walk_right_06.png` (new)
+  - Authored animation layer/frame source preserved for atlas generation.
+- `raw_assets/sprites/feet/basic/walk_right_07.png` (new)
+  - Authored animation layer/frame source preserved for atlas generation.
+- `raw_assets/sprites/feet/basic/walk_up_00.png` (new)
+  - Authored animation layer/frame source preserved for atlas generation.
+- `raw_assets/sprites/feet/basic/walk_up_01.png` (new)
+  - Authored animation layer/frame source preserved for atlas generation.
+- `raw_assets/sprites/feet/basic/walk_up_02.png` (new)
+  - Authored animation layer/frame source preserved for atlas generation.
+- `raw_assets/sprites/feet/basic/walk_up_03.png` (new)
+  - Authored animation layer/frame source preserved for atlas generation.
+- `raw_assets/sprites/feet/basic/walk_up_04.png` (new)
+  - Authored animation layer/frame source preserved for atlas generation.
+- `raw_assets/sprites/feet/basic/walk_up_05.png` (new)
+  - Authored animation layer/frame source preserved for atlas generation.
+- `raw_assets/sprites/feet/basic/walk_up_06.png` (new)
+  - Authored animation layer/frame source preserved for atlas generation.
+- `raw_assets/sprites/feet/basic/walk_up_07.png` (new)
+  - Authored animation layer/frame source preserved for atlas generation.
+- `raw_assets/sprites/hands/basic/cast_down_00.png` (new)
+  - Authored animation layer/frame source preserved for atlas generation.
+- `raw_assets/sprites/hands/basic/cast_down_01.png` (new)
+  - Authored animation layer/frame source preserved for atlas generation.
+- `raw_assets/sprites/hands/basic/cast_down_02.png` (new)
+  - Authored animation layer/frame source preserved for atlas generation.
+- `raw_assets/sprites/hands/basic/cast_down_03.png` (new)
+  - Authored animation layer/frame source preserved for atlas generation.
+- `raw_assets/sprites/hands/basic/cast_down_04.png` (new)
+  - Authored animation layer/frame source preserved for atlas generation.
+- `raw_assets/sprites/hands/basic/cast_down_05.png` (new)
+  - Authored animation layer/frame source preserved for atlas generation.
+- `raw_assets/sprites/hands/basic/cast_down_06.png` (new)
+  - Authored animation layer/frame source preserved for atlas generation.
+- `raw_assets/sprites/hands/basic/cast_down_07.png` (new)
+  - Authored animation layer/frame source preserved for atlas generation.
+- `raw_assets/sprites/hands/basic/cast_left_00.png` (new)
+  - Authored animation layer/frame source preserved for atlas generation.
+- `raw_assets/sprites/hands/basic/cast_left_01.png` (new)
+  - Authored animation layer/frame source preserved for atlas generation.
+- `raw_assets/sprites/hands/basic/cast_left_02.png` (new)
+  - Authored animation layer/frame source preserved for atlas generation.
+- `raw_assets/sprites/hands/basic/cast_left_03.png` (new)
+  - Authored animation layer/frame source preserved for atlas generation.
+- `raw_assets/sprites/hands/basic/cast_left_04.png` (new)
+  - Authored animation layer/frame source preserved for atlas generation.
+- `raw_assets/sprites/hands/basic/cast_left_05.png` (new)
+  - Authored animation layer/frame source preserved for atlas generation.
+- `raw_assets/sprites/hands/basic/cast_left_06.png` (new)
+  - Authored animation layer/frame source preserved for atlas generation.
+- `raw_assets/sprites/hands/basic/cast_left_07.png` (new)
+  - Authored animation layer/frame source preserved for atlas generation.
+- `raw_assets/sprites/hands/basic/cast_right_00.png` (new)
+  - Authored animation layer/frame source preserved for atlas generation.
+- `raw_assets/sprites/hands/basic/cast_right_01.png` (new)
+  - Authored animation layer/frame source preserved for atlas generation.
+- `raw_assets/sprites/hands/basic/cast_right_02.png` (new)
+  - Authored animation layer/frame source preserved for atlas generation.
+- `raw_assets/sprites/hands/basic/cast_right_03.png` (new)
+  - Authored animation layer/frame source preserved for atlas generation.
+- `raw_assets/sprites/hands/basic/cast_right_04.png` (new)
+  - Authored animation layer/frame source preserved for atlas generation.
+- `raw_assets/sprites/hands/basic/cast_right_05.png` (new)
+  - Authored animation layer/frame source preserved for atlas generation.
+- `raw_assets/sprites/hands/basic/cast_right_06.png` (new)
+  - Authored animation layer/frame source preserved for atlas generation.
+- `raw_assets/sprites/hands/basic/cast_right_07.png` (new)
+  - Authored animation layer/frame source preserved for atlas generation.
+- `raw_assets/sprites/hands/basic/cast_up_00.png` (new)
+  - Authored animation layer/frame source preserved for atlas generation.
+- `raw_assets/sprites/hands/basic/cast_up_01.png` (new)
+  - Authored animation layer/frame source preserved for atlas generation.
+- `raw_assets/sprites/hands/basic/cast_up_02.png` (new)
+  - Authored animation layer/frame source preserved for atlas generation.
+- `raw_assets/sprites/hands/basic/cast_up_03.png` (new)
+  - Authored animation layer/frame source preserved for atlas generation.
+- `raw_assets/sprites/hands/basic/cast_up_04.png` (new)
+  - Authored animation layer/frame source preserved for atlas generation.
+- `raw_assets/sprites/hands/basic/cast_up_05.png` (new)
+  - Authored animation layer/frame source preserved for atlas generation.
+- `raw_assets/sprites/hands/basic/cast_up_06.png` (new)
+  - Authored animation layer/frame source preserved for atlas generation.
+- `raw_assets/sprites/hands/basic/cast_up_07.png` (new)
+  - Authored animation layer/frame source preserved for atlas generation.
+- `raw_assets/sprites/hands/basic/death_down_00.png` (new)
+  - Authored animation layer/frame source preserved for atlas generation.
+- `raw_assets/sprites/hands/basic/death_down_01.png` (new)
+  - Authored animation layer/frame source preserved for atlas generation.
+- `raw_assets/sprites/hands/basic/death_down_02.png` (new)
+  - Authored animation layer/frame source preserved for atlas generation.
+- `raw_assets/sprites/hands/basic/death_down_03.png` (new)
+  - Authored animation layer/frame source preserved for atlas generation.
+- `raw_assets/sprites/hands/basic/death_down_04.png` (new)
+  - Authored animation layer/frame source preserved for atlas generation.
+- `raw_assets/sprites/hands/basic/death_down_05.png` (new)
+  - Authored animation layer/frame source preserved for atlas generation.
+- `raw_assets/sprites/hands/basic/death_down_06.png` (new)
+  - Authored animation layer/frame source preserved for atlas generation.
+- `raw_assets/sprites/hands/basic/death_down_07.png` (new)
+  - Authored animation layer/frame source preserved for atlas generation.
+- `raw_assets/sprites/hands/basic/death_left_00.png` (new)
+  - Authored animation layer/frame source preserved for atlas generation.
+- `raw_assets/sprites/hands/basic/death_left_01.png` (new)
+  - Authored animation layer/frame source preserved for atlas generation.
+- `raw_assets/sprites/hands/basic/death_left_02.png` (new)
+  - Authored animation layer/frame source preserved for atlas generation.
+- `raw_assets/sprites/hands/basic/death_left_03.png` (new)
+  - Authored animation layer/frame source preserved for atlas generation.
+- `raw_assets/sprites/hands/basic/death_left_04.png` (new)
+  - Authored animation layer/frame source preserved for atlas generation.
+- `raw_assets/sprites/hands/basic/death_left_05.png` (new)
+  - Authored animation layer/frame source preserved for atlas generation.
+- `raw_assets/sprites/hands/basic/death_left_06.png` (new)
+  - Authored animation layer/frame source preserved for atlas generation.
+- `raw_assets/sprites/hands/basic/death_left_07.png` (new)
+  - Authored animation layer/frame source preserved for atlas generation.
+- `raw_assets/sprites/hands/basic/death_right_00.png` (new)
+  - Authored animation layer/frame source preserved for atlas generation.
+- `raw_assets/sprites/hands/basic/death_right_01.png` (new)
+  - Authored animation layer/frame source preserved for atlas generation.
+- `raw_assets/sprites/hands/basic/death_right_02.png` (new)
+  - Authored animation layer/frame source preserved for atlas generation.
+- `raw_assets/sprites/hands/basic/death_right_03.png` (new)
+  - Authored animation layer/frame source preserved for atlas generation.
+- `raw_assets/sprites/hands/basic/death_right_04.png` (new)
+  - Authored animation layer/frame source preserved for atlas generation.
+- `raw_assets/sprites/hands/basic/death_right_05.png` (new)
+  - Authored animation layer/frame source preserved for atlas generation.
+- `raw_assets/sprites/hands/basic/death_right_06.png` (new)
+  - Authored animation layer/frame source preserved for atlas generation.
+- `raw_assets/sprites/hands/basic/death_right_07.png` (new)
+  - Authored animation layer/frame source preserved for atlas generation.
+- `raw_assets/sprites/hands/basic/death_up_00.png` (new)
+  - Authored animation layer/frame source preserved for atlas generation.
+- `raw_assets/sprites/hands/basic/death_up_01.png` (new)
+  - Authored animation layer/frame source preserved for atlas generation.
+- `raw_assets/sprites/hands/basic/death_up_02.png` (new)
+  - Authored animation layer/frame source preserved for atlas generation.
+- `raw_assets/sprites/hands/basic/death_up_03.png` (new)
+  - Authored animation layer/frame source preserved for atlas generation.
+- `raw_assets/sprites/hands/basic/death_up_04.png` (new)
+  - Authored animation layer/frame source preserved for atlas generation.
+- `raw_assets/sprites/hands/basic/death_up_05.png` (new)
+  - Authored animation layer/frame source preserved for atlas generation.
+- `raw_assets/sprites/hands/basic/death_up_06.png` (new)
+  - Authored animation layer/frame source preserved for atlas generation.
+- `raw_assets/sprites/hands/basic/death_up_07.png` (new)
+  - Authored animation layer/frame source preserved for atlas generation.
+- `raw_assets/sprites/hands/basic/idle_down_00.png` (new)
+  - Authored animation layer/frame source preserved for atlas generation.
+- `raw_assets/sprites/hands/basic/idle_down_01.png` (new)
+  - Authored animation layer/frame source preserved for atlas generation.
+- `raw_assets/sprites/hands/basic/idle_down_02.png` (new)
+  - Authored animation layer/frame source preserved for atlas generation.
+- `raw_assets/sprites/hands/basic/idle_down_03.png` (new)
+  - Authored animation layer/frame source preserved for atlas generation.
+- `raw_assets/sprites/hands/basic/idle_down_04.png` (new)
+  - Authored animation layer/frame source preserved for atlas generation.
+- `raw_assets/sprites/hands/basic/idle_down_05.png` (new)
+  - Authored animation layer/frame source preserved for atlas generation.
+- `raw_assets/sprites/hands/basic/idle_down_06.png` (new)
+  - Authored animation layer/frame source preserved for atlas generation.
+- `raw_assets/sprites/hands/basic/idle_down_07.png` (new)
+  - Authored animation layer/frame source preserved for atlas generation.
+- `raw_assets/sprites/hands/basic/idle_left_00.png` (new)
+  - Authored animation layer/frame source preserved for atlas generation.
+- `raw_assets/sprites/hands/basic/idle_left_01.png` (new)
+  - Authored animation layer/frame source preserved for atlas generation.
+- `raw_assets/sprites/hands/basic/idle_left_02.png` (new)
+  - Authored animation layer/frame source preserved for atlas generation.
+- `raw_assets/sprites/hands/basic/idle_left_03.png` (new)
+  - Authored animation layer/frame source preserved for atlas generation.
+- `raw_assets/sprites/hands/basic/idle_left_04.png` (new)
+  - Authored animation layer/frame source preserved for atlas generation.
+- `raw_assets/sprites/hands/basic/idle_left_05.png` (new)
+  - Authored animation layer/frame source preserved for atlas generation.
+- `raw_assets/sprites/hands/basic/idle_left_06.png` (new)
+  - Authored animation layer/frame source preserved for atlas generation.
+- `raw_assets/sprites/hands/basic/idle_left_07.png` (new)
+  - Authored animation layer/frame source preserved for atlas generation.
+- `raw_assets/sprites/hands/basic/idle_right_00.png` (new)
+  - Authored animation layer/frame source preserved for atlas generation.
+- `raw_assets/sprites/hands/basic/idle_right_01.png` (new)
+  - Authored animation layer/frame source preserved for atlas generation.
+- `raw_assets/sprites/hands/basic/idle_right_02.png` (new)
+  - Authored animation layer/frame source preserved for atlas generation.
+- `raw_assets/sprites/hands/basic/idle_right_03.png` (new)
+  - Authored animation layer/frame source preserved for atlas generation.
+- `raw_assets/sprites/hands/basic/idle_right_04.png` (new)
+  - Authored animation layer/frame source preserved for atlas generation.
+- `raw_assets/sprites/hands/basic/idle_right_05.png` (new)
+  - Authored animation layer/frame source preserved for atlas generation.
+- `raw_assets/sprites/hands/basic/idle_right_06.png` (new)
+  - Authored animation layer/frame source preserved for atlas generation.
+- `raw_assets/sprites/hands/basic/idle_right_07.png` (new)
+  - Authored animation layer/frame source preserved for atlas generation.
+- `raw_assets/sprites/hands/basic/idle_up_00.png` (new)
+  - Authored animation layer/frame source preserved for atlas generation.
+- `raw_assets/sprites/hands/basic/idle_up_01.png` (new)
+  - Authored animation layer/frame source preserved for atlas generation.
+- `raw_assets/sprites/hands/basic/idle_up_02.png` (new)
+  - Authored animation layer/frame source preserved for atlas generation.
+- `raw_assets/sprites/hands/basic/idle_up_03.png` (new)
+  - Authored animation layer/frame source preserved for atlas generation.
+- `raw_assets/sprites/hands/basic/idle_up_04.png` (new)
+  - Authored animation layer/frame source preserved for atlas generation.
+- `raw_assets/sprites/hands/basic/idle_up_05.png` (new)
+  - Authored animation layer/frame source preserved for atlas generation.
+- `raw_assets/sprites/hands/basic/idle_up_06.png` (new)
+  - Authored animation layer/frame source preserved for atlas generation.
+- `raw_assets/sprites/hands/basic/idle_up_07.png` (new)
+  - Authored animation layer/frame source preserved for atlas generation.
+- `raw_assets/sprites/hands/basic/jab_down_00.png` (new)
+  - Authored animation layer/frame source preserved for atlas generation.
+- `raw_assets/sprites/hands/basic/jab_down_01.png` (new)
+  - Authored animation layer/frame source preserved for atlas generation.
+- `raw_assets/sprites/hands/basic/jab_down_02.png` (new)
+  - Authored animation layer/frame source preserved for atlas generation.
+- `raw_assets/sprites/hands/basic/jab_down_03.png` (new)
+  - Authored animation layer/frame source preserved for atlas generation.
+- `raw_assets/sprites/hands/basic/jab_down_04.png` (new)
+  - Authored animation layer/frame source preserved for atlas generation.
+- `raw_assets/sprites/hands/basic/jab_down_05.png` (new)
+  - Authored animation layer/frame source preserved for atlas generation.
+- `raw_assets/sprites/hands/basic/jab_down_06.png` (new)
+  - Authored animation layer/frame source preserved for atlas generation.
+- `raw_assets/sprites/hands/basic/jab_down_07.png` (new)
+  - Authored animation layer/frame source preserved for atlas generation.
+- `raw_assets/sprites/hands/basic/jab_left_00.png` (new)
+  - Authored animation layer/frame source preserved for atlas generation.
+- `raw_assets/sprites/hands/basic/jab_left_01.png` (new)
+  - Authored animation layer/frame source preserved for atlas generation.
+- `raw_assets/sprites/hands/basic/jab_left_02.png` (new)
+  - Authored animation layer/frame source preserved for atlas generation.
+- `raw_assets/sprites/hands/basic/jab_left_03.png` (new)
+  - Authored animation layer/frame source preserved for atlas generation.
+- `raw_assets/sprites/hands/basic/jab_left_04.png` (new)
+  - Authored animation layer/frame source preserved for atlas generation.
+- `raw_assets/sprites/hands/basic/jab_left_05.png` (new)
+  - Authored animation layer/frame source preserved for atlas generation.
+- `raw_assets/sprites/hands/basic/jab_left_06.png` (new)
+  - Authored animation layer/frame source preserved for atlas generation.
+- `raw_assets/sprites/hands/basic/jab_left_07.png` (new)
+  - Authored animation layer/frame source preserved for atlas generation.
+- `raw_assets/sprites/hands/basic/jab_right_00.png` (new)
+  - Authored animation layer/frame source preserved for atlas generation.
+- `raw_assets/sprites/hands/basic/jab_right_01.png` (new)
+  - Authored animation layer/frame source preserved for atlas generation.
+- `raw_assets/sprites/hands/basic/jab_right_02.png` (new)
+  - Authored animation layer/frame source preserved for atlas generation.
+- `raw_assets/sprites/hands/basic/jab_right_03.png` (new)
+  - Authored animation layer/frame source preserved for atlas generation.
+- `raw_assets/sprites/hands/basic/jab_right_04.png` (new)
+  - Authored animation layer/frame source preserved for atlas generation.
+- `raw_assets/sprites/hands/basic/jab_right_05.png` (new)
+  - Authored animation layer/frame source preserved for atlas generation.
+- `raw_assets/sprites/hands/basic/jab_right_06.png` (new)
+  - Authored animation layer/frame source preserved for atlas generation.
+- `raw_assets/sprites/hands/basic/jab_right_07.png` (new)
+  - Authored animation layer/frame source preserved for atlas generation.
+- `raw_assets/sprites/hands/basic/jab_up_00.png` (new)
+  - Authored animation layer/frame source preserved for atlas generation.
+- `raw_assets/sprites/hands/basic/jab_up_01.png` (new)
+  - Authored animation layer/frame source preserved for atlas generation.
+- `raw_assets/sprites/hands/basic/jab_up_02.png` (new)
+  - Authored animation layer/frame source preserved for atlas generation.
+- `raw_assets/sprites/hands/basic/jab_up_03.png` (new)
+  - Authored animation layer/frame source preserved for atlas generation.
+- `raw_assets/sprites/hands/basic/jab_up_04.png` (new)
+  - Authored animation layer/frame source preserved for atlas generation.
+- `raw_assets/sprites/hands/basic/jab_up_05.png` (new)
+  - Authored animation layer/frame source preserved for atlas generation.
+- `raw_assets/sprites/hands/basic/jab_up_06.png` (new)
+  - Authored animation layer/frame source preserved for atlas generation.
+- `raw_assets/sprites/hands/basic/jab_up_07.png` (new)
+  - Authored animation layer/frame source preserved for atlas generation.
+- `raw_assets/sprites/hands/basic/shot_down_00.png` (new)
+  - Authored animation layer/frame source preserved for atlas generation.
+- `raw_assets/sprites/hands/basic/shot_down_01.png` (new)
+  - Authored animation layer/frame source preserved for atlas generation.
+- `raw_assets/sprites/hands/basic/shot_down_02.png` (new)
+  - Authored animation layer/frame source preserved for atlas generation.
+- `raw_assets/sprites/hands/basic/shot_down_03.png` (new)
+  - Authored animation layer/frame source preserved for atlas generation.
+- `raw_assets/sprites/hands/basic/shot_down_04.png` (new)
+  - Authored animation layer/frame source preserved for atlas generation.
+- `raw_assets/sprites/hands/basic/shot_down_05.png` (new)
+  - Authored animation layer/frame source preserved for atlas generation.
+- `raw_assets/sprites/hands/basic/shot_down_06.png` (new)
+  - Authored animation layer/frame source preserved for atlas generation.
+- `raw_assets/sprites/hands/basic/shot_down_07.png` (new)
+  - Authored animation layer/frame source preserved for atlas generation.
+- `raw_assets/sprites/hands/basic/shot_left_00.png` (new)
+  - Authored animation layer/frame source preserved for atlas generation.
+- `raw_assets/sprites/hands/basic/shot_left_01.png` (new)
+  - Authored animation layer/frame source preserved for atlas generation.
+- `raw_assets/sprites/hands/basic/shot_left_02.png` (new)
+  - Authored animation layer/frame source preserved for atlas generation.
+- `raw_assets/sprites/hands/basic/shot_left_03.png` (new)
+  - Authored animation layer/frame source preserved for atlas generation.
+- `raw_assets/sprites/hands/basic/shot_left_04.png` (new)
+  - Authored animation layer/frame source preserved for atlas generation.
+- `raw_assets/sprites/hands/basic/shot_left_05.png` (new)
+  - Authored animation layer/frame source preserved for atlas generation.
+- `raw_assets/sprites/hands/basic/shot_left_06.png` (new)
+  - Authored animation layer/frame source preserved for atlas generation.
+- `raw_assets/sprites/hands/basic/shot_left_07.png` (new)
+  - Authored animation layer/frame source preserved for atlas generation.
+- `raw_assets/sprites/hands/basic/shot_right_00.png` (new)
+  - Authored animation layer/frame source preserved for atlas generation.
+- `raw_assets/sprites/hands/basic/shot_right_01.png` (new)
+  - Authored animation layer/frame source preserved for atlas generation.
+- `raw_assets/sprites/hands/basic/shot_right_02.png` (new)
+  - Authored animation layer/frame source preserved for atlas generation.
+- `raw_assets/sprites/hands/basic/shot_right_03.png` (new)
+  - Authored animation layer/frame source preserved for atlas generation.
+- `raw_assets/sprites/hands/basic/shot_right_04.png` (new)
+  - Authored animation layer/frame source preserved for atlas generation.
+- `raw_assets/sprites/hands/basic/shot_right_05.png` (new)
+  - Authored animation layer/frame source preserved for atlas generation.
+- `raw_assets/sprites/hands/basic/shot_right_06.png` (new)
+  - Authored animation layer/frame source preserved for atlas generation.
+- `raw_assets/sprites/hands/basic/shot_right_07.png` (new)
+  - Authored animation layer/frame source preserved for atlas generation.
+- `raw_assets/sprites/hands/basic/shot_up_00.png` (new)
+  - Authored animation layer/frame source preserved for atlas generation.
+- `raw_assets/sprites/hands/basic/shot_up_01.png` (new)
+  - Authored animation layer/frame source preserved for atlas generation.
+- `raw_assets/sprites/hands/basic/shot_up_02.png` (new)
+  - Authored animation layer/frame source preserved for atlas generation.
+- `raw_assets/sprites/hands/basic/shot_up_03.png` (new)
+  - Authored animation layer/frame source preserved for atlas generation.
+- `raw_assets/sprites/hands/basic/shot_up_04.png` (new)
+  - Authored animation layer/frame source preserved for atlas generation.
+- `raw_assets/sprites/hands/basic/shot_up_05.png` (new)
+  - Authored animation layer/frame source preserved for atlas generation.
+- `raw_assets/sprites/hands/basic/shot_up_06.png` (new)
+  - Authored animation layer/frame source preserved for atlas generation.
+- `raw_assets/sprites/hands/basic/shot_up_07.png` (new)
+  - Authored animation layer/frame source preserved for atlas generation.
+- `raw_assets/sprites/hands/basic/slash_down_00.png` (new)
+  - Authored animation layer/frame source preserved for atlas generation.
+- `raw_assets/sprites/hands/basic/slash_down_01.png` (new)
+  - Authored animation layer/frame source preserved for atlas generation.
+- `raw_assets/sprites/hands/basic/slash_down_02.png` (new)
+  - Authored animation layer/frame source preserved for atlas generation.
+- `raw_assets/sprites/hands/basic/slash_down_03.png` (new)
+  - Authored animation layer/frame source preserved for atlas generation.
+- `raw_assets/sprites/hands/basic/slash_down_04.png` (new)
+  - Authored animation layer/frame source preserved for atlas generation.
+- `raw_assets/sprites/hands/basic/slash_down_05.png` (new)
+  - Authored animation layer/frame source preserved for atlas generation.
+- `raw_assets/sprites/hands/basic/slash_down_06.png` (new)
+  - Authored animation layer/frame source preserved for atlas generation.
+- `raw_assets/sprites/hands/basic/slash_down_07.png` (new)
+  - Authored animation layer/frame source preserved for atlas generation.
+- `raw_assets/sprites/hands/basic/slash_left_00.png` (new)
+  - Authored animation layer/frame source preserved for atlas generation.
+- `raw_assets/sprites/hands/basic/slash_left_01.png` (new)
+  - Authored animation layer/frame source preserved for atlas generation.
+- `raw_assets/sprites/hands/basic/slash_left_02.png` (new)
+  - Authored animation layer/frame source preserved for atlas generation.
+- `raw_assets/sprites/hands/basic/slash_left_03.png` (new)
+  - Authored animation layer/frame source preserved for atlas generation.
+- `raw_assets/sprites/hands/basic/slash_left_04.png` (new)
+  - Authored animation layer/frame source preserved for atlas generation.
+- `raw_assets/sprites/hands/basic/slash_left_05.png` (new)
+  - Authored animation layer/frame source preserved for atlas generation.
+- `raw_assets/sprites/hands/basic/slash_left_06.png` (new)
+  - Authored animation layer/frame source preserved for atlas generation.
+- `raw_assets/sprites/hands/basic/slash_left_07.png` (new)
+  - Authored animation layer/frame source preserved for atlas generation.
+- `raw_assets/sprites/hands/basic/slash_right_00.png` (new)
+  - Authored animation layer/frame source preserved for atlas generation.
+- `raw_assets/sprites/hands/basic/slash_right_01.png` (new)
+  - Authored animation layer/frame source preserved for atlas generation.
+- `raw_assets/sprites/hands/basic/slash_right_02.png` (new)
+  - Authored animation layer/frame source preserved for atlas generation.
+- `raw_assets/sprites/hands/basic/slash_right_03.png` (new)
+  - Authored animation layer/frame source preserved for atlas generation.
+- `raw_assets/sprites/hands/basic/slash_right_04.png` (new)
+  - Authored animation layer/frame source preserved for atlas generation.
+- `raw_assets/sprites/hands/basic/slash_right_05.png` (new)
+  - Authored animation layer/frame source preserved for atlas generation.
+- `raw_assets/sprites/hands/basic/slash_right_06.png` (new)
+  - Authored animation layer/frame source preserved for atlas generation.
+- `raw_assets/sprites/hands/basic/slash_right_07.png` (new)
+  - Authored animation layer/frame source preserved for atlas generation.
+- `raw_assets/sprites/hands/basic/slash_up_00.png` (new)
+  - Authored animation layer/frame source preserved for atlas generation.
+- `raw_assets/sprites/hands/basic/slash_up_01.png` (new)
+  - Authored animation layer/frame source preserved for atlas generation.
+- `raw_assets/sprites/hands/basic/slash_up_02.png` (new)
+  - Authored animation layer/frame source preserved for atlas generation.
+- `raw_assets/sprites/hands/basic/slash_up_03.png` (new)
+  - Authored animation layer/frame source preserved for atlas generation.
+- `raw_assets/sprites/hands/basic/slash_up_04.png` (new)
+  - Authored animation layer/frame source preserved for atlas generation.
+- `raw_assets/sprites/hands/basic/slash_up_05.png` (new)
+  - Authored animation layer/frame source preserved for atlas generation.
+- `raw_assets/sprites/hands/basic/slash_up_06.png` (new)
+  - Authored animation layer/frame source preserved for atlas generation.
+- `raw_assets/sprites/hands/basic/slash_up_07.png` (new)
+  - Authored animation layer/frame source preserved for atlas generation.
+- `raw_assets/sprites/hands/basic/walk_down_00.png` (new)
+  - Authored animation layer/frame source preserved for atlas generation.
+- `raw_assets/sprites/hands/basic/walk_down_01.png` (new)
+  - Authored animation layer/frame source preserved for atlas generation.
+- `raw_assets/sprites/hands/basic/walk_down_02.png` (new)
+  - Authored animation layer/frame source preserved for atlas generation.
+- `raw_assets/sprites/hands/basic/walk_down_03.png` (new)
+  - Authored animation layer/frame source preserved for atlas generation.
+- `raw_assets/sprites/hands/basic/walk_down_04.png` (new)
+  - Authored animation layer/frame source preserved for atlas generation.
+- `raw_assets/sprites/hands/basic/walk_down_05.png` (new)
+  - Authored animation layer/frame source preserved for atlas generation.
+- `raw_assets/sprites/hands/basic/walk_down_06.png` (new)
+  - Authored animation layer/frame source preserved for atlas generation.
+- `raw_assets/sprites/hands/basic/walk_down_07.png` (new)
+  - Authored animation layer/frame source preserved for atlas generation.
+- `raw_assets/sprites/hands/basic/walk_left_00.png` (new)
+  - Authored animation layer/frame source preserved for atlas generation.
+- `raw_assets/sprites/hands/basic/walk_left_01.png` (new)
+  - Authored animation layer/frame source preserved for atlas generation.
+- `raw_assets/sprites/hands/basic/walk_left_02.png` (new)
+  - Authored animation layer/frame source preserved for atlas generation.
+- `raw_assets/sprites/hands/basic/walk_left_03.png` (new)
+  - Authored animation layer/frame source preserved for atlas generation.
+- `raw_assets/sprites/hands/basic/walk_left_04.png` (new)
+  - Authored animation layer/frame source preserved for atlas generation.
+- `raw_assets/sprites/hands/basic/walk_left_05.png` (new)
+  - Authored animation layer/frame source preserved for atlas generation.
+- `raw_assets/sprites/hands/basic/walk_left_06.png` (new)
+  - Authored animation layer/frame source preserved for atlas generation.
+- `raw_assets/sprites/hands/basic/walk_left_07.png` (new)
+  - Authored animation layer/frame source preserved for atlas generation.
+- `raw_assets/sprites/hands/basic/walk_right_00.png` (new)
+  - Authored animation layer/frame source preserved for atlas generation.
+- `raw_assets/sprites/hands/basic/walk_right_01.png` (new)
+  - Authored animation layer/frame source preserved for atlas generation.
+- `raw_assets/sprites/hands/basic/walk_right_02.png` (new)
+  - Authored animation layer/frame source preserved for atlas generation.
+- `raw_assets/sprites/hands/basic/walk_right_03.png` (new)
+  - Authored animation layer/frame source preserved for atlas generation.
+- `raw_assets/sprites/hands/basic/walk_right_04.png` (new)
+  - Authored animation layer/frame source preserved for atlas generation.
+- `raw_assets/sprites/hands/basic/walk_right_05.png` (new)
+  - Authored animation layer/frame source preserved for atlas generation.
+- `raw_assets/sprites/hands/basic/walk_right_06.png` (new)
+  - Authored animation layer/frame source preserved for atlas generation.
+- `raw_assets/sprites/hands/basic/walk_right_07.png` (new)
+  - Authored animation layer/frame source preserved for atlas generation.
+- `raw_assets/sprites/hands/basic/walk_up_00.png` (new)
+  - Authored animation layer/frame source preserved for atlas generation.
+- `raw_assets/sprites/hands/basic/walk_up_01.png` (new)
+  - Authored animation layer/frame source preserved for atlas generation.
+- `raw_assets/sprites/hands/basic/walk_up_02.png` (new)
+  - Authored animation layer/frame source preserved for atlas generation.
+- `raw_assets/sprites/hands/basic/walk_up_03.png` (new)
+  - Authored animation layer/frame source preserved for atlas generation.
+- `raw_assets/sprites/hands/basic/walk_up_04.png` (new)
+  - Authored animation layer/frame source preserved for atlas generation.
+- `raw_assets/sprites/hands/basic/walk_up_05.png` (new)
+  - Authored animation layer/frame source preserved for atlas generation.
+- `raw_assets/sprites/hands/basic/walk_up_06.png` (new)
+  - Authored animation layer/frame source preserved for atlas generation.
+- `raw_assets/sprites/hands/basic/walk_up_07.png` (new)
+  - Authored animation layer/frame source preserved for atlas generation.
+- `raw_assets/sprites/head/basic/cast_down_00.png` (new)
+  - Authored animation layer/frame source preserved for atlas generation.
+- `raw_assets/sprites/head/basic/cast_down_01.png` (new)
+  - Authored animation layer/frame source preserved for atlas generation.
+- `raw_assets/sprites/head/basic/cast_down_02.png` (new)
+  - Authored animation layer/frame source preserved for atlas generation.
+- `raw_assets/sprites/head/basic/cast_down_03.png` (new)
+  - Authored animation layer/frame source preserved for atlas generation.
+- `raw_assets/sprites/head/basic/cast_down_04.png` (new)
+  - Authored animation layer/frame source preserved for atlas generation.
+- `raw_assets/sprites/head/basic/cast_down_05.png` (new)
+  - Authored animation layer/frame source preserved for atlas generation.
+- `raw_assets/sprites/head/basic/cast_down_06.png` (new)
+  - Authored animation layer/frame source preserved for atlas generation.
+- `raw_assets/sprites/head/basic/cast_down_07.png` (new)
+  - Authored animation layer/frame source preserved for atlas generation.
+- `raw_assets/sprites/head/basic/cast_left_00.png` (new)
+  - Authored animation layer/frame source preserved for atlas generation.
+- `raw_assets/sprites/head/basic/cast_left_01.png` (new)
+  - Authored animation layer/frame source preserved for atlas generation.
+- `raw_assets/sprites/head/basic/cast_left_02.png` (new)
+  - Authored animation layer/frame source preserved for atlas generation.
+- `raw_assets/sprites/head/basic/cast_left_03.png` (new)
+  - Authored animation layer/frame source preserved for atlas generation.
+- `raw_assets/sprites/head/basic/cast_left_04.png` (new)
+  - Authored animation layer/frame source preserved for atlas generation.
+- `raw_assets/sprites/head/basic/cast_left_05.png` (new)
+  - Authored animation layer/frame source preserved for atlas generation.
+- `raw_assets/sprites/head/basic/cast_left_06.png` (new)
+  - Authored animation layer/frame source preserved for atlas generation.
+- `raw_assets/sprites/head/basic/cast_left_07.png` (new)
+  - Authored animation layer/frame source preserved for atlas generation.
+- `raw_assets/sprites/head/basic/cast_right_00.png` (new)
+  - Authored animation layer/frame source preserved for atlas generation.
+- `raw_assets/sprites/head/basic/cast_right_01.png` (new)
+  - Authored animation layer/frame source preserved for atlas generation.
+- `raw_assets/sprites/head/basic/cast_right_02.png` (new)
+  - Authored animation layer/frame source preserved for atlas generation.
+- `raw_assets/sprites/head/basic/cast_right_03.png` (new)
+  - Authored animation layer/frame source preserved for atlas generation.
+- `raw_assets/sprites/head/basic/cast_right_04.png` (new)
+  - Authored animation layer/frame source preserved for atlas generation.
+- `raw_assets/sprites/head/basic/cast_right_05.png` (new)
+  - Authored animation layer/frame source preserved for atlas generation.
+- `raw_assets/sprites/head/basic/cast_right_06.png` (new)
+  - Authored animation layer/frame source preserved for atlas generation.
+- `raw_assets/sprites/head/basic/cast_right_07.png` (new)
+  - Authored animation layer/frame source preserved for atlas generation.
+- `raw_assets/sprites/head/basic/cast_up_00.png` (new)
+  - Authored animation layer/frame source preserved for atlas generation.
+- `raw_assets/sprites/head/basic/cast_up_01.png` (new)
+  - Authored animation layer/frame source preserved for atlas generation.
+- `raw_assets/sprites/head/basic/cast_up_02.png` (new)
+  - Authored animation layer/frame source preserved for atlas generation.
+- `raw_assets/sprites/head/basic/cast_up_03.png` (new)
+  - Authored animation layer/frame source preserved for atlas generation.
+- `raw_assets/sprites/head/basic/cast_up_04.png` (new)
+  - Authored animation layer/frame source preserved for atlas generation.
+- `raw_assets/sprites/head/basic/cast_up_05.png` (new)
+  - Authored animation layer/frame source preserved for atlas generation.
+- `raw_assets/sprites/head/basic/cast_up_06.png` (new)
+  - Authored animation layer/frame source preserved for atlas generation.
+- `raw_assets/sprites/head/basic/cast_up_07.png` (new)
+  - Authored animation layer/frame source preserved for atlas generation.
+- `raw_assets/sprites/head/basic/death_down_00.png` (new)
+  - Authored animation layer/frame source preserved for atlas generation.
+- `raw_assets/sprites/head/basic/death_down_01.png` (new)
+  - Authored animation layer/frame source preserved for atlas generation.
+- `raw_assets/sprites/head/basic/death_down_02.png` (new)
+  - Authored animation layer/frame source preserved for atlas generation.
+- `raw_assets/sprites/head/basic/death_down_03.png` (new)
+  - Authored animation layer/frame source preserved for atlas generation.
+- `raw_assets/sprites/head/basic/death_down_04.png` (new)
+  - Authored animation layer/frame source preserved for atlas generation.
+- `raw_assets/sprites/head/basic/death_down_05.png` (new)
+  - Authored animation layer/frame source preserved for atlas generation.
+- `raw_assets/sprites/head/basic/death_down_06.png` (new)
+  - Authored animation layer/frame source preserved for atlas generation.
+- `raw_assets/sprites/head/basic/death_down_07.png` (new)
+  - Authored animation layer/frame source preserved for atlas generation.
+- `raw_assets/sprites/head/basic/death_left_00.png` (new)
+  - Authored animation layer/frame source preserved for atlas generation.
+- `raw_assets/sprites/head/basic/death_left_01.png` (new)
+  - Authored animation layer/frame source preserved for atlas generation.
+- `raw_assets/sprites/head/basic/death_left_02.png` (new)
+  - Authored animation layer/frame source preserved for atlas generation.
+- `raw_assets/sprites/head/basic/death_left_03.png` (new)
+  - Authored animation layer/frame source preserved for atlas generation.
+- `raw_assets/sprites/head/basic/death_left_04.png` (new)
+  - Authored animation layer/frame source preserved for atlas generation.
+- `raw_assets/sprites/head/basic/death_left_05.png` (new)
+  - Authored animation layer/frame source preserved for atlas generation.
+- `raw_assets/sprites/head/basic/death_left_06.png` (new)
+  - Authored animation layer/frame source preserved for atlas generation.
+- `raw_assets/sprites/head/basic/death_left_07.png` (new)
+  - Authored animation layer/frame source preserved for atlas generation.
+- `raw_assets/sprites/head/basic/death_right_00.png` (new)
+  - Authored animation layer/frame source preserved for atlas generation.
+- `raw_assets/sprites/head/basic/death_right_01.png` (new)
+  - Authored animation layer/frame source preserved for atlas generation.
+- `raw_assets/sprites/head/basic/death_right_02.png` (new)
+  - Authored animation layer/frame source preserved for atlas generation.
+- `raw_assets/sprites/head/basic/death_right_03.png` (new)
+  - Authored animation layer/frame source preserved for atlas generation.
+- `raw_assets/sprites/head/basic/death_right_04.png` (new)
+  - Authored animation layer/frame source preserved for atlas generation.
+- `raw_assets/sprites/head/basic/death_right_05.png` (new)
+  - Authored animation layer/frame source preserved for atlas generation.
+- `raw_assets/sprites/head/basic/death_right_06.png` (new)
+  - Authored animation layer/frame source preserved for atlas generation.
+- `raw_assets/sprites/head/basic/death_right_07.png` (new)
+  - Authored animation layer/frame source preserved for atlas generation.
+- `raw_assets/sprites/head/basic/death_up_00.png` (new)
+  - Authored animation layer/frame source preserved for atlas generation.
+- `raw_assets/sprites/head/basic/death_up_01.png` (new)
+  - Authored animation layer/frame source preserved for atlas generation.
+- `raw_assets/sprites/head/basic/death_up_02.png` (new)
+  - Authored animation layer/frame source preserved for atlas generation.
+- `raw_assets/sprites/head/basic/death_up_03.png` (new)
+  - Authored animation layer/frame source preserved for atlas generation.
+- `raw_assets/sprites/head/basic/death_up_04.png` (new)
+  - Authored animation layer/frame source preserved for atlas generation.
+- `raw_assets/sprites/head/basic/death_up_05.png` (new)
+  - Authored animation layer/frame source preserved for atlas generation.
+- `raw_assets/sprites/head/basic/death_up_06.png` (new)
+  - Authored animation layer/frame source preserved for atlas generation.
+- `raw_assets/sprites/head/basic/death_up_07.png` (new)
+  - Authored animation layer/frame source preserved for atlas generation.
+- `raw_assets/sprites/head/basic/idle_down_00.png` (new)
+  - Authored animation layer/frame source preserved for atlas generation.
+- `raw_assets/sprites/head/basic/idle_down_01.png` (new)
+  - Authored animation layer/frame source preserved for atlas generation.
+- `raw_assets/sprites/head/basic/idle_down_02.png` (new)
+  - Authored animation layer/frame source preserved for atlas generation.
+- `raw_assets/sprites/head/basic/idle_down_03.png` (new)
+  - Authored animation layer/frame source preserved for atlas generation.
+- `raw_assets/sprites/head/basic/idle_down_04.png` (new)
+  - Authored animation layer/frame source preserved for atlas generation.
+- `raw_assets/sprites/head/basic/idle_down_05.png` (new)
+  - Authored animation layer/frame source preserved for atlas generation.
+- `raw_assets/sprites/head/basic/idle_down_06.png` (new)
+  - Authored animation layer/frame source preserved for atlas generation.
+- `raw_assets/sprites/head/basic/idle_down_07.png` (new)
+  - Authored animation layer/frame source preserved for atlas generation.
+- `raw_assets/sprites/head/basic/idle_left_00.png` (new)
+  - Authored animation layer/frame source preserved for atlas generation.
+- `raw_assets/sprites/head/basic/idle_left_01.png` (new)
+  - Authored animation layer/frame source preserved for atlas generation.
+- `raw_assets/sprites/head/basic/idle_left_02.png` (new)
+  - Authored animation layer/frame source preserved for atlas generation.
+- `raw_assets/sprites/head/basic/idle_left_03.png` (new)
+  - Authored animation layer/frame source preserved for atlas generation.
+- `raw_assets/sprites/head/basic/idle_left_04.png` (new)
+  - Authored animation layer/frame source preserved for atlas generation.
+- `raw_assets/sprites/head/basic/idle_left_05.png` (new)
+  - Authored animation layer/frame source preserved for atlas generation.
+- `raw_assets/sprites/head/basic/idle_left_06.png` (new)
+  - Authored animation layer/frame source preserved for atlas generation.
+- `raw_assets/sprites/head/basic/idle_left_07.png` (new)
+  - Authored animation layer/frame source preserved for atlas generation.
+- `raw_assets/sprites/head/basic/idle_right_00.png` (new)
+  - Authored animation layer/frame source preserved for atlas generation.
+- `raw_assets/sprites/head/basic/idle_right_01.png` (new)
+  - Authored animation layer/frame source preserved for atlas generation.
+- `raw_assets/sprites/head/basic/idle_right_02.png` (new)
+  - Authored animation layer/frame source preserved for atlas generation.
+- `raw_assets/sprites/head/basic/idle_right_03.png` (new)
+  - Authored animation layer/frame source preserved for atlas generation.
+- `raw_assets/sprites/head/basic/idle_right_04.png` (new)
+  - Authored animation layer/frame source preserved for atlas generation.
+- `raw_assets/sprites/head/basic/idle_right_05.png` (new)
+  - Authored animation layer/frame source preserved for atlas generation.
+- `raw_assets/sprites/head/basic/idle_right_06.png` (new)
+  - Authored animation layer/frame source preserved for atlas generation.
+- `raw_assets/sprites/head/basic/idle_right_07.png` (new)
+  - Authored animation layer/frame source preserved for atlas generation.
+- `raw_assets/sprites/head/basic/idle_up_00.png` (new)
+  - Authored animation layer/frame source preserved for atlas generation.
+- `raw_assets/sprites/head/basic/idle_up_01.png` (new)
+  - Authored animation layer/frame source preserved for atlas generation.
+- `raw_assets/sprites/head/basic/idle_up_02.png` (new)
+  - Authored animation layer/frame source preserved for atlas generation.
+- `raw_assets/sprites/head/basic/idle_up_03.png` (new)
+  - Authored animation layer/frame source preserved for atlas generation.
+- `raw_assets/sprites/head/basic/idle_up_04.png` (new)
+  - Authored animation layer/frame source preserved for atlas generation.
+- `raw_assets/sprites/head/basic/idle_up_05.png` (new)
+  - Authored animation layer/frame source preserved for atlas generation.
+- `raw_assets/sprites/head/basic/idle_up_06.png` (new)
+  - Authored animation layer/frame source preserved for atlas generation.
+- `raw_assets/sprites/head/basic/idle_up_07.png` (new)
+  - Authored animation layer/frame source preserved for atlas generation.
+- `raw_assets/sprites/head/basic/jab_down_00.png` (new)
+  - Authored animation layer/frame source preserved for atlas generation.
+- `raw_assets/sprites/head/basic/jab_down_01.png` (new)
+  - Authored animation layer/frame source preserved for atlas generation.
+- `raw_assets/sprites/head/basic/jab_down_02.png` (new)
+  - Authored animation layer/frame source preserved for atlas generation.
+- `raw_assets/sprites/head/basic/jab_down_03.png` (new)
+  - Authored animation layer/frame source preserved for atlas generation.
+- `raw_assets/sprites/head/basic/jab_down_04.png` (new)
+  - Authored animation layer/frame source preserved for atlas generation.
+- `raw_assets/sprites/head/basic/jab_down_05.png` (new)
+  - Authored animation layer/frame source preserved for atlas generation.
+- `raw_assets/sprites/head/basic/jab_down_06.png` (new)
+  - Authored animation layer/frame source preserved for atlas generation.
+- `raw_assets/sprites/head/basic/jab_down_07.png` (new)
+  - Authored animation layer/frame source preserved for atlas generation.
+- `raw_assets/sprites/head/basic/jab_left_00.png` (new)
+  - Authored animation layer/frame source preserved for atlas generation.
+- `raw_assets/sprites/head/basic/jab_left_01.png` (new)
+  - Authored animation layer/frame source preserved for atlas generation.
+- `raw_assets/sprites/head/basic/jab_left_02.png` (new)
+  - Authored animation layer/frame source preserved for atlas generation.
+- `raw_assets/sprites/head/basic/jab_left_03.png` (new)
+  - Authored animation layer/frame source preserved for atlas generation.
+- `raw_assets/sprites/head/basic/jab_left_04.png` (new)
+  - Authored animation layer/frame source preserved for atlas generation.
+- `raw_assets/sprites/head/basic/jab_left_05.png` (new)
+  - Authored animation layer/frame source preserved for atlas generation.
+- `raw_assets/sprites/head/basic/jab_left_06.png` (new)
+  - Authored animation layer/frame source preserved for atlas generation.
+- `raw_assets/sprites/head/basic/jab_left_07.png` (new)
+  - Authored animation layer/frame source preserved for atlas generation.
+- `raw_assets/sprites/head/basic/jab_right_00.png` (new)
+  - Authored animation layer/frame source preserved for atlas generation.
+- `raw_assets/sprites/head/basic/jab_right_01.png` (new)
+  - Authored animation layer/frame source preserved for atlas generation.
+- `raw_assets/sprites/head/basic/jab_right_02.png` (new)
+  - Authored animation layer/frame source preserved for atlas generation.
+- `raw_assets/sprites/head/basic/jab_right_03.png` (new)
+  - Authored animation layer/frame source preserved for atlas generation.
+- `raw_assets/sprites/head/basic/jab_right_04.png` (new)
+  - Authored animation layer/frame source preserved for atlas generation.
+- `raw_assets/sprites/head/basic/jab_right_05.png` (new)
+  - Authored animation layer/frame source preserved for atlas generation.
+- `raw_assets/sprites/head/basic/jab_right_06.png` (new)
+  - Authored animation layer/frame source preserved for atlas generation.
+- `raw_assets/sprites/head/basic/jab_right_07.png` (new)
+  - Authored animation layer/frame source preserved for atlas generation.
+- `raw_assets/sprites/head/basic/jab_up_00.png` (new)
+  - Authored animation layer/frame source preserved for atlas generation.
+- `raw_assets/sprites/head/basic/jab_up_01.png` (new)
+  - Authored animation layer/frame source preserved for atlas generation.
+- `raw_assets/sprites/head/basic/jab_up_02.png` (new)
+  - Authored animation layer/frame source preserved for atlas generation.
+- `raw_assets/sprites/head/basic/jab_up_03.png` (new)
+  - Authored animation layer/frame source preserved for atlas generation.
+- `raw_assets/sprites/head/basic/jab_up_04.png` (new)
+  - Authored animation layer/frame source preserved for atlas generation.
+- `raw_assets/sprites/head/basic/jab_up_05.png` (new)
+  - Authored animation layer/frame source preserved for atlas generation.
+- `raw_assets/sprites/head/basic/jab_up_06.png` (new)
+  - Authored animation layer/frame source preserved for atlas generation.
+- `raw_assets/sprites/head/basic/jab_up_07.png` (new)
+  - Authored animation layer/frame source preserved for atlas generation.
+- `raw_assets/sprites/head/basic/shot_down_00.png` (new)
+  - Authored animation layer/frame source preserved for atlas generation.
+- `raw_assets/sprites/head/basic/shot_down_01.png` (new)
+  - Authored animation layer/frame source preserved for atlas generation.
+- `raw_assets/sprites/head/basic/shot_down_02.png` (new)
+  - Authored animation layer/frame source preserved for atlas generation.
+- `raw_assets/sprites/head/basic/shot_down_03.png` (new)
+  - Authored animation layer/frame source preserved for atlas generation.
+- `raw_assets/sprites/head/basic/shot_down_04.png` (new)
+  - Authored animation layer/frame source preserved for atlas generation.
+- `raw_assets/sprites/head/basic/shot_down_05.png` (new)
+  - Authored animation layer/frame source preserved for atlas generation.
+- `raw_assets/sprites/head/basic/shot_down_06.png` (new)
+  - Authored animation layer/frame source preserved for atlas generation.
+- `raw_assets/sprites/head/basic/shot_down_07.png` (new)
+  - Authored animation layer/frame source preserved for atlas generation.
+- `raw_assets/sprites/head/basic/shot_left_00.png` (new)
+  - Authored animation layer/frame source preserved for atlas generation.
+- `raw_assets/sprites/head/basic/shot_left_01.png` (new)
+  - Authored animation layer/frame source preserved for atlas generation.
+- `raw_assets/sprites/head/basic/shot_left_02.png` (new)
+  - Authored animation layer/frame source preserved for atlas generation.
+- `raw_assets/sprites/head/basic/shot_left_03.png` (new)
+  - Authored animation layer/frame source preserved for atlas generation.
+- `raw_assets/sprites/head/basic/shot_left_04.png` (new)
+  - Authored animation layer/frame source preserved for atlas generation.
+- `raw_assets/sprites/head/basic/shot_left_05.png` (new)
+  - Authored animation layer/frame source preserved for atlas generation.
+- `raw_assets/sprites/head/basic/shot_left_06.png` (new)
+  - Authored animation layer/frame source preserved for atlas generation.
+- `raw_assets/sprites/head/basic/shot_left_07.png` (new)
+  - Authored animation layer/frame source preserved for atlas generation.
+- `raw_assets/sprites/head/basic/shot_right_00.png` (new)
+  - Authored animation layer/frame source preserved for atlas generation.
+- `raw_assets/sprites/head/basic/shot_right_01.png` (new)
+  - Authored animation layer/frame source preserved for atlas generation.
+- `raw_assets/sprites/head/basic/shot_right_02.png` (new)
+  - Authored animation layer/frame source preserved for atlas generation.
+- `raw_assets/sprites/head/basic/shot_right_03.png` (new)
+  - Authored animation layer/frame source preserved for atlas generation.
+- `raw_assets/sprites/head/basic/shot_right_04.png` (new)
+  - Authored animation layer/frame source preserved for atlas generation.
+- `raw_assets/sprites/head/basic/shot_right_05.png` (new)
+  - Authored animation layer/frame source preserved for atlas generation.
+- `raw_assets/sprites/head/basic/shot_right_06.png` (new)
+  - Authored animation layer/frame source preserved for atlas generation.
+- `raw_assets/sprites/head/basic/shot_right_07.png` (new)
+  - Authored animation layer/frame source preserved for atlas generation.
+- `raw_assets/sprites/head/basic/shot_up_00.png` (new)
+  - Authored animation layer/frame source preserved for atlas generation.
+- `raw_assets/sprites/head/basic/shot_up_01.png` (new)
+  - Authored animation layer/frame source preserved for atlas generation.
+- `raw_assets/sprites/head/basic/shot_up_02.png` (new)
+  - Authored animation layer/frame source preserved for atlas generation.
+- `raw_assets/sprites/head/basic/shot_up_03.png` (new)
+  - Authored animation layer/frame source preserved for atlas generation.
+- `raw_assets/sprites/head/basic/shot_up_04.png` (new)
+  - Authored animation layer/frame source preserved for atlas generation.
+- `raw_assets/sprites/head/basic/shot_up_05.png` (new)
+  - Authored animation layer/frame source preserved for atlas generation.
+- `raw_assets/sprites/head/basic/shot_up_06.png` (new)
+  - Authored animation layer/frame source preserved for atlas generation.
+- `raw_assets/sprites/head/basic/shot_up_07.png` (new)
+  - Authored animation layer/frame source preserved for atlas generation.
+- `raw_assets/sprites/head/basic/slash_down_00.png` (new)
+  - Authored animation layer/frame source preserved for atlas generation.
+- `raw_assets/sprites/head/basic/slash_down_01.png` (new)
+  - Authored animation layer/frame source preserved for atlas generation.
+- `raw_assets/sprites/head/basic/slash_down_02.png` (new)
+  - Authored animation layer/frame source preserved for atlas generation.
+- `raw_assets/sprites/head/basic/slash_down_03.png` (new)
+  - Authored animation layer/frame source preserved for atlas generation.
+- `raw_assets/sprites/head/basic/slash_down_04.png` (new)
+  - Authored animation layer/frame source preserved for atlas generation.
+- `raw_assets/sprites/head/basic/slash_down_05.png` (new)
+  - Authored animation layer/frame source preserved for atlas generation.
+- `raw_assets/sprites/head/basic/slash_down_06.png` (new)
+  - Authored animation layer/frame source preserved for atlas generation.
+- `raw_assets/sprites/head/basic/slash_down_07.png` (new)
+  - Authored animation layer/frame source preserved for atlas generation.
+- `raw_assets/sprites/head/basic/slash_left_00.png` (new)
+  - Authored animation layer/frame source preserved for atlas generation.
+- `raw_assets/sprites/head/basic/slash_left_01.png` (new)
+  - Authored animation layer/frame source preserved for atlas generation.
+- `raw_assets/sprites/head/basic/slash_left_02.png` (new)
+  - Authored animation layer/frame source preserved for atlas generation.
+- `raw_assets/sprites/head/basic/slash_left_03.png` (new)
+  - Authored animation layer/frame source preserved for atlas generation.
+- `raw_assets/sprites/head/basic/slash_left_04.png` (new)
+  - Authored animation layer/frame source preserved for atlas generation.
+- `raw_assets/sprites/head/basic/slash_left_05.png` (new)
+  - Authored animation layer/frame source preserved for atlas generation.
+- `raw_assets/sprites/head/basic/slash_left_06.png` (new)
+  - Authored animation layer/frame source preserved for atlas generation.
+- `raw_assets/sprites/head/basic/slash_left_07.png` (new)
+  - Authored animation layer/frame source preserved for atlas generation.
+- `raw_assets/sprites/head/basic/slash_right_00.png` (new)
+  - Authored animation layer/frame source preserved for atlas generation.
+- `raw_assets/sprites/head/basic/slash_right_01.png` (new)
+  - Authored animation layer/frame source preserved for atlas generation.
+- `raw_assets/sprites/head/basic/slash_right_02.png` (new)
+  - Authored animation layer/frame source preserved for atlas generation.
+- `raw_assets/sprites/head/basic/slash_right_03.png` (new)
+  - Authored animation layer/frame source preserved for atlas generation.
+- `raw_assets/sprites/head/basic/slash_right_04.png` (new)
+  - Authored animation layer/frame source preserved for atlas generation.
+- `raw_assets/sprites/head/basic/slash_right_05.png` (new)
+  - Authored animation layer/frame source preserved for atlas generation.
+- `raw_assets/sprites/head/basic/slash_right_06.png` (new)
+  - Authored animation layer/frame source preserved for atlas generation.
+- `raw_assets/sprites/head/basic/slash_right_07.png` (new)
+  - Authored animation layer/frame source preserved for atlas generation.
+- `raw_assets/sprites/head/basic/slash_up_00.png` (new)
+  - Authored animation layer/frame source preserved for atlas generation.
+- `raw_assets/sprites/head/basic/slash_up_01.png` (new)
+  - Authored animation layer/frame source preserved for atlas generation.
+- `raw_assets/sprites/head/basic/slash_up_02.png` (new)
+  - Authored animation layer/frame source preserved for atlas generation.
+- `raw_assets/sprites/head/basic/slash_up_03.png` (new)
+  - Authored animation layer/frame source preserved for atlas generation.
+- `raw_assets/sprites/head/basic/slash_up_04.png` (new)
+  - Authored animation layer/frame source preserved for atlas generation.
+- `raw_assets/sprites/head/basic/slash_up_05.png` (new)
+  - Authored animation layer/frame source preserved for atlas generation.
+- `raw_assets/sprites/head/basic/slash_up_06.png` (new)
+  - Authored animation layer/frame source preserved for atlas generation.
+- `raw_assets/sprites/head/basic/slash_up_07.png` (new)
+  - Authored animation layer/frame source preserved for atlas generation.
+- `raw_assets/sprites/head/basic/walk_down_00.png` (new)
+  - Authored animation layer/frame source preserved for atlas generation.
+- `raw_assets/sprites/head/basic/walk_down_01.png` (new)
+  - Authored animation layer/frame source preserved for atlas generation.
+- `raw_assets/sprites/head/basic/walk_down_02.png` (new)
+  - Authored animation layer/frame source preserved for atlas generation.
+- `raw_assets/sprites/head/basic/walk_down_03.png` (new)
+  - Authored animation layer/frame source preserved for atlas generation.
+- `raw_assets/sprites/head/basic/walk_down_04.png` (new)
+  - Authored animation layer/frame source preserved for atlas generation.
+- `raw_assets/sprites/head/basic/walk_down_05.png` (new)
+  - Authored animation layer/frame source preserved for atlas generation.
+- `raw_assets/sprites/head/basic/walk_down_06.png` (new)
+  - Authored animation layer/frame source preserved for atlas generation.
+- `raw_assets/sprites/head/basic/walk_down_07.png` (new)
+  - Authored animation layer/frame source preserved for atlas generation.
+- `raw_assets/sprites/head/basic/walk_left_00.png` (new)
+  - Authored animation layer/frame source preserved for atlas generation.
+- `raw_assets/sprites/head/basic/walk_left_01.png` (new)
+  - Authored animation layer/frame source preserved for atlas generation.
+- `raw_assets/sprites/head/basic/walk_left_02.png` (new)
+  - Authored animation layer/frame source preserved for atlas generation.
+- `raw_assets/sprites/head/basic/walk_left_03.png` (new)
+  - Authored animation layer/frame source preserved for atlas generation.
+- `raw_assets/sprites/head/basic/walk_left_04.png` (new)
+  - Authored animation layer/frame source preserved for atlas generation.
+- `raw_assets/sprites/head/basic/walk_left_05.png` (new)
+  - Authored animation layer/frame source preserved for atlas generation.
+- `raw_assets/sprites/head/basic/walk_left_06.png` (new)
+  - Authored animation layer/frame source preserved for atlas generation.
+- `raw_assets/sprites/head/basic/walk_left_07.png` (new)
+  - Authored animation layer/frame source preserved for atlas generation.
+- `raw_assets/sprites/head/basic/walk_right_00.png` (new)
+  - Authored animation layer/frame source preserved for atlas generation.
+- `raw_assets/sprites/head/basic/walk_right_01.png` (new)
+  - Authored animation layer/frame source preserved for atlas generation.
+- `raw_assets/sprites/head/basic/walk_right_02.png` (new)
+  - Authored animation layer/frame source preserved for atlas generation.
+- `raw_assets/sprites/head/basic/walk_right_03.png` (new)
+  - Authored animation layer/frame source preserved for atlas generation.
+- `raw_assets/sprites/head/basic/walk_right_04.png` (new)
+  - Authored animation layer/frame source preserved for atlas generation.
+- `raw_assets/sprites/head/basic/walk_right_05.png` (new)
+  - Authored animation layer/frame source preserved for atlas generation.
+- `raw_assets/sprites/head/basic/walk_right_06.png` (new)
+  - Authored animation layer/frame source preserved for atlas generation.
+- `raw_assets/sprites/head/basic/walk_right_07.png` (new)
+  - Authored animation layer/frame source preserved for atlas generation.
+- `raw_assets/sprites/head/basic/walk_up_00.png` (new)
+  - Authored animation layer/frame source preserved for atlas generation.
+- `raw_assets/sprites/head/basic/walk_up_01.png` (new)
+  - Authored animation layer/frame source preserved for atlas generation.
+- `raw_assets/sprites/head/basic/walk_up_02.png` (new)
+  - Authored animation layer/frame source preserved for atlas generation.
+- `raw_assets/sprites/head/basic/walk_up_03.png` (new)
+  - Authored animation layer/frame source preserved for atlas generation.
+- `raw_assets/sprites/head/basic/walk_up_04.png` (new)
+  - Authored animation layer/frame source preserved for atlas generation.
+- `raw_assets/sprites/head/basic/walk_up_05.png` (new)
+  - Authored animation layer/frame source preserved for atlas generation.
+- `raw_assets/sprites/head/basic/walk_up_06.png` (new)
+  - Authored animation layer/frame source preserved for atlas generation.
+- `raw_assets/sprites/head/basic/walk_up_07.png` (new)
+  - Authored animation layer/frame source preserved for atlas generation.
+- `raw_assets/sprites/weapons/melee/basic_sword/death_down_00.png` (new)
+  - Authored animation layer/frame source preserved for atlas generation.
+- `raw_assets/sprites/weapons/melee/basic_sword/death_down_01.png` (new)
+  - Authored animation layer/frame source preserved for atlas generation.
+- `raw_assets/sprites/weapons/melee/basic_sword/death_down_02.png` (new)
+  - Authored animation layer/frame source preserved for atlas generation.
+- `raw_assets/sprites/weapons/melee/basic_sword/death_down_03.png` (new)
+  - Authored animation layer/frame source preserved for atlas generation.
+- `raw_assets/sprites/weapons/melee/basic_sword/death_down_04.png` (new)
+  - Authored animation layer/frame source preserved for atlas generation.
+- `raw_assets/sprites/weapons/melee/basic_sword/death_down_05.png` (new)
+  - Authored animation layer/frame source preserved for atlas generation.
+- `raw_assets/sprites/weapons/melee/basic_sword/death_down_06.png` (new)
+  - Authored animation layer/frame source preserved for atlas generation.
+- `raw_assets/sprites/weapons/melee/basic_sword/death_down_07.png` (new)
+  - Authored animation layer/frame source preserved for atlas generation.
+- `raw_assets/sprites/weapons/melee/basic_sword/death_left_00.png` (new)
+  - Authored animation layer/frame source preserved for atlas generation.
+- `raw_assets/sprites/weapons/melee/basic_sword/death_left_01.png` (new)
+  - Authored animation layer/frame source preserved for atlas generation.
+- `raw_assets/sprites/weapons/melee/basic_sword/death_left_02.png` (new)
+  - Authored animation layer/frame source preserved for atlas generation.
+- `raw_assets/sprites/weapons/melee/basic_sword/death_left_03.png` (new)
+  - Authored animation layer/frame source preserved for atlas generation.
+- `raw_assets/sprites/weapons/melee/basic_sword/death_left_04.png` (new)
+  - Authored animation layer/frame source preserved for atlas generation.
+- `raw_assets/sprites/weapons/melee/basic_sword/death_left_05.png` (new)
+  - Authored animation layer/frame source preserved for atlas generation.
+- `raw_assets/sprites/weapons/melee/basic_sword/death_left_06.png` (new)
+  - Authored animation layer/frame source preserved for atlas generation.
+- `raw_assets/sprites/weapons/melee/basic_sword/death_left_07.png` (new)
+  - Authored animation layer/frame source preserved for atlas generation.
+- `raw_assets/sprites/weapons/melee/basic_sword/death_right_00.png` (new)
+  - Authored animation layer/frame source preserved for atlas generation.
+- `raw_assets/sprites/weapons/melee/basic_sword/death_right_01.png` (new)
+  - Authored animation layer/frame source preserved for atlas generation.
+- `raw_assets/sprites/weapons/melee/basic_sword/death_right_02.png` (new)
+  - Authored animation layer/frame source preserved for atlas generation.
+- `raw_assets/sprites/weapons/melee/basic_sword/death_right_03.png` (new)
+  - Authored animation layer/frame source preserved for atlas generation.
+- `raw_assets/sprites/weapons/melee/basic_sword/death_right_04.png` (new)
+  - Authored animation layer/frame source preserved for atlas generation.
+- `raw_assets/sprites/weapons/melee/basic_sword/death_right_05.png` (new)
+  - Authored animation layer/frame source preserved for atlas generation.
+- `raw_assets/sprites/weapons/melee/basic_sword/death_right_06.png` (new)
+  - Authored animation layer/frame source preserved for atlas generation.
+- `raw_assets/sprites/weapons/melee/basic_sword/death_right_07.png` (new)
+  - Authored animation layer/frame source preserved for atlas generation.
+- `raw_assets/sprites/weapons/melee/basic_sword/death_up_00.png` (new)
+  - Authored animation layer/frame source preserved for atlas generation.
+- `raw_assets/sprites/weapons/melee/basic_sword/death_up_01.png` (new)
+  - Authored animation layer/frame source preserved for atlas generation.
+- `raw_assets/sprites/weapons/melee/basic_sword/death_up_02.png` (new)
+  - Authored animation layer/frame source preserved for atlas generation.
+- `raw_assets/sprites/weapons/melee/basic_sword/death_up_03.png` (new)
+  - Authored animation layer/frame source preserved for atlas generation.
+- `raw_assets/sprites/weapons/melee/basic_sword/death_up_04.png` (new)
+  - Authored animation layer/frame source preserved for atlas generation.
+- `raw_assets/sprites/weapons/melee/basic_sword/death_up_05.png` (new)
+  - Authored animation layer/frame source preserved for atlas generation.
+- `raw_assets/sprites/weapons/melee/basic_sword/death_up_06.png` (new)
+  - Authored animation layer/frame source preserved for atlas generation.
+- `raw_assets/sprites/weapons/melee/basic_sword/death_up_07.png` (new)
+  - Authored animation layer/frame source preserved for atlas generation.
+- `raw_assets/sprites/weapons/melee/basic_sword/idle_down_00.png` (new)
+  - Authored animation layer/frame source preserved for atlas generation.
+- `raw_assets/sprites/weapons/melee/basic_sword/idle_down_01.png` (new)
+  - Authored animation layer/frame source preserved for atlas generation.
+- `raw_assets/sprites/weapons/melee/basic_sword/idle_down_02.png` (new)
+  - Authored animation layer/frame source preserved for atlas generation.
+- `raw_assets/sprites/weapons/melee/basic_sword/idle_down_03.png` (new)
+  - Authored animation layer/frame source preserved for atlas generation.
+- `raw_assets/sprites/weapons/melee/basic_sword/idle_down_04.png` (new)
+  - Authored animation layer/frame source preserved for atlas generation.
+- `raw_assets/sprites/weapons/melee/basic_sword/idle_down_05.png` (new)
+  - Authored animation layer/frame source preserved for atlas generation.
+- `raw_assets/sprites/weapons/melee/basic_sword/idle_down_06.png` (new)
+  - Authored animation layer/frame source preserved for atlas generation.
+- `raw_assets/sprites/weapons/melee/basic_sword/idle_down_07.png` (new)
+  - Authored animation layer/frame source preserved for atlas generation.
+- `raw_assets/sprites/weapons/melee/basic_sword/idle_left_00.png` (new)
+  - Authored animation layer/frame source preserved for atlas generation.
+- `raw_assets/sprites/weapons/melee/basic_sword/idle_left_01.png` (new)
+  - Authored animation layer/frame source preserved for atlas generation.
+- `raw_assets/sprites/weapons/melee/basic_sword/idle_left_02.png` (new)
+  - Authored animation layer/frame source preserved for atlas generation.
+- `raw_assets/sprites/weapons/melee/basic_sword/idle_left_03.png` (new)
+  - Authored animation layer/frame source preserved for atlas generation.
+- `raw_assets/sprites/weapons/melee/basic_sword/idle_left_04.png` (new)
+  - Authored animation layer/frame source preserved for atlas generation.
+- `raw_assets/sprites/weapons/melee/basic_sword/idle_left_05.png` (new)
+  - Authored animation layer/frame source preserved for atlas generation.
+- `raw_assets/sprites/weapons/melee/basic_sword/idle_left_06.png` (new)
+  - Authored animation layer/frame source preserved for atlas generation.
+- `raw_assets/sprites/weapons/melee/basic_sword/idle_left_07.png` (new)
+  - Authored animation layer/frame source preserved for atlas generation.
+- `raw_assets/sprites/weapons/melee/basic_sword/idle_right_00.png` (new)
+  - Authored animation layer/frame source preserved for atlas generation.
+- `raw_assets/sprites/weapons/melee/basic_sword/idle_right_01.png` (new)
+  - Authored animation layer/frame source preserved for atlas generation.
+- `raw_assets/sprites/weapons/melee/basic_sword/idle_right_02.png` (new)
+  - Authored animation layer/frame source preserved for atlas generation.
+- `raw_assets/sprites/weapons/melee/basic_sword/idle_right_03.png` (new)
+  - Authored animation layer/frame source preserved for atlas generation.
+- `raw_assets/sprites/weapons/melee/basic_sword/idle_right_04.png` (new)
+  - Authored animation layer/frame source preserved for atlas generation.
+- `raw_assets/sprites/weapons/melee/basic_sword/idle_right_05.png` (new)
+  - Authored animation layer/frame source preserved for atlas generation.
+- `raw_assets/sprites/weapons/melee/basic_sword/idle_right_06.png` (new)
+  - Authored animation layer/frame source preserved for atlas generation.
+- `raw_assets/sprites/weapons/melee/basic_sword/idle_right_07.png` (new)
+  - Authored animation layer/frame source preserved for atlas generation.
+- `raw_assets/sprites/weapons/melee/basic_sword/idle_up_00.png` (new)
+  - Authored animation layer/frame source preserved for atlas generation.
+- `raw_assets/sprites/weapons/melee/basic_sword/idle_up_01.png` (new)
+  - Authored animation layer/frame source preserved for atlas generation.
+- `raw_assets/sprites/weapons/melee/basic_sword/idle_up_02.png` (new)
+  - Authored animation layer/frame source preserved for atlas generation.
+- `raw_assets/sprites/weapons/melee/basic_sword/idle_up_03.png` (new)
+  - Authored animation layer/frame source preserved for atlas generation.
+- `raw_assets/sprites/weapons/melee/basic_sword/idle_up_04.png` (new)
+  - Authored animation layer/frame source preserved for atlas generation.
+- `raw_assets/sprites/weapons/melee/basic_sword/idle_up_05.png` (new)
+  - Authored animation layer/frame source preserved for atlas generation.
+- `raw_assets/sprites/weapons/melee/basic_sword/idle_up_06.png` (new)
+  - Authored animation layer/frame source preserved for atlas generation.
+- `raw_assets/sprites/weapons/melee/basic_sword/idle_up_07.png` (new)
+  - Authored animation layer/frame source preserved for atlas generation.
+- `raw_assets/sprites/weapons/melee/basic_sword/jab_down_00.png` (new)
+  - Authored animation layer/frame source preserved for atlas generation.
+- `raw_assets/sprites/weapons/melee/basic_sword/jab_down_01.png` (new)
+  - Authored animation layer/frame source preserved for atlas generation.
+- `raw_assets/sprites/weapons/melee/basic_sword/jab_down_02.png` (new)
+  - Authored animation layer/frame source preserved for atlas generation.
+- `raw_assets/sprites/weapons/melee/basic_sword/jab_down_03.png` (new)
+  - Authored animation layer/frame source preserved for atlas generation.
+- `raw_assets/sprites/weapons/melee/basic_sword/jab_down_04.png` (new)
+  - Authored animation layer/frame source preserved for atlas generation.
+- `raw_assets/sprites/weapons/melee/basic_sword/jab_down_05.png` (new)
+  - Authored animation layer/frame source preserved for atlas generation.
+- `raw_assets/sprites/weapons/melee/basic_sword/jab_down_06.png` (new)
+  - Authored animation layer/frame source preserved for atlas generation.
+- `raw_assets/sprites/weapons/melee/basic_sword/jab_down_07.png` (new)
+  - Authored animation layer/frame source preserved for atlas generation.
+- `raw_assets/sprites/weapons/melee/basic_sword/jab_left_00.png` (new)
+  - Authored animation layer/frame source preserved for atlas generation.
+- `raw_assets/sprites/weapons/melee/basic_sword/jab_left_01.png` (new)
+  - Authored animation layer/frame source preserved for atlas generation.
+- `raw_assets/sprites/weapons/melee/basic_sword/jab_left_02.png` (new)
+  - Authored animation layer/frame source preserved for atlas generation.
+- `raw_assets/sprites/weapons/melee/basic_sword/jab_left_03.png` (new)
+  - Authored animation layer/frame source preserved for atlas generation.
+- `raw_assets/sprites/weapons/melee/basic_sword/jab_left_04.png` (new)
+  - Authored animation layer/frame source preserved for atlas generation.
+- `raw_assets/sprites/weapons/melee/basic_sword/jab_left_05.png` (new)
+  - Authored animation layer/frame source preserved for atlas generation.
+- `raw_assets/sprites/weapons/melee/basic_sword/jab_left_06.png` (new)
+  - Authored animation layer/frame source preserved for atlas generation.
+- `raw_assets/sprites/weapons/melee/basic_sword/jab_left_07.png` (new)
+  - Authored animation layer/frame source preserved for atlas generation.
+- `raw_assets/sprites/weapons/melee/basic_sword/jab_right_00.png` (new)
+  - Authored animation layer/frame source preserved for atlas generation.
+- `raw_assets/sprites/weapons/melee/basic_sword/jab_right_01.png` (new)
+  - Authored animation layer/frame source preserved for atlas generation.
+- `raw_assets/sprites/weapons/melee/basic_sword/jab_right_02.png` (new)
+  - Authored animation layer/frame source preserved for atlas generation.
+- `raw_assets/sprites/weapons/melee/basic_sword/jab_right_03.png` (new)
+  - Authored animation layer/frame source preserved for atlas generation.
+- `raw_assets/sprites/weapons/melee/basic_sword/jab_right_04.png` (new)
+  - Authored animation layer/frame source preserved for atlas generation.
+- `raw_assets/sprites/weapons/melee/basic_sword/jab_right_05.png` (new)
+  - Authored animation layer/frame source preserved for atlas generation.
+- `raw_assets/sprites/weapons/melee/basic_sword/jab_right_06.png` (new)
+  - Authored animation layer/frame source preserved for atlas generation.
+- `raw_assets/sprites/weapons/melee/basic_sword/jab_right_07.png` (new)
+  - Authored animation layer/frame source preserved for atlas generation.
+- `raw_assets/sprites/weapons/melee/basic_sword/jab_up_00.png` (new)
+  - Authored animation layer/frame source preserved for atlas generation.
+- `raw_assets/sprites/weapons/melee/basic_sword/jab_up_01.png` (new)
+  - Authored animation layer/frame source preserved for atlas generation.
+- `raw_assets/sprites/weapons/melee/basic_sword/jab_up_02.png` (new)
+  - Authored animation layer/frame source preserved for atlas generation.
+- `raw_assets/sprites/weapons/melee/basic_sword/jab_up_03.png` (new)
+  - Authored animation layer/frame source preserved for atlas generation.
+- `raw_assets/sprites/weapons/melee/basic_sword/jab_up_04.png` (new)
+  - Authored animation layer/frame source preserved for atlas generation.
+- `raw_assets/sprites/weapons/melee/basic_sword/jab_up_05.png` (new)
+  - Authored animation layer/frame source preserved for atlas generation.
+- `raw_assets/sprites/weapons/melee/basic_sword/jab_up_06.png` (new)
+  - Authored animation layer/frame source preserved for atlas generation.
+- `raw_assets/sprites/weapons/melee/basic_sword/jab_up_07.png` (new)
+  - Authored animation layer/frame source preserved for atlas generation.
+- `raw_assets/sprites/weapons/melee/basic_sword/slash_down_00.png` (new)
+  - Authored animation layer/frame source preserved for atlas generation.
+- `raw_assets/sprites/weapons/melee/basic_sword/slash_down_01.png` (new)
+  - Authored animation layer/frame source preserved for atlas generation.
+- `raw_assets/sprites/weapons/melee/basic_sword/slash_down_02.png` (new)
+  - Authored animation layer/frame source preserved for atlas generation.
+- `raw_assets/sprites/weapons/melee/basic_sword/slash_down_03.png` (new)
+  - Authored animation layer/frame source preserved for atlas generation.
+- `raw_assets/sprites/weapons/melee/basic_sword/slash_down_04.png` (new)
+  - Authored animation layer/frame source preserved for atlas generation.
+- `raw_assets/sprites/weapons/melee/basic_sword/slash_down_05.png` (new)
+  - Authored animation layer/frame source preserved for atlas generation.
+- `raw_assets/sprites/weapons/melee/basic_sword/slash_down_06.png` (new)
+  - Authored animation layer/frame source preserved for atlas generation.
+- `raw_assets/sprites/weapons/melee/basic_sword/slash_down_07.png` (new)
+  - Authored animation layer/frame source preserved for atlas generation.
+- `raw_assets/sprites/weapons/melee/basic_sword/slash_left_00.png` (new)
+  - Authored animation layer/frame source preserved for atlas generation.
+- `raw_assets/sprites/weapons/melee/basic_sword/slash_left_01.png` (new)
+  - Authored animation layer/frame source preserved for atlas generation.
+- `raw_assets/sprites/weapons/melee/basic_sword/slash_left_02.png` (new)
+  - Authored animation layer/frame source preserved for atlas generation.
+- `raw_assets/sprites/weapons/melee/basic_sword/slash_left_03.png` (new)
+  - Authored animation layer/frame source preserved for atlas generation.
+- `raw_assets/sprites/weapons/melee/basic_sword/slash_left_04.png` (new)
+  - Authored animation layer/frame source preserved for atlas generation.
+- `raw_assets/sprites/weapons/melee/basic_sword/slash_left_05.png` (new)
+  - Authored animation layer/frame source preserved for atlas generation.
+- `raw_assets/sprites/weapons/melee/basic_sword/slash_left_06.png` (new)
+  - Authored animation layer/frame source preserved for atlas generation.
+- `raw_assets/sprites/weapons/melee/basic_sword/slash_left_07.png` (new)
+  - Authored animation layer/frame source preserved for atlas generation.
+- `raw_assets/sprites/weapons/melee/basic_sword/slash_right_00.png` (new)
+  - Authored animation layer/frame source preserved for atlas generation.
+- `raw_assets/sprites/weapons/melee/basic_sword/slash_right_01.png` (new)
+  - Authored animation layer/frame source preserved for atlas generation.
+- `raw_assets/sprites/weapons/melee/basic_sword/slash_right_02.png` (new)
+  - Authored animation layer/frame source preserved for atlas generation.
+- `raw_assets/sprites/weapons/melee/basic_sword/slash_right_03.png` (new)
+  - Authored animation layer/frame source preserved for atlas generation.
+- `raw_assets/sprites/weapons/melee/basic_sword/slash_right_04.png` (new)
+  - Authored animation layer/frame source preserved for atlas generation.
+- `raw_assets/sprites/weapons/melee/basic_sword/slash_right_05.png` (new)
+  - Authored animation layer/frame source preserved for atlas generation.
+- `raw_assets/sprites/weapons/melee/basic_sword/slash_right_06.png` (new)
+  - Authored animation layer/frame source preserved for atlas generation.
+- `raw_assets/sprites/weapons/melee/basic_sword/slash_right_07.png` (new)
+  - Authored animation layer/frame source preserved for atlas generation.
+- `raw_assets/sprites/weapons/melee/basic_sword/slash_up_00.png` (new)
+  - Authored animation layer/frame source preserved for atlas generation.
+- `raw_assets/sprites/weapons/melee/basic_sword/slash_up_01.png` (new)
+  - Authored animation layer/frame source preserved for atlas generation.
+- `raw_assets/sprites/weapons/melee/basic_sword/slash_up_02.png` (new)
+  - Authored animation layer/frame source preserved for atlas generation.
+- `raw_assets/sprites/weapons/melee/basic_sword/slash_up_03.png` (new)
+  - Authored animation layer/frame source preserved for atlas generation.
+- `raw_assets/sprites/weapons/melee/basic_sword/slash_up_04.png` (new)
+  - Authored animation layer/frame source preserved for atlas generation.
+- `raw_assets/sprites/weapons/melee/basic_sword/slash_up_05.png` (new)
+  - Authored animation layer/frame source preserved for atlas generation.
+- `raw_assets/sprites/weapons/melee/basic_sword/slash_up_06.png` (new)
+  - Authored animation layer/frame source preserved for atlas generation.
+- `raw_assets/sprites/weapons/melee/basic_sword/slash_up_07.png` (new)
+  - Authored animation layer/frame source preserved for atlas generation.
+- `raw_assets/sprites/weapons/melee/basic_sword/walk_down_00.png` (new)
+  - Authored animation layer/frame source preserved for atlas generation.
+- `raw_assets/sprites/weapons/melee/basic_sword/walk_down_01.png` (new)
+  - Authored animation layer/frame source preserved for atlas generation.
+- `raw_assets/sprites/weapons/melee/basic_sword/walk_down_02.png` (new)
+  - Authored animation layer/frame source preserved for atlas generation.
+- `raw_assets/sprites/weapons/melee/basic_sword/walk_down_03.png` (new)
+  - Authored animation layer/frame source preserved for atlas generation.
+- `raw_assets/sprites/weapons/melee/basic_sword/walk_down_04.png` (new)
+  - Authored animation layer/frame source preserved for atlas generation.
+- `raw_assets/sprites/weapons/melee/basic_sword/walk_down_05.png` (new)
+  - Authored animation layer/frame source preserved for atlas generation.
+- `raw_assets/sprites/weapons/melee/basic_sword/walk_down_06.png` (new)
+  - Authored animation layer/frame source preserved for atlas generation.
+- `raw_assets/sprites/weapons/melee/basic_sword/walk_down_07.png` (new)
+  - Authored animation layer/frame source preserved for atlas generation.
+- `raw_assets/sprites/weapons/melee/basic_sword/walk_left_00.png` (new)
+  - Authored animation layer/frame source preserved for atlas generation.
+- `raw_assets/sprites/weapons/melee/basic_sword/walk_left_01.png` (new)
+  - Authored animation layer/frame source preserved for atlas generation.
+- `raw_assets/sprites/weapons/melee/basic_sword/walk_left_02.png` (new)
+  - Authored animation layer/frame source preserved for atlas generation.
+- `raw_assets/sprites/weapons/melee/basic_sword/walk_left_03.png` (new)
+  - Authored animation layer/frame source preserved for atlas generation.
+- `raw_assets/sprites/weapons/melee/basic_sword/walk_left_04.png` (new)
+  - Authored animation layer/frame source preserved for atlas generation.
+- `raw_assets/sprites/weapons/melee/basic_sword/walk_left_05.png` (new)
+  - Authored animation layer/frame source preserved for atlas generation.
+- `raw_assets/sprites/weapons/melee/basic_sword/walk_left_06.png` (new)
+  - Authored animation layer/frame source preserved for atlas generation.
+- `raw_assets/sprites/weapons/melee/basic_sword/walk_left_07.png` (new)
+  - Authored animation layer/frame source preserved for atlas generation.
+- `raw_assets/sprites/weapons/melee/basic_sword/walk_right_00.png` (new)
+  - Authored animation layer/frame source preserved for atlas generation.
+- `raw_assets/sprites/weapons/melee/basic_sword/walk_right_01.png` (new)
+  - Authored animation layer/frame source preserved for atlas generation.
+- `raw_assets/sprites/weapons/melee/basic_sword/walk_right_02.png` (new)
+  - Authored animation layer/frame source preserved for atlas generation.
+- `raw_assets/sprites/weapons/melee/basic_sword/walk_right_03.png` (new)
+  - Authored animation layer/frame source preserved for atlas generation.
+- `raw_assets/sprites/weapons/melee/basic_sword/walk_right_04.png` (new)
+  - Authored animation layer/frame source preserved for atlas generation.
+- `raw_assets/sprites/weapons/melee/basic_sword/walk_right_05.png` (new)
+  - Authored animation layer/frame source preserved for atlas generation.
+- `raw_assets/sprites/weapons/melee/basic_sword/walk_right_06.png` (new)
+  - Authored animation layer/frame source preserved for atlas generation.
+- `raw_assets/sprites/weapons/melee/basic_sword/walk_right_07.png` (new)
+  - Authored animation layer/frame source preserved for atlas generation.
+- `raw_assets/sprites/weapons/melee/basic_sword/walk_up_00.png` (new)
+  - Authored animation layer/frame source preserved for atlas generation.
+- `raw_assets/sprites/weapons/melee/basic_sword/walk_up_01.png` (new)
+  - Authored animation layer/frame source preserved for atlas generation.
+- `raw_assets/sprites/weapons/melee/basic_sword/walk_up_02.png` (new)
+  - Authored animation layer/frame source preserved for atlas generation.
+- `raw_assets/sprites/weapons/melee/basic_sword/walk_up_03.png` (new)
+  - Authored animation layer/frame source preserved for atlas generation.
+- `raw_assets/sprites/weapons/melee/basic_sword/walk_up_04.png` (new)
+  - Authored animation layer/frame source preserved for atlas generation.
+- `raw_assets/sprites/weapons/melee/basic_sword/walk_up_05.png` (new)
+  - Authored animation layer/frame source preserved for atlas generation.
+- `raw_assets/sprites/weapons/melee/basic_sword/walk_up_06.png` (new)
+  - Authored animation layer/frame source preserved for atlas generation.
+- `raw_assets/sprites/weapons/melee/basic_sword/walk_up_07.png` (new)
+  - Authored animation layer/frame source preserved for atlas generation.
+- `raw_assets/sprites/weapons/ranged/basic_bow/death_down_00.png` (new)
+  - Authored animation layer/frame source preserved for atlas generation.
+- `raw_assets/sprites/weapons/ranged/basic_bow/death_down_01.png` (new)
+  - Authored animation layer/frame source preserved for atlas generation.
+- `raw_assets/sprites/weapons/ranged/basic_bow/death_down_02.png` (new)
+  - Authored animation layer/frame source preserved for atlas generation.
+- `raw_assets/sprites/weapons/ranged/basic_bow/death_down_03.png` (new)
+  - Authored animation layer/frame source preserved for atlas generation.
+- `raw_assets/sprites/weapons/ranged/basic_bow/death_down_04.png` (new)
+  - Authored animation layer/frame source preserved for atlas generation.
+- `raw_assets/sprites/weapons/ranged/basic_bow/death_down_05.png` (new)
+  - Authored animation layer/frame source preserved for atlas generation.
+- `raw_assets/sprites/weapons/ranged/basic_bow/death_down_06.png` (new)
+  - Authored animation layer/frame source preserved for atlas generation.
+- `raw_assets/sprites/weapons/ranged/basic_bow/death_down_07.png` (new)
+  - Authored animation layer/frame source preserved for atlas generation.
+- `raw_assets/sprites/weapons/ranged/basic_bow/death_left_00.png` (new)
+  - Authored animation layer/frame source preserved for atlas generation.
+- `raw_assets/sprites/weapons/ranged/basic_bow/death_left_01.png` (new)
+  - Authored animation layer/frame source preserved for atlas generation.
+- `raw_assets/sprites/weapons/ranged/basic_bow/death_left_02.png` (new)
+  - Authored animation layer/frame source preserved for atlas generation.
+- `raw_assets/sprites/weapons/ranged/basic_bow/death_left_03.png` (new)
+  - Authored animation layer/frame source preserved for atlas generation.
+- `raw_assets/sprites/weapons/ranged/basic_bow/death_left_04.png` (new)
+  - Authored animation layer/frame source preserved for atlas generation.
+- `raw_assets/sprites/weapons/ranged/basic_bow/death_left_05.png` (new)
+  - Authored animation layer/frame source preserved for atlas generation.
+- `raw_assets/sprites/weapons/ranged/basic_bow/death_left_06.png` (new)
+  - Authored animation layer/frame source preserved for atlas generation.
+- `raw_assets/sprites/weapons/ranged/basic_bow/death_left_07.png` (new)
+  - Authored animation layer/frame source preserved for atlas generation.
+- `raw_assets/sprites/weapons/ranged/basic_bow/death_right_00.png` (new)
+  - Authored animation layer/frame source preserved for atlas generation.
+- `raw_assets/sprites/weapons/ranged/basic_bow/death_right_01.png` (new)
+  - Authored animation layer/frame source preserved for atlas generation.
+- `raw_assets/sprites/weapons/ranged/basic_bow/death_right_02.png` (new)
+  - Authored animation layer/frame source preserved for atlas generation.
+- `raw_assets/sprites/weapons/ranged/basic_bow/death_right_03.png` (new)
+  - Authored animation layer/frame source preserved for atlas generation.
+- `raw_assets/sprites/weapons/ranged/basic_bow/death_right_04.png` (new)
+  - Authored animation layer/frame source preserved for atlas generation.
+- `raw_assets/sprites/weapons/ranged/basic_bow/death_right_05.png` (new)
+  - Authored animation layer/frame source preserved for atlas generation.
+- `raw_assets/sprites/weapons/ranged/basic_bow/death_right_06.png` (new)
+  - Authored animation layer/frame source preserved for atlas generation.
+- `raw_assets/sprites/weapons/ranged/basic_bow/death_right_07.png` (new)
+  - Authored animation layer/frame source preserved for atlas generation.
+- `raw_assets/sprites/weapons/ranged/basic_bow/death_up_00.png` (new)
+  - Authored animation layer/frame source preserved for atlas generation.
+- `raw_assets/sprites/weapons/ranged/basic_bow/death_up_01.png` (new)
+  - Authored animation layer/frame source preserved for atlas generation.
+- `raw_assets/sprites/weapons/ranged/basic_bow/death_up_02.png` (new)
+  - Authored animation layer/frame source preserved for atlas generation.
+- `raw_assets/sprites/weapons/ranged/basic_bow/death_up_03.png` (new)
+  - Authored animation layer/frame source preserved for atlas generation.
+- `raw_assets/sprites/weapons/ranged/basic_bow/death_up_04.png` (new)
+  - Authored animation layer/frame source preserved for atlas generation.
+- `raw_assets/sprites/weapons/ranged/basic_bow/death_up_05.png` (new)
+  - Authored animation layer/frame source preserved for atlas generation.
+- `raw_assets/sprites/weapons/ranged/basic_bow/death_up_06.png` (new)
+  - Authored animation layer/frame source preserved for atlas generation.
+- `raw_assets/sprites/weapons/ranged/basic_bow/death_up_07.png` (new)
+  - Authored animation layer/frame source preserved for atlas generation.
+- `raw_assets/sprites/weapons/ranged/basic_bow/idle_down_00.png` (new)
+  - Authored animation layer/frame source preserved for atlas generation.
+- `raw_assets/sprites/weapons/ranged/basic_bow/idle_down_01.png` (new)
+  - Authored animation layer/frame source preserved for atlas generation.
+- `raw_assets/sprites/weapons/ranged/basic_bow/idle_down_02.png` (new)
+  - Authored animation layer/frame source preserved for atlas generation.
+- `raw_assets/sprites/weapons/ranged/basic_bow/idle_down_03.png` (new)
+  - Authored animation layer/frame source preserved for atlas generation.
+- `raw_assets/sprites/weapons/ranged/basic_bow/idle_down_04.png` (new)
+  - Authored animation layer/frame source preserved for atlas generation.
+- `raw_assets/sprites/weapons/ranged/basic_bow/idle_down_05.png` (new)
+  - Authored animation layer/frame source preserved for atlas generation.
+- `raw_assets/sprites/weapons/ranged/basic_bow/idle_down_06.png` (new)
+  - Authored animation layer/frame source preserved for atlas generation.
+- `raw_assets/sprites/weapons/ranged/basic_bow/idle_down_07.png` (new)
+  - Authored animation layer/frame source preserved for atlas generation.
+- `raw_assets/sprites/weapons/ranged/basic_bow/idle_left_00.png` (new)
+  - Authored animation layer/frame source preserved for atlas generation.
+- `raw_assets/sprites/weapons/ranged/basic_bow/idle_left_01.png` (new)
+  - Authored animation layer/frame source preserved for atlas generation.
+- `raw_assets/sprites/weapons/ranged/basic_bow/idle_left_02.png` (new)
+  - Authored animation layer/frame source preserved for atlas generation.
+- `raw_assets/sprites/weapons/ranged/basic_bow/idle_left_03.png` (new)
+  - Authored animation layer/frame source preserved for atlas generation.
+- `raw_assets/sprites/weapons/ranged/basic_bow/idle_left_04.png` (new)
+  - Authored animation layer/frame source preserved for atlas generation.
+- `raw_assets/sprites/weapons/ranged/basic_bow/idle_left_05.png` (new)
+  - Authored animation layer/frame source preserved for atlas generation.
+- `raw_assets/sprites/weapons/ranged/basic_bow/idle_left_06.png` (new)
+  - Authored animation layer/frame source preserved for atlas generation.
+- `raw_assets/sprites/weapons/ranged/basic_bow/idle_left_07.png` (new)
+  - Authored animation layer/frame source preserved for atlas generation.
+- `raw_assets/sprites/weapons/ranged/basic_bow/idle_right_00.png` (new)
+  - Authored animation layer/frame source preserved for atlas generation.
+- `raw_assets/sprites/weapons/ranged/basic_bow/idle_right_01.png` (new)
+  - Authored animation layer/frame source preserved for atlas generation.
+- `raw_assets/sprites/weapons/ranged/basic_bow/idle_right_02.png` (new)
+  - Authored animation layer/frame source preserved for atlas generation.
+- `raw_assets/sprites/weapons/ranged/basic_bow/idle_right_03.png` (new)
+  - Authored animation layer/frame source preserved for atlas generation.
+- `raw_assets/sprites/weapons/ranged/basic_bow/idle_right_04.png` (new)
+  - Authored animation layer/frame source preserved for atlas generation.
+- `raw_assets/sprites/weapons/ranged/basic_bow/idle_right_05.png` (new)
+  - Authored animation layer/frame source preserved for atlas generation.
+- `raw_assets/sprites/weapons/ranged/basic_bow/idle_right_06.png` (new)
+  - Authored animation layer/frame source preserved for atlas generation.
+- `raw_assets/sprites/weapons/ranged/basic_bow/idle_right_07.png` (new)
+  - Authored animation layer/frame source preserved for atlas generation.
+- `raw_assets/sprites/weapons/ranged/basic_bow/idle_up_00.png` (new)
+  - Authored animation layer/frame source preserved for atlas generation.
+- `raw_assets/sprites/weapons/ranged/basic_bow/idle_up_01.png` (new)
+  - Authored animation layer/frame source preserved for atlas generation.
+- `raw_assets/sprites/weapons/ranged/basic_bow/idle_up_02.png` (new)
+  - Authored animation layer/frame source preserved for atlas generation.
+- `raw_assets/sprites/weapons/ranged/basic_bow/idle_up_03.png` (new)
+  - Authored animation layer/frame source preserved for atlas generation.
+- `raw_assets/sprites/weapons/ranged/basic_bow/idle_up_04.png` (new)
+  - Authored animation layer/frame source preserved for atlas generation.
+- `raw_assets/sprites/weapons/ranged/basic_bow/idle_up_05.png` (new)
+  - Authored animation layer/frame source preserved for atlas generation.
+- `raw_assets/sprites/weapons/ranged/basic_bow/idle_up_06.png` (new)
+  - Authored animation layer/frame source preserved for atlas generation.
+- `raw_assets/sprites/weapons/ranged/basic_bow/idle_up_07.png` (new)
+  - Authored animation layer/frame source preserved for atlas generation.
+- `raw_assets/sprites/weapons/ranged/basic_bow/jab_down_00.png` (new)
+  - Authored animation layer/frame source preserved for atlas generation.
+- `raw_assets/sprites/weapons/ranged/basic_bow/jab_down_01.png` (new)
+  - Authored animation layer/frame source preserved for atlas generation.
+- `raw_assets/sprites/weapons/ranged/basic_bow/jab_down_02.png` (new)
+  - Authored animation layer/frame source preserved for atlas generation.
+- `raw_assets/sprites/weapons/ranged/basic_bow/jab_down_03.png` (new)
+  - Authored animation layer/frame source preserved for atlas generation.
+- `raw_assets/sprites/weapons/ranged/basic_bow/jab_down_04.png` (new)
+  - Authored animation layer/frame source preserved for atlas generation.
+- `raw_assets/sprites/weapons/ranged/basic_bow/jab_down_05.png` (new)
+  - Authored animation layer/frame source preserved for atlas generation.
+- `raw_assets/sprites/weapons/ranged/basic_bow/jab_down_06.png` (new)
+  - Authored animation layer/frame source preserved for atlas generation.
+- `raw_assets/sprites/weapons/ranged/basic_bow/jab_down_07.png` (new)
+  - Authored animation layer/frame source preserved for atlas generation.
+- `raw_assets/sprites/weapons/ranged/basic_bow/jab_left_00.png` (new)
+  - Authored animation layer/frame source preserved for atlas generation.
+- `raw_assets/sprites/weapons/ranged/basic_bow/jab_left_01.png` (new)
+  - Authored animation layer/frame source preserved for atlas generation.
+- `raw_assets/sprites/weapons/ranged/basic_bow/jab_left_02.png` (new)
+  - Authored animation layer/frame source preserved for atlas generation.
+- `raw_assets/sprites/weapons/ranged/basic_bow/jab_left_03.png` (new)
+  - Authored animation layer/frame source preserved for atlas generation.
+- `raw_assets/sprites/weapons/ranged/basic_bow/jab_left_04.png` (new)
+  - Authored animation layer/frame source preserved for atlas generation.
+- `raw_assets/sprites/weapons/ranged/basic_bow/jab_left_05.png` (new)
+  - Authored animation layer/frame source preserved for atlas generation.
+- `raw_assets/sprites/weapons/ranged/basic_bow/jab_left_06.png` (new)
+  - Authored animation layer/frame source preserved for atlas generation.
+- `raw_assets/sprites/weapons/ranged/basic_bow/jab_left_07.png` (new)
+  - Authored animation layer/frame source preserved for atlas generation.
+- `raw_assets/sprites/weapons/ranged/basic_bow/jab_right_00.png` (new)
+  - Authored animation layer/frame source preserved for atlas generation.
+- `raw_assets/sprites/weapons/ranged/basic_bow/jab_right_01.png` (new)
+  - Authored animation layer/frame source preserved for atlas generation.
+- `raw_assets/sprites/weapons/ranged/basic_bow/jab_right_02.png` (new)
+  - Authored animation layer/frame source preserved for atlas generation.
+- `raw_assets/sprites/weapons/ranged/basic_bow/jab_right_03.png` (new)
+  - Authored animation layer/frame source preserved for atlas generation.
+- `raw_assets/sprites/weapons/ranged/basic_bow/jab_right_04.png` (new)
+  - Authored animation layer/frame source preserved for atlas generation.
+- `raw_assets/sprites/weapons/ranged/basic_bow/jab_right_05.png` (new)
+  - Authored animation layer/frame source preserved for atlas generation.
+- `raw_assets/sprites/weapons/ranged/basic_bow/jab_right_06.png` (new)
+  - Authored animation layer/frame source preserved for atlas generation.
+- `raw_assets/sprites/weapons/ranged/basic_bow/jab_right_07.png` (new)
+  - Authored animation layer/frame source preserved for atlas generation.
+- `raw_assets/sprites/weapons/ranged/basic_bow/jab_up_00.png` (new)
+  - Authored animation layer/frame source preserved for atlas generation.
+- `raw_assets/sprites/weapons/ranged/basic_bow/jab_up_01.png` (new)
+  - Authored animation layer/frame source preserved for atlas generation.
+- `raw_assets/sprites/weapons/ranged/basic_bow/jab_up_02.png` (new)
+  - Authored animation layer/frame source preserved for atlas generation.
+- `raw_assets/sprites/weapons/ranged/basic_bow/jab_up_03.png` (new)
+  - Authored animation layer/frame source preserved for atlas generation.
+- `raw_assets/sprites/weapons/ranged/basic_bow/jab_up_04.png` (new)
+  - Authored animation layer/frame source preserved for atlas generation.
+- `raw_assets/sprites/weapons/ranged/basic_bow/jab_up_05.png` (new)
+  - Authored animation layer/frame source preserved for atlas generation.
+- `raw_assets/sprites/weapons/ranged/basic_bow/jab_up_06.png` (new)
+  - Authored animation layer/frame source preserved for atlas generation.
+- `raw_assets/sprites/weapons/ranged/basic_bow/jab_up_07.png` (new)
+  - Authored animation layer/frame source preserved for atlas generation.
+- `raw_assets/sprites/weapons/ranged/basic_bow/shot_down_00.png` (new)
+  - Authored animation layer/frame source preserved for atlas generation.
+- `raw_assets/sprites/weapons/ranged/basic_bow/shot_down_01.png` (new)
+  - Authored animation layer/frame source preserved for atlas generation.
+- `raw_assets/sprites/weapons/ranged/basic_bow/shot_down_02.png` (new)
+  - Authored animation layer/frame source preserved for atlas generation.
+- `raw_assets/sprites/weapons/ranged/basic_bow/shot_down_03.png` (new)
+  - Authored animation layer/frame source preserved for atlas generation.
+- `raw_assets/sprites/weapons/ranged/basic_bow/shot_down_04.png` (new)
+  - Authored animation layer/frame source preserved for atlas generation.
+- `raw_assets/sprites/weapons/ranged/basic_bow/shot_down_05.png` (new)
+  - Authored animation layer/frame source preserved for atlas generation.
+- `raw_assets/sprites/weapons/ranged/basic_bow/shot_down_06.png` (new)
+  - Authored animation layer/frame source preserved for atlas generation.
+- `raw_assets/sprites/weapons/ranged/basic_bow/shot_down_07.png` (new)
+  - Authored animation layer/frame source preserved for atlas generation.
+- `raw_assets/sprites/weapons/ranged/basic_bow/shot_left_00.png` (new)
+  - Authored animation layer/frame source preserved for atlas generation.
+- `raw_assets/sprites/weapons/ranged/basic_bow/shot_left_01.png` (new)
+  - Authored animation layer/frame source preserved for atlas generation.
+- `raw_assets/sprites/weapons/ranged/basic_bow/shot_left_02.png` (new)
+  - Authored animation layer/frame source preserved for atlas generation.
+- `raw_assets/sprites/weapons/ranged/basic_bow/shot_left_03.png` (new)
+  - Authored animation layer/frame source preserved for atlas generation.
+- `raw_assets/sprites/weapons/ranged/basic_bow/shot_left_04.png` (new)
+  - Authored animation layer/frame source preserved for atlas generation.
+- `raw_assets/sprites/weapons/ranged/basic_bow/shot_left_05.png` (new)
+  - Authored animation layer/frame source preserved for atlas generation.
+- `raw_assets/sprites/weapons/ranged/basic_bow/shot_left_06.png` (new)
+  - Authored animation layer/frame source preserved for atlas generation.
+- `raw_assets/sprites/weapons/ranged/basic_bow/shot_left_07.png` (new)
+  - Authored animation layer/frame source preserved for atlas generation.
+- `raw_assets/sprites/weapons/ranged/basic_bow/shot_right_00.png` (new)
+  - Authored animation layer/frame source preserved for atlas generation.
+- `raw_assets/sprites/weapons/ranged/basic_bow/shot_right_01.png` (new)
+  - Authored animation layer/frame source preserved for atlas generation.
+- `raw_assets/sprites/weapons/ranged/basic_bow/shot_right_02.png` (new)
+  - Authored animation layer/frame source preserved for atlas generation.
+- `raw_assets/sprites/weapons/ranged/basic_bow/shot_right_03.png` (new)
+  - Authored animation layer/frame source preserved for atlas generation.
+- `raw_assets/sprites/weapons/ranged/basic_bow/shot_right_04.png` (new)
+  - Authored animation layer/frame source preserved for atlas generation.
+- `raw_assets/sprites/weapons/ranged/basic_bow/shot_right_05.png` (new)
+  - Authored animation layer/frame source preserved for atlas generation.
+- `raw_assets/sprites/weapons/ranged/basic_bow/shot_right_06.png` (new)
+  - Authored animation layer/frame source preserved for atlas generation.
+- `raw_assets/sprites/weapons/ranged/basic_bow/shot_right_07.png` (new)
+  - Authored animation layer/frame source preserved for atlas generation.
+- `raw_assets/sprites/weapons/ranged/basic_bow/shot_up_00.png` (new)
+  - Authored animation layer/frame source preserved for atlas generation.
+- `raw_assets/sprites/weapons/ranged/basic_bow/shot_up_01.png` (new)
+  - Authored animation layer/frame source preserved for atlas generation.
+- `raw_assets/sprites/weapons/ranged/basic_bow/shot_up_02.png` (new)
+  - Authored animation layer/frame source preserved for atlas generation.
+- `raw_assets/sprites/weapons/ranged/basic_bow/shot_up_03.png` (new)
+  - Authored animation layer/frame source preserved for atlas generation.
+- `raw_assets/sprites/weapons/ranged/basic_bow/shot_up_04.png` (new)
+  - Authored animation layer/frame source preserved for atlas generation.
+- `raw_assets/sprites/weapons/ranged/basic_bow/shot_up_05.png` (new)
+  - Authored animation layer/frame source preserved for atlas generation.
+- `raw_assets/sprites/weapons/ranged/basic_bow/shot_up_06.png` (new)
+  - Authored animation layer/frame source preserved for atlas generation.
+- `raw_assets/sprites/weapons/ranged/basic_bow/shot_up_07.png` (new)
+  - Authored animation layer/frame source preserved for atlas generation.
+- `raw_assets/sprites/weapons/ranged/basic_bow/walk_down_00.png` (new)
+  - Authored animation layer/frame source preserved for atlas generation.
+- `raw_assets/sprites/weapons/ranged/basic_bow/walk_down_01.png` (new)
+  - Authored animation layer/frame source preserved for atlas generation.
+- `raw_assets/sprites/weapons/ranged/basic_bow/walk_down_02.png` (new)
+  - Authored animation layer/frame source preserved for atlas generation.
+- `raw_assets/sprites/weapons/ranged/basic_bow/walk_down_03.png` (new)
+  - Authored animation layer/frame source preserved for atlas generation.
+- `raw_assets/sprites/weapons/ranged/basic_bow/walk_down_04.png` (new)
+  - Authored animation layer/frame source preserved for atlas generation.
+- `raw_assets/sprites/weapons/ranged/basic_bow/walk_down_05.png` (new)
+  - Authored animation layer/frame source preserved for atlas generation.
+- `raw_assets/sprites/weapons/ranged/basic_bow/walk_down_06.png` (new)
+  - Authored animation layer/frame source preserved for atlas generation.
+- `raw_assets/sprites/weapons/ranged/basic_bow/walk_down_07.png` (new)
+  - Authored animation layer/frame source preserved for atlas generation.
+- `raw_assets/sprites/weapons/ranged/basic_bow/walk_left_00.png` (new)
+  - Authored animation layer/frame source preserved for atlas generation.
+- `raw_assets/sprites/weapons/ranged/basic_bow/walk_left_01.png` (new)
+  - Authored animation layer/frame source preserved for atlas generation.
+- `raw_assets/sprites/weapons/ranged/basic_bow/walk_left_02.png` (new)
+  - Authored animation layer/frame source preserved for atlas generation.
+- `raw_assets/sprites/weapons/ranged/basic_bow/walk_left_03.png` (new)
+  - Authored animation layer/frame source preserved for atlas generation.
+- `raw_assets/sprites/weapons/ranged/basic_bow/walk_left_04.png` (new)
+  - Authored animation layer/frame source preserved for atlas generation.
+- `raw_assets/sprites/weapons/ranged/basic_bow/walk_left_05.png` (new)
+  - Authored animation layer/frame source preserved for atlas generation.
+- `raw_assets/sprites/weapons/ranged/basic_bow/walk_left_06.png` (new)
+  - Authored animation layer/frame source preserved for atlas generation.
+- `raw_assets/sprites/weapons/ranged/basic_bow/walk_left_07.png` (new)
+  - Authored animation layer/frame source preserved for atlas generation.
+- `raw_assets/sprites/weapons/ranged/basic_bow/walk_right_00.png` (new)
+  - Authored animation layer/frame source preserved for atlas generation.
+- `raw_assets/sprites/weapons/ranged/basic_bow/walk_right_01.png` (new)
+  - Authored animation layer/frame source preserved for atlas generation.
+- `raw_assets/sprites/weapons/ranged/basic_bow/walk_right_02.png` (new)
+  - Authored animation layer/frame source preserved for atlas generation.
+- `raw_assets/sprites/weapons/ranged/basic_bow/walk_right_03.png` (new)
+  - Authored animation layer/frame source preserved for atlas generation.
+- `raw_assets/sprites/weapons/ranged/basic_bow/walk_right_04.png` (new)
+  - Authored animation layer/frame source preserved for atlas generation.
+- `raw_assets/sprites/weapons/ranged/basic_bow/walk_right_05.png` (new)
+  - Authored animation layer/frame source preserved for atlas generation.
+- `raw_assets/sprites/weapons/ranged/basic_bow/walk_right_06.png` (new)
+  - Authored animation layer/frame source preserved for atlas generation.
+- `raw_assets/sprites/weapons/ranged/basic_bow/walk_right_07.png` (new)
+  - Authored animation layer/frame source preserved for atlas generation.
+- `raw_assets/sprites/weapons/ranged/basic_bow/walk_up_00.png` (new)
+  - Authored animation layer/frame source preserved for atlas generation.
+- `raw_assets/sprites/weapons/ranged/basic_bow/walk_up_01.png` (new)
+  - Authored animation layer/frame source preserved for atlas generation.
+- `raw_assets/sprites/weapons/ranged/basic_bow/walk_up_02.png` (new)
+  - Authored animation layer/frame source preserved for atlas generation.
+- `raw_assets/sprites/weapons/ranged/basic_bow/walk_up_03.png` (new)
+  - Authored animation layer/frame source preserved for atlas generation.
+- `raw_assets/sprites/weapons/ranged/basic_bow/walk_up_04.png` (new)
+  - Authored animation layer/frame source preserved for atlas generation.
+- `raw_assets/sprites/weapons/ranged/basic_bow/walk_up_05.png` (new)
+  - Authored animation layer/frame source preserved for atlas generation.
+- `raw_assets/sprites/weapons/ranged/basic_bow/walk_up_06.png` (new)
+  - Authored animation layer/frame source preserved for atlas generation.
+- `raw_assets/sprites/weapons/ranged/basic_bow/walk_up_07.png` (new)
+  - Authored animation layer/frame source preserved for atlas generation.
+- `util/src/main/java/io/mindspice/lute/engine/util/TexturePackerTool.java`
+  - Stages pack inputs in sorted path order for reproducible atlas generation.
+  - Generates shared character, equipment and weapon atlases with multipage output.
+  - Validates required sprite inputs, transparent frames, region names and dimensions.
+  - Integrates sprite output with staged ownership and existing map asset generation.
+- `util/src/test/java/io/mindspice/lute/engine/util/TexturePackerToolTest.java`
+  - Tests sprite atlas regions, transparent pixels, prefixes and multipage publication.
+  - Checks collision, missing input, ownership failure and stale-page cleanup without corrupting outputs.
+- `.internal-dev/changelogs/2026-11-16-per-attack-sounds.md` (new)
+  - Records independent attack sound data, implementation and phase validation.
+- `.internal-dev/changelogs/2026-11-16-composite-integration-closeout.md` (new)
+  - Records integration repairs, accepted results, remaining risks and follow-ups.
+- `.internal-dev/reviews/2026-11-16-composite-character-integration.md` (new)
+  - Records independent integration scope, repairs, evidence and PASS verdict.
+- `.internal-dev/reviews/2026-11-16-composite-character-pr-targets.md` (new)
+  - Provides the per-path PR target inventory, including all 1,440 authored frame sources and closeout records.

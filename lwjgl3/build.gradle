@@ -58,6 +58,10 @@ tasks.register('compositeRenderTest', JavaExec) {
   jvmArgs '--enable-native-access=ALL-UNNAMED', '--add-exports=java.base/jdk.internal.misc=ALL-UNNAMED'
 }
 
+tasks.named('test') {
+  failOnNoDiscoveredTests = false
+}
+
 def os = System.properties['os.name'].toLowerCase(Locale.ROOT)
 
 run {
