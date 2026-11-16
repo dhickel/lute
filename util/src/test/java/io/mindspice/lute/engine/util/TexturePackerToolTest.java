@@ -92,12 +92,102 @@ public final class TexturePackerToolTest {
             ownershipAndStaleOutputs(directory.resolve("ownership"));
             atlasCollisions(directory.resolve("collisions"));
             publicationRollback(directory.resolve("publication"));
+            spriteAtlases(directory.resolve("sprites"));
             System.out.println("TexturePackerToolTest: passed (names, two maps, ownership, stale outputs, collisions, rollback, path and symlink safety)");
         } finally {
             try (var paths = Files.walk(directory)) {
                 for (Path path : paths.sorted(Comparator.reverseOrder()).toList()) { Files.delete(path); }
             }
         }
+    }
+
+    private static void spriteAtlases(Path directory) throws IOException {
+        Path raw = directory.resolve("raw_assets");
+        Path output = directory.resolve("assets");
+        createInputs(raw);
+        createMap(raw, "alpha");
+        String[] inputs = {"character", "body/basic", "head/basic", "feet/basic", "hands/basic",
+            "weapons/melee/basic_sword", "weapons/ranged/basic_bow"};
+        for (String input : inputs) {
+            Path folder = raw.resolve("sprites").resolve(input);
+            Files.createDirectories(folder);
+            for (int index = 0; index < 2; index++) {
+                var image = new BufferedImage(12, 10, BufferedImage.TYPE_INT_ARGB);
+                if (index == 0) { image.setRGB(3, 4, 0xff336699); }
+                ImageIO.write(image, "png", folder.resolve("idle_down_0" + index + ".png").toFile());
+            }
+        }
+        Path characterSettings = raw.resolve("sprites/character/pack.json");
+        String settings = """
+            {"rotation":false,"stripWhitespaceX":false,"stripWhitespaceY":false,
+             "flattenPaths":false,"combineSubdirectories":true,"useIndexes":true,
+             "alias":false,"ignoreBlankImages":false,"maxWidth":16,"maxHeight":16}
+            """;
+        Files.writeString(characterSettings, settings);
+        TexturePackerTool.generate(raw, output);
+        for (String name : new String[]{"character", "body", "head", "feet", "hands", "weapons"}) {
+            var atlas = new TextureAtlasData(new FileHandle(output.resolve("atlases/" + name + ".atlas").toFile()),
+                new FileHandle(output.resolve("atlases").toFile()), false);
+            check(atlas.getRegions().size == (name.equals("weapons") ? 4 : 2), "Every sprite frame must be packed");
+            for (var region : atlas.getRegions()) {
+                String prefix = name.equals("character") ? "" : name.equals("weapons")
+                    ? (region.name.startsWith("melee/") ? "melee/basic_sword/" : "ranged/basic_bow/") : "basic/";
+                check(region.name.equals(prefix + "idle_down") && (region.index == 0 || region.index == 1),
+                    "Sprite names and indexes must retain relative equipment paths");
+                check(!region.rotate && region.width == 12 && region.height == 10
+                    && region.originalWidth == 12 && region.originalHeight == 10
+                    && region.offsetX == 0 && region.offsetY == 0, "Preserve dimensions, padding and orientation");
+            }
+            for (var region : atlas.getRegions()) {
+                var pageImage = ImageIO.read(region.page.textureFile.file());
+                check(pageImage.getRGB(region.left, region.top) == 0, "Retain transparent border pixels");
+                check(pageImage.getRGB(region.left + 3, region.top + 4) == (region.index == 0 ? 0xff336699 : 0),
+                    "Retain pixel orientation and fully transparent indexed frames");
+            }
+            for (var page : atlas.getPages()) {
+                check(page.textureFile.exists(), "All atlas pages must be published");
+            }
+            if (name.equals("weapons")) {
+                check(hasRegion(atlas, "melee/basic_sword/idle_down", 0)
+                    && hasRegion(atlas, "ranged/basic_bow/idle_down", 1), "Melee and ranged must share weapons atlas");
+            }
+            if (name.equals("character")) { check(atlas.getPages().size == 2, "Force multipage sprite output"); }
+        }
+        check(!Files.exists(output.resolve("sprites")), "Runtime sprites must use only atlases");
+        var initial = snapshot(output);
+        createMap(raw, "character2");
+        rejects(() -> TexturePackerTool.generate(raw, output));
+        check(snapshot(output).equals(initial), "Map first page versus sprite continuation page must fail safely");
+        deleteTree(raw.resolve("maps/character2"));
+        Files.writeString(characterSettings, settings.replace("\"rotation\":false", "\"rotation\":true"));
+        rejects(() -> TexturePackerTool.generate(raw, output));
+        check(snapshot(output).equals(initial), "Invalid sprite packing must preserve outputs");
+        Files.writeString(characterSettings, settings.replace("16", "64"));
+        TexturePackerTool.generate(raw, output);
+        check(!Files.exists(output.resolve("atlases/character2.png")), "Remove stale sprite pages");
+        var snapshot = snapshot(output);
+        createMap(raw, "character");
+        rejects(() -> TexturePackerTool.generate(raw, output));
+        check(snapshot(output).equals(snapshot), "Map versus sprite atlas collision must preserve all outputs");
+        deleteTree(raw.resolve("maps/character"));
+        Files.writeString(output.resolve("atlases/weapons.png"), "modified owned sprite");
+        snapshot = snapshot(output);
+        rejects(() -> TexturePackerTool.generate(raw, output));
+        check(snapshot(output).equals(snapshot), "Ownership failure must preserve every output byte");
+        Path bow = raw.resolve("sprites/weapons/ranged/basic_bow");
+        deleteTree(bow);
+        rejects(() -> TexturePackerTool.generate(raw, output));
+        check(snapshot(output).equals(snapshot), "Missing required sprite input must preserve outputs");
+    }
+
+    private static java.util.Map<String, String> snapshot(Path directory) throws IOException {
+        var result = new java.util.TreeMap<String, String>();
+        try (var files = Files.walk(directory)) {
+            for (Path file : files.filter(Files::isRegularFile).toList()) {
+                result.put(directory.relativize(file).toString(), java.util.Base64.getEncoder().encodeToString(Files.readAllBytes(file)));
+            }
+        }
+        return result;
     }
 
     private static boolean hasRegion(TextureAtlasData atlas, String name, int index) {

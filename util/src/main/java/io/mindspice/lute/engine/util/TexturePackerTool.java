@@ -8,6 +8,7 @@ import com.badlogic.gdx.utils.JsonReader;
 import com.badlogic.gdx.utils.XmlReader;
 import com.badlogic.gdx.utils.XmlReader.Element;
 
+import javax.imageio.ImageIO;
 import java.io.IOException;
 import java.nio.file.Files;
 import java.nio.file.Path;
@@ -81,6 +82,7 @@ public final class TexturePackerTool {
                 }
             }
             if (maps == 0) { throw new IllegalArgumentException("No map directories with an objects input folder in " + raw); }
+            generateSprites(raw.resolve("sprites"), stage);
             Path prepared = transaction.resolve("prepared");
             preparePublication(stage, output, prepared, adoptIdentical);
             publish(prepared, output, backup);
@@ -211,35 +213,7 @@ public final class TexturePackerTool {
             }
         }
         var packSettings = new Json().fromJson(TexturePacker.Settings.class, new FileHandle(objects.resolve("pack.json").toFile()));
-        if (packSettings.rotation || packSettings.stripWhitespaceX || packSettings.stripWhitespaceY
-                || packSettings.flattenPaths || !packSettings.useIndexes || !packSettings.combineSubdirectories
-                || packSettings.scale.length != 1 || packSettings.scale[0] != 1
-                || packSettings.scaleSuffix.length != 1 || !packSettings.scaleSuffix[0].isEmpty()) {
-            throw new IllegalArgumentException("Object packing must preserve paths, indexes, dimensions and orientation: " + objects);
-        }
-        try (var files = Files.walk(objects)) {
-            if (files.anyMatch(file -> file.getFileName().toString().equals("pack.json") && !file.getParent().equals(objects))) {
-                throw new IllegalArgumentException("Nested pack.json overrides are not supported: " + objects);
-            }
-        }
-        Path packed = Files.createTempDirectory(stage.getParent(), "packed-");
-        TexturePacker.process(packSettings, objects.toString(), packed.toString(), name);
-        var atlas = new TextureAtlasData(new FileHandle(packed.resolve(name + ".atlas").toFile()),
-            new FileHandle(packed.toFile()), false);
-        var keys = new HashSet<String>();
-        for (var region : atlas.getRegions()) {
-            if (!keys.add(region.name + "\t" + region.index)) {
-                throw new IllegalArgumentException("Duplicate packed region: " + region.name + " [" + region.index + "]");
-            }
-        }
-        Path atlasDirectory = stage.resolve("atlases");
-        Files.createDirectories(atlasDirectory);
-        try (var files = Files.list(packed)) {
-            for (Path file : files.sorted().toList()) {
-                // Atlas page names (e.g. alpha2.png) can collide with another map's first page.
-                Files.copy(file, atlasDirectory.resolve(file.getFileName()));
-            }
-        }
+        var atlas = packAtlas(objects, stage, name, packSettings);
         Path runtimeMap = stage.resolve("maps").resolve(name);
         var xml = new XmlReader();
         Element root = xml.parse(new FileHandle(map.toFile()));
@@ -274,7 +248,92 @@ public final class TexturePackerTool {
         }
     }
 
+    private static TextureAtlasData packAtlas(Path objects, Path stage, String name,
+                                               TexturePacker.Settings packSettings) throws IOException {
+        if (packSettings.rotation || packSettings.stripWhitespaceX || packSettings.stripWhitespaceY
+                || packSettings.flattenPaths || !packSettings.useIndexes || !packSettings.combineSubdirectories
+                || packSettings.scale.length != 1 || packSettings.scale[0] != 1
+                || packSettings.scaleSuffix.length != 1 || !packSettings.scaleSuffix[0].isEmpty()) {
+            throw new IllegalArgumentException("Object packing must preserve paths, indexes, dimensions and orientation: " + objects);
+        }
+        try (var files = Files.walk(objects)) {
+            if (files.anyMatch(file -> file.getFileName().toString().equals("pack.json") && !file.getParent().equals(objects))) {
+                throw new IllegalArgumentException("Nested pack.json overrides are not supported: " + objects);
+            }
+        }
+        Path packed = Files.createTempDirectory(stage.getParent(), "packed-");
+        TexturePacker.process(packSettings, objects.toString(), packed.toString(), name);
+        var atlas = new TextureAtlasData(new FileHandle(packed.resolve(name + ".atlas").toFile()),
+            new FileHandle(packed.toFile()), false);
+        var keys = new HashSet<String>();
+        for (var region : atlas.getRegions()) {
+            if (!keys.add(region.name + "\t" + region.index)) {
+                throw new IllegalArgumentException("Duplicate packed region: " + region.name + " [" + region.index + "]");
+            }
+        }
+        Path atlasDirectory = stage.resolve("atlases");
+        Files.createDirectories(atlasDirectory);
+        try (var files = Files.list(packed)) {
+            for (Path file : files.sorted().toList()) {
+                // Atlas page names (e.g. alpha2.png) can collide with another map's first page.
+                Files.copy(file, atlasDirectory.resolve(file.getFileName()));
+            }
+        }
+        return atlas;
+    }
+
+    private static void generateSprites(Path sprites, Path stage) throws IOException {
+        if (!Files.exists(sprites)) { return; }
+        for (String required : List.of("character", "body/basic", "head/basic", "feet/basic", "hands/basic",
+                "weapons/melee/basic_sword", "weapons/ranged/basic_bow")) {
+            Path directory = sprites.resolve(required);
+            if (!Files.isDirectory(directory) || spriteImages(directory).isEmpty()) {
+                throw new IllegalArgumentException("Missing or empty required sprite input: " + directory);
+            }
+        }
+        for (String name : List.of("character", "body", "head", "feet", "hands", "weapons")) {
+            Path input = sprites.resolve(name);
+            var settings = new TexturePacker.Settings();
+            settings.rotation = false;
+            settings.stripWhitespaceX = false;
+            settings.stripWhitespaceY = false;
+            settings.flattenPaths = false;
+            settings.combineSubdirectories = true;
+            settings.useIndexes = true;
+            settings.alias = false;
+            settings.ignoreBlankImages = false;
+            Path config = input.resolve("pack.json");
+            if (Files.exists(config)) {
+                settings = new Json().fromJson(TexturePacker.Settings.class, new FileHandle(config.toFile()));
+            }
+            if (settings.ignoreBlankImages) {
+                throw new IllegalArgumentException("Sprite packing must retain transparent frames: " + input);
+            }
+            var atlas = packAtlas(input, stage, name, settings);
+            for (Path file : spriteImages(input)) {
+                var image = ImageIO.read(file.toFile());
+                if (image == null) { throw new IOException("Invalid sprite image: " + file); }
+                String relative = input.relativize(file).toString().replace('\\', '/');
+                if (name.equals("character") && relative.contains("/")) {
+                    throw new IllegalArgumentException("Character frames must be flat: " + file);
+                }
+                requireRegion(atlas, relative, image.getWidth(), image.getHeight());
+            }
+        }
+    }
+
+    private static List<Path> spriteImages(Path input) throws IOException {
+        try (var files = Files.walk(input)) {
+            return files.filter(Files::isRegularFile)
+                .filter(file -> file.getFileName().toString().endsWith(".png")).sorted().toList();
+        }
+    }
+
     private static void requireRegion(TextureAtlasData atlas, String source, Element image) {
+        requireRegion(atlas, source, image.getIntAttribute("width"), image.getIntAttribute("height"));
+    }
+
+    private static void requireRegion(TextureAtlasData atlas, String source, int width, int height) {
         int extension = source.lastIndexOf('.');
         if (extension < 0) { throw new IllegalArgumentException("Object image lacks extension: " + source); }
         String key = source.substring(0, extension);
@@ -287,7 +346,7 @@ public final class TexturePackerTool {
         for (var region : atlas.getRegions()) {
             if (!region.name.equals(key) || region.index != index) { continue; }
             if (region.rotate || region.width != region.originalWidth || region.height != region.originalHeight
-                    || region.width != image.getIntAttribute("width") || region.height != image.getIntAttribute("height")) {
+                    || region.width != width || region.height != height || region.offsetX != 0 || region.offsetY != 0) {
                 throw new IllegalArgumentException("Packed region must preserve authored image dimensions: " + source);
             }
             return;
