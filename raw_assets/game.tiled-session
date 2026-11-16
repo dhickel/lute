@@ -1,0 +1,41 @@
+{
+    "activeFile": "maps/test_tiled/objects/objects.tsx",
+    "expandedProjectPaths": [
+        "data",
+        "maps/test_tiled",
+        ".",
+        "maps/test_tiled/objects",
+        "maps"
+    ],
+    "fileStates": {
+        "maps/test_tiled/objects/objects.tsx": {
+            "dynamicWrapping": true,
+            "scaleInDock": 1,
+            "scaleInEditor": 1
+        },
+        "maps/test_tiled/test_tiled.tmx": {
+            "scale": 3,
+            "selectedLayer": 2,
+            "viewCenter": {
+                "x": 398.33333333333326,
+                "y": 549.3333333333333
+            }
+        },
+        "tilesets/ancient_forest/ancient-forest-main.tsx": {
+            "scaleInDock": 1
+        },
+        "tilesets/ancient_forest/old_tree1.tsx": {
+            "scaleInDock": 1
+        }
+    },
+    "last.imagePath": "/home/dhickel/Assets/FantasyHeroes.Basic.Supplies.16x16/Material",
+    "openFiles": [
+        "maps/test_tiled/objects/objects.tsx",
+        "maps/test_tiled/test_tiled.tmx"
+    ],
+    "project": "game.tiled-project",
+    "recentFiles": [
+        "maps/test_tiled/test_tiled.tmx",
+        "maps/test_tiled/objects/objects.tsx"
+    ]
+}

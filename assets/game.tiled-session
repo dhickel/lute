@@ -2,9 +2,10 @@
     "activeFile": "",
     "expandedProjectPaths": [
         "tilesets/ancient_forest",
-        "tilesets",
+        "maps",
         ".",
-        "maps"
+        "tilesets",
+        "objects"
     ],
     "file.lastUsedOpenFilter": "All Files (*)",
     "fileStates": {
@@ -19,15 +20,17 @@
             "scaleInDock": 1
         },
         "maps/test_tiled.tmx": {
-            "scale": 1.3705729166666665,
-            "selectedLayer": 0,
+            "scale": 1,
+            "selectedLayer": 4,
             "viewCenter": {
-                "x": 361.1628348850466,
-                "y": 319.9391981759453
+                "x": 459,
+                "y": 322
             }
         },
         "objects/objects.tsx": {
-            "dynamicWrapping": false
+            "dynamicWrapping": false,
+            "scaleInDock": 1,
+            "scaleInEditor": 1
         },
         "tilesets/ancient_forest/ancient-forest-main.tsx": {
             "scaleInDock": 1,
@@ -47,10 +50,11 @@
     "project": "game.tiled-project",
     "property.type": "string",
     "recentFiles": [
-        "tilesets/ancient_forest/old_tree1.tsx",
-        "/home/dhickel/Assets/tilesets/tilesets/collection-source/mp-dungeon1-psd-enemy1-idle-01.tsx",
+        "objects/objects.tsx",
         "tilesets/ancient_forest/ancient-forest-main.tsx",
-        "maps/test_tiled.tmx"
+        "maps/test_tiled.tmx",
+        "tilesets/ancient_forest/old_tree1.tsx",
+        "/home/dhickel/Assets/tilesets/tilesets/collection-source/mp-dungeon1-psd-enemy1-idle-01.tsx"
     ],
     "tileset.lastUsedFormat": "tsx",
     "tileset.type": 1
