@@ -338,6 +338,10 @@ public final class TexturePackerTool {
             for (Path set : sets.filter(Files::isDirectory).sorted().toList()) {
                 try (var slots = Files.list(set)) {
                     for (Path slot : slots.filter(Files::isDirectory).sorted().toList()) {
+                        if (slot.getFileName().toString().equals("accessories")) {
+                            System.out.println("Skipping unsupported accessories export: " + slot);
+                            continue;
+                        }
                         if (!EQUIPMENT_SLOTS.contains(slot.getFileName().toString())) {
                             throw new IllegalArgumentException("Unknown equipment slot: " + slot);
                         }

@@ -108,7 +108,8 @@ public final class TexturePackerToolTest {
         createMap(raw, "alpha");
         String[] inputs = {"character", "equipment/basic/body", "equipment/basic/head",
             "equipment/basic/feet", "equipment/basic/hands", "equipment/iron/body", "equipment/iron/head",
-            "equipment/iron/feet", "equipment/iron/hands", "weapons/melee/basic_sword", "weapons/ranged/basic_bow"};
+            "equipment/iron/feet", "equipment/iron/hands", "equipment/basic/accessories",
+            "weapons/melee/basic_sword", "weapons/ranged/basic_bow"};
         for (String input : inputs) {
             Path folder = raw.resolve("sprites").resolve(input);
             Files.createDirectories(folder);
@@ -125,7 +126,13 @@ public final class TexturePackerToolTest {
              "alias":false,"ignoreBlankImages":false,"maxWidth":16,"maxHeight":16}
             """;
         Files.writeString(characterSettings, settings);
+        Path accessory = raw.resolve("sprites/equipment/basic/accessories/idle_down_00.png");
+        byte[] accessoryBefore = Files.readAllBytes(accessory);
         TexturePackerTool.generate(raw, output);
+        check(java.util.Arrays.equals(Files.readAllBytes(accessory), accessoryBefore),
+            "Skipping accessories must preserve the exported source bytes");
+        check(!Files.exists(output.resolve("atlases/accessories.atlas")),
+            "Unsupported accessories must not create a runtime atlas");
         for (String name : new String[]{"character", "body", "head", "feet", "hands", "weapons"}) {
             var atlas = new TextureAtlasData(new FileHandle(output.resolve("atlases/" + name + ".atlas").toFile()),
                 new FileHandle(output.resolve("atlases").toFile()), false);

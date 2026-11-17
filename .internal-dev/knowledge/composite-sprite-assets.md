@@ -5,7 +5,7 @@ Raw sprite inventory and composition rendering constraints.
 
 ## Source References
 - `raw_assets/sprites/character`
-- `raw_assets/sprites/equipment/basic/{head,body,hands,feet}`
+- `raw_assets/sprites/equipment/basic/{head,body,hands,feet,accessories}`
 - `raw_assets/sprites/weapons/{melee/basic_sword,ranged/basic_bow}`
 - `../specifications/composite-characters.md`
 - `../specifications/decisions.md`
@@ -15,13 +15,13 @@ Raw sprite inventory and composition rendering constraints.
 - `lwjgl3/src/test/java/io/mindspice/lute/engine/lwjgl3/{CompositeRenderTest,CompositeGameTest}.java`
 
 ## Key Takeaways
-The corrected raw inventory contains 1280 PNGs. The base and each basic equipment set have 192 frames across six actions: death, idle, jab, shot, slash, and walk, each with four directions and eight frames. Sword and bow each have 160 frames: sword lacks shot, bow lacks slash, and both lack cast. The 160 cast files were removed; cast is not a runtime requirement.
+The current raw inventory contains 1,472 PNGs: 1,280 supported frames and 192 additional accessories export frames preserved but skipped by generation. All source canvases are 128×128. The base and each supported basic equipment slot have 192 frames across six actions: death, idle, jab, shot, slash, and walk, each with four directions and eight frames. Sword and bow each have 160 frames: sword lacks shot, bow lacks slash, and both lack cast. The 160 cast files were removed; cast is not a runtime requirement.
 
 The user corrected the assumption that a 128×128 canvas is a 128×128 logical character. Every source canvas is 128×128, with a centered 64×64 logical area at [32, 96] on each axis. Render the entire canvas at pixel scale with a -32 pixel offset around the logical transform; do not shrink to 64×64 or trim transparent padding. Spawn and weapon anchoring remain logical, and logical size comes from configuration rather than canvas dimensions. Test full-scale source rendering, padding and visible overhang against the naive shrink, as well as layer alignment across pages.
 
 The accepted initial player bounds separate a 24×10 feet collision ellipse from a 32×50 persistent damage-sensor ellipse. Check that map triggers use feet rather than the hurtbox, attack sensors hit the hurtbox rather than solids for explicit hurtbox targets, and generic full-sprite fallback remains intact. Focused automated validation passed; these fitted bounds still need live user review. See the [canvas and hitboxes validation report](../reviews/2026-11-16-character-canvas-hitboxes-validation.md) for final gate evidence.
 
-Character atlas region names are flat, such as `idle_down` and `slash_up`. Equipment sources are set-first at `equipment/<set>/<slot>/`, but generation stages them by slot and set so the four separate equipment atlases retain item-prefixed regions such as `basic/shot_up`. The basic set requires all four slots; unknown slots and nested `pack.json` overrides are rejected. Optional `equipment/pack.json` settings apply to all four equipment atlases. Weapon regions include their category and item prefix, such as `ranged/basic_bow/jab_up`. Cast is not required by runtime layer validation.
+Character atlas region names are flat, such as `idle_down` and `slash_up`. Equipment sources are set-first at `equipment/<set>/<slot>/`, but generation stages them by slot and set so the four separate equipment atlases retain item-prefixed regions such as `basic/shot_up`. The basic set requires all four slots; nested `pack.json` overrides and unknown slots are rejected, except that an `accessories` folder under a set is reported and skipped for now. Its source bytes remain untouched, and it produces no atlas or equipable layer. Check both source preservation and absence of an accessories atlas when validating exports; retain tests that reject other unknown slots. Optional `equipment/pack.json` settings apply to all four equipment atlases. Weapon regions include their category and item prefix, such as `ranged/basic_bow/jab_up`. Cast is not required by runtime layer validation.
 
 Required primitive JSON fields must use `required = true`: zero is a legitimate bounds coordinate, but an omitted field must not silently become zero.
 
