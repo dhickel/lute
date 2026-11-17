@@ -1,0 +1,19 @@
+{
+  "controller": {
+    "DPAD_UP": "MOVE_UP",
+    "DPAD_DOWN": "MOVE_DOWN",
+    "DPAD_LEFT": "MOVE_LEFT",
+    "DPAD_RIGHT": "MOVE_RIGHT",
+    "FACE_SOUTH": "ATTACK_PRIMARY",
+    "FACE_WEST": "ATTACK_SECONDARY"
+  },
+  "keyboard": {
+    "W": "MOVE_UP",
+    "S": "MOVE_DOWN",
+    "A": "MOVE_LEFT",
+    "D": "MOVE_RIGHT",
+    "Space": "ATTACK_PRIMARY",
+    "L-Shift": "ATTACK_SECONDARY",
+    "R-Shift": "ATTACK_SECONDARY"
+  }
+}
