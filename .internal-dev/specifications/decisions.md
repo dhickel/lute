@@ -9,6 +9,15 @@
 - **Source:** User-approved sensor and teleport work and the approved PR #12 shape contract.
 - **Review timing:** Revisit if sensor, spawn, or map-transition contracts change.
 
+## Queued event listener changes
+
+- **Decision:** Event subscriptions and unsubscriptions are queued. Unsubscription cancels earlier pending registrations for the same event type and consumer identity; at safe boundaries, removals apply before later registrations. Process changes only at the start or end of a dispatch batch, or when removing a bus that is not dispatching. Do not mutate active listener collections during dispatch, add an immediate-unsubscription API, or use per-event snapshot copies or membership scans. Ordinary queued unsubscription does not skip a listener during the current batch.
+- **Lifecycle:** Owners retain their actual bus and exact consumers and protect disposed resources locally while removal awaits a boundary. Audio guards its callbacks when detached. A same-instance reattachment during dispatch can reuse its existing callbacks once in that batch; the boundary leaves one registration. A retired bus stops its remaining dispatch, drops queued events, and flushes queued cleanup even if a callback throws, without requiring another update. Retirement does not remove unrelated owners' listeners.
+- **Justification and tradeoff:** Direct iteration and boundary-only mutation keep dispatch simple and avoid per-event copying or scans; resource owners must guard the interval before queued cleanup. Preserve the `EventListener` marker and helpers, including the owning-bus queued-unsubscribe helper.
+- **Affected specifications:** This decision establishes event listener mutation and resource-lifecycle boundaries.
+- **Source:** User-approved PR #20 queued-listener correction for issue #8.
+- **Review timing:** Revisit if event dispatch or resource ownership contracts change.
+
 ## Cache-only input listeners
 
 - **Decision:** `KeyListener` and `MouseListener` are concrete, independently owned input caches. Managers deliver to these caches, not immediate input listener callbacks. Controllers retain their own key queues. `ControllerSystem` updates movement direction directly without emitting `Event.Player.Moved`. Mouse position updates the latest cached position; selected buttons and scroll enter its queue.
