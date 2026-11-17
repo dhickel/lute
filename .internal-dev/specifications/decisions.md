@@ -15,7 +15,7 @@
 - **Controller scope:** Controller identifiers must be nonblank. The supplied logical D-pad and face south/west defaults are validated data only, not runtime hardware bindings. The file does not configure mouse input, add actions, or support hot reload.
 - **Justification and tradeoff:** Authored bindings replace hard-coded startup keys while retaining logical controller defaults without implying hardware support. Keyboard names use ALL_CAPS enum-like constant names to match controller identifiers rather than LibGDX display labels.
 - **Affected specifications:** This decision establishes the input settings contract; `docs/input-system.md` describes authoring and startup.
-- **Source:** User-directed input settings work and PR #24 keyboard naming correction. The constant-name contract is planned implementation, not a claim that the current loader already supports it.
+- **Source:** User-directed input settings work and PR #24 keyboard naming correction.
 - **Review timing:** Revisit when controller hardware integration is implemented.
 
 ## Cache-only input listeners
