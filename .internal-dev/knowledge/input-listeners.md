@@ -14,7 +14,7 @@ Concrete input listeners and deferred consumption.
 
 `KeyActionConsumer` and `MouseEventConsumer` remain as deferred queue-drain callbacks. They are not the removed immediate input listener callbacks, and managers do not invoke them directly.
 
-`Event.Player.Moved` is a controller input notification, not evidence of physical displacement. The controller emits it once per consumed movement press on an entity with `Move`, not on releases, repeats, invalid states, attack requests, or movement input without `Move`. Commit `ed4f952` established the press-only behavior; `8275ad8` removed the emission. The issue 6 fix restores it through `EventEmitter`. Current gameplay has no subscriber, and the fix does not change audio.
+`ControllerSystem` updates movement direction directly and does not emit `Event.Player.Moved`; the event type and `EventEmitter` participation remain. Historically, `ed4f952` emitted on presses and `8275ad8` removed that emission. An initial issue #6 fix restored it based on the old test, but the user explicitly approved keeping emission removed and correcting the stale assertion instead. Historical behavior and a test expectation do not override explicit user intent.
 
 ## Project Relevance
 Register and drain the concrete caches when integrating input with gameplay or other consumers.

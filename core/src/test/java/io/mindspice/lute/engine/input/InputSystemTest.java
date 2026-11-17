@@ -26,7 +26,7 @@ public final class InputSystemTest {
     private record Event(InputAction action, int state) { }
 
     public static void main(String[] args) {
-        run("controller movement event", InputSystemTest::controllerMovementEvent);
+        run("controller movement input", InputSystemTest::controllerMovementInput);
         run("adapter keys", InputSystemTest::adapterKeys);
         run("adapter mouse", InputSystemTest::adapterMouse);
         run("cached mouse", MouseListenerTest::run);
@@ -89,7 +89,7 @@ public final class InputSystemTest {
         return events;
     }
 
-    private static void controllerMovementEvent() {
+    private static void controllerMovementInput() {
         var previousApp = Gdx.app;
         try {
             var field = GameCore.class.getDeclaredField("engine");
@@ -121,7 +121,7 @@ public final class InputSystemTest {
                     input.keyDown(keys[i]);
                     engine.update(0);
                     engine.update(0);
-                    equal(i + 1, count[0], "press emits once");
+                    equal(0, count[0], "movement press emits no movement event");
                     near(dirX[i], move.getDirection().x, "press sets x");
                     near(dirY[i], move.getDirection().y, "press sets y");
                     input.keyDown(keys[i]);
@@ -130,13 +130,13 @@ public final class InputSystemTest {
                     controller.getInputListener().offer(actions[i], 3);
                     engine.update(0);
                     engine.update(0);
-                    equal(i + 1, count[0], "duplicate down, repeat and invalid states emit nothing");
+                    equal(0, count[0], "duplicate down, repeat and invalid states emit nothing");
                     near(dirX[i], move.getDirection().x, "ignored states preserve x");
                     near(dirY[i], move.getDirection().y, "ignored states preserve y");
                     input.keyUp(keys[i]);
                     engine.update(0);
                     engine.update(0);
-                    equal(i + 1, count[0], "release emits nothing");
+                    equal(0, count[0], "release emits nothing");
                     near(0, move.getDirection().x, "release clears x");
                     near(0, move.getDirection().y, "release clears y");
                 }
@@ -145,7 +145,7 @@ public final class InputSystemTest {
                 input.releaseHeldInputs();
                 engine.update(0);
                 engine.update(0);
-                equal(5, count[0], "synthetic release emits nothing");
+                equal(0, count[0], "synthetic release emits nothing");
                 near(0, move.getDirection().y, "synthetic release stops movement");
                 controllerAttackRouting(engine, entity, input, map, count);
                 input.unRegKeyListener(controller.getInputListener());
@@ -155,7 +155,7 @@ public final class InputSystemTest {
                 input.keyDown(Input.Keys.W);
                 engine.update(0);
                 engine.update(0);
-                equal(5, count[0], "entity without Move emits nothing");
+                equal(0, count[0], "entity without Move emits nothing");
             } finally {
                 field.set(GameCore.INSTANCE, previousEngine);
             }

@@ -1,4 +1,4 @@
-# Issue 6: restore established press-only movement notification
+# Issue 6: correct stale movement-event test
 
 ## Date
 2026-11-17
@@ -8,23 +8,23 @@
 aa8069dbc3cd91cccb8190f197955b8e52f46b24
 
 ## Change Summary
-Restore the Player.Moved notification accidentally removed in readability refactor 8275ad8. History ed4f952 establishes the press-only contract. Expanded negative and attack-routing coverage. Independent phase review after prose correction: PASS.
+The earlier issue #6 restoration of press-only `Event.Player.Moved` emission is superseded. The user approved keeping emission removed and correcting the stale test instead. The test now expects no movement events while checking direction changes and attack routing.
 
 ## Files
-- `core/src/main/java/io/mindspice/lute/engine/systems/ControllerSystem.java`
 - `core/src/test/java/io/mindspice/lute/engine/input/InputSystemTest.java`
 - `docs/input-system.md`
 - `.internal-dev/knowledge/input-listeners.md`
-- `.internal-dev/bugs/controller-movement-event-test-failure.md`
+- `.internal-dev/specifications/decisions.md`
+- `.internal-dev/bugs/.archive/controller-movement-event-test-failure.md`
 
 ## Behavioral Impact
-Valid movement presses on an entity with Move emit exactly one movement-input notification through EventEmitter. Releases, repeats, invalid states, missing Move and attack requests do not. No current audio subscriber consumes this notification; it is not physical-displacement reporting.
+`ControllerSystem` remains identical to the base: it updates movement direction directly and emits no movement event. The `Event.Player.Moved` type and `EventEmitter` marker remain. No new gameplay feature is added.
 
 ## Specification Impact
-Specification Impact: none. Restores the established historical behavior rather than selecting a new movement or audio feature.
+The cache-only input listener decision records the user-approved rule that controller movement updates direction without emitting `Event.Player.Moved`.
 
 ## Risks
-Notification semantics remain input-based, not collision/position-based. Native combat assertion counts vary across runs; prose distinguishes the independent 1,920-check run from the prior 1,928-check run. Coordinating Git hash identifies the audit baseline; fix branch starts at code-equivalent parent 33dbd077ff1c66bf211971086b77caf2c8800563.
+The focused input test and unfiltered full check passed for the current revision. No interactive input validation was performed.
 
 ## Follow-up Items
-Baseline input failure reproduced at 1,235 checks/one failed group. Independent fixed input test passed 1,286 checks and desktop compilation passed; combat regression passed independently. A prose-only BLOCKED gate was corrected and the same validation model returned PASS. Final combined integration with #8/#16/#17/#18 passed the unfiltered full check (input 1,286, audio 196), lifecycle 157, gameplay 15,815 / 480 comparisons and synthetic GL 11,854 checks. This is combined evidence, not inclusion of sibling fixes in this branch. Issue #6 remains open until separate PR merge; no merge performed.
+The historical baseline failed at 1,235 checks with one failed group. For the current revision, `./gradlew :core:inputSystemTest :lwjgl3:compileJava --console=plain -Dorg.gradle.logging.level=lifecycle` passed: 1,286 input checks, zero failures. The unfiltered `./gradlew check --continue --console=plain -Dorg.gradle.logging.level=lifecycle` also passed: 21 actionable tasks, including 1,286 input checks with zero failures, 1,928 combat checks, and 1,732 map sensor checks. Prior combined five-fix validation and independent combat results exercised the superseded restoration and are historical, not validation of this revision; no current GL rerun is claimed. The stale assertion is resolved and the PR is ready for merge.
