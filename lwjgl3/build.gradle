@@ -58,6 +58,15 @@ tasks.register('compositeRenderTest', JavaExec) {
   jvmArgs '--enable-native-access=ALL-UNNAMED', '--add-exports=java.base/jdk.internal.misc=ALL-UNNAMED'
 }
 
+tasks.register('gameScreenLifecycleTest', JavaExec) {
+  dependsOn testClasses
+  classpath = sourceSets.test.runtimeClasspath
+  mainClass = 'io.mindspice.lute.engine.lwjgl3.GameScreenLifecycleTest'
+  workingDir = rootProject.file('assets')
+  environment 'DISPLAY', System.getenv('DISPLAY') ?: ':0'
+  jvmArgs '--enable-native-access=ALL-UNNAMED', '--add-exports=java.base/jdk.internal.misc=ALL-UNNAMED'
+}
+
 tasks.named('test') {
   failOnNoDiscoveredTests = false
 }
@@ -143,6 +152,7 @@ tasks.register("jarWin") {
 }
 
 construo {
+  jdkRoot.set(javaToolchains.launcherFor(java.toolchain).map { it.metadata.installationPath })
   // name of the executable
   name.set(appName)
   // human-readable name, used for example in the `.app` name for macOS
@@ -156,12 +166,12 @@ construo {
   targets.configure {
     register("linuxX64", Target.Linux) {
       architecture.set(Target.Architecture.X86_64)
-      jdkUrl.set("https://github.com/adoptium/temurin21-binaries/releases/download/jdk-21.0.10%2B7/OpenJDK21U-jdk_x64_linux_hotspot_21.0.10_7.tar.gz")
+      jdkUrl.set("https://corretto.aws/downloads/latest/amazon-corretto-25-x64-linux-jdk.tar.gz")
       // Linux does not currently have a way to set the icon on the executable
     }
     register("macM1", Target.MacOs) {
       architecture.set(Target.Architecture.AARCH64)
-      jdkUrl.set("https://github.com/adoptium/temurin21-binaries/releases/download/jdk-21.0.10%2B7/OpenJDK21U-jdk_aarch64_mac_hotspot_21.0.10_7.tar.gz")
+      jdkUrl.set("https://corretto.aws/downloads/latest/amazon-corretto-25-aarch64-macos-jdk.tar.gz")
       // macOS needs an identifier
       identifier.set("io.mindspice.lute.engine." + appName)
       // Optional: icon for macOS, as an ICNS file
@@ -169,7 +179,7 @@ construo {
     }
     register("macX64", Target.MacOs) {
       architecture.set(Target.Architecture.X86_64)
-      jdkUrl.set("https://github.com/adoptium/temurin21-binaries/releases/download/jdk-21.0.10%2B7/OpenJDK21U-jdk_x64_mac_hotspot_21.0.10_7.tar.gz")
+      jdkUrl.set("https://corretto.aws/downloads/latest/amazon-corretto-25-x64-macos-jdk.tar.gz")
       // macOS needs an identifier
       identifier.set("io.mindspice.lute.engine." + appName)
       // Optional: icon for macOS, as an ICNS file
@@ -179,7 +189,7 @@ construo {
       architecture.set(Target.Architecture.X86_64)
       // Optional: icon for Windows, as a PNG
       icon.set(project.file("icons/logo.png"))
-      jdkUrl.set("https://github.com/adoptium/temurin21-binaries/releases/download/jdk-21.0.10%2B7/OpenJDK21U-jdk_x64_windows_hotspot_21.0.10_7.zip")
+      jdkUrl.set("https://corretto.aws/downloads/latest/amazon-corretto-25-x64-windows-jdk.zip")
       // Uncomment the next line to show a console when the game runs, to print messages.
       //useConsole.set(true)
     }

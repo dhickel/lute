@@ -22,7 +22,7 @@ Direct source inspection of generate, generateSprites and publication inventory 
 A successful generation message can conceal missing startup resources; an incomplete source tree can replace a previously complete generated output.
 
 ## Status
-Open; source-confirmed boundary-validation gap. GitHub: https://github.com/dhickel/lute/issues/17 (open; related closed issues checked).
+Resolved by merged PR #22 (b65e0029b166b98afe2848448bc1ebf8bf09a279). GitHub issue #17 is closed; archived after confirmation. Merge-candidate full checks, required-input/output-preservation regressions, and actual runtime generation passed.
 
 ## Next Action
-Require production sprite inputs and make fixture intentions explicit without weakening the production contract. Add missing-top-level and retained-output regression cases. No application code changed by this audit.
+Retain as resolved audit history; preserve the required-input and unchanged-publication regression cases.

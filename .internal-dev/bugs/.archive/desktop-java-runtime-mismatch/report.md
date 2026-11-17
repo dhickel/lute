@@ -22,7 +22,7 @@ Independent `javap -verbose` inspection of Lwjgl3Launcher.class in the isolated 
 Configured runtime bundles cannot execute the application. Local Gradle execution using JDK 25 is not affected.
 
 ## Status
-Open; source and bytecode confirmed. GitHub: https://github.com/dhickel/lute/issues/18 (open; related closed issues checked).
+Resolved by merged PR #23 (b98f0fe81dfb0350155de981906d3616415da8e1). GitHub issue #18 is closed; archived after confirmation. Merge-candidate full checks, Linux packaging and a fresh packaged launch with bundled Java 25 passed.
 
 ## Next Action
-Align bundled runtime and the intended Java target, then validate a packaged launch. Do not lower the language target without checking actual Java 25 usage. No build configuration changed in this audit.
+Retain as resolved audit history. Other target runtime images were validated earlier; native macOS/Windows launches remain untested.

@@ -292,7 +292,9 @@ public final class TexturePackerTool {
     }
 
     private static void generateSprites(Path sprites, Path stage) throws IOException {
-        if (!Files.exists(sprites)) { return; }
+        if (!Files.isDirectory(sprites)) {
+            throw new IllegalArgumentException("Missing or empty required sprite input: " + sprites);
+        }
         for (String required : List.of("character", "equipment/basic/body", "equipment/basic/head",
                 "equipment/basic/feet", "equipment/basic/hands",
                 "weapons/melee/basic_sword", "weapons/ranged/basic_bow")) {

@@ -7,6 +7,8 @@ LibGDX `Game` lifecycle ownership when using the project's custom `ScreenManager
 - `core/src/main/java/io/mindspice/lute/engine/GameCore.java`
 - `core/src/main/java/io/mindspice/lute/engine/screen/ScreenManager.java`
 - `core/src/main/java/io/mindspice/lute/engine/screen/LoadingScreen.java`
+- `core/src/main/java/io/mindspice/lute/engine/screen/GameScreen.java`
+- `lwjgl3/src/test/java/io/mindspice/lute/engine/lwjgl3/GameScreenLifecycleTest.java`
 - LibGDX 1.14.2 `Game` bytecode inspected with `javap -c`.
 
 ## Key Takeaways
@@ -14,9 +16,17 @@ LibGDX `Game` lifecycle ownership when using the project's custom `ScreenManager
 - Assigning a current-screen reference does not call `show()`. The initial loading screen must be activated before game-screen map callbacks retrieve atlas assets.
 - Switch away from a loading screen before unloading and disposing it. Dispose screens before shared input, batch, and asset resources.
 - A successful startup reports loading completion, map/entity setup, and continuing FPS output. Atlas-region fallback warnings are distinct from an unloaded-atlas exception.
+- `GameScreen` records the systems it installs on the shared engine. Hiding retains them for reuse; disposal hides the screen, then removes and disposes its owned systems in reverse installation order before disposing its physics `World`. This keeps the event bus and world available while dependents detach and prevents later engine updates from reaching disposed physics. Foreign systems are not owned or disposed by the screen.
+- Disposal is idempotent, a disposed screen cannot be shown again, and a constructor installation failure invokes the same cleanup for the systems recorded so far. A cleanup failure is suppressed on the original installation failure. Never-shown screens also need disposal.
 
 ## Project Relevance
 The refactor initially bypassed `LoadingScreen.show()` and never called its `render()` callback. The minimal repair keeps the custom manager and forwards the missing lifecycle calls. A historical 15-second desktop smoke run reached loading completion and game rendering; a separate `old_tree1` region fallback was tracked in `.internal-dev/bugs/missing-old-tree-atlas-region/report.md`. This is not a new smoke run.
 
+PR #21 is merged and issue #16 resolved. Its validation, based on merged PR #19, passed the full check (21 tasks) and real-GL lifecycle 157, gameplay 15,815 checks and 480 comparisons, and synthetic 11,854 checks. The lifecycle checks cover hide/show reuse, recreation, updates after disposal, foreign-system survival, repeated and never-shown disposal, partial installation failure, and normal shutdown. PR #19 cleared the stale input assertion.
+
+PR #22, based on #21, passed the full check and actual generator run. PR #23, based on #22, passed the full check (21 tasks), Linux packaging, and a fresh ZIP launch with bundled Java 25. Both PRs are merged and issues #17 and #18 are closed.
+
+The earlier isolated combined validation of fixes #6, #8, #16, #17, and #18 was historical; it does not imply that audio PR #20 is included in the current merged changes.
+
 ## Open Questions
-None for the screen lifecycle repair; the tree atlas-content issue remains separate.
+Audio lifecycle issue #8 and PR #20 remain open; PR #20 is not merged. Screen-owned system teardown does not establish that audio subscription internals are fixed. The tree atlas-content issue also remains separate.

@@ -22,7 +22,7 @@ Source inspection confirms installation in the GameScreen constructor, disposal 
 Unloading a game screen while the engine survives permits native use-after-dispose and stale systems/listeners. Current single-screen shutdown is a narrower path and may not expose it.
 
 ## Status
-Open; source-confirmed lifecycle defect, runtime crash not reproduced. Discovered in 2026-11-17 audit. GitHub: https://github.com/dhickel/lute/issues/16 (open; related closed issues checked).
+Resolved by merged PR #21 (f93a19147e1fc2c99ebf57c45672cc9860508589). GitHub issue #16 is closed; archived after confirmation. The merge candidate passed the unfiltered check and 157 real-GL lifecycle checks, including safe engine updates after disposal.
 
 ## Next Action
-Define explicit ownership and removal order for screen-installed systems; test unload/recreate and callback cleanup before destroying the world. No application code changed by the audit.
+Retain as resolved audit history. Screen-owned systems are removed/disposed before the World; unrelated audio subscription work remains open in PR #20 / issue #8.
