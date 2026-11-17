@@ -13,6 +13,8 @@ LibGDX → InputMultiplexer → InputManager → InputMap / KeyManager
 
 `TiledSystem` spawns the player through `EntityFactory`, which creates a `Controller` registered with the shared manager. Each controller owns a 32-entry queue for movement and attack actions; listeners do not share a queue. `ControllerSystem` consumes each queue in FIFO order: movement state 1 adds the action's direction, state 0 subtracts it, and other states, including repeat 2, are ignored. Movement input is ignored for an entity without `Move`; attack presses request attacks when `Combat` is present. `PhysicMoveSystem` normalizes movement direction and sets body velocity, or stops it when rooted, idle, or attacking.
 
+`ControllerSystem` updates movement direction directly and does not emit `Event.Player.Moved` for movement input. The event type and event-system interfaces remain available.
+
 There is no tutorial enum conversion, bridge, extra held-action set, or second command queue. Gameplay currently uses the keyboard cache only. The manager is already registered with LibGDX; do not create another processor or register every entity with LibGDX.
 
 ## Screen ownership and lifecycle
@@ -89,6 +91,6 @@ Repeatable regression and build commands:
 ./gradlew clean build
 ```
 
-The static-main input regression harness is wired into `check`; the default core test task disables `failOnNoDiscoveredTests` for Gradle 9. The movement-event assertion remains unresolved: see `.internal-dev/bugs/controller-movement-event-test-failure.md` (issue #6). Earlier focused core and LWJGL3 compilation passed; these are historical results.
+The static-main input regression harness is wired into `check`; the default core test task disables `failOnNoDiscoveredTests` for Gradle 9. The revised input test and desktop compilation passed `./gradlew :core:inputSystemTest :lwjgl3:compileJava --console=plain -Dorg.gradle.logging.level=lifecycle` (1,286 input checks, zero failures). The current revision also passed `./gradlew check --continue --console=plain -Dorg.gradle.logging.level=lifecycle` (21 actionable tasks; 1,286 input checks, zero failures). Earlier combined five-fix validation tested the superseded notification-restoration version, not this revision; it is historical and does not establish a current GL rerun. See `.internal-dev/bugs/.archive/controller-movement-event-test-failure.md` for the issue history.
 
 A historical desktop run reached asset loading, Tiled controller creation, map layers, and 56–62 FPS without input exceptions before intentional timeout after 15 seconds (exit 124). Existing libdecor GTK initialization warnings and the intentional `old_tree1` atlas fallback error logs occurred. No physical-key device test or instrumented active/cached screen identity or disposal test was performed.
