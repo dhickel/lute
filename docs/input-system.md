@@ -2,15 +2,16 @@
 
 ## Current gameplay flow
 
-The canonical implementation is `io.mindspice.lute.engine.input`. `GameCore.create()` creates one shared `InputManager`, binds W/S/A/D to `MOVE_UP`/`MOVE_DOWN`/`MOVE_LEFT`/`MOVE_RIGHT` in its `InputMap` and installs the manager in its existing LibGDX `InputMultiplexer`.
+The canonical implementation is `io.mindspice.lute.engine.input`. `GameCore.create()` creates one shared `InputManager`, binds W/S/A/D to movement, Space to primary attack, and either Shift key to secondary attack, then installs the manager in a LibGDX `InputMultiplexer`.
 
 ```text
 LibGDX → InputMultiplexer → InputManager → InputMap / KeyManager
        → each registered Controller's KeyListener (bounded FIFO)
-       → ControllerSystem → Move.direction → MoveSystem → position
+       → ControllerSystem → Move.direction → PhysicMoveSystem → body velocity
+                          → Combat attack requests
 ```
 
-`TiledAshleyConfigurator` receives that shared manager. For each Tiled object marked `controller`, it creates a `Controller` and registers its enabled key cache. Each component owns its own 32-entry queue for the four movement actions; listeners do not share a queue. `ControllerSystem` consumes each queue in FIFO order: state 1 adds the action's direction, state 0 subtracts it, and other states, including repeat 2, are ignored. An entity without `Move` is ignored. `MoveSystem` normalizes direction and integrates position.
+`TiledSystem` spawns the player through `EntityFactory`, which creates a `Controller` registered with the shared manager. Each controller owns a 32-entry queue for movement and attack actions; listeners do not share a queue. `ControllerSystem` consumes each queue in FIFO order: movement state 1 adds the action's direction, state 0 subtracts it, and other states, including repeat 2, are ignored. Movement input is ignored for an entity without `Move`; attack presses request attacks when `Combat` is present. `PhysicMoveSystem` normalizes movement direction and sets body velocity, or stops it when rooted, idle, or attacking.
 
 There is no tutorial enum conversion, bridge, extra held-action set, or second command queue. Gameplay currently uses the keyboard cache only. The manager is already registered with LibGDX; do not create another processor or register every entity with LibGDX.
 
@@ -28,7 +29,7 @@ The manager remains in the chain while gameplay is hidden or paused so it can ob
 
 This lifecycle assumes the current single gameplay screen, Tiled creation path, and screen-wide removal. Callers creating controllers outside that path must register and unregister their listeners explicitly. Removing a component or entity while a key is held has no automatic listener cleanup. Keep listeners enabled during release and drain them before unregistering; bounded queue overflow can still lose transitions.
 
-`LoadingScreen` now activates the cached `GameScreen`. The separate `GameCore.removeScreen(Screen)` wrong-key bug remains open: the cache is keyed by class, but removal uses the instance. See `../.internal-dev/bugs/lute/loading-screen-cache/report.md` relative to the project root.
+`ScreenManager` caches screens by string key. The loading callback switches to `GameScreen` and then unloads `InitialLoading` by key.
 
 ## Event capture and release
 
@@ -88,6 +89,6 @@ Repeatable regression and build commands:
 ./gradlew clean build
 ```
 
-The static-main input regression harness is wired into `check`; the default core test task disables `failOnNoDiscoveredTests` for Gradle 9. Focused core and LWJGL3 compilation passed.
+The static-main input regression harness is wired into `check`; the default core test task disables `failOnNoDiscoveredTests` for Gradle 9. The movement-event assertion remains unresolved: see `.internal-dev/bugs/controller-movement-event-test-failure.md` (issue #6). Earlier focused core and LWJGL3 compilation passed; these are historical results.
 
-A desktop run reached asset loading, Tiled controller creation, map layers, and 56–62 FPS without input exceptions before intentional timeout after 15 seconds (exit 124). Existing libdecor GTK initialization warnings and the intentional `old_tree1` atlas fallback error logs occurred. No physical-key device test or instrumented active/cached screen identity or disposal test was performed.
+A historical desktop run reached asset loading, Tiled controller creation, map layers, and 56–62 FPS without input exceptions before intentional timeout after 15 seconds (exit 124). Existing libdecor GTK initialization warnings and the intentional `old_tree1` atlas fallback error logs occurred. No physical-key device test or instrumented active/cached screen identity or disposal test was performed.

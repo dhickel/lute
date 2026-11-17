@@ -4,35 +4,29 @@ Tiled tile-object physics configuration and embedded collision shapes.
 
 ## Source References
 
-- `core/src/main/java/io/mindspice/lute/engine/assets/tiled/TiledAshleyLoader.java`: `loadObject`, `getPhysicBodyType`, `addEntityPhysic`.
-- `core/src/main/java/io/mindspice/lute/engine/assets/tiled/TiledPhysics.java`: `fixtureDefOfMapObjectAndShape`.
-- `assets/objects/objects.tsx`: tile ID 7.
-- `assets/maps/test_tiled.tmx`: tree GID 2666.
+- `core/src/main/java/io/mindspice/lute/engine/systems/TiledSystem.java`
+- `core/src/main/java/io/mindspice/lute/engine/systems/EntityFactory.java`
+- `core/src/main/java/io/mindspice/lute/engine/tiled/TiledPhysics.java`
+- `core/src/main/java/io/mindspice/lute/engine/tiled/properties/AnimatedPhysicObjectProps.java`
+- `raw_assets/maps/test_tiled/objects/objects.tsx` and `raw_assets/maps/test_tiled/test_tiled.tmx`
+- `core/src/test/java/io/mindspice/lute/engine/tiled/TiledAnimationPropertiesTest.java`
 
 ## Key Takeaways
 
-The following flag-based behavior describes the former entity loader, removed after class-based factories replaced it.
+- `TiledSystem` dispatches `PhysicObject` and `AnimatedPhysicObject` tile objects to `EntityFactory`. Placement properties override tile properties, including the object class. Unsupported tile classes fail with the class and object ID.
+- Both classes create static bodies from embedded tile collision shapes and require at least one shape. They do not use the former `isPhysics` or `physicBodyType` flags. `TiledPhysics.fixtureDefOf` reads shape friction, restitution, density and sensor properties.
+- Animated scenery uses nested `animation` properties parsed as `AnimationData`: `atlasKey`, `speed`, `frameInterval` and `soundFrame`. It does not use legacy `keyFrames`. `PhysicObject` uses `atlasKey` directly. Both resolve regions through the map atlas.
+- Map GIDs resolve to external tilesets using `local tile ID = gid - firstgid`. In the saved map, five GID 2666 trees resolve to tile 7 in `raw_assets/maps/test_tiled/objects/objects.tsx`; that tile is an `AnimatedPhysicObject` with an embedded ellipse. The separate `Collisions` layer is empty.
+- Standalone non-graphics Box2D checks need both `GdxNativesLoader.load()` and `Box2D.init()`. A parser-only harness constructing a `TiledMapTileMapObject` also needs a texture fixture rather than an empty region.
 
-- For map tile objects, `isPhysics` and `physicBodyType` are read from `tile.getProperties()`, not the placed map object's properties or embedded collision shape properties.
-- An embedded collision ellipse alone does not enable physics: missing tile-level `isPhysics` defaults to false and skips body creation.
-- Shape properties configure fixture friction, restitution, density, and sensor behavior; shape-level `isPhysics` and `physicBodyType` are not consumed.
-- Trace map GIDs to external tilesets using `local tile ID = gid - firstgid`; similarly named tree tilesets can otherwise mislead diagnosis.
+## Historical Flag Diagnosis
+
+The former entity loader read `isPhysics` and `physicBodyType` from tile properties, not placement or embedded shape properties. An embedded ellipse alone did not enable physics, and a missing `isPhysics` defaulted to false. In the 2026-11-10 investigation the flags were nested in the ellipse, so the former loader skipped the tree bodies. Moving flags to the parent tile was advice for that removed loader, not a repair for the current class-based path.
 
 ## Project Relevance
 
-On 2026-11-10 all five placed trees resolve to `objects.tsx` tile 7. The tile has a collision ellipse but both body-enabling properties are incorrectly nested inside that ellipse. The separate map `Collisions` layer has no objects, so enabling its dispatch cannot repair these trees. Set `isPhysics=true` (Boolean) and `physicBodyType=static` (String) on the parent tree tile to satisfy the current loader.
-
-## Class-based Factory Update
-
-- TiledSystem now dispatches `PhysicObject` and `AnimatedPhysicObject` tile objects to dedicated EntityFactory methods. These variants always create static collision bodies from the tile's embedded shapes; they do not read isPhysics, isAnimated, or physicBodyType.
-- Placement properties override tile properties, including the object class (`type`). PhysicObject uses the class's `assetKey` property; AnimatedPhysicObject uses `atlasKey` and animation settings.
-- Animated scenery has Animation2D, Graphic, and Facing, but no player movement state machine, controller, Move, or camera component.
-- animationSpeed can arrive as either an Integer (project default) or Float (explicit tile value); parse it as Number.
-- PhysicObjectProps and AnimatedPhysicObjectProps expose fromMapObj helpers that merge tile and placement properties, require every declared field with Objects.requireNonNull, and provide typed record values to EntityFactory. These parsers intentionally do not supply defaults, but the configured libGDX loader already supplies project-class defaults before parsing; requireNonNull therefore does not detect an inherited zero keyFrames. Keep positive-value validation in the factory and identify the animation key and atlas in the error.
-- Standalone non-graphics Box2D checks must load both GdxNativesLoader.load() and Box2D.init(); Box2D alone leaves BufferUtils.getBufferAddress unresolved when constructing bodies.
-- A textureless TextureRegion cannot construct TiledMapTileMapObject: its constructor copies region UVs and dereferences the texture. A parser-only harness must supply an appropriate texture fixture; an empty region is not sufficient.
-- The legacy entity path has been removed. Unclassified or unsupported tile objects fail in TiledSystem with the class and object ID; all supported entities use EntityFactory. TiledAshleyLoader retains only static tile-layer collision loading and depends solely on World. The historical flag diagnosis above no longer applies to current entity creation.
+`TiledAnimationPropertiesTest` checks the five trees' nested animation properties and placement overrides; it does not prove tree collision behavior. Sensor tests cover sensor behavior, not tree collisions. Earlier smoke or compilation results are historical and are not evidence of a new collision run.
 
 ## Open Questions
 
-Runtime collision behavior after class-based migration was not exercised; validation used compilation and configuration inspection without smoke runs.
+Current runtime tree collision behavior has not been established by the tests cited here.

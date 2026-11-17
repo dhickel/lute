@@ -16,7 +16,7 @@ LibGDX `Game` lifecycle ownership when using the project's custom `ScreenManager
 - A successful startup reports loading completion, map/entity setup, and continuing FPS output. Atlas-region fallback warnings are distinct from an unloaded-atlas exception.
 
 ## Project Relevance
-The refactor initially bypassed `LoadingScreen.show()` and never called its `render()` callback. The minimal repair keeps the custom manager and forwards the missing lifecycle calls. A 15-second desktop smoke run reached loading completion and game rendering; a separate `old_tree1` region fallback is tracked in `bugs/missing-old-tree-atlas-region/report.md`.
+The refactor initially bypassed `LoadingScreen.show()` and never called its `render()` callback. The minimal repair keeps the custom manager and forwards the missing lifecycle calls. A historical 15-second desktop smoke run reached loading completion and game rendering; a separate `old_tree1` region fallback was tracked in `.internal-dev/bugs/missing-old-tree-atlas-region/report.md`. This is not a new smoke run.
 
 ## Open Questions
 None for the screen lifecycle repair; the tree atlas-content issue remains separate.
