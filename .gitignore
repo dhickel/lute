@@ -154,7 +154,8 @@ Thumbs.db
 *#*#
 /.kotlin/
 # Local game assets and authored exports are not stored in Git.
-/assets/
+/assets/*
+!/assets/input.setting.json
 /raw_assets/
 
 ## Special cases:

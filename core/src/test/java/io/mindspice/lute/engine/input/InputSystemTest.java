@@ -36,6 +36,7 @@ public final class InputSystemTest {
         run("mouse registrations", InputSystemTest::mouseRegistrations);
         run("queue", InputSystemTest::queue);
         run("input map", InputSystemTest::inputMap);
+        run("input settings", InputSettingsTest::run);
         run("device mapping isolation", InputSystemTest::deviceMappingIsolation);
         run("binding and propagation", InputSystemTest::bindingAndPropagation);
         System.out.println("InputSystemTest: " + checks + " checks, " + failures.size() + " failed groups");
