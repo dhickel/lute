@@ -35,10 +35,14 @@ import io.mindspice.lute.engine.components.Combat;
 import io.mindspice.lute.engine.components.CombatWeapon;
 import io.mindspice.lute.engine.components.Facing;
 import io.mindspice.lute.engine.components.Health;
+import io.mindspice.lute.engine.components.Hurtbox;
+import io.mindspice.lute.engine.components.Loadout;
+import io.mindspice.lute.engine.data.json.CharacterBounds;
 import io.mindspice.lute.engine.components.Physic;
 import io.mindspice.lute.engine.components.Player;
 import io.mindspice.lute.engine.components.Transform;
 import io.mindspice.lute.engine.data.json.WeaponsData.WeaponData.BoundsType;
+import io.mindspice.lute.engine.data.json.WeaponsData.WeaponData.Offset;
 import io.mindspice.lute.engine.events.Event;
 import io.mindspice.lute.engine.input.InputManager;
 import io.mindspice.lute.engine.input.InputMap;
@@ -82,6 +86,8 @@ public final class MapSensorSystemTest {
                 "Sensor exit is logged without subscribers");
             nativeContactsAndFixtureDeduplication();
             onlyPlayerPhysicalFixtures();
+            characterFeetAndHurtbox();
+            characterTeleportAndRemoval();
             sameMapTeleport("THIS");
             sameMapTeleport("this");
             unsupportedMapStaysPut();
@@ -160,6 +166,63 @@ public final class MapSensorSystemTest {
             game.move(player, 5, 5);
             game.tick(STEP * 2);
             game.expect(new Event.Sensor.Enter("players-only", MapTriggers.SensorType.GENERAL, player));
+        }
+    }
+
+    private static void characterFeetAndHurtbox() {
+        float u = GameConsts.UNIT_SCALE;
+        try (var game = new Harness()) {
+            game.load(map(sensor("character-feet", 5 + 28 * u, 5 + 7 * u, 8 * u, 4 * u),
+                sensor("upper-only", 5 + 28 * u, 5 + 36 * u, 8 * u, 8 * u),
+                portal("upper-portal", 5 + 28 * u, 5 + 36 * u, 8 * u, 8 * u, "THIS", "unused"),
+                point("unused", "TELEPORT", 20, 20)));
+            var player = game.character(5, 5);
+            game.tick(STEP * 3);
+            position(player, 5, 5, "Hurtbox-only portal never teleports the player");
+            game.expect(new Event.Sensor.Enter("character-feet", MapTriggers.SensorType.GENERAL, player));
+            Fixture physical = null, hurtbox = null;
+            for (var fixture : body(player).getFixtureList()) {
+                if (fixture.getUserData() == Hurtbox.INSTANCE) { hurtbox = fixture; }
+                else { physical = fixture; }
+            }
+            check(physical != null && hurtbox != null, "Character map test uses both real ellipse fixtures");
+            body(player).destroyFixture(physical);
+            game.tick(STEP * 3);
+            check(game.countExit("character-feet") == 1, "Removing feet exits even while persistent hurtbox overlaps detector");
+            check(game.countEnter("upper-only") == 0 && game.countEnter("upper-portal") == 0,
+                "Hurtbox never contributes ordinary or teleport map occupancy");
+            body(player).destroyFixture(hurtbox);
+            game.engine.removeEntity(player);
+            game.tick(STEP * 2);
+            check(game.received.size() == 2, "Fixture and entity cleanup cannot duplicate map exits");
+        }
+    }
+
+    private static void characterTeleportAndRemoval() {
+        float u = GameConsts.UNIT_SCALE;
+        try (var game = new Harness()) {
+            game.load(map(portal("feet-departure", 5 + 28 * u, 5 + 7 * u, 8 * u, 4 * u, "THIS", "landing"),
+                sensor("landing-feet", 19 + 28 * u, 15 + 7 * u, 8 * u, 4 * u),
+                portal("landing-portal", 19 + 28 * u, 15 + 7 * u, 8 * u, 4 * u, "THIS", "return"),
+                sensor("landing-upper", 19 + 28 * u, 15 + 36 * u, 8 * u, 8 * u),
+                portal("landing-upper-portal", 19 + 28 * u, 15 + 36 * u, 8 * u, 8 * u, "THIS", "return"),
+                point("landing", "TELEPORT", 20, 16), point("return", "TELEPORT", 6, 6)));
+            var player = game.character(5, 5);
+            game.tick(STEP * 3);
+            position(player, 19, 15, "Teleport centers the configured 64px logical area, not the 128px canvas");
+            check(game.countEnter("feet-departure") == 1 && game.countExit("feet-departure") == 1,
+                "Feet portal emits one complete departure visit");
+            check(game.countEnter("landing-feet") == 1 && game.countEnter("landing-portal") == 1,
+                "Teleport reconciliation sees physical feet at destination");
+            check(game.countEnter("landing-upper") == 0 && game.countEnter("landing-upper-portal") == 0,
+                "Teleport reconciliation excludes hurtbox-only overlaps");
+            game.tick(STEP * 5);
+            position(player, 19, 15, "Feet arrival suppression survives native contacts without hurtbox contribution");
+            game.engine.removeEntity(player);
+            game.tick(STEP * 3);
+            check(game.countExit("landing-feet") == 1 && game.countExit("landing-portal") == 1,
+                "Removing a teleported character destroys both fixtures and exits once");
+            check(game.world.getBodyCount() == 6, "Character removal leaves only five map detectors and boundary");
         }
     }
 
@@ -252,14 +315,19 @@ public final class MapSensorSystemTest {
             game.load(map(sensor("feet", 2.4f, 4, 1.2f, .6f), sensor("attack-only", 4, 5, .5f, .5f)));
             var player = game.entity(2, 4, true, false, 1);
             var target = game.entity(3.2f, 4.75f, false, false, 2);
-            var weapon = new CombatWeapon.Weapon("test", 10, 0,
-                new Animation2D.Attack(1, .125f, 0, "attack"), "hit", BoundsType.RECT,
-                new CombatWeapon.Bounds(pixels(1), 0, pixels(3), pixels(2)));
+            var attack = new CombatWeapon.Attack("test", 10, 0,
+                new Animation2D.Attack("jab", 1, .125f, 0, "attack"), "hit", BoundsType.RECT,
+                new CombatWeapon.Bounds(pixels(1), 0, pixels(3), pixels(2),
+                    new Offset(0, 0), new Offset(0, 0), new Offset(0, 0), new Offset(0, 0)),
+                io.mindspice.lute.engine.data.json.WeaponsData.WeaponData.CollisionType.MELEE);
+            var weapon = new CombatWeapon.Weapon("test", "melee/test", attack, attack);
             var animation = new Animation2D("unused", "unused", Animation2D.AnimationType.IDLE,
                 Animation.PlayMode.NORMAL, 1, .125f);
-            player.add(new Combat(weapon)).add(animation);
+            player.add(new Combat()).add(animation)
+                .add(new Loadout(new Loadout.Equipment("basic", "basic", "basic", "basic"), "test",
+                    Map.of("test", weapon), equipment -> {}));
             Facing.MAPPER.get(player).setDirection(Facing.Direction.RIGHT);
-            Combat.MAPPER.get(player).requestAttack();
+            Combat.MAPPER.get(player).requestAttack(Combat.AttackSlot.PRIMARY);
             game.combat.update(0);
             animation.setType(Animation2D.AnimationType.ATTACK);
             animation.beginAttack();
@@ -1064,6 +1132,15 @@ public final class MapSensorSystemTest {
         }
         Entity entity(float x, float y, boolean player, boolean sensor, int fixtures) {
             var entity = createEntity(x, y, player, sensor, fixtures);
+            engine.addEntity(entity);
+            return entity;
+        }
+        Entity character(float x, float y) {
+            var entity = createEntity(x, y, true, false, 0);
+            entity.add(new Transform(new Vector2(x, y), 0,
+                new Vector2(64, 64).scl(GameConsts.UNIT_SCALE), new Vector2(1, 1), 0, 0));
+            CharacterFixtures.ellipse(body(entity), new CharacterBounds(20, 4, 44, 14), false);
+            CharacterFixtures.ellipse(body(entity), new CharacterBounds(16, 6, 48, 56), true).setUserData(Hurtbox.INSTANCE);
             engine.addEntity(entity);
             return entity;
         }

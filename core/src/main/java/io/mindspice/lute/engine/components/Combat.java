@@ -11,33 +11,34 @@ import java.util.Set;
 
 public class Combat implements Component {
     public static final ComponentMapper<Combat> MAPPER = ComponentMapper.getFor(Combat.class);
-    private final CombatWeapon.Weapon currentWeapon;
-    private boolean attackRequested;
+    private AttackSlot attackRequested;
+    private CombatWeapon.Attack activeAttack;
     private boolean attacking;
     private Fixture sensor;
     private long attackId;
     private final Set<Entity> hitTargets = Collections.newSetFromMap(new IdentityHashMap<>());
 
-    public Combat(CombatWeapon.Weapon currentWeapon) {
-        this.currentWeapon = currentWeapon;
-    }
-
-    public CombatWeapon.Weapon getCurrentWeapon() { return currentWeapon; }
     public boolean isAttacking() { return attacking; }
     public Fixture getSensor() { return sensor; }
     public long getAttackId() { return attackId; }
 
-    public void requestAttack() {
-        if (!isAttacking()) { attackRequested = true; }
+    public enum AttackSlot { PRIMARY, SECONDARY }
+
+    public boolean hasAttackRequest() { return attackRequested != null; }
+    public CombatWeapon.Attack getActiveAttack() { return activeAttack; }
+
+    public void requestAttack(AttackSlot slot) {
+        if (!isAttacking() && attackRequested == null) { attackRequested = slot; }
     }
 
-    public boolean consumeAttackRequest() {
-        boolean requested = attackRequested;
-        attackRequested = false;
+    public AttackSlot consumeAttackRequest() {
+        var requested = attackRequested;
+        attackRequested = null;
         return requested;
     }
 
-    public void beginAttack() {
+    public void beginAttack(CombatWeapon.Attack attack) {
+        activeAttack = attack;
         attacking = true;
         attackId++;
         hitTargets.clear();
@@ -48,7 +49,8 @@ public class Combat implements Component {
     public void endAttack() {
         attacking = false;
         sensor = null;
-        attackRequested = false;
+        attackRequested = null;
+        activeAttack = null;
         hitTargets.clear();
     }
 

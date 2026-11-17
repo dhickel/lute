@@ -19,7 +19,8 @@ public class Controller implements Component {
             InputAction.MOVE_DOWN,
             InputAction.MOVE_LEFT,
             InputAction.MOVE_RIGHT,
-            InputAction.ATTACK
+            InputAction.ATTACK_PRIMARY,
+            InputAction.ATTACK_SECONDARY
         ));
     }
 

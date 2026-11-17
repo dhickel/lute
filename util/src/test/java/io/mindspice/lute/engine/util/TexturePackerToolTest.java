@@ -72,6 +72,13 @@ public final class TexturePackerToolTest {
             Files.writeString(raw.resolve("maps/beta/objects/pack.json"), "{\"rotation\":true}");
             rejects(() -> TexturePackerTool.generate(raw, output));
             createMap(raw, "beta");
+            Path mapPacking = raw.resolve("maps/beta/objects/pack.json");
+            Files.writeString(mapPacking, Files.readString(mapPacking)
+                .replace("\"combineSubdirectories\":true", "\"combineSubdirectories\":false"));
+            rejects(() -> TexturePackerTool.generate(raw, output));
+            check(Files.readString(output.resolve("atlases/alpha.atlas")).equals(before),
+                "Map objects still require combined packing and must not publish on failure");
+            createMap(raw, "beta");
             Files.writeString(raw.resolve("maps/beta/objects/tree/pack.json"), "{\"rotation\":true}");
             rejects(() -> TexturePackerTool.generate(raw, output));
             Files.delete(raw.resolve("maps/beta/objects/tree/pack.json"));
@@ -92,11 +99,210 @@ public final class TexturePackerToolTest {
             ownershipAndStaleOutputs(directory.resolve("ownership"));
             atlasCollisions(directory.resolve("collisions"));
             publicationRollback(directory.resolve("publication"));
+            spriteAtlases(directory.resolve("sprites"));
+            spritePageDefaults(directory.resolve("sprite-page-defaults"));
             System.out.println("TexturePackerToolTest: passed (names, two maps, ownership, stale outputs, collisions, rollback, path and symlink safety)");
         } finally {
             try (var paths = Files.walk(directory)) {
                 for (Path path : paths.sorted(Comparator.reverseOrder()).toList()) { Files.delete(path); }
             }
+        }
+    }
+
+    private static void spritePageDefaults(Path directory) throws IOException {
+        Path raw = directory.resolve("raw_assets");
+        Path output = directory.resolve("assets");
+        createInputs(raw);
+        createMap(raw, "alpha");
+        for (String input : new String[]{"character", "equipment/basic/body", "equipment/basic/head",
+                "equipment/basic/feet", "equipment/basic/hands", "weapons/melee/basic_sword", "weapons/ranged/basic_bow"}) {
+            Path folder = raw.resolve("sprites").resolve(input);
+            Files.createDirectories(folder);
+            var image = new BufferedImage(1100, 32, BufferedImage.TYPE_INT_ARGB);
+            image.setRGB(3, 4, 0xff336699);
+            ImageIO.write(image, "png", folder.resolve("idle_down_00.png").toFile());
+        }
+        TexturePackerTool.generate(raw, output);
+        checkDefaultSpritePages(output);
+        // Partial packing overrides inherit the same page budget and sprite-preserving defaults.
+        for (String input : new String[]{"character", "equipment", "weapons"}) {
+            Files.writeString(raw.resolve("sprites").resolve(input).resolve("pack.json"), "{\"paddingX\":4}");
+        }
+        TexturePackerTool.generate(raw, output);
+        checkDefaultSpritePages(output);
+    }
+
+    private static void checkDefaultSpritePages(Path output) throws IOException {
+        for (String name : new String[]{"character", "body", "head", "feet", "hands", "weapons"}) {
+            var atlas = new TextureAtlasData(new FileHandle(output.resolve("atlases/" + name + ".atlas").toFile()),
+                new FileHandle(output.resolve("atlases").toFile()), false);
+            check(atlas.getRegions().size == (name.equals("weapons") ? 2 : 1), "Every wide source canvas must be packed");
+            check(atlas.getPages().size == (name.equals("weapons") ? 2 : 1),
+                "Separate asset folders retain separate pages when each folder fits");
+            checkFolderIsolation(atlas);
+            for (var region : atlas.getRegions()) {
+                check(region.width == 1100 && region.height == 32 && !region.rotate
+                    && region.originalWidth == 1100 && region.originalHeight == 32,
+                    "A canvas wider than 1024 must retain its original size and orientation");
+            }
+            for (var page : atlas.getPages()) {
+                var image = ImageIO.read(page.textureFile.file());
+                check(image.getWidth() == 2048 && image.getHeight() < 2048,
+                    "Sprite pages allow 2048 width without forcing both dimensions to the maximum");
+            }
+        }
+    }
+
+    private static void spriteAtlases(Path directory) throws IOException {
+        Path raw = directory.resolve("raw_assets");
+        Path output = directory.resolve("assets");
+        createInputs(raw);
+        createMap(raw, "alpha");
+        String[] inputs = {"character", "equipment/basic/body", "equipment/basic/head",
+            "equipment/basic/feet", "equipment/basic/hands", "equipment/iron/body", "equipment/iron/head",
+            "equipment/iron/feet", "equipment/iron/hands", "equipment/basic/accessories",
+            "weapons/melee/basic_sword", "weapons/ranged/basic_bow"};
+        for (String input : inputs) {
+            Path folder = raw.resolve("sprites").resolve(input);
+            Files.createDirectories(folder);
+            for (int index = 0; index < 2; index++) {
+                var image = new BufferedImage(12, 10, BufferedImage.TYPE_INT_ARGB);
+                if (index == 0) { image.setRGB(3, 4, 0xff000000 | (input.hashCode() & 0x00ffffff)); }
+                ImageIO.write(image, "png", folder.resolve("idle_down_0" + index + ".png").toFile());
+            }
+        }
+        Path characterSettings = raw.resolve("sprites/character/pack.json");
+        String settings = """
+            {"rotation":false,"stripWhitespaceX":false,"stripWhitespaceY":false,
+             "flattenPaths":false,"combineSubdirectories":false,"useIndexes":true,
+             "alias":false,"ignoreBlankImages":false,"maxWidth":16,"maxHeight":16}
+            """;
+        Files.writeString(characterSettings, settings);
+        Path accessory = raw.resolve("sprites/equipment/basic/accessories/idle_down_00.png");
+        byte[] accessoryBefore = Files.readAllBytes(accessory);
+        TexturePackerTool.generate(raw, output);
+        check(java.util.Arrays.equals(Files.readAllBytes(accessory), accessoryBefore),
+            "Skipping accessories must preserve the exported source bytes");
+        check(!Files.exists(output.resolve("atlases/accessories.atlas")),
+            "Unsupported accessories must not create a runtime atlas");
+        for (String name : new String[]{"character", "body", "head", "feet", "hands", "weapons"}) {
+            var atlas = new TextureAtlasData(new FileHandle(output.resolve("atlases/" + name + ".atlas").toFile()),
+                new FileHandle(output.resolve("atlases").toFile()), false);
+            check(atlas.getRegions().size == (name.equals("character") ? 2 : 4), "Every sprite frame must be packed");
+            checkFolderIsolation(atlas);
+            if (!name.equals("character")) {
+                check(atlas.getPages().size == 2, "Each fitting equipment set or weapon occupies its own page");
+            }
+            for (var region : atlas.getRegions()) {
+                String prefix = name.equals("character") ? "" : name.equals("weapons")
+                    ? (region.name.startsWith("melee/") ? "melee/basic_sword/" : "ranged/basic_bow/")
+                    : (region.name.startsWith("iron/") ? "iron/" : "basic/");
+                check(region.name.equals(prefix + "idle_down") && (region.index == 0 || region.index == 1),
+                    "Sprite names and indexes must retain relative equipment paths");
+                check(!region.rotate && region.width == 12 && region.height == 10
+                    && region.originalWidth == 12 && region.originalHeight == 10
+                    && region.offsetX == 0 && region.offsetY == 0, "Preserve dimensions, padding and orientation");
+            }
+            for (var region : atlas.getRegions()) {
+                var pageImage = ImageIO.read(region.page.textureFile.file());
+                check(pageImage.getRGB(region.left, region.top) == 0, "Retain transparent border pixels");
+                String sourceDirectory = name.equals("character") ? "character" : name.equals("weapons")
+                    ? "weapons/" + region.name.substring(0, region.name.lastIndexOf('/'))
+                    : "equipment/" + region.name.substring(0, region.name.indexOf('/')) + "/" + name;
+                var sourceImage = ImageIO.read(raw.resolve("sprites").resolve(sourceDirectory)
+                    .resolve("idle_down_0" + region.index + ".png").toFile());
+                check(pageImage.getRGB(region.left + 3, region.top + 4) == sourceImage.getRGB(3, 4),
+                    "Retain each set and slot's pixels, orientation and transparent indexed frames");
+            }
+            for (var page : atlas.getPages()) {
+                check(page.textureFile.exists(), "All atlas pages must be published");
+            }
+            if (name.equals("weapons")) {
+                check(hasRegion(atlas, "melee/basic_sword/idle_down", 0)
+                    && hasRegion(atlas, "ranged/basic_bow/idle_down", 1), "Melee and ranged must share weapons atlas");
+            }
+            if (name.equals("character")) { check(atlas.getPages().size == 2, "Force multipage sprite output"); }
+            if (!name.equals("character") && !name.equals("weapons")) {
+                check(hasRegion(atlas, "basic/idle_down", 0) && hasRegion(atlas, "iron/idle_down", 1),
+                    "Gather every equipment set into its slot atlas without changing region keys");
+            }
+        }
+        Path equipmentSettings = raw.resolve("sprites/equipment/pack.json");
+        Files.writeString(equipmentSettings, settings);
+        TexturePackerTool.generate(raw, output);
+        check(Files.exists(output.resolve("atlases/head4.png")), "Gathered equipment must support multiple pages");
+        Files.writeString(equipmentSettings, settings.replace("16", "64"));
+        TexturePackerTool.generate(raw, output);
+        check(Files.exists(output.resolve("atlases/head2.png")) && !Files.exists(output.resolve("atlases/head3.png")),
+            "Remove stale pages while retaining one page per fitting equipment set");
+        Files.delete(equipmentSettings);
+        TexturePackerTool.generate(raw, output);
+        var validEquipment = snapshot(output);
+        Files.writeString(equipmentSettings, settings.replace("\"combineSubdirectories\":false", "\"combineSubdirectories\":true"));
+        rejects(() -> TexturePackerTool.generate(raw, output));
+        check(snapshot(output).equals(validEquipment), "Reject sprite folder mixing without publishing partial output");
+        Files.delete(equipmentSettings);
+        Path unknownSlot = raw.resolve("sprites/equipment/basic/boots");
+        Files.createDirectories(unknownSlot);
+        rejects(() -> TexturePackerTool.generate(raw, output));
+        check(snapshot(output).equals(validEquipment), "Unknown slot must fail without publishing partial atlases");
+        Files.delete(unknownSlot);
+        Path nestedSettings = raw.resolve("sprites/equipment/basic/head/pack.json");
+        Files.writeString(nestedSettings, "{}");
+        rejects(() -> TexturePackerTool.generate(raw, output));
+        check(snapshot(output).equals(validEquipment), "Reject nested equipment packing overrides safely");
+        Files.delete(nestedSettings);
+        Path basicHead = raw.resolve("sprites/equipment/basic/head");
+        Files.move(basicHead, raw.resolve("sprites/equipment/iron/missing-basic-head"));
+        rejects(() -> TexturePackerTool.generate(raw, output));
+        check(snapshot(output).equals(validEquipment), "Missing required basic slot must preserve outputs");
+        Files.move(raw.resolve("sprites/equipment/iron/missing-basic-head"), basicHead);
+        check(!Files.exists(output.resolve("sprites")), "Runtime sprites must use only atlases");
+        var initial = snapshot(output);
+        createMap(raw, "character2");
+        rejects(() -> TexturePackerTool.generate(raw, output));
+        check(snapshot(output).equals(initial), "Map first page versus sprite continuation page must fail safely");
+        deleteTree(raw.resolve("maps/character2"));
+        Files.writeString(characterSettings, settings.replace("\"rotation\":false", "\"rotation\":true"));
+        rejects(() -> TexturePackerTool.generate(raw, output));
+        check(snapshot(output).equals(initial), "Invalid sprite packing must preserve outputs");
+        Files.writeString(characterSettings, settings.replace("16", "64"));
+        TexturePackerTool.generate(raw, output);
+        check(!Files.exists(output.resolve("atlases/character2.png")), "Remove stale sprite pages");
+        var snapshot = snapshot(output);
+        createMap(raw, "character");
+        rejects(() -> TexturePackerTool.generate(raw, output));
+        check(snapshot(output).equals(snapshot), "Map versus sprite atlas collision must preserve all outputs");
+        deleteTree(raw.resolve("maps/character"));
+        Files.writeString(output.resolve("atlases/weapons.png"), "modified owned sprite");
+        snapshot = snapshot(output);
+        rejects(() -> TexturePackerTool.generate(raw, output));
+        check(snapshot(output).equals(snapshot), "Ownership failure must preserve every output byte");
+        Path bow = raw.resolve("sprites/weapons/ranged/basic_bow");
+        deleteTree(bow);
+        rejects(() -> TexturePackerTool.generate(raw, output));
+        check(snapshot(output).equals(snapshot), "Missing required sprite input must preserve outputs");
+    }
+
+    private static java.util.Map<String, String> snapshot(Path directory) throws IOException {
+        var result = new java.util.TreeMap<String, String>();
+        try (var files = Files.walk(directory)) {
+            for (Path file : files.filter(Files::isRegularFile).toList()) {
+                result.put(directory.relativize(file).toString(), java.util.Base64.getEncoder().encodeToString(Files.readAllBytes(file)));
+            }
+        }
+        return result;
+    }
+
+    private static void checkFolderIsolation(TextureAtlasData atlas) {
+        for (var page : atlas.getPages()) {
+            var folders = new java.util.HashSet<String>();
+            for (var region : atlas.getRegions()) {
+                if (region.page != page) { continue; }
+                int slash = region.name.lastIndexOf('/');
+                folders.add(slash == -1 ? "" : region.name.substring(0, slash));
+            }
+            check(folders.size() == 1, "A page must not mix frames from different asset folders");
         }
     }
 

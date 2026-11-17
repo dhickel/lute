@@ -5,6 +5,8 @@ import com.badlogic.ashley.core.ComponentMapper;
 import com.badlogic.gdx.graphics.g2d.Animation;
 import com.badlogic.gdx.graphics.g2d.TextureRegion;
 
+import java.util.Map;
+
 public class Animation2D implements Component {
     public static final ComponentMapper<Animation2D> MAPPER = ComponentMapper.getFor(Animation2D.class);
 
@@ -21,16 +23,28 @@ public class Animation2D implements Component {
     private Animation<TextureRegion> animation;
     boolean dirty;
     private Attack attack;
-    private long minimumAttackFrames;
+    private Map<String, Long> requiredAttackFrames = Map.of();
     private boolean attackSoundEmitted;
 
-    public record Attack(float speed, float frameInterval, int soundFrame, String soundId) { }
+    public record Attack(String action, float speed, float frameInterval, int soundFrame, String soundId) { }
 
     public void configureAttack(Attack attack) { this.attack = attack; }
 
-    public void setMinimumAttackFrames(long count) { minimumAttackFrames = count; }
+    public void setRequiredAttackFrames(Map<String, Long> frames) { requiredAttackFrames = Map.copyOf(frames); }
 
-    public long getMinimumAttackFrames() { return minimumAttackFrames; }
+    public Map<String, Long> getRequiredAttackFrames() { return requiredAttackFrames; }
+
+    public String getAction() {
+        return type == AnimationType.ATTACK && attack != null ? attack.action() : type.atlasKey;
+    }
+
+    public String regionKey(String action, Facing.Direction direction) {
+        return (atlasKey.isEmpty() ? "" : atlasKey + "/") + action + "_" + direction.atlasKey;
+    }
+
+    public float getStateTime() { return stateTime; }
+
+    public int getFrameIndex() { return animation.getKeyFrameIndex(stateTime); }
 
     public boolean isAttackReady() {
         return attack != null && type == AnimationType.ATTACK && !dirty && animation != null;

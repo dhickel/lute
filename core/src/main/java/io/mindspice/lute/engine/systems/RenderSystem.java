@@ -5,6 +5,12 @@ import com.badlogic.ashley.core.Family;
 import com.badlogic.ashley.systems.SortedIteratingSystem;
 import com.badlogic.gdx.Gdx;
 import com.badlogic.gdx.graphics.Color;
+import com.badlogic.gdx.graphics.GL20;
+import com.badlogic.gdx.graphics.g2d.SpriteBatch;
+import com.badlogic.gdx.graphics.glutils.ShaderProgram;
+import com.badlogic.gdx.math.Matrix4;
+import io.mindspice.lute.engine.assets.AssetService;
+import io.mindspice.lute.engine.components.CompositeCharacter;
 import com.badlogic.gdx.graphics.OrthographicCamera;
 import com.badlogic.gdx.graphics.g2d.Batch;
 import com.badlogic.gdx.maps.MapLayer;
@@ -22,22 +28,31 @@ import io.mindspice.lute.engine.singletons.GameConsts;
 import java.util.ArrayList;
 import java.util.Comparator;
 import java.util.List;
+import java.util.function.Consumer;
 
 public class RenderSystem extends SortedIteratingSystem implements Disposable, EventListener {
     private final Batch batch;
+    private final CharacterCompositor compositor;
+    private final ShaderProgram worldShader;
     private final Viewport viewport;
     private final OrthographicCamera camera;
     private final List<MapLayer> fgLayers;
     private final List<MapLayer> bgLayers;
 
     private final OrthogonalTiledMapRenderer mapRenderer;
+    private final Consumer<Event.Map.Changed> mapChanged = event -> setMap(event.map());
+    private boolean disposed;
 
-    public RenderSystem(Batch batch, Viewport viewport, OrthographicCamera camera) {
+    public RenderSystem(Batch batch, Viewport viewport, OrthographicCamera camera, AssetService assets) {
         super(
             Family.all(Transform.class, Graphic.class).get(),
             Comparator.comparing(Transform.MAPPER::get)
         );
         this.batch = batch;
+        this.compositor = new CharacterCompositor(assets);
+        var state = new RenderState();
+        try { this.worldShader = SpriteBatch.createDefaultShader(); }
+        finally { state.restore(); }
         this.viewport = viewport;
         this.camera = camera;
 
@@ -46,28 +61,53 @@ public class RenderSystem extends SortedIteratingSystem implements Disposable, E
 
         this.mapRenderer = new OrthogonalTiledMapRenderer(null, GameConsts.UNIT_SCALE, this.batch);
 
-        eventSubscriber.accept(Event.Map.Changed.class, (event) -> this.setMap(event.map()));
+        eventSubscriber.accept(Event.Map.Changed.class, mapChanged);
     }
 
     @Override
     public void update(float deltaTime) {
+        if (disposed) { throw new IllegalStateException("Render system is disposed"); }
+        if (batch.isDrawing()) { throw new IllegalStateException("Render system requires an idle batch"); }
         AnimatedTiledMapTile.updateAnimationBaseTime();
-        this.viewport.apply();
-
-        batch.begin();
-        this.batch.setColor(Color.WHITE);
-        this.mapRenderer.setView(this.camera);
-        bgLayers.forEach(mapRenderer::renderMapLayer);
-
-
-        forceSort();
-        // Processes Entity
-        super.update(deltaTime);
-
-        this.batch.setColor(Color.WHITE);
-        fgLayers.forEach(mapRenderer::renderMapLayer);
-
-        batch.end();
+        var state = new RenderState();
+        float packedColor = batch.getPackedColor();
+        var color = batch.getColor().cpy();
+        var projection = new Matrix4(batch.getProjectionMatrix());
+        var transform = new Matrix4(batch.getTransformMatrix());
+        var shader = batch.getShader();
+        int src = batch.getBlendSrcFunc(), dst = batch.getBlendDstFunc();
+        int srcA = batch.getBlendSrcFuncAlpha(), dstA = batch.getBlendDstFuncAlpha();
+        boolean blending = batch.isBlendingEnabled();
+        try {
+            this.viewport.apply();
+            RenderState.prepare();
+            compositor.compose(getEntities(), camera);
+            batch.setTransformMatrix(new Matrix4());
+            batch.setShader(worldShader);
+            batch.enableBlending();
+            straightBlend();
+            batch.setProjectionMatrix(camera.combined);
+            batch.begin();
+            batch.setColor(Color.WHITE);
+            mapRenderer.setView(camera);
+            bgLayers.forEach(mapRenderer::renderMapLayer);
+            forceSort();
+            super.update(deltaTime);
+            straightBlend();
+            batch.setColor(Color.WHITE);
+            fgLayers.forEach(mapRenderer::renderMapLayer);
+        } finally {
+            if (batch.isDrawing()) { batch.end(); }
+            batch.setPackedColor(packedColor);
+            batch.getColor().set(color);
+            batch.setProjectionMatrix(projection);
+            batch.setTransformMatrix(transform);
+            batch.setShader(shader);
+            batch.setBlendFunctionSeparate(src, dst, srcA, dstA);
+            if (blending) { batch.enableBlending(); }
+            else { batch.disableBlending(); }
+            state.restore();
+        }
     }
 
 
@@ -75,24 +115,41 @@ public class RenderSystem extends SortedIteratingSystem implements Disposable, E
     protected void processEntity(Entity entity, float deltaTime) {
         Transform transform = Transform.MAPPER.get(entity);
         Graphic graphic = Graphic.MAPPER.get(entity);
-        if (graphic.getRegion() == null) { return; }
+        boolean composite = CompositeCharacter.MAPPER.has(entity);
+        var region = composite ? compositor.region(entity) : graphic.getRegion();
+        if (region == null) { return; }
 
         var pos = transform.getPosition();
         var scale = transform.getScaling();
         var size = transform.getSize();
 
-        this.batch.setColor(graphic.getColor());
+        var color = graphic.getColor();
+        if (composite) {
+            batch.setBlendFunctionSeparate(GL20.GL_ONE, GL20.GL_ONE_MINUS_SRC_ALPHA,
+                GL20.GL_ONE, GL20.GL_ONE_MINUS_SRC_ALPHA);
+            batch.setColor(color.r * color.a, color.g * color.a, color.b * color.a, color.a);
+        } else {
+            straightBlend();
+            batch.setColor(color);
+        }
+        float width = composite ? region.getRegionWidth() * GameConsts.UNIT_SCALE : size.x;
+        float height = composite ? region.getRegionHeight() * GameConsts.UNIT_SCALE : size.y;
         this.batch.draw(
-            graphic.getRegion(),
-            pos.x - (1f - scale.x) * size.x * 0.5f,
-            pos.y - (1f - scale.y) * size.y * 0.5f,
-            size.x * 0.5f, size.y * 0.5f,
-            size.x, size.y,
+            region,
+            pos.x + size.x * scale.x * 0.5f - width * 0.5f,
+            pos.y + size.y * scale.y * 0.5f - height * 0.5f,
+            width * 0.5f, height * 0.5f,
+            width, height,
             scale.x, scale.y,
             transform.getRotationDeg()
         );
     }
 
+
+    private void straightBlend() {
+        batch.setBlendFunctionSeparate(GL20.GL_SRC_ALPHA, GL20.GL_ONE_MINUS_SRC_ALPHA,
+            GL20.GL_ONE, GL20.GL_ONE_MINUS_SRC_ALPHA);
+    }
 
     public void setMap(TiledMap map) {
         mapRenderer.setMap(map);
@@ -134,7 +191,16 @@ public class RenderSystem extends SortedIteratingSystem implements Disposable, E
 
     @Override
     public void dispose() {
-        mapRenderer.dispose();
+        if (disposed) { return; }
+        disposed = true;
+        eventUnSubscriber.accept(Event.Map.Changed.class, mapChanged);
+        var state = new RenderState();
+        try {
+            compositor.dispose();
+            mapRenderer.dispose();
+            state.releasedShader(worldShader.getHandle());
+            worldShader.dispose();
+        } finally { state.restore(); }
     }
 
 

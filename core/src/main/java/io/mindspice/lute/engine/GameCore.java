@@ -13,6 +13,7 @@ import com.badlogic.gdx.utils.viewport.Viewport;
 import io.mindspice.lute.engine.assets.AssetService;
 import io.mindspice.lute.engine.assets.MapAssets;
 import io.mindspice.lute.engine.assets.WeaponAssets;
+import io.mindspice.lute.engine.assets.CharacterAssets;
 import io.mindspice.lute.engine.data.json.DataLoader;
 import io.mindspice.lute.engine.data.json.GameData;
 import io.mindspice.lute.engine.tiled.ManifestLoader;
@@ -56,7 +57,9 @@ public class GameCore extends Game {
             Pair.of(Input.Keys.S, InputAction.MOVE_DOWN),
             Pair.of(Input.Keys.A, InputAction.MOVE_LEFT),
             Pair.of(Input.Keys.D, InputAction.MOVE_RIGHT),
-            Pair.of(Input.Keys.SPACE, InputAction.ATTACK)
+            Pair.of(Input.Keys.SPACE, InputAction.ATTACK_PRIMARY),
+            Pair.of(Input.Keys.SHIFT_LEFT, InputAction.ATTACK_SECONDARY),
+            Pair.of(Input.Keys.SHIFT_RIGHT, InputAction.ATTACK_SECONDARY)
         );
 
         this.inputManager = new InputManager(inputMap);
@@ -84,8 +87,10 @@ public class GameCore extends Game {
 
         MapAssets assets = ManifestLoader.parseMapManifest("test_tiled");
         var initialAssets = new ArrayList<>(assets.all());
-        initialAssets.addAll(WeaponAssets.of(
-            gameData.playerData().equippedWeapon(), gameData.weaponsData()).all());
+        initialAssets.addAll(CharacterAssets.all(gameData.weaponsData().atlas()));
+        for (String id : gameData.weaponsData().weapons().keySet()) {
+            initialAssets.addAll(WeaponAssets.of(id, gameData.weaponsData()).all());
+        }
         this.screenManager = new ScreenManager(
             Pair.of("InitialLoading", new LoadingScreen(assetService, switchToGameScreen, initialAssets)),
             Pair.of("GameScreen", new GameScreen(assets))

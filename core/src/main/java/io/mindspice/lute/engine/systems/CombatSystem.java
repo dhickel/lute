@@ -9,6 +9,7 @@ import com.badlogic.gdx.math.Vector2;
 import com.badlogic.gdx.physics.box2d.*;
 import io.mindspice.lute.engine.components.*;
 import io.mindspice.lute.engine.components.Transform;
+import io.mindspice.lute.engine.data.json.WeaponsData.WeaponData.CollisionType;
 
 import java.util.ArrayList;
 import java.util.IdentityHashMap;
@@ -21,7 +22,7 @@ public class CombatSystem extends IteratingSystem implements ContactListener, En
     private final Map<Entity, Combat> activeAttacks = new IdentityHashMap<>();
 
     public CombatSystem(World world) {
-        super(Family.all(Combat.class, Animation2D.class, Physic.class, Transform.class, Facing.class).get());
+        super(Family.all(Combat.class, Loadout.class, Animation2D.class, Physic.class, Transform.class, Facing.class).get());
         this.world = world;
     }
 
@@ -58,7 +59,7 @@ public class CombatSystem extends IteratingSystem implements ContactListener, En
             if ((attackerHealth == null || attackerHealth.isAlive())
                 && combat != null && combat.isAttacking() && combat.getAttackId() == hit.attackId()
                 && health != null && health.isAlive() && combat.markHit(hit.target())) {
-                health.damage(combat.getCurrentWeapon().damage());
+                health.damage(combat.getActiveAttack().damage());
             }
         }
         pendingHits.clear();
@@ -70,28 +71,31 @@ public class CombatSystem extends IteratingSystem implements ContactListener, En
         var combat = Combat.MAPPER.get(entity);
         var health = Health.MAPPER.get(entity);
         boolean alive = health == null || health.isAlive();
-        boolean requested = combat.consumeAttackRequest();
+        var requested = combat.consumeAttackRequest();
         var animation = Animation2D.MAPPER.get(entity);
         if (!combat.isAttacking()) {
-            if (!requested || !alive) { return; }
-            animation.configureAttack(combat.getCurrentWeapon().animation());
-            combat.beginAttack();
+            if (requested == null || !alive) { return; }
+            var weapon = Loadout.MAPPER.get(entity).getWeapon();
+            var attack = requested == Combat.AttackSlot.PRIMARY ? weapon.primary() : weapon.secondary();
+            animation.configureAttack(attack.animation());
+            combat.beginAttack(attack);
             activeAttacks.put(entity, combat);
             return;
         }
-        int hitFrame = combat.getCurrentWeapon().hitFrame();
+        var attack = combat.getActiveAttack();
         if (!alive || (animation.isAttackReady() && animation.isFinished())) {
             stopAttack(entity);
             return;
         }
-        if (combat.getSensor() != null || !animation.hasReachedFrame(hitFrame)) { return; }
+        if (attack.collisionType() != CollisionType.MELEE
+            || combat.getSensor() != null || !animation.hasReachedFrame(attack.hitFrame())) { return; }
 
         var body = Physic.MAPPER.get(entity).getBody();
         var size = Transform.MAPPER.get(entity).getSize();
         var anchor = new Vector2(size.x * 0.5f, size.y * 0.5f);
         var shape = new PolygonShape();
         try {
-            shape.set(combat.getCurrentWeapon().vertices(anchor, Facing.MAPPER.get(entity).getDirection()));
+            shape.set(attack.vertices(anchor, Facing.MAPPER.get(entity).getDirection()));
             var definition = new FixtureDef();
             definition.shape = shape;
             definition.isSensor = true;
@@ -122,11 +126,16 @@ public class CombatSystem extends IteratingSystem implements ContactListener, En
     }
 
     private void queueHit(Fixture sensor, Fixture target) {
-        if (sensor.getUserData() instanceof AttackSensor attack
-            && !target.isSensor() && target.getBody().getUserData() instanceof Entity entity
-            && entity != attack.attacker()) {
-            pendingHits.add(new Hit(attack.attacker(), entity, attack.attackId()));
+        if (!(sensor.getUserData() instanceof AttackSensor attack)
+            || !(target.getBody().getUserData() instanceof Entity entity) || entity == attack.attacker()) { return; }
+        boolean hurtbox = target.getUserData() == Hurtbox.INSTANCE;
+        if (!hurtbox) {
+            if (target.isSensor()) { return; }
+            for (var fixture : target.getBody().getFixtureList()) {
+                if (fixture.getUserData() == Hurtbox.INSTANCE) { return; }
+            }
         }
+        pendingHits.add(new Hit(attack.attacker(), entity, attack.attackId()));
     }
 
     @Override

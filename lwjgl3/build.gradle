@@ -49,6 +49,19 @@ dependencies {
   }
 }
 
+tasks.register('compositeRenderTest', JavaExec) {
+  dependsOn testClasses
+  classpath = sourceSets.test.runtimeClasspath
+  mainClass = 'io.mindspice.lute.engine.lwjgl3.CompositeRenderTest'
+  workingDir = rootProject.file('assets')
+  environment 'DISPLAY', System.getenv('DISPLAY') ?: ':0'
+  jvmArgs '--enable-native-access=ALL-UNNAMED', '--add-exports=java.base/jdk.internal.misc=ALL-UNNAMED'
+}
+
+tasks.named('test') {
+  failOnNoDiscoveredTests = false
+}
+
 def os = System.properties['os.name'].toLowerCase(Locale.ROOT)
 
 run {

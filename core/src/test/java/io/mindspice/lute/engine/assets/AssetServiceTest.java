@@ -783,8 +783,38 @@ public final class AssetServiceTest {
                 engine.addSystem(audio);
                 var manifest = ManifestLoader.parseMapManifest("test_tiled");
                 var weapons = io.mindspice.lute.engine.data.json.DataLoader.parseWeaponData();
-                var weaponSounds = WeaponAssets.of("sword", weapons);
-                weaponSounds.all().forEach(service::load);
+                var definitions = new java.util.HashMap<>(weapons.weapons());
+                var sword = weapons.requireWeapon("basic_sword");
+                var secondary = sword.attackStats().secondary();
+                var independent = new io.mindspice.lute.engine.data.json.WeaponsData.WeaponData.AttackData(
+                    secondary.animation(), secondary.bounds(), secondary.stats(),
+                    new io.mindspice.lute.engine.data.json.WeaponsData.WeaponData.Sounds("sword_hit.wav", "sword_swing.wav"),
+                    secondary.collisionType());
+                definitions.put("basic_sword", new io.mindspice.lute.engine.data.json.WeaponsData.WeaponData(
+                    new io.mindspice.lute.engine.data.json.WeaponsData.WeaponData.AttackStats(
+                        sword.attackStats().primary(), independent), sword.atlasKey()));
+                weapons = new io.mindspice.lute.engine.data.json.WeaponsData(weapons.atlas(), definitions);
+                var selected = WeaponAssets.of("basic_sword", weapons);
+                var weaponSounds = selected.primary();
+                check(selected.secondary().attack().path().equals("audio/sword_hit.wav")
+                    && selected.secondary().hit().path().equals("audio/sword_swing.wav")
+                    && selected.primary().attack().path().equals("audio/sword_swing.wav")
+                    && selected.primary().hit().path().equals("audio/sword_hit.wav"),
+                    "Each attack resolves independently configured files");
+                for (String id : weapons.weapons().keySet()) {
+                    WeaponAssets.of(id, weapons).all().forEach(service::queue);
+                }
+                while (!service.update()) { }
+                var sameFileOtherId = service.get(Sound.class,
+                    WeaponAssets.of("basic_bow", weapons).primary().attack().id());
+                check(sameFileOtherId != service.get(Sound.class, selected.primary().attack().id()),
+                    "Shared filenames retain separate logical identity and ownership");
+                var secondarySound = backend.resource(service.get(Sound.class, selected.secondary().attack().id()));
+                var primarySound = backend.resource(service.get(Sound.class, selected.primary().attack().id()));
+                events.emitEvent(new Event.Sound.Play(selected.secondary().attack().id()));
+                events.update(0);
+                check(secondarySound.plays == 1 && primarySound.plays == 0,
+                    "Secondary playback uses its own queued resource, not primary");
                 manifest.musicAssets().values().forEach(service::load);
                 var sound = backend.resource(service.get(Sound.class, weaponSounds.attack().id()));
                 events.emitEvent(new Event.Sound.Play(weaponSounds.attack().id()));
@@ -797,6 +827,15 @@ public final class AssetServiceTest {
                 events.emitEvent(new Event.Sound.PlayAtVolume(weaponSounds.attack().id(), .5f));
                 events.update(0);
                 check(Math.abs(sound.volume - .2f) < .0001f, "Key-based sound playback must preserve volume scaling");
+                for (String id : weapons.weapons().keySet()) {
+                    for (var definition : WeaponAssets.of(id, weapons).all()) {
+                        var resource = backend.resource(service.get(Sound.class, definition.id()));
+                        int previousPlays = resource.plays;
+                        events.emitEvent(new Event.Sound.Play(definition.id()));
+                        events.update(0);
+                        check(resource.plays == previousPlays + 1, "Switchable weapon sound resolves: " + definition.id());
+                    }
+                }
                 var music = backend.resource(service.get(Music.class, "TOWN"));
                 check(music.plays == 1 && music.looping && music.volume == .5f,
                     "Map start music must resolve and play the TOWN key");
