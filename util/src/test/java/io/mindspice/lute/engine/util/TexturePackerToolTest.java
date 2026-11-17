@@ -99,12 +99,51 @@ public final class TexturePackerToolTest {
             publicationRollback(directory.resolve("publication"));
             spriteAtlases(directory.resolve("sprites"));
             spritePageDefaults(directory.resolve("sprite-page-defaults"));
+            singleFrameArrows(directory.resolve("single-frame-arrows"));
             System.out.println("TexturePackerToolTest: passed (required sprite inputs, names, two maps, ownership, stale outputs, collisions, rollback, path and symlink safety)");
         } finally {
             try (var paths = Files.walk(directory)) {
                 for (Path path : paths.sorted(Comparator.reverseOrder()).toList()) { Files.delete(path); }
             }
         }
+    }
+
+    private static void singleFrameArrows(Path directory) throws IOException {
+        Path raw = directory.resolve("raw_assets");
+        Path output = directory.resolve("assets");
+        createInputs(raw);
+        createMap(raw, "alpha");
+        Path arrows = raw.resolve("sprites/weapons/ranged/arrows");
+        Files.createDirectories(arrows);
+        var image = new BufferedImage(32, 16, BufferedImage.TYPE_INT_ARGB);
+        image.setRGB(5, 7, 0xff804020);
+        for (String filename : new String[]{"arrow.png", "fire_arrow_00.png"}) {
+            ImageIO.write(image, "png", arrows.resolve(filename).toFile());
+        }
+        var sources = snapshot(arrows);
+        TexturePackerTool.generate(raw, output);
+        var atlas = new TextureAtlasData(new FileHandle(output.resolve("atlases/weapons.atlas").toFile()),
+            new FileHandle(output.resolve("atlases").toFile()), false);
+        check(atlas.getRegions().size == 4, "Pack both single-frame arrows alongside sword and bow frames");
+        check(hasRegion(atlas, "melee/basic_sword/idle_down", 0)
+            && hasRegion(atlas, "ranged/basic_bow/idle_down", 0), "Arrow packing must retain existing weapon frames");
+        check(hasRegion(atlas, "ranged/arrows/arrow", -1), "Unindexed arrow must remain a static region");
+        check(hasRegion(atlas, "ranged/arrows/fire_arrow", 0), "Single indexed arrow must retain frame zero");
+        checkFolderIsolation(atlas);
+        for (var region : atlas.getRegions()) {
+            if (!region.name.startsWith("ranged/arrows/")) { continue; }
+            check(!region.rotate && region.width == 32 && region.height == 16
+                && region.originalWidth == 32 && region.originalHeight == 16
+                && region.offsetX == 0 && region.offsetY == 0, "Preserve single-frame arrow canvas and orientation");
+            var page = ImageIO.read(region.page.textureFile.file());
+            check(page.getRGB(region.left, region.top) == 0
+                && page.getRGB(region.left + 5, region.top + 7) == image.getRGB(5, 7),
+                "Preserve arrow pixels and transparent padding");
+        }
+        var generated = snapshot(output);
+        TexturePackerTool.generate(raw, output);
+        check(snapshot(output).equals(generated), "Arrow atlas generation must be deterministic");
+        check(snapshot(arrows).equals(sources), "Packing must not modify arrow source files");
     }
 
     private static void requiredSpriteInputs(Path directory) throws IOException {
