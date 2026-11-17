@@ -24,9 +24,10 @@ import java.util.*;
 /** Isolated premultiplied cells; only completed cells participate in world sorting. */
 public final class CharacterCompositor implements Disposable {
     private static final Set<String> ACTIONS = Set.of("idle", "walk", "death", "slash", "jab", "shot");
-    // base, feet, body, head, hands, weapon. Up-facing weapons sit behind the body.
-    private static final int[] FRONT = {0, 1, 2, 3, 4, 5};
-    private static final int[] UP = {5, 0, 1, 2, 3, 4};
+    // Layers: base, feet, body, head, hands, weapon. Helmets cover gloves in every direction;
+    // up-facing weapons sit behind the character, while other facings keep weapons in front.
+    private static final int[] FRONT = {0, 1, 2, 4, 3, 5};
+    private static final int[] UP = {5, 0, 1, 2, 4, 3};
     private final AssetService assets;
     private final SpriteBatch batch;
     private final List<Target> targets = new ArrayList<>();
@@ -185,7 +186,10 @@ public final class CharacterCompositor implements Disposable {
         for (int cell = 0; cell < entities.size(); cell++) {
             var entity = entities.get(cell);
             var frames = frames(entity);
-            var order = Animation2D.MAPPER.get(entity).getFdirection() == Facing.Direction.UP ? UP : FRONT;
+            var order = switch (Animation2D.MAPPER.get(entity).getFdirection()) {
+                case UP -> UP;
+                case DOWN, LEFT, RIGHT -> FRONT;
+            };
             var canvas = CompositeCharacter.MAPPER.get(entity);
             int x = cell % target.side * target.pitchX + 1, y = cell / target.side * target.pitchY + 1;
             for (var frame : frames) {

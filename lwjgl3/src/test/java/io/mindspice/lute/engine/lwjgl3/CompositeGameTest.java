@@ -115,6 +115,8 @@ public final class CompositeGameTest {
             layers.deathFrames(player);
             require(layers.weaponPages.size() == 7, "All seven regenerated real weapon texture pages are sampled");
             require(layers.overhangPixels > 0, "Actual regenerated frames contain visible pixels outside the logical area");
+            require(layers.helmetOcclusionActions.containsAll(Set.of("jab", "slash", "shot", "death")),
+                "Real upward poses exercise opaque helmet/glove overlaps in every overlapping action");
             System.out.println("CompositeGameTest: " + checks + " checks; " + layers.frames
                 + " actual-asset composition AND native-scale world-frame comparisons; " + layers.weaponPages.size() + " weapon pages sampled");
         } finally {
@@ -318,6 +320,7 @@ public final class CompositeGameTest {
         private final SpriteBatch worldBatch = new SpriteBatch();
         private final RenderSystem worldRenderer = new RenderSystem(worldBatch, worldViewport, worldCamera, GAME.getAssetService());
         private int overhangPixels;
+        private final Set<String> helmetOcclusionActions = new HashSet<>();
         private final Pixmap showcase = new Pixmap(576, 1728, Pixmap.Format.RGBA8888);
         private int frames;
 
@@ -375,7 +378,7 @@ public final class CompositeGameTest {
             batch.setBlendFunctionSeparate(GL20.GL_SRC_ALPHA, GL20.GL_ONE_MINUS_SRC_ALPHA, GL20.GL_ONE, GL20.GL_ONE_MINUS_SRC_ALPHA);
             batch.begin();
             int[] order = animation.getFdirection() == Facing.Direction.UP
-                ? new int[]{5, 0, 1, 2, 3, 4} : new int[]{0, 1, 2, 3, 4, 5};
+                ? new int[]{5, 0, 1, 2, 4, 3} : new int[]{0, 1, 2, 4, 3, 5};
             for (int layer : order) {
                 if (selected[layer] != null) { batch.draw(selected[layer], 0, 0); }
             }
@@ -405,6 +408,7 @@ public final class CompositeGameTest {
                     }
                 }
                 require(visible, "Real layer reference is not empty");
+                helmetOcclusion(animation, selected, rendered);
                 worldFrame(player, expected);
                 for (int y = 0; y < 128; y++) {
                     for (int x = 0; x < 128; x++) {
@@ -422,6 +426,43 @@ public final class CompositeGameTest {
                 rendered.dispose();
                 expected.dispose();
                 GAME.getViewport().apply();
+            }
+        }
+
+        private void helmetOcclusion(Animation2D animation, TextureRegion[] selected, Pixmap rendered) {
+            if (animation.getFdirection() != Facing.Direction.UP) { return; }
+            var helmet = layerPixels(selected[3]);
+            var gloves = layerPixels(selected[4]);
+            try {
+                for (int y = 0; y < 128; y++) {
+                    for (int x = 0; x < 128; x++) {
+                        int expected = helmet.getPixel(x, y);
+                        if ((expected & 255) != 255 || (gloves.getPixel(x, y) & 255) == 0) { continue; }
+                        helmetOcclusionActions.add(animation.getAction());
+                        int actual = rendered.getPixel(x, y);
+                        for (int shift = 0; shift < 32; shift += 8) {
+                            require(Math.abs((expected >>> shift & 255) - (actual >>> shift & 255)) <= 2,
+                                "Opaque upward helmet must cover gloves: " + animation.getAction() + "/"
+                                    + animation.getFrameIndex() + " at " + x + "," + y);
+                        }
+                    }
+                }
+            } finally { helmet.dispose(); gloves.dispose(); }
+        }
+
+        private Pixmap layerPixels(TextureRegion region) {
+            reference.begin();
+            try {
+                ScreenUtils.clear(0f, 0f, 0f, 0f);
+                batch.setBlendFunctionSeparate(GL20.GL_SRC_ALPHA, GL20.GL_ONE_MINUS_SRC_ALPHA,
+                    GL20.GL_ONE, GL20.GL_ONE_MINUS_SRC_ALPHA);
+                batch.begin();
+                batch.draw(region, 0, 0);
+                batch.end();
+                return Pixmap.createFromFrameBuffer(0, 0, 128, 128);
+            } finally {
+                if (batch.isDrawing()) { batch.end(); }
+                reference.end();
             }
         }
 

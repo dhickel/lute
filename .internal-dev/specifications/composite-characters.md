@@ -32,7 +32,7 @@ The composition design is reusable for future NPCs. Enemies remain full sprites 
 There is no magic requirement. `cast` is not a runtime dependency and is absent from the corrected raw inventory.
 
 ## Decisions
-Compose visible characters into distinct offscreen cells. Batch atlas layers across characters by their actual texture page while preserving the intended layer order within each cell. Render each completed character as one sprite, world-depth sorted with ordinary objects; do not independently world-sort its weapon or other layers.
+Compose visible characters into distinct offscreen cells. Within each cell, draw back to front: UP uses weapon, base, feet, body, hands, head; DOWN, LEFT, and RIGHT use base, feet, body, hands, head, weapon. Omit the weapon when unarmed. Batch atlas layers across characters by their actual texture page while preserving that order. Render each completed character as one sprite, world-depth sorted with ordinary objects; do not independently world-sort its weapon or other layers. This correction changes neither weapon placement in the order nor canvas, logical geometry, or assets.
 
 Use correct premultiplied-alpha handling so transparent edges remain correct during both composition and final rendering.
 

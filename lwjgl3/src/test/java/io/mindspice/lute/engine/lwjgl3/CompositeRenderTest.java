@@ -94,16 +94,27 @@ public final class CompositeRenderTest extends ApplicationAdapter {
                         for (int layer = 0; layer < 6; layer++) {
                             pixel(image, 16 + layer * 8 + 2, 16 + 8, color(layer, direction.ordinal(), frame), "aligned " + action + direction + frame + "/" + layer);
                         }
-                        int top = direction == Facing.Direction.UP ? 4 : 5;
+                        int top = direction == Facing.Direction.UP ? 3 : 5;
                         pixel(image, 48, 48, color(top, direction.ordinal(), frame), "direction order");
+                        layerPairs(image, direction, frame, true);
                         pixel(image, 17, 77, 0, "transparent hole/orientation");
                     }
                 }
             }
         }
-        playback(a, "idle", Facing.Direction.DOWN, 0);
         Loadout.MAPPER.get(a).equipWeapon(null);
-        try (var image = renderFrame()) { pixel(image, 48, 48, color(4, Facing.Direction.DOWN.ordinal(), 0), "unarmed hides weapon"); }
+        for (var direction : Facing.Direction.values()) {
+            for (String action : List.of("idle", "walk", "jab", "death")) {
+                for (int frame = 0; frame < 8; frame++) {
+                    playback(a, action, direction, frame);
+                    try (var image = renderFrame()) {
+                        pixel(image, 48, 48, color(3, direction.ordinal(), frame), "unarmed helmet stays above gloves");
+                        layerPairs(image, direction, frame, false);
+                    }
+                }
+            }
+        }
+        playback(a, "idle", Facing.Direction.DOWN, 0);
         Loadout.MAPPER.get(a).equipWeapon("bow");
         Loadout.MAPPER.get(a).equip(new Loadout.Equipment("alternate", "alternate", "alternate", "alternate"));
         try (var image = renderFrame()) { pixel(image, 34, 24, alternate(color(2, Facing.Direction.DOWN.ordinal(), 0)), "equipment switch invalidates selection"); }
@@ -148,6 +159,20 @@ public final class CompositeRenderTest extends ApplicationAdapter {
         GameCore.INSTANCE.getEngine().getSystem(EventSystem.class).update(0);
         requireThrows(() -> renderer.update(0), "disposed renderer rejects updates");
         renderer = null;
+    }
+
+    private void layerPairs(Image image, Facing.Direction direction, int frame, boolean armed) {
+        int pair = 0;
+        for (int first = 0; first < 6; first++) {
+            for (int second = first + 1; second < 6; second++, pair++) {
+                final int winner;
+                if (second == 5) { winner = armed && direction != Facing.Direction.UP ? 5 : first; }
+                else if (first == 3 && second == 4) { winner = 3; } // Helmet covers gloves.
+                else { winner = second; } // Base, feet and torso retain their local order.
+                pixel(image, 21 + pair % 5 * 8, 70 - pair / 5 * 6,
+                    color(winner, direction.ordinal(), frame), "pair " + first + "/" + second + " facing " + direction);
+            }
+        }
     }
 
     private void mapPasses() {
@@ -448,8 +473,12 @@ public final class CompositeRenderTest extends ApplicationAdapter {
             require(targetTextures.size() == 3, "capacity exceeding texture budget allocates multiple targets");
             require(draws[0] == 18, "six source-page batches per target, not six draws per character: " + draws[0]);
             var expectedBinds = new ArrayList<Integer>();
-            sourceIds.forEach(id -> { for (int i = 0; i < 3; i++) { expectedBinds.add(id); } });
-            require(sourceBinds.equals(expectedBinds), "source pages grouped across all targets: " + sourceBinds);
+            // All characters face down: base, feet, body, gloves, helmet, then weapon.
+            // Each rank must finish across all three targets before the next rank begins.
+            for (int layer : new int[]{0, 1, 2, 4, 3, 5}) {
+                for (int target = 0; target < 3; target++) { expectedBinds.add(sourceIds.get(layer)); }
+            }
+            require(sourceBinds.equals(expectedBinds), "source pages grouped across all targets in dependency order: " + sourceBinds);
             for (int i = 0; i < characters.size(); i++) {
                 playback(characters.get(i), "idle", i % 2 == 0 ? Facing.Direction.DOWN : Facing.Direction.UP, i % 8);
             }
@@ -470,7 +499,7 @@ public final class CompositeRenderTest extends ApplicationAdapter {
                     batch.end();
                     try (var image = new Image(Pixmap.createFromFrameBuffer(0, 0, 128, 128))) {
                         var direction = i % 2 == 0 ? Facing.Direction.DOWN : Facing.Direction.UP;
-                        pixel(image, 64, 64, color(direction == Facing.Direction.UP ? 4 : 5, direction.ordinal(), i % 8), "distinct cell frame/orientation " + i);
+                        pixel(image, 64, 64, color(direction == Facing.Direction.UP ? 3 : 5, direction.ordinal(), i % 8), "distinct cell frame/orientation " + i);
                         pixel(image, 1, 126, 0, "no adjacent cell leak " + i);
                         pixel(image, 12, 64, color(0, direction.ordinal(), i % 8), "cell preserves native overhang " + i);
                     }
@@ -579,6 +608,15 @@ public final class CompositeRenderTest extends ApplicationAdapter {
         pixmap.setColor(rgba);
         pixmap.fillRectangle(32 + layer * 8, 80, 8, 12);
         pixmap.fillRectangle(60, 60, 8, 8);
+        // Each marker overlaps exactly two layers, exposing occlusion hidden by the shared top pixel.
+        int pair = 0;
+        for (int first = 0; first < 6; first++) {
+            for (int second = first + 1; second < 6; second++, pair++) {
+                if (layer == first || layer == second) {
+                    pixmap.fillRectangle(36 + pair % 5 * 8, 40 + pair / 5 * 6, 3, 3);
+                }
+            }
+        }
         if (layer == 0) {
             pixmap.fillRectangle(8, 60, 8, 8);
             pixmap.fillRectangle(112, 60, 8, 8);
