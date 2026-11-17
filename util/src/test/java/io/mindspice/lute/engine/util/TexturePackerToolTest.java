@@ -11,18 +11,16 @@ import java.nio.file.Path;
 import java.util.Comparator;
 
 public final class TexturePackerToolTest {
+    private static final String[] REQUIRED_SPRITE_INPUTS = {"character", "equipment/basic/body", "equipment/basic/head",
+        "equipment/basic/feet", "equipment/basic/hands", "weapons/melee/basic_sword", "weapons/ranged/basic_bow"};
+
     public static void main(String[] args) throws IOException {
         Path directory = Files.createTempDirectory("lute-runtime-generation-");
         try {
             Path raw = directory.resolve("raw_assets");
             Path output = directory.resolve("assets");
-            Files.createDirectories(raw.resolve("data"));
-            Files.createDirectories(raw.resolve("audio"));
-            Files.writeString(raw.resolve("game.settings.json"), """
-                {"mapsPath":"maps/", "atlasPath":"atlases/", "projectPath":"game.tiled-project",
-                 "dataPath":"data/", "soundPath":"audio/", "musicPath":"audio/"}
-                """);
-            Files.writeString(raw.resolve("game.tiled-project"), "{}");
+            requiredSpriteInputs(directory.resolve("required-sprites"));
+            createInputs(raw);
             createMap(raw, "alpha");
             createMap(raw, "beta");
             Files.createDirectories(output);
@@ -101,12 +99,83 @@ public final class TexturePackerToolTest {
             publicationRollback(directory.resolve("publication"));
             spriteAtlases(directory.resolve("sprites"));
             spritePageDefaults(directory.resolve("sprite-page-defaults"));
-            System.out.println("TexturePackerToolTest: passed (names, two maps, ownership, stale outputs, collisions, rollback, path and symlink safety)");
+            System.out.println("TexturePackerToolTest: passed (required sprite inputs, names, two maps, ownership, stale outputs, collisions, rollback, path and symlink safety)");
         } finally {
             try (var paths = Files.walk(directory)) {
                 for (Path path : paths.sorted(Comparator.reverseOrder()).toList()) { Files.delete(path); }
             }
         }
+    }
+
+    private static void requiredSpriteInputs(Path directory) throws IOException {
+        Path raw = directory.resolve("raw_assets");
+        Path output = directory.resolve("assets");
+        createInputs(raw);
+        createMap(raw, "alpha");
+        Path sprites = raw.resolve("sprites");
+        Path held = directory.resolve("held-sprites");
+        Files.move(sprites, held);
+        try {
+            for (boolean empty : new boolean[]{false, true}) {
+                if (empty) { Files.createDirectory(sprites); }
+                rejectsRequiredSprites(raw, output);
+                check(!Files.exists(output), "Missing or empty top-level sprites must not publish a fresh output");
+                check(!Files.exists(directory.resolve(".runtime-assets-transaction")), "Failed generation must clean staging");
+                if (empty) { Files.delete(sprites); }
+            }
+        } finally {
+            Files.move(held, sprites);
+        }
+        TexturePackerTool.generate(raw, output);
+        Files.writeString(output.resolve("game.tiled-session"), "preserve session");
+        Files.createDirectories(output.resolve("unowned/empty"));
+        Files.writeString(output.resolve("unowned/notes"), "preserve unowned bytes");
+        var complete = snapshot(output);
+        var ownership = Files.readString(output.resolve(".runtime-assets-owned"));
+        for (String name : new String[]{"character", "body", "head", "feet", "hands", "weapons"}) {
+            check(ownership.contains("\tatlases/" + name + ".atlas\n"), "Complete baseline must own every sprite atlas");
+            var atlas = new TextureAtlasData(new FileHandle(output.resolve("atlases/" + name + ".atlas").toFile()),
+                new FileHandle(output.resolve("atlases").toFile()), false);
+            check(atlas.getRegions().size == (name.equals("weapons") ? 2 : 1), "Complete baseline must contain required frames");
+            for (var page : atlas.getPages()) {
+                check(page.textureFile.exists() && ownership.contains("\tatlases/" + page.textureFile.name() + "\n"),
+                    "Complete baseline must own every published sprite page");
+            }
+        }
+        String[] requiredDirectories = {"", "character", "equipment", "equipment/basic", "equipment/basic/body",
+            "equipment/basic/head", "equipment/basic/feet", "equipment/basic/hands", "weapons", "weapons/melee",
+            "weapons/melee/basic_sword", "weapons/ranged", "weapons/ranged/basic_bow"};
+        for (String input : requiredDirectories) {
+            Path folder = sprites.resolve(input);
+            Files.move(folder, held);
+            try {
+                for (boolean empty : new boolean[]{false, true}) {
+                    if (empty) {
+                        Files.createDirectory(folder);
+                        Files.writeString(folder.resolve("README.txt"), "No sprite images supplied");
+                    }
+                    rejectsRequiredSprites(raw, output);
+                    check(snapshot(output).equals(complete), "Invalid required input must preserve all output bytes and inventory: " + input);
+                    check(Files.isDirectory(output.resolve("unowned/empty")), "Failed generation must preserve empty unowned directories");
+                    check(!Files.exists(directory.resolve(".runtime-assets-transaction")), "Failed generation must clean staging");
+                    if (empty) { deleteTree(folder); }
+                }
+            } finally {
+                Files.move(held, folder);
+            }
+        }
+        TexturePackerTool.generate(raw, output);
+        check(snapshot(output).equals(complete), "Restoring valid inputs must reproduce the complete owned output and manifest");
+    }
+
+    private static void rejectsRequiredSprites(Path raw, Path output) throws IOException {
+        try { TexturePackerTool.generate(raw, output); }
+        catch (IllegalArgumentException expected) {
+            check(expected.getMessage().startsWith("Missing or empty required sprite input: " + raw.resolve("sprites")),
+                "Failure must identify required sprite input, not an unrelated map or ownership error");
+            return;
+        }
+        throw new AssertionError("Missing or empty required sprites must fail generation");
     }
 
     private static void spritePageDefaults(Path directory) throws IOException {
@@ -400,6 +469,13 @@ public final class TexturePackerToolTest {
              "dataPath":"data/", "soundPath":"audio/", "musicPath":"audio/"}
             """);
         Files.writeString(raw.resolve("game.tiled-project"), "{}");
+        for (String input : REQUIRED_SPRITE_INPUTS) {
+            Path folder = raw.resolve("sprites").resolve(input);
+            Files.createDirectories(folder);
+            var image = new BufferedImage(12, 10, BufferedImage.TYPE_INT_ARGB);
+            image.setRGB(3, 4, 0xff336699);
+            ImageIO.write(image, "png", folder.resolve("idle_down_00.png").toFile());
+        }
     }
 
     private static void deleteTree(Path directory) throws IOException {
