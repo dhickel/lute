@@ -30,10 +30,10 @@ The existing input validation and full `check` gate fail independently of the as
 
 ## Status
 
-Implemented in the pending issue 6 PR; not yet closed or archived. GitHub mirror: https://github.com/dhickel/lute/issues/6. Commit `ed4f952` established press-only emission; `8275ad8` removed it. The fix restores emission through `EventEmitter`. Current gameplay has no subscriber, and audio is unchanged.
+The fix is prepared for review; issue 6 remains open until PR merge. GitHub mirror: https://github.com/dhickel/lute/issues/6. Commit `ed4f952` established press-only emission; `8275ad8` removed it. The fix restores emission through `EventEmitter`. Current gameplay has no subscriber, and audio is unchanged.
 
-Independent focused validation passed: `:core:inputSystemTest` (1,286 checks), `:lwjgl3:compileJava`, and `:core:combatSystemTest` (1,920 checks in that run; an earlier run passed 1,928). Combat check counts can vary with native contact iterations. The final full validation gate and PR are pending.
+Independent focused validation passed: `:core:inputSystemTest` (1,286 checks), `:lwjgl3:compileJava`, and `:core:combatSystemTest` (1,920 checks in that run; an earlier run passed 1,928). Combat check counts can vary with native contact iterations. All five independent phase gates passed. The final isolated union of #6, #8, #16, #17, and #18 passed unfiltered `./gradlew check` (22 tasks), including input 1,286, audio 196, and MapSensor 1,732. Separately, `DISPLAY=:0 ./gradlew :lwjgl3:gameScreenLifecycleTest :lwjgl3:compositeRenderTest` passed GL lifecycle 157, gameplay 15,815 checks and 480 comparisons, and synthetic 11,854. A separate normal generator run passed with 29 outputs. This combined pass does not imply sibling fixes are included on this branch or that branches without #6 pass unfiltered.
 
 ## Next Action
 
-Complete the final full validation gate and open the PR; retain this record until the issue is resolved.
+Retain this record until the PR is merged and the issue resolved.
