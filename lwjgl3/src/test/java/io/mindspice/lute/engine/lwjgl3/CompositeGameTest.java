@@ -113,7 +113,9 @@ public final class CompositeGameTest {
                 }
             }
             layers.deathFrames(player);
-            require(layers.weaponPages.size() == 7, "All seven regenerated real weapon texture pages are sampled");
+            require(layers.weaponPages.size() == GAME.getAssetService()
+                .get(TextureAtlas.class, CharacterAssets.WEAPONS.id()).getTextures().size,
+                "All loaded real weapon texture pages are sampled");
             require(layers.overhangPixels > 0, "Actual regenerated frames contain visible pixels outside the logical area");
             require(layers.helmetOcclusionActions.containsAll(Set.of("jab", "slash", "shot", "death")),
                 "Real upward poses exercise opaque helmet/glove overlaps in every overlapping action");
@@ -339,8 +341,8 @@ public final class CompositeGameTest {
                     require(atlas.getTextures().contains(region.getTexture()), "Region resolves to owned atlas page");
                 }
             }
-            require(GAME.getAssetService().get(TextureAtlas.class, CharacterAssets.WEAPONS.id()).getTextures().size == 7,
-                "Regenerated real common weapon atlas has seven texture pages");
+            require(GAME.getAssetService().get(TextureAtlas.class, CharacterAssets.WEAPONS.id()).getTextures().size > 1,
+                "Regenerated real common weapon atlas exercises multiple texture pages");
         }
 
         void check(Entity player) {

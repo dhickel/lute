@@ -304,6 +304,8 @@ public final class TexturePackerTool {
             boolean equipmentSlot = EQUIPMENT_SLOTS.contains(name);
             Path input = (equipmentSlot ? groupedEquipment : sprites).resolve(name);
             var settings = new TexturePacker.Settings();
+            settings.maxWidth = 2048;
+            settings.maxHeight = 2048;
             settings.rotation = false;
             settings.stripWhitespaceX = false;
             settings.stripWhitespaceY = false;
@@ -314,7 +316,7 @@ public final class TexturePackerTool {
             settings.ignoreBlankImages = false;
             Path config = (equipmentSlot ? equipment : input).resolve("pack.json");
             if (Files.exists(config)) {
-                settings = new Json().fromJson(TexturePacker.Settings.class, new FileHandle(config.toFile()));
+                new Json().readFields(settings, new JsonReader().parse(new FileHandle(config.toFile())));
             }
             if (settings.ignoreBlankImages) {
                 throw new IllegalArgumentException("Sprite packing must retain transparent frames: " + input);

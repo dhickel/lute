@@ -93,10 +93,52 @@ public final class TexturePackerToolTest {
             atlasCollisions(directory.resolve("collisions"));
             publicationRollback(directory.resolve("publication"));
             spriteAtlases(directory.resolve("sprites"));
+            spritePageDefaults(directory.resolve("sprite-page-defaults"));
             System.out.println("TexturePackerToolTest: passed (names, two maps, ownership, stale outputs, collisions, rollback, path and symlink safety)");
         } finally {
             try (var paths = Files.walk(directory)) {
                 for (Path path : paths.sorted(Comparator.reverseOrder()).toList()) { Files.delete(path); }
+            }
+        }
+    }
+
+    private static void spritePageDefaults(Path directory) throws IOException {
+        Path raw = directory.resolve("raw_assets");
+        Path output = directory.resolve("assets");
+        createInputs(raw);
+        createMap(raw, "alpha");
+        for (String input : new String[]{"character", "equipment/basic/body", "equipment/basic/head",
+                "equipment/basic/feet", "equipment/basic/hands", "weapons/melee/basic_sword", "weapons/ranged/basic_bow"}) {
+            Path folder = raw.resolve("sprites").resolve(input);
+            Files.createDirectories(folder);
+            var image = new BufferedImage(1100, 32, BufferedImage.TYPE_INT_ARGB);
+            image.setRGB(3, 4, 0xff336699);
+            ImageIO.write(image, "png", folder.resolve("idle_down_00.png").toFile());
+        }
+        TexturePackerTool.generate(raw, output);
+        checkDefaultSpritePages(output);
+        // Partial packing overrides inherit the same page budget and sprite-preserving defaults.
+        for (String input : new String[]{"character", "equipment", "weapons"}) {
+            Files.writeString(raw.resolve("sprites").resolve(input).resolve("pack.json"), "{\"paddingX\":4}");
+        }
+        TexturePackerTool.generate(raw, output);
+        checkDefaultSpritePages(output);
+    }
+
+    private static void checkDefaultSpritePages(Path output) throws IOException {
+        for (String name : new String[]{"character", "body", "head", "feet", "hands", "weapons"}) {
+            var atlas = new TextureAtlasData(new FileHandle(output.resolve("atlases/" + name + ".atlas").toFile()),
+                new FileHandle(output.resolve("atlases").toFile()), false);
+            check(atlas.getRegions().size == (name.equals("weapons") ? 2 : 1), "Every wide source canvas must be packed");
+            for (var region : atlas.getRegions()) {
+                check(region.width == 1100 && region.height == 32 && !region.rotate
+                    && region.originalWidth == 1100 && region.originalHeight == 32,
+                    "A canvas wider than 1024 must retain its original size and orientation");
+            }
+            for (var page : atlas.getPages()) {
+                var image = ImageIO.read(page.textureFile.file());
+                check(image.getWidth() == 2048 && image.getHeight() < 2048,
+                    "Sprite pages allow 2048 width without forcing both dimensions to the maximum");
             }
         }
     }
