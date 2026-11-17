@@ -22,8 +22,8 @@ public interface EventListener {
         events.subscribe(eventType, consumer);
     }
 
-    default <T extends Event> void unsubscribeImmediately(EventSystem events, Class<T> eventType, Consumer<T> consumer) {
-        events.unsubscribeImmediately(eventType, consumer);
+    default <T extends Event> void unsubscribe(EventSystem events, Class<T> eventType, Consumer<T> consumer) {
+        events.unsubscribe(eventType, consumer);
     }
 
     @FunctionalInterface

@@ -31,6 +31,7 @@ public final class AudioSystemTest {
             constructionDoesNotSubscribe();
             for (boolean pending : new boolean[]{true, false}) {
                 removeAndReattach(pending);
+                reattachBeforeBoundary(pending);
                 replaceAudio(pending);
                 replaceBus(pending);
                 for (boolean busFirst : new boolean[]{true, false}) {
@@ -43,7 +44,12 @@ public final class AudioSystemTest {
             hideShowReuse();
             removalDuringDispatch(false);
             removalDuringDispatch(true);
+            reattachmentDuringDispatch(false);
+            reattachmentDuringDispatch(true);
             busReplacementDuringDispatch();
+            disposalDuringDispatch();
+            retirementDuringFailingDispatch();
+            queuedMutationDuringDispatch();
             exactConsumerIdentity();
             unloadedMusicIsNotTouched();
             oldDisposalDoesNotStopReplacementMusic();
@@ -71,16 +77,38 @@ public final class AudioSystemTest {
         if (!pending) { cycle(events, assets); }
         engine.removeSystem(audio);
         engine.removeSystem(audio);
-        empty(events);
+        queuedRemoval(events);
         silent(events, assets);
+        empty(events);
         for (int i = 0; i < 3; i++) {
             engine.addSystem(audio);
             engine.addSystem(audio);
             cycle(events, assets);
             engine.removeSystem(audio);
+            queuedRemoval(events);
+            events.update(0);
             empty(events);
         }
         check(assets.musicStops == assets.musicPlays, "Removal stops owned music once and permits reattachment");
+    }
+
+    private static void reattachBeforeBoundary(boolean pending) throws Exception {
+        var engine = new Engine();
+        var events = new EventSystem();
+        var assets = new FakeAssets();
+        var audio = new AudioSystem(assets);
+        engine.addSystem(events);
+        engine.addSystem(audio);
+        if (!pending) { cycle(events, assets); }
+        for (int i = 0; i < 3; i++) {
+            engine.removeSystem(audio);
+            queuedRemoval(events);
+            engine.addSystem(audio);
+        }
+        cycle(events, assets);
+        cycle(events, assets);
+        engine.removeAllSystems();
+        empty(events);
     }
 
     private static void replaceAudio(boolean pending) throws Exception {
@@ -118,8 +146,9 @@ public final class AudioSystemTest {
         check(assets.musicStops == 0 && assets.musicPlays == 1,
             "Replacing only the event bus preserves retained audio playback");
         audio.dispose();
-        empty(liveEvents);
+        queuedRemoval(liveEvents);
         silent(liveEvents, assets);
+        empty(liveEvents);
         engine.removeAllSystems();
     }
 
@@ -166,7 +195,7 @@ public final class AudioSystemTest {
             engine.removeSystem(audio);
         } else {
             engine.removeSystem(audio);
-            empty(events);
+            queuedRemoval(events);
             engine.removeSystem(events);
         }
         audio.dispose();
@@ -187,8 +216,9 @@ public final class AudioSystemTest {
             if (system instanceof Disposable disposable) { disposable.dispose(); }
         }
         audio.dispose();
-        empty(events);
+        queuedRemoval(events);
         silent(events, assets);
+        empty(events);
         engine.removeSystem(events);
         var replacement = new EventSystem();
         engine.addSystem(replacement);
@@ -207,6 +237,7 @@ public final class AudioSystemTest {
         for (int i = 0; i < 3; i++) {
             engine.addSystem(events);
             cycle(events, assets);
+            events.emitEvent(new Event.Sound.Play("sound"));
             engine.removeSystem(events);
             engine.removeSystem(events);
             empty(events);
@@ -252,11 +283,44 @@ public final class AudioSystemTest {
         events.emitEvent(new Event.Sound.PlayAtVolume("sound", 0.5f));
         events.update(0);
         check(oldAssets.totalReads() == 0 && liveAssets.totalReads() == 0,
-            "Dispatch teardown skips the detached consumer in the same event and later queued events");
+            "Detached audio callbacks cannot touch assets in the same event or later queued events");
         if (replace) { cycle(events, liveAssets); }
         else { silent(events, oldAssets); }
         engine.removeAllSystems();
         check(events.subscriptions.isEmpty(), "Dispatch replacement leaves no pending audio registration after removal");
+    }
+
+    private static void reattachmentDuringDispatch(boolean reattachBus) throws Exception {
+        var engine = new Engine();
+        var events = new EventSystem();
+        var assets = new FakeAssets();
+        var audio = new AudioSystem(assets);
+        boolean[] reattached = {false};
+        engine.addSystem(events);
+        events.subscribe(Event.Sound.Play.class, event -> {
+            if (reattached[0]) { return; }
+            reattached[0] = true;
+            if (reattachBus) {
+                engine.removeSystem(events);
+                engine.addSystem(events);
+            } else {
+                engine.removeSystem(audio);
+                engine.addSystem(audio);
+            }
+        });
+        engine.addSystem(audio);
+        events.emitEvent(new Event.Sound.Play("sound"));
+        events.emitEvent(new Event.Map.Load(MAP));
+        events.emitEvent(new Event.Sound.PlayAtVolume("sound", 0.5f));
+        events.update(0);
+        check(assets.musicReads == 1 && assets.soundReads == 2,
+            "Same-instance reattachment can reuse its still-active callbacks once in the running batch");
+        check(listenerCount(events) == 4 && events.subscriptions.isEmpty() && events.unSubscriptions.isEmpty(),
+            "Dispatch-end removal precedes reattachment registration without cancellation or duplicate consumers");
+        cycle(events, assets);
+        engine.removeAllSystems();
+        check(listenerCount(events) == 1 && events.subscriptions.isEmpty() && events.unSubscriptions.isEmpty(),
+            "Final retirement releases reattached audio without removing the unrelated listener");
     }
 
     private static void busReplacementDuringDispatch() throws Exception {
@@ -270,10 +334,84 @@ public final class AudioSystemTest {
         oldEvents.emitEvent(new Event.Sound.Play("sound"));
         oldEvents.emitEvent(new Event.Sound.PlayAtVolume("sound", 0.5f));
         oldEvents.update(0);
-        check(assets.totalReads() == 0, "Bus replacement during dispatch cannot deliver detached audio callbacks");
+        check(assets.totalReads() == 0, "Bus retirement stops current and later queued callbacks before audio reattaches elsewhere");
+        check(listenerCount(oldEvents) == 1 && oldEvents.subscriptions.isEmpty() && oldEvents.unSubscriptions.isEmpty(),
+            "Retired bus removes all audio-owned registrations at dispatch end without another update");
         cycle(liveEvents, assets);
         engine.removeAllSystems();
         empty(liveEvents);
+    }
+
+    private static void disposalDuringDispatch() throws Exception {
+        var engine = new Engine();
+        var events = new EventSystem();
+        var assets = new FakeAssets();
+        var audio = new AudioSystem(assets);
+        engine.addSystem(events);
+        events.subscribe(Event.Sound.Play.class, event -> {
+            audio.dispose();
+            assets.loaded = false;
+        });
+        engine.addSystem(audio);
+        events.emitEvent(new Event.Sound.Play("sound"));
+        events.emitEvent(new Event.Map.Load(MAP));
+        events.emitEvent(new Event.Sound.PlayAtVolume("sound", 0.5f));
+        events.update(0);
+        check(assets.totalReads() == 0, "Disposal guards all three callbacks before queued removal, even after assets unload");
+        check(listenerCount(events) == 1 && events.subscriptions.isEmpty() && events.unSubscriptions.isEmpty(),
+            "Dispatch-end boundary removes disposed audio registrations while retaining unrelated listeners");
+        engine.removeAllSystems();
+    }
+
+    private static void retirementDuringFailingDispatch() throws Exception {
+        var engine = new Engine();
+        var events = new EventSystem();
+        var assets = new FakeAssets();
+        var failure = new IllegalStateException("Injected callback failure");
+        engine.addSystem(events);
+        events.subscribe(Event.Sound.Play.class, event -> {
+            engine.removeSystem(events);
+            throw failure;
+        });
+        engine.addSystem(new AudioSystem(assets));
+        events.emitEvent(new Event.Sound.Play("sound"));
+        try {
+            events.update(0);
+            throw new AssertionError("Callback exception must propagate");
+        } catch (IllegalStateException actual) {
+            check(actual == failure, "Event dispatch preserves callback failure");
+        }
+        check(assets.totalReads() == 0 && listenerCount(events) == 1
+                && events.subscriptions.isEmpty() && events.unSubscriptions.isEmpty(),
+            "Retired bus removes audio-owned registrations even when its last dispatch throws, with no later update");
+        engine.removeAllSystems();
+    }
+
+    private static void queuedMutationDuringDispatch() throws Exception {
+        var events = new EventSystem();
+        var oldListener = new EqualConsumer();
+        var newListener = new EqualConsumer();
+        boolean[] changed = {false};
+        events.subscribe(Event.Player.Moved.class, event -> {
+            if (changed[0]) { return; }
+            changed[0] = true;
+            events.unsubscribe(Event.Player.Moved.class, oldListener);
+            events.subscribe(Event.Player.Moved.class, newListener);
+            check(events.subscriptions.size() == 1 && events.unSubscriptions.size() == 1,
+                "Callback mutations remain queued during listener iteration");
+        });
+        events.subscribe(Event.Player.Moved.class, oldListener);
+        events.emitEvent(new Event.Player.Moved());
+        events.emitEvent(new Event.Player.Moved());
+        events.update(0);
+        check(oldListener.calls == 2 && newListener.calls == 0,
+            "Ordinary queued mutations do not change listeners anywhere in the running dispatch batch");
+        check(events.subscriptions.isEmpty() && events.unSubscriptions.isEmpty() && listenerCount(events) == 2,
+            "Queued mutations apply once at the dispatch-end boundary");
+        events.emitEvent(new Event.Player.Moved());
+        events.update(0);
+        check(oldListener.calls == 2 && newListener.calls == 1,
+            "The next dispatch sees exactly the new listener set");
     }
 
     private static void exactConsumerIdentity() {
@@ -289,25 +427,27 @@ public final class AudioSystemTest {
         events.update(0);
         check(first.calls == 0 && second.calls == 1, "Deferred teardown uses exact consumer identity, not equals");
         events.subscribe(Event.Player.Moved.class, first);
-        events.update(0);
         events.unsubscribe(Event.Player.Moved.class, first);
-        events.unsubscribeImmediately(Event.Player.Moved.class, first);
-        check(events.unSubscriptions.isEmpty(), "Immediate teardown clears matching deferred unsubscriptions too");
         events.emitEvent(new Event.Player.Moved());
         events.update(0);
-        check(first.calls == 0 && second.calls == 2, "Pending teardown uses exact consumer identity, not equals");
+        check(first.calls == 0 && second.calls == 2, "Cancellation of pending registration uses exact consumer identity");
         events.subscribe(Event.Player.Moved.class, first);
         events.update(0);
-        events.unsubscribeImmediately(Event.Player.Moved.class, second);
+        events.unsubscribe(Event.Player.Moved.class, second);
         events.emitEvent(new Event.Player.Moved());
         events.update(0);
         check(first.calls == 1 && second.calls == 2, "Active teardown uses exact consumer identity, not equals");
         events.unsubscribe(Event.Player.Moved.class, first);
-        events.unsubscribeImmediately(Event.Player.Moved.class, first);
         events.subscribe(Event.Player.Moved.class, first);
         events.emitEvent(new Event.Player.Moved());
         events.update(0);
-        check(first.calls == 2, "Re-registration after teardown is not canceled by an earlier deferred unsubscribe");
+        check(first.calls == 2, "Re-registration survives earlier queued removal without duplicating the active consumer");
+        events.unsubscribe(Event.Player.Moved.class, first);
+        events.subscribe(Event.Player.Moved.class, first);
+        events.unsubscribe(Event.Player.Moved.class, first);
+        events.emitEvent(new Event.Player.Moved());
+        events.update(0);
+        check(first.calls == 2, "A later queued removal cancels the intervening re-registration");
     }
 
     private static void unloadedMusicIsNotTouched() {
@@ -366,12 +506,22 @@ public final class AudioSystemTest {
         events.update(0);
     }
 
-    private static void empty(EventSystem events) throws Exception {
+    private static int listenerCount(EventSystem events) throws Exception {
         var field = EventSystem.class.getDeclaredField("listeners");
         field.setAccessible(true);
         var listeners = (Map<?, ?>) field.get(events);
-        check(listeners.isEmpty() && events.subscriptions.isEmpty() && events.unSubscriptions.isEmpty(),
-            "Owning bus holds no active or queued consumers immediately, without a teardown update");
+        return listeners.values().stream().mapToInt(value -> ((List<?>) value).size()).sum();
+    }
+
+    private static void queuedRemoval(EventSystem events) {
+        check(events.subscriptions.isEmpty() && events.unSubscriptions.size() >= 3
+                && events.unSubscriptions.size() % 3 == 0,
+            "Active-bus teardown queues exact-consumer removals and cancels earlier pending registrations");
+    }
+
+    private static void empty(EventSystem events) throws Exception {
+        check(listenerCount(events) == 0 && events.subscriptions.isEmpty() && events.unSubscriptions.isEmpty(),
+            "Owning bus holds no active or queued consumers after a safe update or retirement boundary");
     }
 
     private static void check(boolean condition, String message) {

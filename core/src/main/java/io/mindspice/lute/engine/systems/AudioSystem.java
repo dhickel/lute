@@ -18,10 +18,17 @@ public class AudioSystem extends EntitySystem implements EventListener, Disposab
 
 
     private final AssetService assetService;
-    private final Consumer<Event.Map.Load> mapLoadConsumer = this::onMapLoad;
-    private final Consumer<Event.Sound.Play> soundConsumer = play -> playSound(play.soundId());
-    private final Consumer<Event.Sound.PlayAtVolume> volumeConsumer = play -> playSoundAtVol(play.soundId(), play.volume());
     private EventSystem events;
+    // Queued teardown can leave these in the current dispatch; detached audio must not touch assets.
+    private final Consumer<Event.Map.Load> mapLoadConsumer = load -> {
+        if (events != null) { onMapLoad(load); }
+    };
+    private final Consumer<Event.Sound.Play> soundConsumer = play -> {
+        if (events != null) { playSound(play.soundId()); }
+    };
+    private final Consumer<Event.Sound.PlayAtVolume> volumeConsumer = play -> {
+        if (events != null) { playSoundAtVol(play.soundId(), play.volume()); }
+    };
     private boolean disposed;
     private Music currMusic;
     private String currMusicId;
@@ -58,9 +65,9 @@ public class AudioSystem extends EntitySystem implements EventListener, Disposab
 
     void detachEvents(EventSystem events) {
         if (events == null || events != this.events) { return; }
-        unsubscribeImmediately(events, Event.Map.Load.class, mapLoadConsumer);
-        unsubscribeImmediately(events, Event.Sound.Play.class, soundConsumer);
-        unsubscribeImmediately(events, Event.Sound.PlayAtVolume.class, volumeConsumer);
+        unsubscribe(events, Event.Map.Load.class, mapLoadConsumer);
+        unsubscribe(events, Event.Sound.Play.class, soundConsumer);
+        unsubscribe(events, Event.Sound.PlayAtVolume.class, volumeConsumer);
         this.events = null;
     }
 
