@@ -14,6 +14,7 @@ LibGDX `Game` lifecycle ownership when using the project's custom `ScreenManager
 - Assigning a current-screen reference does not call `show()`. The initial loading screen must be activated before game-screen map callbacks retrieve atlas assets.
 - Switch away from a loading screen before unloading and disposing it. Dispose screens before shared input, batch, and asset resources.
 - A successful startup reports loading completion, map/entity setup, and continuing FPS output. Atlas-region fallback warnings are distinct from an unloaded-atlas exception.
+- Audio subscriptions belong to the actual `EventSystem` that accepted them, not necessarily the globally current system. Retain that owner and the exact consumer instances; teardown must synchronously remove both active and queued registrations, since a detached bus may never update again. `AudioSystem` subscribes on attachment to `Map.Load`, `Sound.Play`, and `Sound.PlayAtVolume`, and detaches on removal or disposal using `EventListener` helpers. This does not resolve shared screen-system ownership tracked in issue #16.
 
 ## Project Relevance
 The refactor initially bypassed `LoadingScreen.show()` and never called its `render()` callback. The minimal repair keeps the custom manager and forwards the missing lifecycle calls. A 15-second desktop smoke run reached loading completion and game rendering; a separate `old_tree1` region fallback is tracked in `bugs/missing-old-tree-atlas-region/report.md`.

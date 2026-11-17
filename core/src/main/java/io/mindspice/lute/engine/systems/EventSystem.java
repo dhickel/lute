@@ -1,5 +1,6 @@
 package io.mindspice.lute.engine.systems;
 
+import com.badlogic.ashley.core.Engine;
 import com.badlogic.ashley.core.EntitySystem;
 import com.badlogic.gdx.Gdx;
 import io.mindspice.lute.engine.events.Event;
@@ -24,12 +25,37 @@ public class EventSystem extends EntitySystem {
     }
 
 
+    @Override
+    public void addedToEngine(Engine engine) {
+        super.addedToEngine(engine);
+        var audio = engine.getSystem(AudioSystem.class);
+        if (audio != null) { audio.attachEvents(this); }
+    }
+
+    @Override
+    public void removedFromEngine(Engine engine) {
+        var audio = engine.getSystem(AudioSystem.class);
+        if (audio != null) { audio.detachEvents(this); }
+        super.removedFromEngine(engine);
+    }
+
     public <T extends Event> void subscribe(Class<T> eventType, Consumer<T> eventConsumer) {
         subscriptions.add(Pair.of(eventType, eventConsumer));
     }
 
     public <T extends Event> void unsubscribe(Class<T> eventType, Consumer<T> eventConsumer) {
         unSubscriptions.add(Pair.of(eventType, eventConsumer));
+    }
+
+    public <T extends Event> void unsubscribeImmediately(Class<T> eventType, Consumer<T> eventConsumer) {
+        // Lifecycle teardown must also cancel registrations on buses that will never update again.
+        subscriptions.removeIf(sub -> sub.first() == eventType && sub.second() == eventConsumer);
+        unSubscriptions.removeIf(sub -> sub.first() == eventType && sub.second() == eventConsumer);
+        var listenerList = listeners.get(eventType);
+        if (listenerList != null) {
+            listenerList.removeIf(consumer -> consumer == eventConsumer);
+            if (listenerList.isEmpty()) { listeners.remove(eventType); }
+        }
     }
 
     private void subscribeConsumer(Pair<Class<? extends Event>, Consumer<? extends Event>> sub) {
@@ -42,7 +68,7 @@ public class EventSystem extends EntitySystem {
         var eventConsumer = unsub.second();
         var listenerList = listeners.get(eventType);
         if (listenerList != null) {
-            listenerList.remove(eventConsumer);
+            listenerList.removeIf(consumer -> consumer == eventConsumer);
 
             if (listenerList.isEmpty()) {
                 listeners.remove(eventType);
@@ -82,7 +108,12 @@ public class EventSystem extends EntitySystem {
             var listenerList = listeners.get(event.getClass());
             if (listenerList == null || listenerList.isEmpty()) { continue; }
             Gdx.app.debug("EventQueue", "Dispatch Event: " + event +" to listeners: " + listenerList.size());
-            listenerList.forEach(l -> invoke(event, l));
+            // A callback may remove/replace a system. Skip its detached consumers even in this dispatch.
+            for (var consumer : new ArrayList<>(listenerList)) {
+                if (listenerList.stream().anyMatch(registered -> registered == consumer)) {
+                    invoke(event, consumer);
+                }
+            }
         }
         Arrays.fill(eventQueue, 0, eventCount, null);
         eventCount = 0;
