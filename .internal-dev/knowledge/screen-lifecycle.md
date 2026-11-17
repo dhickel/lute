@@ -7,6 +7,8 @@ LibGDX `Game` lifecycle ownership when using the project's custom `ScreenManager
 - `core/src/main/java/io/mindspice/lute/engine/GameCore.java`
 - `core/src/main/java/io/mindspice/lute/engine/screen/ScreenManager.java`
 - `core/src/main/java/io/mindspice/lute/engine/screen/LoadingScreen.java`
+- `core/src/main/java/io/mindspice/lute/engine/screen/GameScreen.java`
+- `lwjgl3/src/test/java/io/mindspice/lute/engine/lwjgl3/GameScreenLifecycleTest.java`
 - LibGDX 1.14.2 `Game` bytecode inspected with `javap -c`.
 
 ## Key Takeaways
@@ -14,9 +16,13 @@ LibGDX `Game` lifecycle ownership when using the project's custom `ScreenManager
 - Assigning a current-screen reference does not call `show()`. The initial loading screen must be activated before game-screen map callbacks retrieve atlas assets.
 - Switch away from a loading screen before unloading and disposing it. Dispose screens before shared input, batch, and asset resources.
 - A successful startup reports loading completion, map/entity setup, and continuing FPS output. Atlas-region fallback warnings are distinct from an unloaded-atlas exception.
+- `GameScreen` records the systems it installs on the shared engine. Hiding retains them for reuse; disposal hides the screen, then removes and disposes its owned systems in reverse installation order before disposing its physics `World`. This keeps the event bus and world available while dependents detach and prevents later engine updates from reaching disposed physics. Foreign systems are not owned or disposed by the screen.
+- Disposal is idempotent, a disposed screen cannot be shown again, and a constructor installation failure invokes the same cleanup for the systems recorded so far. A cleanup failure is suppressed on the original installation failure. Never-shown screens also need disposal.
 
 ## Project Relevance
-The refactor initially bypassed `LoadingScreen.show()` and never called its `render()` callback. The minimal repair keeps the custom manager and forwards the missing lifecycle calls. A 15-second desktop smoke run reached loading completion and game rendering; a separate `old_tree1` region fallback is tracked in `bugs/missing-old-tree-atlas-region/report.md`.
+Historically, the refactor bypassed `LoadingScreen.show()` and never called its `render()` callback. The repair kept the custom manager and forwarded the missing lifecycle calls. A 15-second desktop smoke run reached loading completion and game rendering; a separate `old_tree1` region fallback is tracked in `bugs/missing-old-tree-atlas-region/report.md`.
+
+The focused real-GL `:lwjgl3:gameScreenLifecycleTest` passed 157 checks covering hide/show reuse, unload and recreation, engine updates after disposal, foreign-system survival, repeated and never-shown disposal, partial installation failure, and normal shutdown. MapSensor (1732 checks), combat (1928 checks), and debug renderer checks also passed. All five independent phase gates passed. The final isolated union of #6, #8, #16, #17, and #18 passed unfiltered `./gradlew check` (22 tasks), including audio 196, input 1,286, and MapSensor 1,732. Separately, `DISPLAY=:0 ./gradlew :lwjgl3:gameScreenLifecycleTest :lwjgl3:compositeRenderTest` passed GL lifecycle 157, gameplay 15,815 checks and 480 comparisons, and synthetic 11,854. A separate normal generator run passed with 29 outputs. The combined pass does not mean sibling fixes are included on this branch or that independent branches without #6 pass unfiltered.
 
 ## Open Questions
-None for the screen lifecycle repair; the tree atlas-content issue remains separate.
+The fix for separate audio lifecycle issue #8 is prepared for review; that issue remains open until PR merge. Screen-owned system teardown does not establish that audio subscription internals are fixed. The tree atlas-content issue also remains separate.
