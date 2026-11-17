@@ -23,9 +23,10 @@ final class InputSettingsTest {
         equal(InputAction.ATTACK_SECONDARY, defaults.getKey(Input.Keys.SHIFT_RIGHT), "right Shift default");
 
         var custom = load("""
-            {"controller":{"FACE_SOUTH":"ATTACK_PRIMARY"},"keyboard":{"Up":"MOVE_UP"}}
+            {"controller":{"FACE_SOUTH":"ATTACK_PRIMARY"},"keyboard":{"UP":"MOVE_UP","NUM_1":"ATTACK_PRIMARY"}}
             """);
         equal(InputAction.MOVE_UP, custom.getKey(Input.Keys.UP), "configured key replaces default");
+        equal(InputAction.ATTACK_PRIMARY, custom.getKey(Input.Keys.NUM_1), "numeric key constant name");
         equal(null, custom.getKey(Input.Keys.W), "omitted key stays unbound");
         equal(null, custom.getButton(Input.Buttons.LEFT), "controller data does not map to mouse input");
         equal(null, load("{\"controller\":{},\"keyboard\":{}}").getKey(Input.Keys.W), "empty maps are valid");
@@ -35,7 +36,11 @@ final class InputSettingsTest {
         rejects("{\"keyboard\":{}}", "missing controller map");
         rejects("{\"controller\":{}}", "missing keyboard map");
         rejects("{\"controller\":{},\"keyboard\":[]}", "non-object binding map");
-        rejects("{\"controller\":{},\"keyboard\":{\"w\":\"MOVE_UP\"}}", "unknown keyboard name");
+        rejects("{\"controller\":{},\"keyboard\":{\"w\":\"MOVE_UP\"}}", "lowercase keyboard name");
+        rejects("{\"controller\":{},\"keyboard\":{\"L-Shift\":\"ATTACK_SECONDARY\"}}", "display label");
+        rejects("{\"controller\":{},\"keyboard\":{\"META_ALT_ON\":\"MOVE_UP\"}}", "modifier mask is not a key");
+        rejects("{\"controller\":{},\"keyboard\":{\"MAX_KEYCODE\":\"MOVE_UP\"}}", "keycode limit is not a key");
+        rejects("{\"controller\":{},\"keyboard\":{\"UP\":\"MOVE_UP\",\"DPAD_UP\":\"MOVE_DOWN\"}}", "duplicate key aliases");
         rejects("{\"controller\":{},\"keyboard\":{\"W\":0}}", "numeric action");
         rejects("{\"controller\":{},\"keyboard\":{\"W\":\"MOVE_UP\",\"W\":\"MOVE_DOWN\"}}", "duplicate key");
         rejects("{\"controller\":{\"FACE_SOUTH\":\"JUMP\"},\"keyboard\":{}}", "unknown controller action");

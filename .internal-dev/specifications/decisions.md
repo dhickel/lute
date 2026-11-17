@@ -11,11 +11,11 @@
 
 ## Input settings
 
-- **Decision:** Startup loads `assets/input.setting.json` after game settings and before creating the shared input manager. The file must contain exactly `keyboard` and `controller` object maps; either may be empty. Keyboard identifiers are case-sensitive LibGDX display names, and values in both maps are exact `InputAction` names. Invalid, duplicate, or missing data fails startup rather than falling back to hard-coded bindings.
+- **Decision:** Startup loads `assets/input.setting.json` after game settings and before creating the shared input manager. The file must contain exactly `keyboard` and `controller` object maps; either may be empty. Keyboard identifiers are exact, case-sensitive LibGDX `Input.Keys` key constant names, such as `SPACE`, `SHIFT_LEFT`, `SHIFT_RIGHT`, and `NUM_1`; values in both maps are exact `InputAction` names. Unknown names, non-key constants such as `META` masks, duplicate aliases for one physical key, and other invalid, duplicate, or missing data fail startup rather than falling back to hard-coded bindings.
 - **Controller scope:** Controller identifiers must be nonblank. The supplied logical D-pad and face south/west defaults are validated data only, not runtime hardware bindings. The file does not configure mouse input, add actions, or support hot reload.
-- **Justification and tradeoff:** Authored bindings replace hard-coded startup keys while retaining logical controller defaults without implying hardware support. Keyboard names follow LibGDX display names rather than Java constant names.
+- **Justification and tradeoff:** Authored bindings replace hard-coded startup keys while retaining logical controller defaults without implying hardware support. Keyboard names use ALL_CAPS enum-like constant names to match controller identifiers rather than LibGDX display labels.
 - **Affected specifications:** This decision establishes the input settings contract; `docs/input-system.md` describes authoring and startup.
-- **Source:** User-directed input settings work.
+- **Source:** User-directed input settings work and PR #24 keyboard naming correction. The constant-name contract is planned implementation, not a claim that the current loader already supports it.
 - **Review timing:** Revisit when controller hardware integration is implemented.
 
 ## Cache-only input listeners

@@ -12,8 +12,8 @@
     "S": "MOVE_DOWN",
     "A": "MOVE_LEFT",
     "D": "MOVE_RIGHT",
-    "Space": "ATTACK_PRIMARY",
-    "L-Shift": "ATTACK_SECONDARY",
-    "R-Shift": "ATTACK_SECONDARY"
+    "SPACE": "ATTACK_PRIMARY",
+    "SHIFT_LEFT": "ATTACK_SECONDARY",
+    "SHIFT_RIGHT": "ATTACK_SECONDARY"
   }
 }

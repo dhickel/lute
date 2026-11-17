@@ -25,9 +25,9 @@ public final class InputSettings {
             var inputMap = new InputMap();
             for (var binding : settings.get("keyboard").properties()) {
                 String key = binding.getKey();
-                int keyCode = Input.Keys.valueOf(key);
-                if (keyCode <= Input.Keys.UNKNOWN || keyCode > Input.Keys.MAX_KEYCODE) {
-                    throw new IllegalArgumentException("Unknown keyboard key: " + key);
+                int keyCode = readKeyCode(key);
+                if (inputMap.containsKey(keyCode)) {
+                    throw new IllegalArgumentException("Duplicate binding for keyboard key: " + key);
                 }
                 inputMap.setKey(keyCode, readAction("keyboard." + key, binding.getValue()));
             }
@@ -42,6 +42,21 @@ public final class InputSettings {
             return inputMap;
         } catch (IOException | RuntimeException failure) {
             throw new GdxRuntimeException("Failed to load " + file.path() + ": " + failure.getMessage(), failure);
+        }
+    }
+
+    private static int readKeyCode(String key) {
+        if (key.startsWith("META_") || key.equals("MAX_KEYCODE")) {
+            throw new IllegalArgumentException("Not a keyboard key: " + key);
+        }
+        try {
+            int code = Input.Keys.class.getField(key).getInt(null);
+            if (code <= Input.Keys.UNKNOWN || code > Input.Keys.MAX_KEYCODE) {
+                throw new IllegalArgumentException("Not a keyboard key: " + key);
+            }
+            return code;
+        } catch (ReflectiveOperationException failure) {
+            throw new IllegalArgumentException("Unknown keyboard key: " + key, failure);
         }
     }
 
