@@ -12,6 +12,8 @@ LibGDX → InputMultiplexer → InputManager → InputMap / KeyManager
 
 `TiledAshleyConfigurator` receives that shared manager. For each Tiled object marked `controller`, it creates a `Controller` and registers its enabled key cache. Each component owns its own 32-entry queue for the four movement actions; listeners do not share a queue. `ControllerSystem` consumes each queue in FIFO order: state 1 adds the action's direction, state 0 subtracts it, and other states, including repeat 2, are ignored. An entity without `Move` is ignored. `MoveSystem` normalizes direction and integrates position.
 
+For each movement press consumed on an entity with `Move`, `ControllerSystem` emits one `Event.Player.Moved` through `EventEmitter`. Releases, repeats, invalid states, and movement input on an entity without `Move` emit none; attack requests do not emit this event. It reports a movement input press, not physical displacement. Current gameplay has no subscriber and this does not change audio.
+
 There is no tutorial enum conversion, bridge, extra held-action set, or second command queue. Gameplay currently uses the keyboard cache only. The manager is already registered with LibGDX; do not create another processor or register every entity with LibGDX.
 
 ## Screen ownership and lifecycle
@@ -88,6 +90,6 @@ Repeatable regression and build commands:
 ./gradlew clean build
 ```
 
-The static-main input regression harness is wired into `check`; the default core test task disables `failOnNoDiscoveredTests` for Gradle 9. Focused core and LWJGL3 compilation passed.
+The static-main input regression harness is wired into `check`; the default core test task disables `failOnNoDiscoveredTests` for Gradle 9. Independent validation passed `:core:inputSystemTest` (1,286 checks), `:lwjgl3:compileJava`, and `:core:combatSystemTest` (1,920 checks in that run; an earlier run passed 1,928). Combat check counts can vary with native contact iterations. The final full gate is pending.
 
 A desktop run reached asset loading, Tiled controller creation, map layers, and 56–62 FPS without input exceptions before intentional timeout after 15 seconds (exit 124). Existing libdecor GTK initialization warnings and the intentional `old_tree1` atlas fallback error logs occurred. No physical-key device test or instrumented active/cached screen identity or disposal test was performed.

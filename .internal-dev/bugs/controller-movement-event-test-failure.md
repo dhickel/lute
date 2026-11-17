@@ -14,7 +14,7 @@ Run `./gradlew :core:inputSystemTest --console=plain`. Independently reproduced 
 
 ## Expected
 
-The current test expects one movement event after pressing movement. Whether that expectation or the implementation should change requires reconciling the intended movement-event contract.
+One movement event is emitted per consumed movement press on an entity with `Move`. Releases, repeats, invalid states, movement input without `Move`, and attack requests emit no movement event. This is an input notification, not confirmation of physical displacement.
 
 ## Actual
 
@@ -30,8 +30,10 @@ The existing input validation and full `check` gate fail independently of the as
 
 ## Status
 
-Open; out of scope for the asset service replacement. GitHub mirror: https://github.com/dhickel/lute/issues/6. Related open/closed issues were checked before creation.
+Implemented in the pending issue 6 PR; not yet closed or archived. GitHub mirror: https://github.com/dhickel/lute/issues/6. Commit `ed4f952` established press-only emission; `8275ad8` removed it. The fix restores emission through `EventEmitter`. Current gameplay has no subscriber, and audio is unchanged.
+
+Independent focused validation passed: `:core:inputSystemTest` (1,286 checks), `:lwjgl3:compileJava`, and `:core:combatSystemTest` (1,920 checks in that run; an earlier run passed 1,928). Combat check counts can vary with native contact iterations. The final full validation gate and PR are pending.
 
 ## Next Action
 
-Reconcile the intended movement-event behavior, repair either implementation or stale assertion accordingly, and rerun input and full validation. Do not silently add gameplay behavior as part of the asset service change.
+Complete the final full validation gate and open the PR; retain this record until the issue is resolved.

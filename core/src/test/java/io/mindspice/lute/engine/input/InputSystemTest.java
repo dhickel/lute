@@ -4,6 +4,7 @@ import com.badlogic.ashley.core.Entity;
 import com.badlogic.gdx.Application;
 import com.badlogic.gdx.Gdx;
 import io.mindspice.lute.engine.GameCore;
+import io.mindspice.lute.engine.components.Combat;
 import io.mindspice.lute.engine.components.Controller;
 import io.mindspice.lute.engine.components.Move;
 import io.mindspice.lute.engine.systems.ControllerSystem;
@@ -110,13 +111,28 @@ public final class InputSystemTest {
                     InputAction.MOVE_LEFT, InputAction.MOVE_RIGHT};
                 InputManager input = new InputManager(map);
                 Move move = new Move(1);
-                engine.addEntity(new Entity().add(Controller.forInputManager(input)).add(move));
+                Controller controller = Controller.forInputManager(input);
+                Entity entity = new Entity().add(controller).add(move);
+                engine.addEntity(entity);
+                float[] dirX = {0, 0, -1, 1};
+                float[] dirY = {1, -1, 0, 0};
                 for (int i = 0; i < keys.length; i++) {
                     map.setKey(keys[i], actions[i]);
                     input.keyDown(keys[i]);
                     engine.update(0);
                     engine.update(0);
                     equal(i + 1, count[0], "press emits once");
+                    near(dirX[i], move.getDirection().x, "press sets x");
+                    near(dirY[i], move.getDirection().y, "press sets y");
+                    input.keyDown(keys[i]);
+                    input.getKeyManager().broadcast(keys[i], 2);
+                    controller.getInputListener().offer(actions[i], -1);
+                    controller.getInputListener().offer(actions[i], 3);
+                    engine.update(0);
+                    engine.update(0);
+                    equal(i + 1, count[0], "duplicate down, repeat and invalid states emit nothing");
+                    near(dirX[i], move.getDirection().x, "ignored states preserve x");
+                    near(dirY[i], move.getDirection().y, "ignored states preserve y");
                     input.keyUp(keys[i]);
                     engine.update(0);
                     engine.update(0);
@@ -131,6 +147,8 @@ public final class InputSystemTest {
                 engine.update(0);
                 equal(5, count[0], "synthetic release emits nothing");
                 near(0, move.getDirection().y, "synthetic release stops movement");
+                controllerAttackRouting(engine, entity, input, map, count);
+                input.unRegKeyListener(controller.getInputListener());
                 engine.removeAllEntities();
                 engine.addEntity(new Entity().add(Controller.forInputManager(input)));
                 input.keyUp(Input.Keys.W);
@@ -146,6 +164,40 @@ public final class InputSystemTest {
         } finally {
             Gdx.app = previousApp;
         }
+    }
+
+    private static void controllerAttackRouting(Engine engine, Entity entity, InputManager input,
+                                                InputMap map, int[] count) {
+        int previousCount = count[0];
+        Combat combat = new Combat();
+        entity.add(combat);
+        int[] keys = {Input.Keys.J, Input.Keys.K};
+        InputAction[] actions = {InputAction.ATTACK_PRIMARY, InputAction.ATTACK_SECONDARY};
+        Combat.AttackSlot[] slots = {Combat.AttackSlot.PRIMARY, Combat.AttackSlot.SECONDARY};
+        for (int i = 0; i < keys.length; i++) {
+            map.setKey(keys[i], actions[i]);
+            input.keyDown(keys[i]);
+            engine.update(0);
+            equal(slots[i], combat.consumeAttackRequest(), "attack press routes correct slot");
+            input.keyDown(keys[i]);
+            input.getKeyManager().broadcast(keys[i], 2);
+            engine.update(0);
+            equal(null, combat.consumeAttackRequest(), "attack duplicate down and repeat ignored");
+            input.keyUp(keys[i]);
+            engine.update(0);
+            engine.update(0);
+            equal(null, combat.consumeAttackRequest(), "attack release ignored");
+            equal(previousCount, count[0], "attack transitions emit no movement event");
+            Move move = Move.MAPPER.get(entity);
+            near(0, move.getDirection().x, "attack leaves movement x unchanged");
+            near(0, move.getDirection().y, "attack leaves movement y unchanged");
+        }
+        entity.remove(Combat.class);
+        input.keyDown(keys[0]);
+        input.keyUp(keys[0]);
+        engine.update(0);
+        engine.update(0);
+        equal(previousCount, count[0], "attack without Combat emits no movement event");
     }
 
     private static void adapterKeys() {

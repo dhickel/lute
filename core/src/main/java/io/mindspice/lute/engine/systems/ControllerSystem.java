@@ -7,6 +7,7 @@ import io.mindspice.lute.engine.components.Combat;
 import io.mindspice.lute.engine.components.Controller;
 import io.mindspice.lute.engine.components.Move;
 import io.mindspice.lute.engine.input.InputAction;
+import io.mindspice.lute.engine.events.Event;
 import io.mindspice.lute.engine.events.EventEmitter;
 
 public class ControllerSystem extends IteratingSystem implements EventEmitter {
@@ -46,5 +47,6 @@ public class ControllerSystem extends IteratingSystem implements EventEmitter {
 
         move.getDirection().x += dirX;
         move.getDirection().y += dirY;
+        if (pressed) { eventEmitter.accept(new Event.Player.Moved()); }
     }
 }
