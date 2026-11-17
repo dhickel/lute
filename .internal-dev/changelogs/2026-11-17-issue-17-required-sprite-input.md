@@ -22,7 +22,7 @@ Missing or empty required sprite inputs fail without publishing fresh output or 
 Specification Impact: none. This enforces the existing complete raw-tree and required shared-atlas contract in composite-characters.md.
 
 ## Risks
-Fixture coverage uses small representative sprites; actual copied local input generation also passed, with all 29 owned outputs matching hashes. Full integration is recorded separately. The Git hash is the coordinating audit baseline; the fix branch starts at its code-equivalent parent 33dbd077ff1c66bf211971086b77caf2c8800563.
+Fixture coverage uses small representative sprites; actual copied local input generation also passed, with all 29 owned outputs matching hashes. Final combined integration with #6/#8/#16/#18 passed the unfiltered full check, lifecycle 157, gameplay 15,815 / 480 comparisons, synthetic GL 11,854 and normal generation with 29 owned outputs. This does not include sibling fixes on this branch. The Git hash is the coordinating audit baseline; the fix branch starts at its code-equivalent parent 33dbd077ff1c66bf211971086b77caf2c8800563.
 
 ## Follow-up Items
 Senior implementation and independent validator both passed texturePackerToolTest, actual local generation, manifest/byte preservation checks and diff whitespace checks. GitHub #17 remains open until the separate PR is merged; no merge performed.
