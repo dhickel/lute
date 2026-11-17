@@ -115,7 +115,8 @@ public class EntityFactory extends EntitySystem {
             settings.soundFrame(), sounds.attack().id());
         var bounds = data.bounds();
         var attack = new CombatWeapon.Attack(id, data.stats().damage(), data.stats().hitFrame(), animation,
-            sounds.hit().id(), bounds.type(), new CombatWeapon.Bounds(bounds.x1(), bounds.y1(), bounds.x2(), bounds.y2()),
+            sounds.hit().id(), bounds.type(), new CombatWeapon.Bounds(bounds.x1(), bounds.y1(), bounds.x2(), bounds.y2(),
+                bounds.offsetUp(), bounds.offsetDown(), bounds.offsetLeft(), bounds.offsetRight()),
             data.collisionType());
         attack.validateGeometry(anchor);
         long minimum = (long) Math.max(attack.hitFrame(), animation.soundFrame()) + 1;

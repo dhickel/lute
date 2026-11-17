@@ -656,8 +656,9 @@ public final class CompositeRenderTest extends ApplicationAdapter {
         return new CombatWeapon.Weapon(id, prefix, attack(id, primary), attack(id, "jab"));
     }
     private static CombatWeapon.Attack attack(String id, String action) {
+        var zero = new Offset(0, 0);
         return new CombatWeapon.Attack(id, 1, 0, new Animation2D.Attack(action, 1, 0.1f, 0, ""), "",
-            BoundsType.RECT, new CombatWeapon.Bounds(0, 0, 1, 1), CollisionType.MELEE);
+            BoundsType.RECT, new CombatWeapon.Bounds(0, 0, 1, 1, zero, zero, zero, zero), CollisionType.MELEE);
     }
     private static int color(int layer, int direction, int frame) {
         return ((40 + layer * 30) << 24) | ((40 + direction * 40) << 16) | ((40 + frame * 20) << 8) | 255;

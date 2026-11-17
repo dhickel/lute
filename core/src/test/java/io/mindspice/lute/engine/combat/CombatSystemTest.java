@@ -41,6 +41,7 @@ import java.util.Map;
 
 public final class CombatSystemTest {
     private static final float STEP = 1f / 60f;
+    private static final Offset ZERO = new Offset(0, 0);
     private static int checks;
 
     public static void main(String[] args) throws Exception {
@@ -266,10 +267,10 @@ public final class CombatSystemTest {
     private static void independentAttacksAndGeometry() {
         var primary = new CombatWeapon.Attack("test", 41, 0,
             new Animation2D.Attack("slash", 1, .125f, 1, "primary"), "hit", BoundsType.RECT,
-            new CombatWeapon.Bounds(32, 16, 72, 48), CollisionType.MELEE);
+            new CombatWeapon.Bounds(32, 16, 72, 48, ZERO, ZERO, ZERO, ZERO), CollisionType.MELEE);
         var secondary = new CombatWeapon.Attack("test", 17, 2,
             new Animation2D.Attack("jab", 1, .125f, 3, "secondary"), "hit", BoundsType.TRIANGLE,
-            new CombatWeapon.Bounds(32, 24, 56, 40), CollisionType.MELEE);
+            new CombatWeapon.Bounds(32, 24, 56, 40, ZERO, ZERO, ZERO, ZERO), CollisionType.MELEE);
         for (var input : new InputAction[]{InputAction.ATTACK_PRIMARY, InputAction.ATTACK_SECONDARY}) {
             try (var game = new Harness(1, 0, 0)) {
                 game.selectWeapon(new CombatWeapon.Weapon("test", "melee/test", primary, secondary));
@@ -382,8 +383,8 @@ public final class CombatSystemTest {
                 var physical = CharacterFixtures.ellipse(targetBody, feet, false);
                 var hurtbox = CharacterFixtures.ellipse(targetBody, standing, true);
                 hurtbox.setUserData(Hurtbox.INSTANCE);
-                var bounds = feetOnly ? new CombatWeapon.Bounds(32, 4, 72, 4.5f)
-                    : new CombatWeapon.Bounds(32, 24, 72, 56);
+                var bounds = feetOnly ? new CombatWeapon.Bounds(32, 4, 72, 4.5f, ZERO, ZERO, ZERO, ZERO)
+                    : new CombatWeapon.Bounds(32, 24, 72, 56, ZERO, ZERO, ZERO, ZERO);
                 var attack = new CombatWeapon.Attack("test", 10, 0,
                     new Animation2D.Attack("slash", 1, .125f, 0, "sound"), "hit", BoundsType.RECT, bounds, CollisionType.MELEE);
                 game.selectWeapon(new CombatWeapon.Weapon("test", "melee/test", attack, attack));
@@ -502,8 +503,30 @@ public final class CombatSystemTest {
                 try { polygon.set(vertices); check(polygon.getVertexCount() == vertices.length, "Valid native polygon"); }
                 finally { polygon.dispose(); }
             }
-            for (var bounds : new CombatWeapon.Bounds[]{new CombatWeapon.Bounds(0, 0, .001f, .001f),
-                new CombatWeapon.Bounds(0, 0, 1e24f, 64), new CombatWeapon.Bounds(0, 0, 1e15f, 1e15f)}) {
+            var shifted = new CombatWeapon.Attack(weapon.weaponId(), weapon.damage(), weapon.hitFrame(),
+                weapon.animation(), weapon.hitSoundId(), shape,
+                new CombatWeapon.Bounds(32, 0, 72, 64, new Offset(-3, 7), new Offset(5, -9),
+                    new Offset(-11, -13), new Offset(17, 19)), weapon.collisionType());
+            shifted.validateGeometry(anchor);
+            for (var facing : Facing.Direction.values()) {
+                var offset = switch (facing) {
+                    case UP -> new Offset(-3, 7);
+                    case DOWN -> new Offset(5, -9);
+                    case LEFT -> new Offset(-11, -13);
+                    case RIGHT -> new Offset(17, 19);
+                };
+                var original = weapon.vertices(anchor, facing);
+                var translated = shifted.vertices(anchor, facing);
+                for (int i = 0; i < original.length; i++) {
+                    near(original[i].x + offset.x() * GameConsts.UNIT_SCALE, translated[i].x,
+                        "Post-rotation X offset: " + facing);
+                    near(original[i].y + offset.y() * GameConsts.UNIT_SCALE, translated[i].y,
+                        "Post-rotation Y offset: " + facing);
+                }
+            }
+            for (var bounds : new CombatWeapon.Bounds[]{new CombatWeapon.Bounds(0, 0, .001f, .001f, ZERO, ZERO, ZERO, ZERO),
+                new CombatWeapon.Bounds(0, 0, 1e24f, 64, ZERO, ZERO, ZERO, ZERO),
+                new CombatWeapon.Bounds(0, 0, 1e15f, 1e15f, ZERO, ZERO, ZERO, ZERO)}) {
                 var unsafe = new CombatWeapon.Attack("bad", 10, 0, new Animation2D.Attack("slash", 1, .125f, 0, "sound"),
                     "hit", shape, bounds, CollisionType.MELEE);
                 rejects(() -> unsafe.validateGeometry(anchor), "Unsafe geometry");
@@ -576,7 +599,7 @@ public final class CombatSystemTest {
                                 "Out of range cue in complete catalog: " + id + "/" + primary + "/" + hit);
                         }
                     }
-                    var badBounds = new WeaponData.Bounds(BoundsType.RECT, 0, 0, .001f, .001f);
+                    var badBounds = new WeaponData.Bounds(BoundsType.RECT, 0, 0, .001f, .001f, ZERO, ZERO, ZERO, ZERO);
                     var badGeometry = new AttackData(original.animation(), badBounds, original.stats(), original.sounds(), original.collisionType());
                     field.set(GameCore.INSTANCE, replaceAttack(data, id, primary, badGeometry));
                     rejects(() -> factory.getPlayerEntity(new Vector2(320, 640), map), "Unsafe catalog Box2D geometry");
@@ -815,7 +838,7 @@ public final class CombatSystemTest {
         String soundPrefix = "weapon/" + id + (action.equals("jab") ? "/secondary" : "/primary");
         return new CombatWeapon.Attack(id, 10, hit,
             new Animation2D.Attack(action, speed, .125f, sound, soundPrefix + "/attack"),
-            soundPrefix + "/hit", shape, new CombatWeapon.Bounds(32, 0, 72, 64), collisionType);
+            soundPrefix + "/hit", shape, new CombatWeapon.Bounds(32, 0, 72, 64, ZERO, ZERO, ZERO, ZERO), collisionType);
     }
     private static void check(boolean condition, String message) {
         checks++;

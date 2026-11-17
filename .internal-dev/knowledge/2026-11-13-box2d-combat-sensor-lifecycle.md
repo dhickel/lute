@@ -10,6 +10,8 @@ Attack sensor fixtures attached to Box2D bodies.
 ## Key Takeaways
 Creating an attack sensor on a sleeping owner must wake the body so contacts are discovered. Create and remove fixtures outside the locked world step; defer contact damage processing until the world is unlocked.
 
+Weapon bounds offsets are pixel translations applied after rotation, not changes to the rotation origin. Test signed X/Y translations for every facing and bounds shape. Bounds constructor migrations also affect qualified `WeaponData.Bounds` calls and LWJGL3 render fixtures; compile both core and LWJGL3 test sources rather than searching only `new Bounds` and `new CombatWeapon.Bounds`.
+
 ## Project Relevance
 Directional weapon sensors are attached temporarily to the player's body during attacks.
 

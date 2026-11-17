@@ -16,6 +16,7 @@ import java.util.HashMap;
 import java.util.Map;
 
 public final class DataLoaderTest {
+    private static final Offset ZERO = new Offset(0, 0);
     public static void main(String[] args) throws Exception {
         var previousFiles = Gdx.files;
         try {
@@ -224,8 +225,34 @@ public final class DataLoaderTest {
                 tree.at("/weapons/basic_sword/attack_stats/secondary")).remove("sounds");
             DataLoader.mapper.treeToValue(tree, WeaponsData.class);
         }, "missing secondary sounds");
-        rejects(() -> new Bounds(BoundsType.RECT, 1, 0, 1, 2), "collapsed bounds");
-        rejects(() -> new Bounds(BoundsType.RECT, Float.NaN, 0, 2, 2), "nonfinite bounds");
+        rejects(() -> new Bounds(BoundsType.RECT, 1, 0, 1, 2, ZERO, ZERO, ZERO, ZERO), "collapsed bounds");
+        rejects(() -> new Bounds(BoundsType.RECT, Float.NaN, 0, 2, 2, ZERO, ZERO, ZERO, ZERO), "nonfinite bounds");
+        for (var weapon : definitions.weapons().values()) {
+            for (var attack : new AttackData[]{weapon.attackStats().primary(), weapon.attackStats().secondary()}) {
+                var bounds = attack.bounds();
+                check(bounds.offsetUp().equals(ZERO) && bounds.offsetDown().equals(ZERO)
+                    && bounds.offsetLeft().equals(ZERO) && bounds.offsetRight().equals(ZERO), "zero authored offsets");
+            }
+        }
+        for (String direction : new String[]{"up", "down", "left", "right"}) {
+            String field = "offset_" + direction;
+            for (String invalid : new String[]{"null", "{}", "{\"x\":0}", "{\"y\":0}", "{\"x\":null,\"y\":0}"}) {
+                rejects(() -> {
+                    var tree = (tools.jackson.databind.node.ObjectNode) DataLoader.mapper.valueToTree(primary.bounds());
+                    tree.set(field, DataLoader.mapper.readTree(invalid));
+                    DataLoader.mapper.treeToValue(tree, Bounds.class);
+                }, "invalid " + field);
+            }
+            rejects(() -> {
+                var tree = (tools.jackson.databind.node.ObjectNode) DataLoader.mapper.valueToTree(primary.bounds());
+                tree.remove(field);
+                DataLoader.mapper.treeToValue(tree, Bounds.class);
+            }, "missing " + field);
+        }
+        for (float invalid : new float[]{Float.NaN, Float.POSITIVE_INFINITY, Float.NEGATIVE_INFINITY}) {
+            rejects(() -> new Offset(invalid, 0), "nonfinite offset X");
+            rejects(() -> new Offset(0, invalid), "nonfinite offset Y");
+        }
         rejects(() -> DataLoader.mapper.readValue("{\"head\":\"basic\",\"body\":\"basic\",\"hands\":\"basic\"}",
             PlayerData.Loadout.class), "JSON missing feet");
         rejects(() -> DataLoader.mapper.readValue("{\"animation\":{},\"bounds\":{},\"stats\":{}}", AttackData.class),

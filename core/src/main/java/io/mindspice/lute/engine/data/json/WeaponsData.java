@@ -97,15 +97,32 @@ public record WeaponsData(String atlas, Map<String, WeaponData> weapons) {
                              @JsonProperty(value = "x1", required = true) float x1,
                              @JsonProperty(value = "y1", required = true) float y1,
                              @JsonProperty(value = "x2", required = true) float x2,
-                             @JsonProperty(value = "y2", required = true) float y2) {
+                             @JsonProperty(value = "y2", required = true) float y2,
+                             @JsonProperty(value = "offset_up", required = true) Offset offsetUp,
+                             @JsonProperty(value = "offset_down", required = true) Offset offsetDown,
+                             @JsonProperty(value = "offset_left", required = true) Offset offsetLeft,
+                             @JsonProperty(value = "offset_right", required = true) Offset offsetRight) {
             public Bounds {
                 Objects.requireNonNull(type, "bounds.type");
+                Objects.requireNonNull(offsetUp, "bounds.offset_up");
+                Objects.requireNonNull(offsetDown, "bounds.offset_down");
+                Objects.requireNonNull(offsetLeft, "bounds.offset_left");
+                Objects.requireNonNull(offsetRight, "bounds.offset_right");
                 if (!Float.isFinite(x1) || !Float.isFinite(y1) || !Float.isFinite(x2) || !Float.isFinite(y2)
                     || x2 <= x1 || y2 <= y1) {
                     throw new IllegalArgumentException("Weapon bounds must be finite with x2 > x1 and y2 > y1");
                 }
             }
         }
+        public record Offset(@JsonProperty(value = "x", required = true) float x,
+                             @JsonProperty(value = "y", required = true) float y) {
+            public Offset {
+                if (!Float.isFinite(x) || !Float.isFinite(y)) {
+                    throw new IllegalArgumentException("Weapon bounds offsets must be finite");
+                }
+            }
+        }
+
         public enum BoundsType { SEMICIRCLE, TRIANGLE, RECT }
         public enum CollisionType { MELEE, PROJECTILE }
     }

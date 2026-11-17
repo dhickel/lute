@@ -26,6 +26,8 @@ Space triggers the primary attack: sword slash or bow shot. Shift triggers the s
 
 Weapon `attack_stats` contains separate `primary` and `secondary` records, each with animation, bounds, stats, collision type, and its own `sounds.attack` and `sounds.hit` paths. Sound IDs are `weapon/<id>/<primary|secondary>/<attack|hit>`. Initial loading includes both sounds for every configured attack, including unarmed. Existing WAV files are approved for reuse; hit sounds are loaded but not played. Keep projectile collision data for future bow execution. A bow shot plays its animation but creates no projectile and deals no damage.
 
+Each attack's `bounds` requires `offset_up`, `offset_down`, `offset_left`, and `offset_right`, each an object with finite, required `x` and `y` coordinates in logical-local pixels. Current authored defaults are explicitly zero in both axes; omitted or null offsets are invalid. Rotate the right-facing geometry around the logical center first, then translate by the selected facing's offset. Positive X shifts right and positive Y shifts up regardless of facing; offsets do not change the rotation pivot or shape.
+
 Melee attacks retain animation-driven hit timing and sensor lifetime. Validate authored data at its loading boundary and animation and geometry constraints where data meets loaded assets.
 
 ## Constraints

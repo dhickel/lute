@@ -42,6 +42,7 @@ import io.mindspice.lute.engine.components.Physic;
 import io.mindspice.lute.engine.components.Player;
 import io.mindspice.lute.engine.components.Transform;
 import io.mindspice.lute.engine.data.json.WeaponsData.WeaponData.BoundsType;
+import io.mindspice.lute.engine.data.json.WeaponsData.WeaponData.Offset;
 import io.mindspice.lute.engine.events.Event;
 import io.mindspice.lute.engine.input.InputManager;
 import io.mindspice.lute.engine.input.InputMap;
@@ -316,7 +317,8 @@ public final class MapSensorSystemTest {
             var target = game.entity(3.2f, 4.75f, false, false, 2);
             var attack = new CombatWeapon.Attack("test", 10, 0,
                 new Animation2D.Attack("jab", 1, .125f, 0, "attack"), "hit", BoundsType.RECT,
-                new CombatWeapon.Bounds(pixels(1), 0, pixels(3), pixels(2)),
+                new CombatWeapon.Bounds(pixels(1), 0, pixels(3), pixels(2),
+                    new Offset(0, 0), new Offset(0, 0), new Offset(0, 0), new Offset(0, 0)),
                 io.mindspice.lute.engine.data.json.WeaponsData.WeaponData.CollisionType.MELEE);
             var weapon = new CombatWeapon.Weapon("test", "melee/test", attack, attack);
             var animation = new Animation2D("unused", "unused", Animation2D.AnimationType.IDLE,
