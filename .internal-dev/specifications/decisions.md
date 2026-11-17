@@ -63,6 +63,14 @@
 - **Source:** Explicit user correction and approval of initial fitted bounds.
 - **Review timing:** Review the fitted bounds in live play before updating the PR; revisit the contract if character authoring changes.
 
+## Local asset tracking
+
+- **Decision:** Keep the complete `raw_assets/` and `assets/` trees local and ignored rather than tracking them in the repository. The tracked root `generate-runtime-assets.sh` generates runtime outputs from an externally provisioned complete raw tree.
+- **Justification and tradeoff:** The user requested untracking both trees. This is not an asset distribution mechanism: fresh checkouts must obtain settings, data, audio, maps, tilesets, sprites, and the Tiled project externally before generating and running asset-dependent tests or the game. Git ignore does not replace generator ownership checks, and existing Git history is not purged or rewritten.
+- **Affected specifications:** [Composite Characters](composite-characters.md); asset setup is documented in `README.md` and `docs/asset-service.md`.
+- **Source:** User-directed asset untracking and generation entrypoint relocation.
+- **Review timing:** Revisit if asset distribution or tracking requirements change.
+
 ## Custom asset service and logical keys
 
 - **Decision:** Replace the AssetManager-backed service with a directly owning service whose logical identity is resource class and logical ID. Store entries in four typed maps selected directly by class, with a separate ordered loading `queue`. The maps alone track registered assets; diagnostics and disposal iterate them without a redundant ownership index or a cross-type insertion-order guarantee. Asset records define loads; runtime audio events and animation components carry IDs. Music and sound manifest keys remain IDs; the manifest name is the map and its single atlas ID. The service supports sounds, music, atlases, and tiled maps.

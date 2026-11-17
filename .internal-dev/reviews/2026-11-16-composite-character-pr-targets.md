@@ -2,7 +2,7 @@
 
 ## Scope
 
-Code-only inventory of the complete PR diff against `origin/master` at `024d3d5`, through local HEAD `3efe986`. Current PR Targets policy includes substantive code, directly related tests and build configuration; it excludes game assets, non-code files and pure moves. Earlier asset inventory is retained in Git history, not repeated here. Equipment source migration and supersampled assets are summarized in the PR description.
+Code-only inventory of the complete PR diff against `origin/master` at `024d3d5`, through local baseline `b975f30` and the staged and unstaged folder-packing and asset-tracking changes. Current PR Targets policy includes substantive code, directly related tests and build configuration; it excludes game assets, non-code files and pure moves. Earlier asset inventory is retained in Git history, not repeated here. Equipment source migration and supersampled assets are summarized in the PR description.
 
 ## Findings
 
@@ -10,7 +10,8 @@ The patch implements shared atlas generation, composite rendering, loadouts, ind
 
 ## Risk Assessment
 
-- Real-GL checks cover seven weapon pages and native world-frame comparisons, but other drivers and live visual acceptance remain unverified.
+- Real-GL checks cover both current weapon pages and native world-frame comparisons, but other drivers and live visual acceptance remain unverified.
+- Both asset trees are ignored and require external provisioning; historical Git objects remain. Switching to an older branch that tracks these paths can overwrite local files.
 - Repeat generation and ownership checks reduce source/output drift; later edits still require regeneration.
 - Player and weapon schema/API consumers must migrate. Projectile execution remains deferred.
 
@@ -25,6 +26,13 @@ The patch implements shared atlas generation, composite rendering, loadouts, ind
 - Resolve issue #6 separately and rerun the unfiltered check. Review visual bounds without implying user approval has already occurred.
 
 ## Targets
+
+- `.gitignore`
+  - Ignores the complete local source and runtime asset trees.
+- `generate-runtime-assets.sh` (new; replaces `raw_assets/generate-runtime-assets.sh`, deleted from the index while its local ignored copy remains)
+  - Resolves the repository from the script location and forwards arguments to Gradle.
+  - Fails with an actionable message when the raw tree is missing.
+  - Creates the runtime directory before Gradle asset-list generation.
 
 - `core/src/main/java/io/mindspice/lute/engine/GameCore.java`
   - Binds primary and secondary attack keys.
@@ -77,6 +85,7 @@ The patch implements shared atlas generation, composite rendering, loadouts, ind
   - Validates required attack frame counts and character frame dimensions.
 - `core/src/main/java/io/mindspice/lute/engine/systems/CharacterCompositor.java` (new)
   - Composes visible character and equipment layers into offscreen framebuffer cells, ordered by facing.
+  - Places hands behind head in all directions while preserving weapon placement.
   - Batches layer draws by rank and texture page and manages multiple targets.
   - Validates indexed untrimmed frames, refreshes atlas caches and restores graphics state.
   - Culls transformed characters against the camera and disposes resources.
@@ -124,17 +133,23 @@ The patch implements shared atlas generation, composite rendering, loadouts, ind
   - Exercises composite characters in a desktop game context using generated assets.
   - Compares actual composition and native-scale world frames across weapon pages.
   - Exercises native canvas positioning.
+  - Independently checks opaque helmet pixels at actual glove overlaps.
 - `lwjgl3/src/test/java/io/mindspice/lute/engine/lwjgl3/CompositeRenderTest.java` (new)
   - Exercises offscreen composite pixel output, layer order and animation.
   - Covers rendering state, visibility, batching and resource behavior.
   - Covers variable canvas sizes, gutters, transformed overhang and culling.
+  - Checks independent pairwise layer priorities and exact rank-dependent batching.
 - `util/src/main/java/io/mindspice/lute/engine/util/TexturePackerTool.java`
   - Stages pack inputs in sorted path order for reproducible atlas generation.
   - Generates shared character, equipment and weapon atlases with multipage output.
   - Validates required sprite inputs, transparent frames, region names and dimensions.
   - Integrates sprite output with staged ownership and existing map asset generation.
   - Combines set-first equipment exports by slot and logs skipped accessories while rejecting other unknown slots.
+  - Defaults sprites to 2048 maximum dimensions, retaining explicit and partial configuration overrides.
+  - Rejects sprite folder mixing while retaining combined map-object packing and shared preservation guards.
 - `util/src/test/java/io/mindspice/lute/engine/util/TexturePackerToolTest.java`
   - Tests sprite atlas regions, transparent pixels, prefixes and multipage publication.
   - Checks collision, missing input, ownership failure and stale-page cleanup without corrupting outputs.
   - Checks multiple equipment sets, invalid slots, skipped accessories and source preservation.
+  - Checks folder-isolated pages, overflow, stale-page shrink and sprite/map mode rejection.
+  - Checks 2048 defaults and partial settings inheritance.
