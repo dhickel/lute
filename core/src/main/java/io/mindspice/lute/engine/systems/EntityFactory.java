@@ -62,13 +62,10 @@ public class EntityFactory extends EntitySystem {
             2, sizeWorld, new Vector2(1, 1), 0, 0);
         var size = transform.getSize();
         var weapons = createWeapons(data.weaponsData(), animation, new Vector2(size.x * 0.5f, size.y * 0.5f));
-        String weaponId = player.loadout().weapon() == null ? "unarmed" : player.loadout().weapon();
-        var weapon = weapons.get(weaponId);
-        if (weapon == null) { throw new IllegalArgumentException("Unknown weapon: " + weaponId); }
-        var combat = new Combat(weapon);
+        var combat = new Combat();
         var equipment = new Loadout.Equipment(player.loadout().head(), player.loadout().body(),
             player.loadout().hands(), player.loadout().feet());
-        var loadout = new Loadout(equipment, combat, weapons, this::validateEquipment);
+        var loadout = new Loadout(equipment, player.loadout().weapon(), weapons, this::validateEquipment);
 
         Entity entity = getEngine().createEntity();
         entity.add(new Graphic(region, Color.WHITE.cpy()));

@@ -2,7 +2,7 @@
 
 ## Scope
 
-Code-only inventory of the complete PR diff against `origin/master` at `024d3d5`, through local baseline `b975f30` and the staged and unstaged folder-packing and asset-tracking changes. Current PR Targets policy includes substantive code, directly related tests and build configuration; it excludes game assets, non-code files and pure moves. Earlier asset inventory is retained in Git history, not repeated here. Equipment source migration and supersampled assets are summarized in the PR description.
+Code-only inventory of the complete PR diff against `origin/master` at `024d3d5`, through baseline `77e43d2` and the staged and unstaged loadout ownership follow-up. Current PR Targets policy includes substantive code, directly related tests and build configuration; it excludes game assets, non-code files and pure moves. Earlier asset inventory is retained in Git history, not repeated here. Equipment source migration and supersampled assets are summarized in the PR description.
 
 ## Findings
 
@@ -48,8 +48,8 @@ The patch implements shared atlas generation, composite rendering, loadouts, ind
   - Exposes direction-specific atlas region keys, animation time and frame index.
   - Stores required frame counts for attack validation.
 - `core/src/main/java/io/mindspice/lute/engine/components/Combat.java`
-  - Tracks primary or secondary requests and the active attack.
-  - Prevents weapon changes during an attack or pending request.
+  - Tracks pending primary or secondary requests, the active attack snapshot, sensor and hits.
+  - Removes weapon selection and the weapon-taking constructor from combat state.
 - `core/src/main/java/io/mindspice/lute/engine/components/CombatWeapon.java`
   - Represents weapons with separate primary and secondary attacks.
   - Carries per-attack damage, animation, sound, collision and geometry.
@@ -61,9 +61,9 @@ The patch implements shared atlas generation, composite rendering, loadouts, ind
 - `core/src/main/java/io/mindspice/lute/engine/components/Hurtbox.java` (new)
   - Tags the persistent fixture used for explicit damage contacts.
 - `core/src/main/java/io/mindspice/lute/engine/components/Loadout.java` (new)
-  - Stores equipped clothing and the selected combat weapon.
-  - Validates equipment and rejects changes while an attack is active or requested.
-  - Supports unarmed selection and rejects unknown weapon IDs.
+  - Owns equipment and selected weapon without storing Combat, retaining an immutable catalogue and equipment validator.
+  - Validates component selections; null selects unarmed and unknown IDs throw without mutation.
+  - Exposes weapon and ID accessors; setters do not guard attack state.
 - `core/src/main/java/io/mindspice/lute/engine/data/json/AnimationData.java`
   - Validates animation settings and supports the flat atlas key.
 - `core/src/main/java/io/mindspice/lute/engine/data/json/CharacterBounds.java` (new)
@@ -80,11 +80,13 @@ The patch implements shared atlas generation, composite rendering, loadouts, ind
   - Splits attack input into primary and secondary actions.
 - `core/src/main/java/io/mindspice/lute/engine/screen/GameScreen.java`
   - Provides the asset service to the render system for composition.
+  - Installs LoadoutSystem for guarded gameplay switches.
 - `core/src/main/java/io/mindspice/lute/engine/systems/AnimationSystem.java`
   - Selects and caches animations by active action and direction.
   - Validates required attack frame counts and character frame dimensions.
 - `core/src/main/java/io/mindspice/lute/engine/systems/CharacterCompositor.java` (new)
   - Composes visible character and equipment layers into offscreen framebuffer cells, ordered by facing.
+  - Reads equipment and weapon from Loadout without requiring Combat.
   - Places hands behind head in all directions while preserving weapon placement.
   - Batches layer draws by rank and texture page and manages multiple targets.
   - Validates indexed untrimmed frames, refreshes atlas caches and restores graphics state.
@@ -94,17 +96,22 @@ The patch implements shared atlas generation, composite rendering, loadouts, ind
   - Converts logical bounds to world units for Box2D fixtures.
   - Creates the non-sensor feet ellipse and separately tagged damage sensor.
 - `core/src/main/java/io/mindspice/lute/engine/systems/CombatSystem.java`
-  - Selects primary or secondary attack requests and configures attack animation.
+  - Requires Loadout, selects primary or secondary attacks from its weapon and configures attack animation.
+  - Cleans active attack state and any sensor when Loadout is removed, before or after sensor activation.
   - Uses active attack damage, geometry and hit timing for melee.
   - Does not create melee collision for projectile attacks.
   - Routes explicit damage contacts to tagged hurtboxes, retaining generic target fallback.
 - `core/src/main/java/io/mindspice/lute/engine/systems/ControllerSystem.java`
   - Routes attack key presses to the requested primary or secondary combat slot.
 - `core/src/main/java/io/mindspice/lute/engine/systems/EntityFactory.java`
-  - Builds player combat, composite marker and equipment loadout from data.
+  - Builds separate player Combat and Loadout components, the composite marker and equipment selection from data.
+  - Passes the existing weapon catalogue and loaded-equipment validator to Loadout.
   - Builds per-weapon attack definitions and sounds.
   - Validates weapon geometry, required character frames and equipment atlas layers.
   - Uses logical dimensions for the transform and creates separate feet and hurtbox fixtures.
+- `core/src/main/java/io/mindspice/lute/engine/systems/LoadoutSystem.java` (new)
+  - Coordinates equipment and weapon switches without an update loop.
+  - Rejects pending or active combat before selection validation or mutation; allows entities without Combat.
 - `core/src/main/java/io/mindspice/lute/engine/systems/RenderState.java` (new)
   - Captures and restores graphics bindings, viewport, blending, masks and related GL state.
   - Handles state associated with released framebuffer and shader resources.
@@ -116,7 +123,9 @@ The patch implements shared atlas generation, composite rendering, loadouts, ind
 - `core/src/test/java/io/mindspice/lute/engine/assets/AssetServiceTest.java`
   - Exercises asset loading and weapon sound identities for the shared atlas and attack slots.
 - `core/src/test/java/io/mindspice/lute/engine/combat/CombatSystemTest.java`
-  - Exercises primary and secondary attacks, loadout changes and combat collision behavior.
+  - Exercises both attack slots for sword, bow and unarmed, pending and active switch locks, and unchanged rejected state.
+  - Covers passive changes without Combat, invalid initial and idle IDs, loaded-equipment validation and Loadout-removal cleanup.
+  - Exercises combat collision behavior.
   - Covers attack timing, geometry and relevant rejection cases.
   - Exercises explicit hurtboxes, solid-fixture exclusion and generic fallback.
 - `core/src/test/java/io/mindspice/lute/engine/data/json/DataLoaderTest.java`
@@ -124,18 +133,19 @@ The patch implements shared atlas generation, composite rendering, loadouts, ind
   - Covers invalid weapon, animation, collision and sound inputs.
   - Checks logical sizes and collision and damage bounds at the data boundary.
 - `core/src/test/java/io/mindspice/lute/engine/systems/MapSensorSystemTest.java`
-  - Updates combat fixtures for the weapon and attack data model.
+  - Updates combat fixtures with separate Combat and Loadout components for the weapon and attack data model.
   - Covers map-trigger behavior with separate feet and hurtbox fixtures.
 - `lwjgl3/build.gradle`
   - Adds desktop composite graphics JavaExec test execution configuration.
   - Permits zero discovered JUnit tests for the JavaExec-only desktop test sources.
 - `lwjgl3/src/test/java/io/mindspice/lute/engine/lwjgl3/CompositeGameTest.java` (new)
-  - Exercises composite characters in a desktop game context using generated assets.
+  - Exercises composite characters in a desktop game context using generated assets and verifies GameScreen installs LoadoutSystem.
+  - Switches through the system and verifies pending and active locks; death and world-frame render fixtures omit Combat.
   - Compares actual composition and native-scale world frames across weapon pages.
   - Exercises native canvas positioning.
   - Independently checks opaque helmet pixels at actual glove overlaps.
 - `lwjgl3/src/test/java/io/mindspice/lute/engine/lwjgl3/CompositeRenderTest.java` (new)
-  - Exercises offscreen composite pixel output, layer order and animation.
+  - Exercises offscreen composite pixel output, layer order and animation with Combat-free render fixtures and loadout switches.
   - Covers rendering state, visibility, batching and resource behavior.
   - Covers variable canvas sizes, gutters, transformed overhang and culling.
   - Checks independent pairwise layer priorities and exact rank-dependent batching.

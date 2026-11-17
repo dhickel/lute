@@ -190,11 +190,18 @@ public final class CombatSystemTest {
         var catalog = Map.of("basic_sword", sword, "basic_bow", bow, "unarmed", unarmed);
         var equipment = new Loadout.Equipment("basic", "basic", "basic", "basic");
         var changed = new Loadout.Equipment("other", "other", "other", "other");
+        var passive = new Entity().add(new Loadout(equipment, "basic_sword", catalog, value -> {}));
+        var loadouts = new LoadoutSystem();
+        check(loadouts.equip(passive, changed) && loadouts.equipWeapon(passive, "basic_bow"),
+            "Entities without combat can change equipped items");
+        check(Loadout.MAPPER.get(passive).getEquipment().equals(changed)
+            && Loadout.MAPPER.get(passive).getWeapon() == bow && Combat.MAPPER.get(passive) == null,
+            "Equipped items belong to loadout without a combat component");
+        rejects(() -> new Loadout(equipment, "missing", catalog, value -> {}), "Unknown initial weapon");
         for (var weapon : catalog.values()) {
             for (var action : new InputAction[]{InputAction.ATTACK_PRIMARY, InputAction.ATTACK_SECONDARY}) {
                 try (var game = new Harness(1, 0, 0)) {
-                    check(game.combat().setWeapon(weapon), "Inactive combat accepts weapon");
-                    var loadout = new Loadout(equipment, game.combat(), catalog, value -> {
+                    var loadout = new Loadout(equipment, weapon.id(), catalog, value -> {
                         if (!value.equals(equipment) && !value.equals(changed)) {
                             throw new IllegalArgumentException("Unknown equipment");
                         }
@@ -207,10 +214,11 @@ public final class CombatSystemTest {
                     game.combat().requestAttack(Combat.AttackSlot.SECONDARY);
                     check(!game.combat().hasAttackRequest() && game.combat().getActiveAttack() == expected,
                         "Busy request neither queues nor replaces active attack");
-                    check(!game.combat().setWeapon(sword) && !loadout.equipWeapon("basic_sword") && !loadout.equip(changed),
+                    check(!game.loadouts.equipWeapon(game.player, "basic_sword") && !game.loadouts.equip(game.player, changed),
                         "Weapon and equipment changes rejected during attack");
-                    check(loadout.getEquipment().equals(equipment) && game.combat().getActiveAttack() == expected,
-                        "Rejected switch preserves equipment and snapshot");
+                    check(loadout.getEquipment().equals(equipment) && loadout.getWeapon() == weapon
+                        && game.combat().getActiveAttack() == expected, "Rejected switch preserves equipment, weapon and snapshot");
+                    check(!game.loadouts.equipWeapon(game.player, "missing"), "Busy switch is rejected before resolving an ID");
                     int fixtures = game.body().getFixtureList().size;
                     for (int frame = 1; frame <= 3; frame++) {
                         game.update(.125f);
@@ -231,22 +239,25 @@ public final class CombatSystemTest {
                         "Selected attack sound emitted once");
                     game.update(.125f); game.update(0);
                     check(!game.combat().isAttacking() && game.combat().getSensor() == null, "Selected attack completes normally");
-                    check(loadout.equip(changed) && loadout.getEquipment().equals(changed), "Inactive equipment switch accepted");
-                    check(loadout.equipWeapon("basic_bow") && loadout.getWeaponId().equals("basic_bow")
-                        && game.combat().getCurrentWeapon() == bow, "Inactive bow switch accepted");
-                    check(loadout.equipWeapon(null) && loadout.getWeaponId() == null
-                        && game.combat().getCurrentWeapon() == unarmed, "Null switch selects explicit unarmed catalog entry");
-                    rejects(() -> loadout.equipWeapon("missing"), "Unknown loadout weapon");
-                    check(game.combat().getCurrentWeapon() == unarmed && loadout.getWeaponId() == null,
+                    check(game.loadouts.equip(game.player, changed) && loadout.getEquipment().equals(changed), "Inactive equipment switch accepted");
+                    check(game.loadouts.equipWeapon(game.player, "basic_bow") && loadout.getWeaponId().equals("basic_bow")
+                        && loadout.getWeapon() == bow, "Inactive bow switch accepted");
+                    check(game.loadouts.equipWeapon(game.player, null) && loadout.getWeaponId() == null
+                        && loadout.getWeapon() == unarmed, "Null switch selects explicit unarmed catalog entry");
+                    rejects(() -> game.loadouts.equipWeapon(game.player, "missing"), "Unknown loadout weapon");
+                    check(loadout.getWeapon() == unarmed && loadout.getWeaponId() == null,
                         "Invalid switch preserves current weapon");
                     game.combat().requestAttack(Combat.AttackSlot.SECONDARY);
                     game.combat().requestAttack(Combat.AttackSlot.PRIMARY);
-                    check(!loadout.equipWeapon("basic_sword") && !loadout.equip(equipment)
-                        && !game.combat().setWeapon(sword), "Pending request locks loadout before attack begins");
+                    check(!game.loadouts.equipWeapon(game.player, "basic_sword") && !game.loadouts.equip(game.player, equipment),
+                        "Pending request locks loadout before attack begins");
+                    check(loadout.getWeapon() == unarmed && loadout.getEquipment().equals(changed),
+                        "Pending request preserves equipped items");
                     check(game.combat().consumeAttackRequest() == Combat.AttackSlot.SECONDARY,
                         "Pending request retains selected slot");
                     check(game.combat().consumeAttackRequest() == null, "Consumed request is cleared");
-                    check(loadout.equipWeapon("basic_sword") && loadout.equip(equipment), "Switch unlocked after request consumed");
+                    check(game.loadouts.equipWeapon(game.player, "basic_sword") && game.loadouts.equip(game.player, equipment),
+                        "Switch unlocked after request consumed");
                 }
             }
         }
@@ -261,7 +272,7 @@ public final class CombatSystemTest {
             new CombatWeapon.Bounds(32, 24, 56, 40), CollisionType.MELEE);
         for (var input : new InputAction[]{InputAction.ATTACK_PRIMARY, InputAction.ATTACK_SECONDARY}) {
             try (var game = new Harness(1, 0, 0)) {
-                game.combat().setWeapon(new CombatWeapon.Weapon("test", "melee/test", primary, secondary));
+                game.selectWeapon(new CombatWeapon.Weapon("test", "melee/test", primary, secondary));
                 var near = game.target(2, false);
                 var far = game.target(1, false);
                 Physic.MAPPER.get(near).getBody().setTransform(1.5f, 1, 0);
@@ -375,7 +386,7 @@ public final class CombatSystemTest {
                     : new CombatWeapon.Bounds(32, 24, 72, 56);
                 var attack = new CombatWeapon.Attack("test", 10, 0,
                     new Animation2D.Attack("slash", 1, .125f, 0, "sound"), "hit", BoundsType.RECT, bounds, CollisionType.MELEE);
-                game.combat().setWeapon(new CombatWeapon.Weapon("test", "melee/test", attack, attack));
+                game.selectWeapon(new CombatWeapon.Weapon("test", "melee/test", attack, attack));
                 if (!feetOnly) {
                     CharacterFixtures.ellipse(targetBody, standing, true).setUserData(Hurtbox.INSTANCE);
                     fixture(targetBody, .08f, .08f, new Vector2(1, 1), false);
@@ -456,7 +467,7 @@ public final class CombatSystemTest {
 
     private static void cleanup() {
         for (int hitFrame : new int[]{0, 2}) {
-            for (String removal : new String[]{"death", "entity", "combat", "animation", "system", "target"}) {
+            for (String removal : new String[]{"death", "entity", "combat", "loadout", "animation", "system", "target"}) {
                 try (var game = new Harness(1, hitFrame, 0)) {
                     var target = game.target(1, false);
                     var combat = game.combat();
@@ -465,6 +476,7 @@ public final class CombatSystemTest {
                         case "death" -> Health.MAPPER.get(game.player).damage(100);
                         case "entity" -> game.engine.removeEntity(game.player);
                         case "combat" -> game.player.remove(Combat.class);
+                        case "loadout" -> game.player.remove(Loadout.class);
                         case "animation" -> game.player.remove(Animation2D.class);
                         case "system" -> game.engine.removeSystem(game.combatSystem);
                         case "target" -> game.engine.removeEntity(target);
@@ -654,19 +666,21 @@ public final class CombatSystemTest {
             var animation = Animation2D.MAPPER.get(player);
             var state = Combat.MAPPER.get(player);
             near(100, Health.MAPPER.get(player).getCurrent(), "Factory player stats");
-            check(state.getCurrentWeapon().primary().animation().soundId().equals("weapon/basic_sword/primary/attack"),
+            check(Loadout.MAPPER.get(player).getWeapon().primary().animation().soundId().equals("weapon/basic_sword/primary/attack"),
                 "Factory passes resolved sound ID");
             var loadout = Loadout.MAPPER.get(player);
             check(loadout != null && loadout.getWeaponId().equals("basic_sword"), "Factory installs default runtime loadout");
             var originalEquipment = loadout.getEquipment();
-            rejects(() -> loadout.equip(new Loadout.Equipment("missing", "basic", "basic", "basic")),
+            var loadouts = new LoadoutSystem();
+            engine.addSystem(loadouts);
+            rejects(() -> loadouts.equip(player, new Loadout.Equipment("missing", "basic", "basic", "basic")),
                 "Equipment switching validates loaded atlas regions");
-            rejects(() -> loadout.equip(new Loadout.Equipment(null, "basic", "basic", "basic")),
+            rejects(() -> loadouts.equip(player, new Loadout.Equipment(null, "basic", "basic", "basic")),
                 "Equipment switching validates missing metadata");
             check(loadout.getEquipment().equals(originalEquipment), "Invalid equipment switch is atomic");
-            check(loadout.equip(originalEquipment), "Valid loaded equipment is accepted");
+            check(loadouts.equip(player, originalEquipment), "Valid loaded equipment is accepted");
             for (String id : new String[]{"basic_sword", "basic_bow", null}) {
-                check(loadout.equipWeapon(id), "Factory loadout selects weapon");
+                check(loadouts.equipWeapon(player, id), "Factory loadout selects weapon");
                 for (var slot : Combat.AttackSlot.values()) {
                     for (var direction : Facing.Direction.values()) {
                         Facing.MAPPER.get(player).setDirection(direction);
@@ -849,6 +863,7 @@ public final class CombatSystemTest {
         final Engine engine = new Engine();
         final EventSystem events = new EventSystem();
         final CombatSystem combatSystem = new CombatSystem(world);
+        final LoadoutSystem loadouts = new LoadoutSystem();
         final List<String> sounds = new ArrayList<>();
         final Entity player = new Entity();
         final Engine previousEngine;
@@ -858,16 +873,17 @@ public final class CombatSystemTest {
             events.subscribe(Event.Sound.Play.class, e -> sounds.add(e.soundId()));
             engine.addSystem(new ControllerSystem()); engine.addSystem(new FacingSystem());
             engine.addSystem(new AnimationPlayerSystem()); engine.addSystem(new FakeAnimationSystem());
-            engine.addSystem(combatSystem); engine.addSystem(new PhysicMoveSystem());
+            engine.addSystem(combatSystem); engine.addSystem(loadouts); engine.addSystem(new PhysicMoveSystem());
             engine.addSystem(new PhysicSystem(world, STEP));
             var definition = new BodyDef(); definition.type = BodyDef.BodyType.DynamicBody;
             var body = world.createBody(definition); body.setUserData(player);
             fixture(body, .15f, .1f, new Vector2(1, .15f), false);
             player.add(new Physic(body, new Vector2())).add(new Transform(new Vector2(), 0, new Vector2(2, 2), new Vector2(1, 1), 0, 0))
                 .add(new Facing(Facing.Direction.RIGHT)).add(new Move(4)).add(new Controller())
-                .add(new Combat(weapon(speed, hit, sound, BoundsType.SEMICIRCLE))).add(new Health(100))
+                .add(new Combat()).add(new Health(100))
                 .add(new Animation2D("OBJECTS", "player", Animation2D.AnimationType.IDLE, Animation.PlayMode.LOOP, 1, .125f))
                 .add(new Graphic(new TextureRegion(), Color.WHITE)).add(new AnimationPlayer(player));
+            selectWeapon(weapon(speed, hit, sound, BoundsType.SEMICIRCLE));
             engine.addEntity(player); update(0);
         }
         Entity target(int count, boolean sensor) {
@@ -876,6 +892,10 @@ public final class CombatSystemTest {
             for (int i = 0; i < count; i++) { fixture(body, .08f, .08f, new Vector2(0, i * .03f), sensor); }
             entity.add(new Physic(body, new Vector2(1.7f, 1))).add(new Health(100));
             engine.addEntity(entity); return entity;
+        }
+        void selectWeapon(CombatWeapon.Weapon weapon) {
+            player.add(new Loadout(new Loadout.Equipment("basic", "basic", "basic", "basic"), weapon.id(),
+                Map.of(weapon.id(), weapon), equipment -> {}));
         }
         void input(InputAction action, int state) { Controller.MAPPER.get(player).getInputListener().offer(action, state); }
         void attack() { attack(InputAction.ATTACK_PRIMARY); }

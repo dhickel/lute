@@ -11,36 +11,33 @@ public final class Loadout implements Component {
     public record Equipment(String head, String body, String hands, String feet) { }
 
     private Equipment equipment;
-    private final Combat combat;
+    private CombatWeapon.Weapon weapon;
     private final Map<String, CombatWeapon.Weapon> weapons;
     private final Consumer<Equipment> validateEquipment;
 
-    public Loadout(Equipment equipment, Combat combat, Map<String, CombatWeapon.Weapon> weapons,
+    public Loadout(Equipment equipment, String weaponId, Map<String, CombatWeapon.Weapon> weapons,
                    Consumer<Equipment> validateEquipment) {
-        this.equipment = equipment;
-        this.combat = combat;
         this.weapons = Map.copyOf(weapons);
         this.validateEquipment = validateEquipment;
-        validateEquipment.accept(equipment);
+        setEquipment(equipment);
+        setWeapon(weaponId);
     }
 
     public Equipment getEquipment() { return equipment; }
+    public CombatWeapon.Weapon getWeapon() { return weapon; }
     public String getWeaponId() {
-        String id = combat.getCurrentWeapon().id();
+        String id = weapon.id();
         return id.equals("unarmed") ? null : id;
     }
 
-    public boolean equip(Equipment equipment) {
-        if (combat.isAttacking() || combat.hasAttackRequest()) { return false; }
+    public void setEquipment(Equipment equipment) {
         validateEquipment.accept(equipment);
         this.equipment = equipment;
-        return true;
     }
 
-    public boolean equipWeapon(String id) {
-        if (combat.isAttacking() || combat.hasAttackRequest()) { return false; }
-        var weapon = weapons.get(id == null ? "unarmed" : id);
-        if (weapon == null) { throw new IllegalArgumentException("Unknown weapon: " + id); }
-        return combat.setWeapon(weapon);
+    public void setWeapon(String id) {
+        var selected = weapons.get(id == null ? "unarmed" : id);
+        if (selected == null) { throw new IllegalArgumentException("Unknown weapon: " + id); }
+        weapon = selected;
     }
 }

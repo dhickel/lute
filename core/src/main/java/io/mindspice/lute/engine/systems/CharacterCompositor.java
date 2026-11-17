@@ -138,14 +138,15 @@ public final class CharacterCompositor implements Disposable {
 
     private TextureRegion[] frames(Entity entity) {
         var animation = Animation2D.MAPPER.get(entity);
-        var equipment = Loadout.MAPPER.get(entity).getEquipment();
-        var weapon = Combat.MAPPER.get(entity).getCurrentWeapon();
+        var loadout = Loadout.MAPPER.get(entity);
+        var equipment = loadout.getEquipment();
+        var weapon = loadout.getWeapon();
         String[] prefixes = {"", equipment.feet(), equipment.body(), equipment.head(), equipment.hands(), weapon.atlasKey()};
         String suffix = animation.getAction() + "_" + animation.getFdirection().atlasKey;
         int frame = animation.getFrameIndex();
         var result = new TextureRegion[6];
         for (int layer = 0; layer < 6; layer++) {
-            if (layer == 5 && Loadout.MAPPER.get(entity).getWeaponId() == null) { continue; }
+            if (layer == 5 && loadout.getWeaponId() == null) { continue; }
             Set<String> actions = layer == 5
                 ? new HashSet<>(List.of("idle", "walk", "death", weapon.primary().animation().action(), weapon.secondary().animation().action()))
                 : ACTIONS;

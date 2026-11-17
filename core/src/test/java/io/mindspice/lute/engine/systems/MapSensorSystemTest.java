@@ -36,6 +36,7 @@ import io.mindspice.lute.engine.components.CombatWeapon;
 import io.mindspice.lute.engine.components.Facing;
 import io.mindspice.lute.engine.components.Health;
 import io.mindspice.lute.engine.components.Hurtbox;
+import io.mindspice.lute.engine.components.Loadout;
 import io.mindspice.lute.engine.data.json.CharacterBounds;
 import io.mindspice.lute.engine.components.Physic;
 import io.mindspice.lute.engine.components.Player;
@@ -320,7 +321,9 @@ public final class MapSensorSystemTest {
             var weapon = new CombatWeapon.Weapon("test", "melee/test", attack, attack);
             var animation = new Animation2D("unused", "unused", Animation2D.AnimationType.IDLE,
                 Animation.PlayMode.NORMAL, 1, .125f);
-            player.add(new Combat(weapon)).add(animation);
+            player.add(new Combat()).add(animation)
+                .add(new Loadout(new Loadout.Equipment("basic", "basic", "basic", "basic"), "test",
+                    Map.of("test", weapon), equipment -> {}));
             Facing.MAPPER.get(player).setDirection(Facing.Direction.RIGHT);
             Combat.MAPPER.get(player).requestAttack(Combat.AttackSlot.PRIMARY);
             game.combat.update(0);

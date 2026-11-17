@@ -44,6 +44,14 @@
 - **Affected specifications:** This decision extends the existing logical-key asset contract; `docs/asset-service.md` describes the boundaries.
 - **Review timing:** Revisit if asset ownership or equipment loading changes.
 
+## Loadout and combat ownership
+
+- **Decision:** `Loadout` owns equipped equipment and weapon selection, with its immutable per-entity catalogue and equipment validator. `Combat` owns pending and active attack state and the active attack snapshot, sensor, and hits; neither selection nor a `Combat` reference belongs in the other component. `LoadoutSystem` coordinates guarded switches, rejecting pending or active combat before selection validation or mutation. Combat is optional for loadout switching and rendering; the compositor reads the loadout directly.
+- **Justification and tradeoff:** Separating equipped items from attack state lets passive and rendering-only entities use loadouts without dummy combat state. Component setters still validate selections but do not enforce the combat guard, so guarded gameplay callers must use the system. The existing catalogue and validator remain in `Loadout` rather than changing the asset-validation architecture.
+- **Affected specifications:** [Composite Characters](composite-characters.md); usage appears in `docs/asset-service.md`.
+- **Source:** User-directed PR #15 ownership correction.
+- **Review timing:** Revisit if equipment or attack ownership changes.
+
 ## Composite character rendering
 
 - **Decision:** Compose the base character, equipped head, body, hands, feet, and weapon into an offscreen cell per visible character. Back to front, UP uses weapon, base, feet, body, hands, head; DOWN, LEFT, and RIGHT use base, feet, body, hands, head, weapon. An unarmed character omits the weapon. Batch source layers by their actual atlas texture page while preserving that order, then render each completed character as one world-depth-sorted sprite alongside ordinary objects. Preserve transparent edges with correct premultiplied-alpha handling.

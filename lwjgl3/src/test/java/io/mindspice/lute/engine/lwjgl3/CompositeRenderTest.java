@@ -38,6 +38,7 @@ public final class CompositeRenderTest extends ApplicationAdapter {
     private FrameBuffer output;
     private RenderSystem renderer;
     private Engine engine;
+    private final LoadoutSystem loadouts = new LoadoutSystem();
     private OrthographicCamera camera;
     private FitViewport viewport;
     private final Map<String, CombatWeapon.Weapon> weapons = Map.of(
@@ -82,12 +83,13 @@ public final class CompositeRenderTest extends ApplicationAdapter {
         output = new FrameBuffer(Pixmap.Format.RGBA8888, 128, 128, false);
         renderer = new RenderSystem(batch, viewport, camera, assets);
         engine = new Engine();
+        engine.addSystem(loadouts);
         engine.addSystem(renderer);
         Entity a = character(16, 16, 1);
         engine.addEntity(a);
         for (var direction : Facing.Direction.values()) {
             for (String action : List.of("idle", "walk", "death", "slash", "jab", "shot")) {
-                Loadout.MAPPER.get(a).equipWeapon(action.equals("shot") ? "bow" : "sword");
+                loadouts.equipWeapon(a, action.equals("shot") ? "bow" : "sword");
                 for (int frame = 0; frame < 8; frame++) {
                     playback(a, action, direction, frame);
                     try (var image = renderFrame()) {
@@ -102,7 +104,7 @@ public final class CompositeRenderTest extends ApplicationAdapter {
                 }
             }
         }
-        Loadout.MAPPER.get(a).equipWeapon(null);
+        loadouts.equipWeapon(a, null);
         for (var direction : Facing.Direction.values()) {
             for (String action : List.of("idle", "walk", "jab", "death")) {
                 for (int frame = 0; frame < 8; frame++) {
@@ -115,10 +117,10 @@ public final class CompositeRenderTest extends ApplicationAdapter {
             }
         }
         playback(a, "idle", Facing.Direction.DOWN, 0);
-        Loadout.MAPPER.get(a).equipWeapon("bow");
-        Loadout.MAPPER.get(a).equip(new Loadout.Equipment("alternate", "alternate", "alternate", "alternate"));
+        loadouts.equipWeapon(a, "bow");
+        loadouts.equip(a, new Loadout.Equipment("alternate", "alternate", "alternate", "alternate"));
         try (var image = renderFrame()) { pixel(image, 34, 24, alternate(color(2, Facing.Direction.DOWN.ordinal(), 0)), "equipment switch invalidates selection"); }
-        Loadout.MAPPER.get(a).equip(new Loadout.Equipment("basic", "basic", "basic", "basic"));
+        loadouts.equip(a, new Loadout.Equipment("basic", "basic", "basic", "basic"));
         var replacement = atlas(2, true);
         assets.atlases.put(CharacterAssets.BODY.id(), replacement);
         try (var image = renderFrame()) { pixel(image, 34, 24, alternate(color(2, Facing.Direction.DOWN.ordinal(), 0)), "atlas identity replacement"); }
@@ -550,9 +552,9 @@ public final class CompositeRenderTest extends ApplicationAdapter {
 
     private Entity character(float x, float y, int z) {
         var entity = ordinary(x, y, z, 0);
-        var combat = new Combat(weapons.get("sword"));
-        entity.add(new CompositeCharacter(128, 128)).add(combat)
-            .add(new Loadout(new Loadout.Equipment("basic", "basic", "basic", "basic"), combat, weapons, equipment -> {}));
+        entity.add(new CompositeCharacter(128, 128))
+            .add(new Loadout(new Loadout.Equipment("basic", "basic", "basic", "basic"), "sword", weapons, equipment -> {}));
+        require(Combat.MAPPER.get(entity) == null, "Rendering and loadout switching do not require combat state");
         var animation = new Animation2D(CharacterAssets.CHARACTER.id(), "", Animation2D.AnimationType.IDLE, Animation.PlayMode.LOOP, 1, 0.1f);
         entity.add(animation);
         playback(entity, "idle", Facing.Direction.DOWN, 0);

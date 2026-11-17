@@ -34,6 +34,7 @@ import io.mindspice.lute.engine.singletons.GameConsts;
 import io.mindspice.lute.engine.systems.CharacterCompositor;
 import io.mindspice.lute.engine.systems.RenderSystem;
 import io.mindspice.lute.engine.systems.ControllerSystem;
+import io.mindspice.lute.engine.systems.LoadoutSystem;
 import io.mindspice.lute.engine.systems.EventSystem;
 import io.mindspice.lute.engine.systems.TiledSystem;
 import io.mindspice.lute.engine.tiled.ManifestLoader;
@@ -60,6 +61,7 @@ public final class CompositeGameTest {
         GAME.resize(Gdx.graphics.getWidth(), Gdx.graphics.getHeight());
         Engine engine = GAME.getEngine();
         require(engine.getSystem(EventSystem.class) != null, "GameScreen installs the genuine EventSystem");
+        require(engine.getSystem(LoadoutSystem.class) != null, "GameScreen installs the loadout coordinator");
         require(engine.getSystem(TiledSystem.class).getCurrentMap() == null, "Map is not loaded before InitialLoading runs");
         require(engine.getEntitiesFor(Family.all(Player.class).get()).size() == 0, "Factory has not spawned the player early");
 
@@ -93,9 +95,9 @@ public final class CompositeGameTest {
         }
         try (var layers = new LayerCheck()) {
             for (String weapon : List.of("basic_sword", "basic_bow", "unarmed")) {
-                require(loadout.equipWeapon(weapon.equals("unarmed") ? null : weapon), "Switch idle weapon: " + weapon);
-                require(loadout.equip(BASIC), "Re-equip validated real equipment: " + weapon);
-                require(weapon.equals(Combat.MAPPER.get(player).getCurrentWeapon().id()), "Combat receives switched weapon");
+                require(loadouts().equipWeapon(player, weapon.equals("unarmed") ? null : weapon), "Switch idle weapon: " + weapon);
+                require(loadouts().equip(player, BASIC), "Re-equip validated real equipment: " + weapon);
+                require(weapon.equals(loadout.getWeapon().id()), "Loadout owns switched weapon");
                 require((loadout.getWeaponId() == null) == weapon.equals("unarmed"), "Unarmed has no visible weapon");
                 for (Facing.Direction direction : Facing.Direction.values()) {
                     int key = movementKey(direction);
@@ -130,8 +132,8 @@ public final class CompositeGameTest {
                 fixture.setFilterData(filter);
             });
         }
-        require(loadout.equipWeapon("basic_sword"), "Restore sword after gameplay coverage");
-        require(loadout.equip(BASIC), "Restore basic equipment");
+        require(loadouts().equipWeapon(player, "basic_sword"), "Restore sword after gameplay coverage");
+        require(loadouts().equip(player, BASIC), "Restore basic equipment");
         engine.update(0f);
     }
 
@@ -158,7 +160,7 @@ public final class CompositeGameTest {
         Combat combat = Combat.MAPPER.get(player);
         Loadout loadout = Loadout.MAPPER.get(player);
         Animation2D animation = Animation2D.MAPPER.get(player);
-        var weapon = combat.getCurrentWeapon();
+        var weapon = loadout.getWeapon();
         var expected = slot == Combat.AttackSlot.PRIMARY ? weapon.primary() : weapon.secondary();
         boolean shot = weapon.id().equals("basic_bow") && slot == Combat.AttackSlot.PRIMARY;
         require(expected.animation().action().equals(slot == Combat.AttackSlot.SECONDARY || weapon.id().equals("unarmed")
@@ -177,10 +179,10 @@ public final class CompositeGameTest {
             Gdx.input.getInputProcessor().keyDown(key);
             engine.getSystem(ControllerSystem.class).update(0f);
             require(combat.hasAttackRequest(), "Actual keyDown reaches controller request: " + key);
-            blockedLoadout(loadout, weapon);
+            blockedLoadout(player, weapon);
             engine.update(0f);
             require(combat.isAttacking() && combat.getActiveAttack() == expected, "Combat snapshots selected attack");
-            blockedLoadout(loadout, weapon);
+            blockedLoadout(player, weapon);
             Gdx.input.getInputProcessor().keyUp(key);
             engine.update(0f);
             require(animation.isAttackReady() && animation.getAction().equals(expected.animation().action()),
@@ -232,9 +234,15 @@ public final class CompositeGameTest {
         }
     }
 
-    private static void blockedLoadout(Loadout loadout, CombatWeapon.Weapon weapon) {
-        require(!loadout.equip(BASIC), "Equipment change rejected while attack is queued/active");
-        require(!loadout.equipWeapon("basic_sword") && !loadout.equipWeapon("basic_bow") && !loadout.equipWeapon(null),
+    private static LoadoutSystem loadouts() {
+        return GAME.getEngine().getSystem(LoadoutSystem.class);
+    }
+
+    private static void blockedLoadout(Entity player, CombatWeapon.Weapon weapon) {
+        var loadout = Loadout.MAPPER.get(player);
+        require(!loadouts().equip(player, BASIC), "Equipment change rejected while attack is queued/active");
+        require(!loadouts().equipWeapon(player, "basic_sword") && !loadouts().equipWeapon(player, "basic_bow")
+            && !loadouts().equipWeapon(player, null),
             "Sword, bow and unarmed changes rejected while attack is queued/active");
         require(loadout.getEquipment().equals(BASIC), "Rejected switch preserves equipment");
         require((loadout.getWeaponId() == null ? "unarmed" : loadout.getWeaponId()).equals(weapon.id()),
@@ -349,7 +357,7 @@ public final class CompositeGameTest {
             Animation2D animation = Animation2D.MAPPER.get(player);
             Loadout loadout = Loadout.MAPPER.get(player);
             var equipment = loadout.getEquipment();
-            var weapon = Combat.MAPPER.get(player).getCurrentWeapon();
+            var weapon = loadout.getWeapon();
             String suffix = animation.getAction() + "_" + animation.getFdirection().atlasKey;
             int index = animation.getFrameIndex();
             var definitions = List.of(CharacterAssets.CHARACTER, CharacterAssets.FEET, CharacterAssets.BODY,
@@ -476,7 +484,7 @@ public final class CompositeGameTest {
             worldEngine.removeAllEntities();
             worldEngine.addEntity(new Entity().add(transform).add(Graphic.MAPPER.get(player))
                 .add(CompositeCharacter.MAPPER.get(player)).add(Animation2D.MAPPER.get(player))
-                .add(Loadout.MAPPER.get(player)).add(Combat.MAPPER.get(player)));
+                .add(Loadout.MAPPER.get(player)));
             actual.begin();
             ScreenUtils.clear(0f, 0f, 0f, 0f);
             final Pixmap image;
@@ -526,7 +534,7 @@ public final class CompositeGameTest {
             var atlas = GAME.getAssetService().get(TextureAtlas.class, CharacterAssets.CHARACTER.id());
             var loadout = Loadout.MAPPER.get(player);
             for (String weapon : List.of("basic_sword", "basic_bow", "unarmed")) {
-                require(loadout.equipWeapon(weapon.equals("unarmed") ? null : weapon), "Death pose selects existing weapon layers");
+                require(loadouts().equipWeapon(player, weapon.equals("unarmed") ? null : weapon), "Death pose selects existing weapon layers");
                 for (var direction : Facing.Direction.values()) {
                     var sequence = atlas.findRegions("death_" + direction.atlasKey);
                     require(sequence.size == 8, "Every death facing retains all authored frames");
@@ -536,7 +544,7 @@ public final class CompositeGameTest {
                         animation.configureAttack(new Animation2D.Attack("death", 1, .125f, 0, ""));
                         animation.setAnimation(new Animation<>(.125f, sequence, Animation.PlayMode.LOOP), direction);
                         animation.incAndGetStateTime(frame * .125f);
-                        var pose = new Entity().add(animation).add(loadout).add(Combat.MAPPER.get(player))
+                        var pose = new Entity().add(animation).add(loadout)
                             .add(Transform.MAPPER.get(player)).add(CompositeCharacter.MAPPER.get(player))
                             .add(new Graphic(sequence.get(frame), Graphic.MAPPER.get(player).getColor()));
                         check(pose);
