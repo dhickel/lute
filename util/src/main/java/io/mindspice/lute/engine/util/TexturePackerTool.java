@@ -26,6 +26,7 @@ import java.util.regex.Pattern;
 public final class TexturePackerTool {
     private static final Pattern INDEXED_IMAGE = Pattern.compile("(.+)_([0-9]+)$");
     private static final String OWNERSHIP = ".runtime-assets-owned";
+    private static final List<String> EQUIPMENT_SLOTS = List.of("body", "head", "feet", "hands");
 
     public static void main(String[] args) throws IOException {
         if (args.length < 2 || args.length > 3 || (args.length == 3 && !args[2].equals("--adopt-identical"))) {
@@ -289,15 +290,19 @@ public final class TexturePackerTool {
 
     private static void generateSprites(Path sprites, Path stage) throws IOException {
         if (!Files.exists(sprites)) { return; }
-        for (String required : List.of("character", "body/basic", "head/basic", "feet/basic", "hands/basic",
+        for (String required : List.of("character", "equipment/basic/body", "equipment/basic/head",
+                "equipment/basic/feet", "equipment/basic/hands",
                 "weapons/melee/basic_sword", "weapons/ranged/basic_bow")) {
             Path directory = sprites.resolve(required);
             if (!Files.isDirectory(directory) || spriteImages(directory).isEmpty()) {
                 throw new IllegalArgumentException("Missing or empty required sprite input: " + directory);
             }
         }
+        Path equipment = sprites.resolve("equipment");
+        Path groupedEquipment = groupEquipmentSprites(equipment, stage.getParent());
         for (String name : List.of("character", "body", "head", "feet", "hands", "weapons")) {
-            Path input = sprites.resolve(name);
+            boolean equipmentSlot = EQUIPMENT_SLOTS.contains(name);
+            Path input = (equipmentSlot ? groupedEquipment : sprites).resolve(name);
             var settings = new TexturePacker.Settings();
             settings.rotation = false;
             settings.stripWhitespaceX = false;
@@ -307,7 +312,7 @@ public final class TexturePackerTool {
             settings.useIndexes = true;
             settings.alias = false;
             settings.ignoreBlankImages = false;
-            Path config = input.resolve("pack.json");
+            Path config = (equipmentSlot ? equipment : input).resolve("pack.json");
             if (Files.exists(config)) {
                 settings = new Json().fromJson(TexturePacker.Settings.class, new FileHandle(config.toFile()));
             }
@@ -325,6 +330,23 @@ public final class TexturePackerTool {
                 requireRegion(atlas, relative, image.getWidth(), image.getHeight());
             }
         }
+    }
+
+    private static Path groupEquipmentSprites(Path equipment, Path transaction) throws IOException {
+        Path grouped = Files.createTempDirectory(transaction, "equipment-");
+        try (var sets = Files.list(equipment)) {
+            for (Path set : sets.filter(Files::isDirectory).sorted().toList()) {
+                try (var slots = Files.list(set)) {
+                    for (Path slot : slots.filter(Files::isDirectory).sorted().toList()) {
+                        if (!EQUIPMENT_SLOTS.contains(slot.getFileName().toString())) {
+                            throw new IllegalArgumentException("Unknown equipment slot: " + slot);
+                        }
+                        copyTree(slot, grouped.resolve(slot.getFileName()).resolve(set.getFileName()));
+                    }
+                }
+            }
+        }
+        return grouped;
     }
 
     private static List<Path> spriteImages(Path input) throws IOException {

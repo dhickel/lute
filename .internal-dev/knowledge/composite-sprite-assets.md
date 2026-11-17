@@ -5,7 +5,7 @@ Raw sprite inventory and composition rendering constraints.
 
 ## Source References
 - `raw_assets/sprites/character`
-- `raw_assets/sprites/{head,body,hands,feet}/basic`
+- `raw_assets/sprites/equipment/basic/{head,body,hands,feet}`
 - `raw_assets/sprites/weapons/{melee/basic_sword,ranged/basic_bow}`
 - `../specifications/composite-characters.md`
 - `../specifications/decisions.md`
@@ -21,7 +21,7 @@ The user corrected the assumption that a 128×128 canvas is a 128×128 logical c
 
 The accepted initial player bounds separate a 24×10 feet collision ellipse from a 32×50 persistent damage-sensor ellipse. Check that map triggers use feet rather than the hurtbox, attack sensors hit the hurtbox rather than solids for explicit hurtbox targets, and generic full-sprite fallback remains intact. Focused automated validation passed; these fitted bounds still need live user review. See the [canvas and hitboxes validation report](../reviews/2026-11-16-character-canvas-hitboxes-validation.md) for final gate evidence.
 
-Character atlas region names are flat, such as `idle_down` and `slash_up`. Equipment regions use an item prefix, such as `basic/shot_up`; weapon regions include their category and item prefix, such as `ranged/basic_bow/jab_up`. Cast is not required by runtime layer validation.
+Character atlas region names are flat, such as `idle_down` and `slash_up`. Equipment sources are set-first at `equipment/<set>/<slot>/`, but generation stages them by slot and set so the four separate equipment atlases retain item-prefixed regions such as `basic/shot_up`. The basic set requires all four slots; unknown slots and nested `pack.json` overrides are rejected. Optional `equipment/pack.json` settings apply to all four equipment atlases. Weapon regions include their category and item prefix, such as `ranged/basic_bow/jab_up`. Cast is not required by runtime layer validation.
 
 Required primitive JSON fields must use `required = true`: zero is a legitimate bounds coordinate, but an omitted field must not silently become zero.
 

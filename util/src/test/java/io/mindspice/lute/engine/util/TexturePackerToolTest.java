@@ -106,14 +106,15 @@ public final class TexturePackerToolTest {
         Path output = directory.resolve("assets");
         createInputs(raw);
         createMap(raw, "alpha");
-        String[] inputs = {"character", "body/basic", "head/basic", "feet/basic", "hands/basic",
-            "weapons/melee/basic_sword", "weapons/ranged/basic_bow"};
+        String[] inputs = {"character", "equipment/basic/body", "equipment/basic/head",
+            "equipment/basic/feet", "equipment/basic/hands", "equipment/iron/body", "equipment/iron/head",
+            "equipment/iron/feet", "equipment/iron/hands", "weapons/melee/basic_sword", "weapons/ranged/basic_bow"};
         for (String input : inputs) {
             Path folder = raw.resolve("sprites").resolve(input);
             Files.createDirectories(folder);
             for (int index = 0; index < 2; index++) {
                 var image = new BufferedImage(12, 10, BufferedImage.TYPE_INT_ARGB);
-                if (index == 0) { image.setRGB(3, 4, 0xff336699); }
+                if (index == 0) { image.setRGB(3, 4, 0xff000000 | (input.hashCode() & 0x00ffffff)); }
                 ImageIO.write(image, "png", folder.resolve("idle_down_0" + index + ".png").toFile());
             }
         }
@@ -128,10 +129,11 @@ public final class TexturePackerToolTest {
         for (String name : new String[]{"character", "body", "head", "feet", "hands", "weapons"}) {
             var atlas = new TextureAtlasData(new FileHandle(output.resolve("atlases/" + name + ".atlas").toFile()),
                 new FileHandle(output.resolve("atlases").toFile()), false);
-            check(atlas.getRegions().size == (name.equals("weapons") ? 4 : 2), "Every sprite frame must be packed");
+            check(atlas.getRegions().size == (name.equals("character") ? 2 : 4), "Every sprite frame must be packed");
             for (var region : atlas.getRegions()) {
                 String prefix = name.equals("character") ? "" : name.equals("weapons")
-                    ? (region.name.startsWith("melee/") ? "melee/basic_sword/" : "ranged/basic_bow/") : "basic/";
+                    ? (region.name.startsWith("melee/") ? "melee/basic_sword/" : "ranged/basic_bow/")
+                    : (region.name.startsWith("iron/") ? "iron/" : "basic/");
                 check(region.name.equals(prefix + "idle_down") && (region.index == 0 || region.index == 1),
                     "Sprite names and indexes must retain relative equipment paths");
                 check(!region.rotate && region.width == 12 && region.height == 10
@@ -141,8 +143,13 @@ public final class TexturePackerToolTest {
             for (var region : atlas.getRegions()) {
                 var pageImage = ImageIO.read(region.page.textureFile.file());
                 check(pageImage.getRGB(region.left, region.top) == 0, "Retain transparent border pixels");
-                check(pageImage.getRGB(region.left + 3, region.top + 4) == (region.index == 0 ? 0xff336699 : 0),
-                    "Retain pixel orientation and fully transparent indexed frames");
+                String sourceDirectory = name.equals("character") ? "character" : name.equals("weapons")
+                    ? "weapons/" + region.name.substring(0, region.name.lastIndexOf('/'))
+                    : "equipment/" + region.name.substring(0, region.name.indexOf('/')) + "/" + name;
+                var sourceImage = ImageIO.read(raw.resolve("sprites").resolve(sourceDirectory)
+                    .resolve("idle_down_0" + region.index + ".png").toFile());
+                check(pageImage.getRGB(region.left + 3, region.top + 4) == sourceImage.getRGB(3, 4),
+                    "Retain each set and slot's pixels, orientation and transparent indexed frames");
             }
             for (var page : atlas.getPages()) {
                 check(page.textureFile.exists(), "All atlas pages must be published");
@@ -152,7 +159,36 @@ public final class TexturePackerToolTest {
                     && hasRegion(atlas, "ranged/basic_bow/idle_down", 1), "Melee and ranged must share weapons atlas");
             }
             if (name.equals("character")) { check(atlas.getPages().size == 2, "Force multipage sprite output"); }
+            if (!name.equals("character") && !name.equals("weapons")) {
+                check(hasRegion(atlas, "basic/idle_down", 0) && hasRegion(atlas, "iron/idle_down", 1),
+                    "Gather every equipment set into its slot atlas without changing region keys");
+            }
         }
+        Path equipmentSettings = raw.resolve("sprites/equipment/pack.json");
+        Files.writeString(equipmentSettings, settings);
+        TexturePackerTool.generate(raw, output);
+        check(Files.exists(output.resolve("atlases/head4.png")), "Gathered equipment must support multiple pages");
+        Files.writeString(equipmentSettings, settings.replace("16", "64"));
+        TexturePackerTool.generate(raw, output);
+        check(!Files.exists(output.resolve("atlases/head2.png")), "Remove stale gathered equipment pages");
+        Files.delete(equipmentSettings);
+        TexturePackerTool.generate(raw, output);
+        var validEquipment = snapshot(output);
+        Path unknownSlot = raw.resolve("sprites/equipment/basic/boots");
+        Files.createDirectories(unknownSlot);
+        rejects(() -> TexturePackerTool.generate(raw, output));
+        check(snapshot(output).equals(validEquipment), "Unknown slot must fail without publishing partial atlases");
+        Files.delete(unknownSlot);
+        Path nestedSettings = raw.resolve("sprites/equipment/basic/head/pack.json");
+        Files.writeString(nestedSettings, "{}");
+        rejects(() -> TexturePackerTool.generate(raw, output));
+        check(snapshot(output).equals(validEquipment), "Reject nested equipment packing overrides safely");
+        Files.delete(nestedSettings);
+        Path basicHead = raw.resolve("sprites/equipment/basic/head");
+        Files.move(basicHead, raw.resolve("sprites/equipment/iron/missing-basic-head"));
+        rejects(() -> TexturePackerTool.generate(raw, output));
+        check(snapshot(output).equals(validEquipment), "Missing required basic slot must preserve outputs");
+        Files.move(raw.resolve("sprites/equipment/iron/missing-basic-head"), basicHead);
         check(!Files.exists(output.resolve("sprites")), "Runtime sprites must use only atlases");
         var initial = snapshot(output);
         createMap(raw, "character2");
