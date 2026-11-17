@@ -2,7 +2,7 @@
 
 ## Current gameplay flow
 
-The canonical implementation is `io.mindspice.lute.engine.input`. `GameCore.create()` creates one shared `InputManager`, binds W/S/A/D to `MOVE_UP`/`MOVE_DOWN`/`MOVE_LEFT`/`MOVE_RIGHT` in its `InputMap` and installs the manager in its existing LibGDX `InputMultiplexer`.
+The canonical implementation is `io.mindspice.lute.engine.input`. After loading game settings, `GameCore.create()` loads `input.setting.json` through `InputSettings`, creates one shared `InputManager` from the resulting `InputMap`, and installs it in the LibGDX `InputMultiplexer`. Invalid or missing input settings fail startup rather than falling back to hard-coded bindings.
 
 ```text
 LibGDX → InputMultiplexer → InputManager → InputMap / KeyManager
@@ -47,6 +47,10 @@ States are 1 for down and 0 for up. Unmapped keys and keyboard `Input.Keys.UNKNO
 Each physical slot tracks down state and its accepted action. Duplicate downs and unmatched or late ups are suppressed. Direct repeat state 2 is delivered only while the logical press remains held. A synthetic release leaves the physical slot down until its real up, so repeats cannot reactivate it. A release uses the original action even after rebinding. Separate bindings to the same action produce separate down/up pairs, not per-action aggregation; consumers must account for that binding policy.
 
 ## Bindings
+
+Author `assets/input.setting.json` with exactly two object sections, `keyboard` and `controller`; either map may be empty. Each value must be an exact, case-sensitive `InputAction` enum name. Keyboard keys are case-sensitive LibGDX display names accepted by `Input.Keys.valueOf`, not Java constant names: for example, use `Space` and `L-Shift`, not `SPACE` or `SHIFT_LEFT`. Unknown keys and malformed or duplicate entries fail loading.
+
+The supplied keyboard bindings map W/S/A/D to movement, `Space` to `ATTACK_PRIMARY`, and `L-Shift` and `R-Shift` to `ATTACK_SECONDARY`. Controller defaults use logical `DPAD_UP`, `DPAD_DOWN`, `DPAD_LEFT`, and `DPAD_RIGHT` identifiers for movement and `FACE_SOUTH`/`FACE_WEST` for primary/secondary attack. Controller identifiers must be nonblank and their actions valid, but they are data only: loading validates them without connecting them to runtime hardware. They are not mouse button codes. Changes take effect at startup; there is no hot reload or mouse configuration in this file.
 
 `InputMap` maintains independent fixed arrays for keyboard (`Input.Keys.MAX_KEYCODE + 1`) and buttons (`Input.Buttons.FORWARD + 1`, codes 0–4). Overlapping codes do not collide. Keyboard `UNKNOWN` can be mapped but its adapter events are ignored; mouse `LEFT` (0) works independently.
 

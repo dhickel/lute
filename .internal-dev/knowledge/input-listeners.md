@@ -16,6 +16,8 @@ Concrete input listeners and deferred consumption.
 
 `ControllerSystem` updates movement direction directly and does not emit `Event.Player.Moved`; the event type and `EventEmitter` participation remain. Historically, `ed4f952` emitted on presses and `8275ad8` removed that emission. An initial issue #6 fix restored it based on the old test, but the user explicitly approved keeping emission removed and correcting the stale assertion instead. Historical behavior and a test expectation do not override explicit user intent.
 
+The input regression JavaExec task otherwise defaults to the core module working directory. Tests that use repository-root assets need `rootProject.projectDir` as their working directory; `:core:inputSystemTest` is now configured accordingly.
+
 ## Project Relevance
 Register and drain the concrete caches when integrating input with gameplay or other consumers.
 

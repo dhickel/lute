@@ -9,6 +9,15 @@
 - **Source:** User-approved sensor and teleport work and the approved PR #12 shape contract.
 - **Review timing:** Revisit if sensor, spawn, or map-transition contracts change.
 
+## Input settings
+
+- **Decision:** Startup loads `assets/input.setting.json` after game settings and before creating the shared input manager. The file must contain exactly `keyboard` and `controller` object maps; either may be empty. Keyboard identifiers are case-sensitive LibGDX display names, and values in both maps are exact `InputAction` names. Invalid, duplicate, or missing data fails startup rather than falling back to hard-coded bindings.
+- **Controller scope:** Controller identifiers must be nonblank. The supplied logical D-pad and face south/west defaults are validated data only, not runtime hardware bindings. The file does not configure mouse input, add actions, or support hot reload.
+- **Justification and tradeoff:** Authored bindings replace hard-coded startup keys while retaining logical controller defaults without implying hardware support. Keyboard names follow LibGDX display names rather than Java constant names.
+- **Affected specifications:** This decision establishes the input settings contract; `docs/input-system.md` describes authoring and startup.
+- **Source:** User-directed input settings work.
+- **Review timing:** Revisit when controller hardware integration is implemented.
+
 ## Cache-only input listeners
 
 - **Decision:** `KeyListener` and `MouseListener` are concrete, independently owned input caches. Managers deliver to these caches, not immediate input listener callbacks. Controllers retain their own key queues. `ControllerSystem` updates movement direction directly without emitting `Event.Player.Moved`. Mouse position updates the latest cached position; selected buttons and scroll enter its queue.
