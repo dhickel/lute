@@ -72,6 +72,13 @@ public final class TexturePackerToolTest {
             Files.writeString(raw.resolve("maps/beta/objects/pack.json"), "{\"rotation\":true}");
             rejects(() -> TexturePackerTool.generate(raw, output));
             createMap(raw, "beta");
+            Path mapPacking = raw.resolve("maps/beta/objects/pack.json");
+            Files.writeString(mapPacking, Files.readString(mapPacking)
+                .replace("\"combineSubdirectories\":true", "\"combineSubdirectories\":false"));
+            rejects(() -> TexturePackerTool.generate(raw, output));
+            check(Files.readString(output.resolve("atlases/alpha.atlas")).equals(before),
+                "Map objects still require combined packing and must not publish on failure");
+            createMap(raw, "beta");
             Files.writeString(raw.resolve("maps/beta/objects/tree/pack.json"), "{\"rotation\":true}");
             rejects(() -> TexturePackerTool.generate(raw, output));
             Files.delete(raw.resolve("maps/beta/objects/tree/pack.json"));
@@ -130,6 +137,9 @@ public final class TexturePackerToolTest {
             var atlas = new TextureAtlasData(new FileHandle(output.resolve("atlases/" + name + ".atlas").toFile()),
                 new FileHandle(output.resolve("atlases").toFile()), false);
             check(atlas.getRegions().size == (name.equals("weapons") ? 2 : 1), "Every wide source canvas must be packed");
+            check(atlas.getPages().size == (name.equals("weapons") ? 2 : 1),
+                "Separate asset folders retain separate pages when each folder fits");
+            checkFolderIsolation(atlas);
             for (var region : atlas.getRegions()) {
                 check(region.width == 1100 && region.height == 32 && !region.rotate
                     && region.originalWidth == 1100 && region.originalHeight == 32,
@@ -164,7 +174,7 @@ public final class TexturePackerToolTest {
         Path characterSettings = raw.resolve("sprites/character/pack.json");
         String settings = """
             {"rotation":false,"stripWhitespaceX":false,"stripWhitespaceY":false,
-             "flattenPaths":false,"combineSubdirectories":true,"useIndexes":true,
+             "flattenPaths":false,"combineSubdirectories":false,"useIndexes":true,
              "alias":false,"ignoreBlankImages":false,"maxWidth":16,"maxHeight":16}
             """;
         Files.writeString(characterSettings, settings);
@@ -179,6 +189,10 @@ public final class TexturePackerToolTest {
             var atlas = new TextureAtlasData(new FileHandle(output.resolve("atlases/" + name + ".atlas").toFile()),
                 new FileHandle(output.resolve("atlases").toFile()), false);
             check(atlas.getRegions().size == (name.equals("character") ? 2 : 4), "Every sprite frame must be packed");
+            checkFolderIsolation(atlas);
+            if (!name.equals("character")) {
+                check(atlas.getPages().size == 2, "Each fitting equipment set or weapon occupies its own page");
+            }
             for (var region : atlas.getRegions()) {
                 String prefix = name.equals("character") ? "" : name.equals("weapons")
                     ? (region.name.startsWith("melee/") ? "melee/basic_sword/" : "ranged/basic_bow/")
@@ -219,10 +233,15 @@ public final class TexturePackerToolTest {
         check(Files.exists(output.resolve("atlases/head4.png")), "Gathered equipment must support multiple pages");
         Files.writeString(equipmentSettings, settings.replace("16", "64"));
         TexturePackerTool.generate(raw, output);
-        check(!Files.exists(output.resolve("atlases/head2.png")), "Remove stale gathered equipment pages");
+        check(Files.exists(output.resolve("atlases/head2.png")) && !Files.exists(output.resolve("atlases/head3.png")),
+            "Remove stale pages while retaining one page per fitting equipment set");
         Files.delete(equipmentSettings);
         TexturePackerTool.generate(raw, output);
         var validEquipment = snapshot(output);
+        Files.writeString(equipmentSettings, settings.replace("\"combineSubdirectories\":false", "\"combineSubdirectories\":true"));
+        rejects(() -> TexturePackerTool.generate(raw, output));
+        check(snapshot(output).equals(validEquipment), "Reject sprite folder mixing without publishing partial output");
+        Files.delete(equipmentSettings);
         Path unknownSlot = raw.resolve("sprites/equipment/basic/boots");
         Files.createDirectories(unknownSlot);
         rejects(() -> TexturePackerTool.generate(raw, output));
@@ -273,6 +292,18 @@ public final class TexturePackerToolTest {
             }
         }
         return result;
+    }
+
+    private static void checkFolderIsolation(TextureAtlasData atlas) {
+        for (var page : atlas.getPages()) {
+            var folders = new java.util.HashSet<String>();
+            for (var region : atlas.getRegions()) {
+                if (region.page != page) { continue; }
+                int slash = region.name.lastIndexOf('/');
+                folders.add(slash == -1 ? "" : region.name.substring(0, slash));
+            }
+            check(folders.size() == 1, "A page must not mix frames from different asset folders");
+        }
     }
 
     private static boolean hasRegion(TextureAtlasData atlas, String name, int index) {

@@ -214,6 +214,9 @@ public final class TexturePackerTool {
             }
         }
         var packSettings = new Json().fromJson(TexturePacker.Settings.class, new FileHandle(objects.resolve("pack.json").toFile()));
+        if (!packSettings.combineSubdirectories) {
+            throw new IllegalArgumentException("Map object packing must combine subdirectories: " + objects);
+        }
         var atlas = packAtlas(objects, stage, name, packSettings);
         Path runtimeMap = stage.resolve("maps").resolve(name);
         var xml = new XmlReader();
@@ -252,7 +255,7 @@ public final class TexturePackerTool {
     private static TextureAtlasData packAtlas(Path objects, Path stage, String name,
                                                TexturePacker.Settings packSettings) throws IOException {
         if (packSettings.rotation || packSettings.stripWhitespaceX || packSettings.stripWhitespaceY
-                || packSettings.flattenPaths || !packSettings.useIndexes || !packSettings.combineSubdirectories
+                || packSettings.flattenPaths || !packSettings.useIndexes
                 || packSettings.scale.length != 1 || packSettings.scale[0] != 1
                 || packSettings.scaleSuffix.length != 1 || !packSettings.scaleSuffix[0].isEmpty()) {
             throw new IllegalArgumentException("Object packing must preserve paths, indexes, dimensions and orientation: " + objects);
@@ -310,7 +313,7 @@ public final class TexturePackerTool {
             settings.stripWhitespaceX = false;
             settings.stripWhitespaceY = false;
             settings.flattenPaths = false;
-            settings.combineSubdirectories = true;
+            settings.combineSubdirectories = false;
             settings.useIndexes = true;
             settings.alias = false;
             settings.ignoreBlankImages = false;
@@ -318,8 +321,8 @@ public final class TexturePackerTool {
             if (Files.exists(config)) {
                 new Json().readFields(settings, new JsonReader().parse(new FileHandle(config.toFile())));
             }
-            if (settings.ignoreBlankImages) {
-                throw new IllegalArgumentException("Sprite packing must retain transparent frames: " + input);
+            if (settings.ignoreBlankImages || settings.combineSubdirectories) {
+                throw new IllegalArgumentException("Sprite packing must retain transparent frames and separate asset folders: " + input);
             }
             var atlas = packAtlas(input, stage, name, settings);
             for (Path file : spriteImages(input)) {
