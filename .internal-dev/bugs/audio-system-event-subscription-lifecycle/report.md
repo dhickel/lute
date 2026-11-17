@@ -1,7 +1,7 @@
 # AudioSystem event subscriptions outlive system removal and screen disposal
 
 ## Summary
-Historically, AudioSystem registered instance-capturing event consumers without unregistering them. The lifecycle repair is implemented, pending PR. GitHub: https://github.com/dhickel/lute/issues/8
+Historically, AudioSystem registered instance-capturing event consumers without unregistering them. The lifecycle repair is prepared for review; the issue remains open until PR merge. GitHub: https://github.com/dhickel/lute/issues/8
 
 ## Scope
 AudioSystem lifecycle and its registrations with the owning EventSystem. Other listener-owning systems are outside this report.
@@ -26,10 +26,10 @@ At the reported baseline, no audio cleanup or removal hook unregistered the cons
 If the EventSystem remains live after audio removal or replacement, old listeners retain the audio system and asset service and may perform stale playback or asset lookups. Normal startup duplication has not been demonstrated.
 
 ## Validation
-Focused `:core:audioSystemTest` passed 195 checks; map sensor tests passed 1,732 checks, and asset tests and compile passed. The independent branch retains the unrelated baseline input failure tracked in issue #6. Root independent gates and full integration have not yet run.
+The earlier senior focused `:core:audioSystemTest` run passed 195 checks; independent validation corrected identity-based deferred removal and added a test, bringing the final audio count to 196. Map sensor tests passed 1,732 checks, and asset tests and compile passed. All five independent phase gates passed. The final isolated union of #6, #8, #16, #17, and #18 passed unfiltered `./gradlew check` (22 tasks), including audio 196, input 1,286, and MapSensor 1,732. Separately, `DISPLAY=:0 ./gradlew :lwjgl3:gameScreenLifecycleTest :lwjgl3:compositeRenderTest` passed GL lifecycle 157, gameplay 15,815 checks and 480 comparisons, and synthetic 11,854. A separate normal generator run passed with 29 outputs. This combined pass does not imply sibling fixes are included on this branch: its independent branch retains the baseline input failure tracked in #6 and does not pass unfiltered without that fix.
 
 ## Status
-Implemented, pending PR; not closed or archived. Shared screen-system ownership in issue #16 is separate and is not fixed by this repair.
+The fix is prepared for review; the issue remains open until PR merge. Shared screen-system ownership in issue #16 is separate and is not fixed by this repair.
 
 ## Next Action
-Complete root independent validation and integration, then proceed with the PR.
+Retain this record until the PR is merged and the issue resolved.
