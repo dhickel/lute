@@ -126,11 +126,16 @@ public class CombatSystem extends IteratingSystem implements ContactListener, En
     }
 
     private void queueHit(Fixture sensor, Fixture target) {
-        if (sensor.getUserData() instanceof AttackSensor attack
-            && !target.isSensor() && target.getBody().getUserData() instanceof Entity entity
-            && entity != attack.attacker()) {
-            pendingHits.add(new Hit(attack.attacker(), entity, attack.attackId()));
+        if (!(sensor.getUserData() instanceof AttackSensor attack)
+            || !(target.getBody().getUserData() instanceof Entity entity) || entity == attack.attacker()) { return; }
+        boolean hurtbox = target.getUserData() == Hurtbox.INSTANCE;
+        if (!hurtbox) {
+            if (target.isSensor()) { return; }
+            for (var fixture : target.getBody().getFixtureList()) {
+                if (fixture.getUserData() == Hurtbox.INSTANCE) { return; }
+            }
         }
+        pendingHits.add(new Hit(attack.attacker(), entity, attack.attackId()));
     }
 
     @Override

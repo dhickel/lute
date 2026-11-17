@@ -9,7 +9,10 @@ public record PlayerData(
     @JsonAlias("max_health") int maxHealth,
     Loadout loadout,
     AnimationData animation,
-    Sounds sounds
+    Sounds sounds,
+    @JsonProperty("logical_size") LogicalSize logicalSize,
+    @JsonProperty("collision_bounds") CharacterBounds collisionBounds,
+    @JsonProperty("hitbox_bounds") CharacterBounds hitboxBounds
 ) {
     public PlayerData {
         if (!Float.isFinite(moveSpeed) || moveSpeed <= 0f || maxHealth <= 0
@@ -20,6 +23,25 @@ public record PlayerData(
             throw new IllegalArgumentException("Player animation atlas_key must be empty for the flat character atlas");
         }
         if (sounds == null) { throw new IllegalArgumentException("Player sounds are required"); }
+        if (logicalSize == null || collisionBounds == null || hitboxBounds == null) {
+            throw new IllegalArgumentException("Player logical size, collision bounds and hitbox bounds are required");
+        }
+        for (var bounds : new CharacterBounds[]{collisionBounds, hitboxBounds}) {
+            if (bounds.x2() > logicalSize.width() || bounds.y2() > logicalSize.height()) {
+                throw new IllegalArgumentException("Character bounds must fit the logical frame");
+            }
+        }
+    }
+
+    public record LogicalSize(
+        @JsonProperty(value = "width", required = true) float width,
+        @JsonProperty(value = "height", required = true) float height
+    ) {
+        public LogicalSize {
+            if (!Float.isFinite(width) || !Float.isFinite(height) || width <= 0 || height <= 0) {
+                throw new IllegalArgumentException("Logical sprite dimensions must be finite and positive");
+            }
+        }
     }
 
     public record Loadout(String head, String body, String hands, String feet,

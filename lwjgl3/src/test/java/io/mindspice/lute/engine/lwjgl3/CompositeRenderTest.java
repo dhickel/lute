@@ -61,7 +61,9 @@ public final class CompositeRenderTest extends ApplicationAdapter {
     @Override public void create() {
         try {
             CompositeGameTest.run();
-            runTests();
+            float previousUnit = GameConsts.UNIT_SCALE;
+            try { GameConsts.UNIT_SCALE = 1; runTests(); }
+            finally { GameConsts.UNIT_SCALE = previousUnit; }
         }
         catch (Throwable error) { failure = error; }
         finally { Gdx.app.exit(); }
@@ -84,7 +86,7 @@ public final class CompositeRenderTest extends ApplicationAdapter {
         Entity a = character(16, 16, 1);
         engine.addEntity(a);
         for (var direction : Facing.Direction.values()) {
-            for (String action : List.of("idle", "walk", "slash", "jab", "shot")) {
+            for (String action : List.of("idle", "walk", "death", "slash", "jab", "shot")) {
                 Loadout.MAPPER.get(a).equipWeapon(action.equals("shot") ? "bow" : "sword");
                 for (int frame = 0; frame < 8; frame++) {
                     playback(a, action, direction, frame);
@@ -137,6 +139,7 @@ public final class CompositeRenderTest extends ApplicationAdapter {
         alpha(a);
         stateRestoration();
         assetBoundary(a);
+        paddedCanvasAndPivot(a);
         growthAndCull(a);
         multipageTargets();
         renderer.dispose();
@@ -196,6 +199,40 @@ public final class CompositeRenderTest extends ApplicationAdapter {
         }
         engine.removeEntity(background);
         Graphic.MAPPER.get(a).getColor().set(Color.WHITE);
+    }
+
+    private void paddedCanvasAndPivot(Entity a) {
+        a.add(new Transform(new Vector2(32, 32), 1, new Vector2(64, 64), new Vector2(1, 1), 0, 0));
+        int expected = color(0, Facing.Direction.DOWN.ordinal(), 0);
+        try (var image = renderFrame()) {
+            pixel(image, 12, 64, expected, "left overhang retains native canvas pixels");
+            pixel(image, 116, 64, expected, "right overhang is not cropped to logical bounds");
+            pixel(image, 64, 116, expected, "top overhang retains full canvas height");
+            pixel(image, 64, 12, expected, "bottom overhang retains full canvas height");
+            pixel(image, 64, 64, color(5, Facing.Direction.DOWN.ordinal(), 0), "logical center and canvas pivot coincide");
+            pixel(image, 38, 64, 0, "full canvas is not naively downsampled into the logical 64px area");
+            screenshot(image, "/tmp/lute-canvas-native-padding.png");
+        }
+        a.add(new Transform(new Vector2(24, 28), 1, new Vector2(80, 72), new Vector2(1, 1), 0, 0));
+        try (var image = renderFrame()) {
+            pixel(image, 12, 64, expected, "A different configured logical size changes offset, not source scale");
+            pixel(image, 64, 64, color(5, Facing.Direction.DOWN.ordinal(), 0), "Future logical sizes retain the same centered canvas pivot");
+        }
+        a.add(new Transform(new Vector2(132, 32), 1, new Vector2(64, 64), new Vector2(1, 1), 0, 0));
+        try (var image = renderFrame()) {
+            pixel(image, 112, 64, expected, "visible overhang survives while logical body is entirely offscreen");
+        }
+        // The bottom canvas overhang rotates into view while the scaled logical body stays outside.
+        a.add(new Transform(new Vector2(132, 32), 1, new Vector2(64, 64), new Vector2(1.5f, 1), -90, 0));
+        try (var image = renderFrame()) {
+            pixel(image, 124, 64, expected, "rotation and nonuniform scale cull using the full visual canvas");
+            screenshot(image, "/tmp/lute-canvas-overhang-rotated.png");
+        }
+        a.add(new Transform(new Vector2(80, 32), 1, new Vector2(64, 64), new Vector2(-1, 1), 90, 0));
+        try (var image = renderFrame()) {
+            pixel(image, 48, 116, expected, "negative scale and rotation share the logical pivot");
+        }
+        a.add(new Transform(new Vector2(16, 16), 1, new Vector2(64, 64), new Vector2(1, 1), 0, 0));
     }
 
     private void growthAndCull(Entity a) {
@@ -369,7 +406,7 @@ public final class CompositeRenderTest extends ApplicationAdapter {
 
     private void multipageTargets() {
         GL20 previous = Gdx.gl, previous20 = Gdx.gl20;
-        int[] maximum = {132}, draws = {0};
+        int[] maximum = {260}, draws = {0};
         var sourceBinds = new ArrayList<Integer>();
         var sourceIds = new ArrayList<Integer>();
         for (var definition : List.of(CharacterAssets.CHARACTER, CharacterAssets.FEET, CharacterAssets.BODY,
@@ -399,7 +436,13 @@ public final class CompositeRenderTest extends ApplicationAdapter {
             Gdx.gl.glBindTexture(GL20.GL_TEXTURE_2D, 0);
             cells = new CharacterCompositor(assets);
             for (int i = 0; i < 10; i++) { characters.add(character(16, 16, 1)); }
+            cells.compose(List.of(characters.getFirst()), camera);
+            Texture smallTarget = cells.region(characters.getFirst()).getTexture();
+            draws[0] = 0;
+            sourceBinds.clear();
             cells.compose(characters, camera);
+            // The driver may immediately reuse the deleted GLuint for another target.
+            require(smallTarget.getTextureObjectHandle() == 0, "Growing 128px cells releases the smaller framebuffer texture");
             var targetTextures = new HashSet<Texture>();
             for (var entity : characters) { targetTextures.add(cells.region(entity).getTexture()); }
             require(targetTextures.size() == 3, "capacity exceeding texture budget allocates multiple targets");
@@ -421,18 +464,26 @@ public final class CompositeRenderTest extends ApplicationAdapter {
                     batch.setProjectionMatrix(new Matrix4().setToOrtho2D(0, 0, output.getWidth(), output.getHeight()));
                     batch.setBlendFunction(GL20.GL_ONE, GL20.GL_ONE_MINUS_SRC_ALPHA);
                     batch.begin();
-                    batch.draw(region, 0, 0, 64, 64);
+                    require(region.getRegionWidth() == 128 && region.getRegionHeight() == 128,
+                        "Every isolated cell retains the full 128px canvas");
+                    batch.draw(region, 0, 0);
                     batch.end();
-                    try (var image = new Image(Pixmap.createFromFrameBuffer(0, 0, 64, 64))) {
+                    try (var image = new Image(Pixmap.createFromFrameBuffer(0, 0, 128, 128))) {
                         var direction = i % 2 == 0 ? Facing.Direction.DOWN : Facing.Direction.UP;
-                        pixel(image, 32, 32, color(direction == Facing.Direction.UP ? 4 : 5, direction.ordinal(), i % 8), "distinct cell frame/orientation " + i);
-                        pixel(image, 1, 62, 0, "no adjacent cell leak " + i);
+                        pixel(image, 64, 64, color(direction == Facing.Direction.UP ? 4 : 5, direction.ordinal(), i % 8), "distinct cell frame/orientation " + i);
+                        pixel(image, 1, 126, 0, "no adjacent cell leak " + i);
+                        pixel(image, 12, 64, color(0, direction.ordinal(), i % 8), "cell preserves native overhang " + i);
                     }
                     Gdx.gl.glFramebufferTexture2D(GL20.GL_FRAMEBUFFER, GL20.GL_COLOR_ATTACHMENT0, GL20.GL_TEXTURE_2D, region.getTexture().getTextureObjectHandle(), 0);
                     int x = region.getRegionX() - 1;
                     int y = Math.round(Math.min(region.getV(), region.getV2()) * region.getTexture().getHeight()) - 1;
-                    try (var gutter = new Image(Pixmap.createFromFrameBuffer(x, y, 1, 1))) {
-                        pixel(gutter, 0, 0, 0, "isolating cell gutter " + i);
+                    try (var gutter = new Image(Pixmap.createFromFrameBuffer(x, y, 130, 130))) {
+                        for (int edge = 0; edge < 130; edge++) {
+                            pixel(gutter, edge, 0, 0, "bottom cell gutter " + i);
+                            pixel(gutter, edge, 129, 0, "top cell gutter " + i);
+                            pixel(gutter, 0, edge, 0, "left cell gutter " + i);
+                            pixel(gutter, 129, edge, 0, "right cell gutter " + i);
+                        }
                     }
                 } finally {
                     Gdx.gl.glFramebufferTexture2D(GL20.GL_FRAMEBUFFER, GL20.GL_COLOR_ATTACHMENT0, GL20.GL_TEXTURE_2D, output.getColorBufferTexture().getTextureObjectHandle(), 0);
@@ -441,7 +492,7 @@ public final class CompositeRenderTest extends ApplicationAdapter {
             }
             cells.compose(List.of(), camera);
             require(cells.region(characters.getFirst()) == null, "empty composition invalidates completed references");
-            maximum[0] = 65;
+            maximum[0] = 129;
             var finalCells = cells;
             requireThrows(() -> finalCells.compose(characters, camera), "unsupported texture budget fails clearly");
             var targetHandles = targetTextures.stream().map(Texture::getTextureObjectHandle).toList();
@@ -471,7 +522,7 @@ public final class CompositeRenderTest extends ApplicationAdapter {
     private Entity character(float x, float y, int z) {
         var entity = ordinary(x, y, z, 0);
         var combat = new Combat(weapons.get("sword"));
-        entity.add(new CompositeCharacter()).add(combat)
+        entity.add(new CompositeCharacter(128, 128)).add(combat)
             .add(new Loadout(new Loadout.Equipment("basic", "basic", "basic", "basic"), combat, weapons, equipment -> {}));
         var animation = new Animation2D(CharacterAssets.CHARACTER.id(), "", Animation2D.AnimationType.IDLE, Animation.PlayMode.LOOP, 1, 0.1f);
         entity.add(animation);
@@ -498,7 +549,7 @@ public final class CompositeRenderTest extends ApplicationAdapter {
             for (int frame = 0; frame < 8; frame++) {
                 int rgba = color(layer, direction.ordinal(), frame);
                 Texture texture = layerTexture(layer, changed ? alternate(rgba) : rgba);
-                for (String action : List.of("idle", "walk", "slash", "jab", "shot")) {
+                for (String action : List.of("idle", "walk", "death", "slash", "jab", "shot")) {
                     if (layer == 0) { add(atlas, action + "_" + direction.atlasKey, frame, texture); }
                     else if (layer == 5) {
                         if (!action.equals("shot")) { add(atlas, "melee/basic_sword/" + action + "_" + direction.atlasKey, frame, texture); }
@@ -509,7 +560,7 @@ public final class CompositeRenderTest extends ApplicationAdapter {
                 }
                 if (layer > 0 && layer < 5) {
                     Texture other = layerTexture(layer, alternate(rgba));
-                    for (String action : List.of("idle", "walk", "slash", "jab", "shot")) {
+                    for (String action : List.of("idle", "walk", "death", "slash", "jab", "shot")) {
                         add(atlas, "alternate/" + action + "_" + direction.atlasKey, frame, other);
                     }
                 }
@@ -523,13 +574,20 @@ public final class CompositeRenderTest extends ApplicationAdapter {
     }
 
     private Texture layerTexture(int layer, int rgba) {
-        var pixmap = new Pixmap(64, 64, Pixmap.Format.RGBA8888);
+        var pixmap = new Pixmap(128, 128, Pixmap.Format.RGBA8888);
         pixmap.setBlending(Pixmap.Blending.None);
         pixmap.setColor(rgba);
-        pixmap.fillRectangle(layer * 8, 48, 8, 12);
-        pixmap.fillRectangle(28, 28, 8, 8);
-        if (layer == 0) { pixmap.setColor(0xff000080); pixmap.fillRectangle(2, 56, 6, 6); }
-        if (layer == 1) { pixmap.setColor(0x0000ff80); pixmap.fillRectangle(4, 58, 2, 2); }
+        pixmap.fillRectangle(32 + layer * 8, 80, 8, 12);
+        pixmap.fillRectangle(60, 60, 8, 8);
+        if (layer == 0) {
+            pixmap.fillRectangle(8, 60, 8, 8);
+            pixmap.fillRectangle(112, 60, 8, 8);
+            pixmap.fillRectangle(60, 8, 8, 8);
+            pixmap.fillRectangle(60, 112, 8, 8);
+            pixmap.setColor(0xff000080);
+            pixmap.fillRectangle(34, 88, 6, 6);
+        }
+        if (layer == 1) { pixmap.setColor(0x0000ff80); pixmap.fillRectangle(36, 90, 2, 2); }
         var texture = new Texture(pixmap);
         textures.add(texture); pixmap.dispose();
         return texture;

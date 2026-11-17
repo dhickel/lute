@@ -65,6 +65,9 @@ public class AnimationSystem extends IteratingSystem implements EventEmitter {
     }
 
     public static void validateAttackFrames(Animation2D anim2d, TextureAtlas atlas) {
+        if (anim2d.getRequiredAttackFrames().isEmpty()) { return; }
+        var reference = atlas.findRegion(anim2d.regionKey("idle", Facing.Direction.RIGHT));
+        if (reference == null) { throw new IllegalArgumentException("Missing character reference canvas"); }
         for (var requirement : anim2d.getRequiredAttackFrames().entrySet()) {
             for (var direction : Facing.Direction.values()) {
                 var key = anim2d.regionKey(requirement.getKey(), direction);
@@ -73,11 +76,17 @@ public class AnimationSystem extends IteratingSystem implements EventEmitter {
                     throw new IllegalArgumentException("Attack animation has too few frames for " + key);
                 }
                 for (var frame : frames) {
-                    if (frame.getRegionWidth() != 64 || frame.getRegionHeight() != 64) {
-                        throw new IllegalArgumentException("Character frames must be 64x64: " + key);
-                    }
+                    validateCanvas(frame, reference.getRegionWidth(), reference.getRegionHeight(), key);
                 }
             }
+        }
+    }
+
+    static void validateCanvas(TextureAtlas.AtlasRegion frame, int width, int height, String key) {
+        if (width <= 0 || height <= 0 || frame.rotate || frame.offsetX != 0 || frame.offsetY != 0
+            || frame.getRegionWidth() != width || frame.getRegionHeight() != height
+            || frame.originalWidth != width || frame.originalHeight != height) {
+            throw new IllegalArgumentException("Character layers require aligned untrimmed canvases: " + key);
         }
     }
 

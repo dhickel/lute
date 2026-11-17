@@ -20,6 +20,8 @@ import io.mindspice.lute.engine.animation.AnimationState;
 import io.mindspice.lute.engine.assets.*;
 import io.mindspice.lute.engine.components.*;
 import io.mindspice.lute.engine.components.Transform;
+import io.mindspice.lute.engine.data.json.CharacterBounds;
+import io.mindspice.lute.engine.data.json.PlayerData;
 import io.mindspice.lute.engine.data.json.DataLoader;
 import io.mindspice.lute.engine.data.json.AnimationData;
 import io.mindspice.lute.engine.data.json.GameData;
@@ -54,6 +56,7 @@ public final class CombatSystemTest {
         attackSlotsAndLoadout();
         independentAttacksAndGeometry();
         contacts();
+        characterFixturesAndContacts();
         cleanup();
         geometryAndHealth();
         factoryIntegration();
@@ -328,6 +331,129 @@ public final class CombatSystemTest {
         }
     }
 
+    private static void characterFixturesAndContacts() {
+        var feet = new CharacterBounds(20, 4, 44, 14);
+        var standing = new CharacterBounds(16, 6, 48, 56);
+        var world = new World(Vector2.Zero, true);
+        try {
+            var definition = new BodyDef();
+            definition.type = BodyDef.BodyType.DynamicBody;
+            definition.fixedRotation = true;
+            var body = world.createBody(definition);
+            var physical = CharacterFixtures.ellipse(body, feet, false);
+            var hurtbox = CharacterFixtures.ellipse(body, standing, true);
+            hurtbox.setUserData(Hurtbox.INSTANCE);
+            ellipse(physical, feet, false);
+            ellipse(hurtbox, standing, true);
+            var wall = world.createBody(new BodyDef());
+            fixture(wall, 2, .05f, new Vector2(1, .75f), false);
+            body.setLinearVelocity(0, 1);
+            for (int i = 0; i < 10; i++) { world.step(STEP, 6, 2); }
+            near(10 * STEP, body.getPosition().y, "Upper hurtbox passes through solid scenery without blocking movement");
+            check(touching(hurtbox, wall.getFixtureList().first()), "Upper hurtbox actually overlaps the solid wall");
+            check(!touching(physical, wall.getFixtureList().first()), "Feet have not reached wall during hurtbox-only overlap");
+            for (int i = 0; i < 80; i++) { world.step(STEP, 6, 2); }
+            check(body.getPosition().y > .2f && body.getPosition().y < .3f, "Only feet stop the moving character at the wall");
+            check(touching(physical, wall.getFixtureList().first()), "Physical ellipse makes a real blocking contact");
+            near(0, body.getLinearVelocity().y, "Solid feet collider stops velocity");
+            world.destroyBody(body);
+            check(world.getBodyCount() == 1, "Body removal destroys both persistent fixtures safely");
+            rejects(() -> CharacterFixtures.ellipse(wall, new CharacterBounds(0, 0, .001f, .001f), false),
+                "Collapsed native ellipse");
+            rejects(() -> CharacterFixtures.ellipse(wall, new CharacterBounds(0, 0, 64, .001f), true),
+                "Extremely thin native ellipse");
+        } finally { world.dispose(); }
+        for (boolean feetOnly : new boolean[]{false, true}) {
+            try (var game = new Harness(1, 0, 0)) {
+                var target = game.target(0, false);
+                var targetBody = Physic.MAPPER.get(target).getBody();
+                targetBody.setTransform(.7f, 0, 0);
+                var physical = CharacterFixtures.ellipse(targetBody, feet, false);
+                var hurtbox = CharacterFixtures.ellipse(targetBody, standing, true);
+                hurtbox.setUserData(Hurtbox.INSTANCE);
+                var bounds = feetOnly ? new CombatWeapon.Bounds(32, 4, 72, 4.5f)
+                    : new CombatWeapon.Bounds(32, 24, 72, 56);
+                var attack = new CombatWeapon.Attack("test", 10, 0,
+                    new Animation2D.Attack("slash", 1, .125f, 0, "sound"), "hit", BoundsType.RECT, bounds, CollisionType.MELEE);
+                game.combat().setWeapon(new CombatWeapon.Weapon("test", "melee/test", attack, attack));
+                if (!feetOnly) {
+                    CharacterFixtures.ellipse(targetBody, standing, true).setUserData(Hurtbox.INSTANCE);
+                    fixture(targetBody, .08f, .08f, new Vector2(1, 1), false);
+                }
+                game.attack(); game.step();
+                var sensor = game.combat().getSensor();
+                check(touching(sensor, feetOnly ? physical : hurtbox), "Native attack reaches selected target fixture");
+                check(!touching(sensor, feetOnly ? hurtbox : physical), "Feet and upper hurtbox are independently placed");
+                near(100, Health.MAPPER.get(target).getCurrent(), "Hurtbox contact defers damage until unlocked update");
+                game.combatSystem.update(0);
+                near(feetOnly ? 100 : 90, Health.MAPPER.get(target).getCurrent(),
+                    feetOnly ? "Physical-only overlap does not damage explicit hurtbox targets" : "Upper-body hurtbox is damaged outside feet, once across duplicate fixtures");
+                game.step(); game.combatSystem.update(0);
+                near(feetOnly ? 100 : 90, Health.MAPPER.get(target).getCurrent(), "Persistent contacts cannot repeat damage");
+                game.finish();
+                check(targetBody.getFixtureList().contains(hurtbox, true) && hurtbox.getUserData() == Hurtbox.INSTANCE,
+                    "Attack cleanup leaves persistent tagged target hurtbox intact");
+                check(game.body().getFixtureList().size == 1, "Temporary attack fixture is removed independently");
+                if (!feetOnly) {
+                    game.attack(); game.step();
+                    game.engine.removeEntity(target);
+                    game.combatSystem.update(0);
+                    near(90, Health.MAPPER.get(target).getCurrent(), "Removed hurtbox target discards queued damage safely");
+                }
+            }
+        }
+        try (var game = new Harness(1, 0, 0)) {
+            var ownerHurtbox = CharacterFixtures.ellipse(game.body(), standing, true);
+            ownerHurtbox.setUserData(Hurtbox.INSTANCE);
+            var dead = game.target(0, false);
+            var scenery = game.target(0, false);
+            for (var entity : List.of(dead, scenery)) {
+                var body = Physic.MAPPER.get(entity).getBody();
+                body.setTransform(.7f, 0, 0);
+                CharacterFixtures.ellipse(body, standing, true).setUserData(Hurtbox.INSTANCE);
+            }
+            Health.MAPPER.get(dead).damage(100);
+            scenery.remove(Health.class);
+            var unrelatedSensor = game.target(1, true);
+            game.attack(); game.step(); game.combatSystem.update(0);
+            near(0, Health.MAPPER.get(dead).getCurrent(), "Dead tagged hurtbox remains immune");
+            near(100, Health.MAPPER.get(unrelatedSensor).getCurrent(), "Untagged sensors remain excluded beside explicit hurtboxes");
+            near(100, Health.MAPPER.get(game.player).getCurrent(), "Owner hurtbox never receives its own attack");
+            game.player.remove(Combat.class);
+            check(game.body().getFixtureList().size == 2 && game.body().getFixtureList().contains(ownerHurtbox, true),
+                "Removing combat cleans temporary attack, not the owner's persistent hurtbox");
+        }
+    }
+
+    private static boolean touching(Fixture first, Fixture second) {
+        for (var contact : first.getBody().getWorld().getContactList()) {
+            if (contact.isTouching() && ((contact.getFixtureA() == first && contact.getFixtureB() == second)
+                || (contact.getFixtureA() == second && contact.getFixtureB() == first))) { return true; }
+        }
+        return false;
+    }
+
+    private static void ellipse(Fixture fixture, CharacterBounds bounds, boolean sensor) {
+        check(fixture.isSensor() == sensor, "Character fixture sensor flag");
+        near(0, fixture.getFriction(), "Character fixture has no movement friction");
+        var shape = (PolygonShape) fixture.getShape();
+        check(shape.getVertexCount() == 8, "Ellipse uses eight native vertices");
+        var point = new Vector2();
+        for (int i = 0; i < 8; i++) {
+            float angle = i * com.badlogic.gdx.math.MathUtils.PI2 / 8;
+            float x = ((bounds.x1() + bounds.x2()) * .5f
+                + (bounds.x2() - bounds.x1()) * .5f * com.badlogic.gdx.math.MathUtils.cos(angle)) * GameConsts.UNIT_SCALE;
+            float y = ((bounds.y1() + bounds.y2()) * .5f
+                + (bounds.y2() - bounds.y1()) * .5f * com.badlogic.gdx.math.MathUtils.sin(angle)) * GameConsts.UNIT_SCALE;
+            boolean found = false;
+            for (int j = 0; j < 8; j++) {
+                shape.getVertex(j, point);
+                found |= point.dst2(x, y) < .0000001f;
+            }
+            check(found, "Authored local ellipse vertex is scaled exactly once: " + i);
+        }
+    }
+
     private static void cleanup() {
         for (int hitFrame : new int[]{0, 2}) {
             for (String removal : new String[]{"death", "entity", "combat", "animation", "system", "target"}) {
@@ -475,9 +601,46 @@ public final class CombatSystemTest {
                 cues = replaceAttack(cues, id, false, withCues(attacks.secondary(), 6, 7));
             }
             field.set(GameCore.INSTANCE, cues);
+            for (var logical : new PlayerData.LogicalSize[]{new PlayerData.LogicalSize(129, 64), new PlayerData.LogicalSize(64, 129)}) {
+                var original = data.playerData();
+                var invalid = new PlayerData(original.name(), original.moveSpeed(), original.maxHealth(), original.loadout(),
+                    original.animation(), original.sounds(), logical, original.collisionBounds(), original.hitboxBounds());
+                field.set(GameCore.INSTANCE, new GameData(invalid, data.weaponsData()));
+                rejects(() -> factory.getPlayerEntity(new Vector2(320, 640), map), "Logical dimensions must fit the loaded canvas");
+            }
+            for (boolean collision : new boolean[]{false, true}) {
+                var original = data.playerData();
+                var tiny = new CharacterBounds(0, 0, .001f, .001f);
+                var invalid = new PlayerData(original.name(), original.moveSpeed(), original.maxHealth(), original.loadout(),
+                    original.animation(), original.sounds(), original.logicalSize(),
+                    collision ? tiny : original.collisionBounds(), collision ? original.hitboxBounds() : tiny);
+                field.set(GameCore.INSTANCE, new GameData(invalid, data.weaponsData()));
+                int bodyCount = world.getBodyCount();
+                rejects(() -> factory.getPlayerEntity(new Vector2(320, 640), map), "Native-unsafe configured ellipse is rejected in Java");
+                check(world.getBodyCount() == bodyCount, "Invalid character fixture construction cannot leak a partial body");
+            }
+            var original = data.playerData();
+            var different = new PlayerData(original.name(), original.moveSpeed(), original.maxHealth(), original.loadout(),
+                original.animation(), original.sounds(), new PlayerData.LogicalSize(80, 72), original.collisionBounds(), original.hitboxBounds());
+            field.set(GameCore.INSTANCE, new GameData(different, data.weaponsData()));
+            var differentPlayer = factory.getPlayerEntity(new Vector2(320, 640), map);
+            near(80 * GameConsts.UNIT_SCALE, Transform.MAPPER.get(differentPlayer).getSize().x, "Factory accepts configured future logical width");
+            near(72 * GameConsts.UNIT_SCALE, Transform.MAPPER.get(differentPlayer).getSize().y, "Factory accepts configured future logical height");
+            world.destroyBody(Physic.MAPPER.get(differentPlayer).getBody());
+            field.set(GameCore.INSTANCE, cues);
             var player = factory.getPlayerEntity(new Vector2(320, 640), map);
             check(player.getComponent(Player.class) != null, "Real player factory declares map-sensor participation");
             var transform = Transform.MAPPER.get(player);
+            near(64 * GameConsts.UNIT_SCALE, transform.getSize().x, "Factory uses logical width rather than source canvas");
+            near(64 * GameConsts.UNIT_SCALE, transform.getSize().y, "Factory uses logical height rather than source canvas");
+            var canvas = CompositeCharacter.MAPPER.get(player);
+            check(canvas.canvasWidth() == 128 && canvas.canvasHeight() == 128, "Factory keeps native source canvas separate");
+            var fixtures = Physic.MAPPER.get(player).getBody().getFixtureList();
+            check(fixtures.size == 2, "Factory creates separate persistent feet and hurtbox fixtures");
+            for (var fixture : fixtures) {
+                boolean hurtbox = fixture.getUserData() == Hurtbox.INSTANCE;
+                ellipse(fixture, hurtbox ? data.playerData().hitboxBounds() : data.playerData().collisionBounds(), hurtbox);
+            }
             near(320 * GameConsts.UNIT_SCALE, transform.getPosition().x + transform.getSize().x / 2,
                 "Real factory centers initial PLAYER point X");
             near(640 * GameConsts.UNIT_SCALE, transform.getPosition().y + transform.getSize().y / 2,

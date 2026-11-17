@@ -53,6 +53,16 @@
 - **Source:** User-selected offscreen composition and loadout contract.
 - **Review timing:** Revisit if rendering or character composition requirements change.
 
+## Character canvas and logical bounds
+
+- **Decision:** Render the complete 128×128 source canvas at pixel scale, including padding and overhang, around an explicitly configured centered 64×64 logical character area. Its canvas offset relative to the logical transform is -32 pixels per axis; spawning and weapon anchors remain logical. Do not infer logical size from canvas size, crop padding, or downsample to 64×64.
+- **Bounds:** Player `collision_bounds` describe the 24×10 feet ellipse and `hitbox_bounds` the separate 32×50 damage ellipse, both in bottom-left logical-local pixels and scaled to world units once. Non-circular ellipses use the existing eight-vertex Box2D approximation. The persistent hurtbox is a sensor, excluded from movement blocking and map triggers. Attack sensors use it instead of solids for explicit hurtbox targets; generic full-sprite targets keep their fallback.
+- **Justification and tradeoff:** Source canvas size includes transparent padding and weapon or animation overhang; treating it as logical size doubles or displaces the character, while shrinking it loses the intended pixel scale. Separate feet and damage shapes fit their different roles without enlarging movement or trigger contact.
+- **Caveats:** The user approved the initial fitted bounds as the implementation contract, but live review and any resulting tuning remain pending. Focused automated validation passed; see the [canvas and hitboxes validation report](../reviews/2026-11-16-character-canvas-hitboxes-validation.md) for final gate evidence. Historical integration results do not validate this correction.
+- **Affected specifications:** [Composite Characters](composite-characters.md).
+- **Source:** Explicit user correction and approval of initial fitted bounds.
+- **Review timing:** Review the fitted bounds in live play before updating the PR; revisit the contract if character authoring changes.
+
 ## Custom asset service and logical keys
 
 - **Decision:** Replace the AssetManager-backed service with a directly owning service whose logical identity is resource class and logical ID. Store entries in four typed maps selected directly by class, with a separate ordered loading `queue`. The maps alone track registered assets; diagnostics and disposal iterate them without a redundant ownership index or a cross-type insertion-order guarantee. Asset records define loads; runtime audio events and animation components carry IDs. Music and sound manifest keys remain IDs; the manifest name is the map and its single atlas ID. The service supports sounds, music, atlases, and tiled maps.

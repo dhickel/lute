@@ -9,7 +9,10 @@ import com.badlogic.gdx.graphics.GL20;
 import com.badlogic.gdx.graphics.Pixmap;
 import com.badlogic.gdx.graphics.PixmapIO;
 import com.badlogic.gdx.graphics.Texture;
+import com.badlogic.gdx.graphics.g2d.Animation;
 import com.badlogic.gdx.graphics.g2d.SpriteBatch;
+import com.badlogic.gdx.graphics.OrthographicCamera;
+import com.badlogic.gdx.utils.viewport.FitViewport;
 import com.badlogic.gdx.graphics.g2d.TextureAtlas;
 import com.badlogic.gdx.graphics.g2d.TextureRegion;
 import com.badlogic.gdx.graphics.glutils.FrameBuffer;
@@ -29,6 +32,7 @@ import io.mindspice.lute.engine.components.*;
 import io.mindspice.lute.engine.data.json.WeaponsData.WeaponData.CollisionType;
 import io.mindspice.lute.engine.singletons.GameConsts;
 import io.mindspice.lute.engine.systems.CharacterCompositor;
+import io.mindspice.lute.engine.systems.RenderSystem;
 import io.mindspice.lute.engine.systems.ControllerSystem;
 import io.mindspice.lute.engine.systems.EventSystem;
 import io.mindspice.lute.engine.systems.TiledSystem;
@@ -108,9 +112,11 @@ public final class CompositeGameTest {
                         Combat.AttackSlot.SECONDARY);
                 }
             }
-            require(layers.weaponPages.size() > 1, "Gameplay sequences actually sample multiple real weapon texture pages");
+            layers.deathFrames(player);
+            require(layers.weaponPages.size() == 7, "All seven regenerated real weapon texture pages are sampled");
+            require(layers.overhangPixels > 0, "Actual regenerated frames contain visible pixels outside the logical area");
             System.out.println("CompositeGameTest: " + checks + " checks; " + layers.frames
-                + " actual-game layer/frame comparisons; " + layers.weaponPages.size() + " weapon pages sampled");
+                + " actual-asset composition AND native-scale world-frame comparisons; " + layers.weaponPages.size() + " weapon pages sampled");
         } finally {
             GAME.getInputManager().releaseHeldInputs();
             engine.getSystem(ControllerSystem.class).update(0f);
@@ -303,17 +309,25 @@ public final class CompositeGameTest {
     private static final class LayerCheck implements AutoCloseable {
         private final CharacterCompositor compositor = new CharacterCompositor(GAME.getAssetService());
         private final SpriteBatch batch = new SpriteBatch();
-        private final FrameBuffer reference = new FrameBuffer(Pixmap.Format.RGBA8888, 64, 64, false);
-        private final FrameBuffer actual = new FrameBuffer(Pixmap.Format.RGBA8888, 64, 64, false);
+        private final FrameBuffer reference = new FrameBuffer(Pixmap.Format.RGBA8888, 128, 128, false);
+        private final FrameBuffer actual = new FrameBuffer(Pixmap.Format.RGBA8888, 128, 128, false);
         private final Set<Texture> weaponPages = new HashSet<>();
-        private final Pixmap showcase = new Pixmap(320, 960, Pixmap.Format.RGBA8888);
+        private final Engine worldEngine = new Engine();
+        private final OrthographicCamera worldCamera = new OrthographicCamera();
+        private final FitViewport worldViewport = new FitViewport(128 * GameConsts.UNIT_SCALE, 128 * GameConsts.UNIT_SCALE, worldCamera);
+        private final SpriteBatch worldBatch = new SpriteBatch();
+        private final RenderSystem worldRenderer = new RenderSystem(worldBatch, worldViewport, worldCamera, GAME.getAssetService());
+        private int overhangPixels;
+        private final Pixmap showcase = new Pixmap(576, 1728, Pixmap.Format.RGBA8888);
         private int frames;
 
         LayerCheck() {
+            worldViewport.update(128, 128, false);
+            worldEngine.addSystem(worldRenderer);
             showcase.setColor(0x253039ff);
             showcase.fill();
             showcase.setBlending(Pixmap.Blending.None);
-            batch.setProjectionMatrix(new Matrix4().setToOrtho2D(0, 0, 64, 64));
+            batch.setProjectionMatrix(new Matrix4().setToOrtho2D(0, 0, 128, 128));
             for (var definition : List.of(CharacterAssets.CHARACTER, CharacterAssets.FEET, CharacterAssets.BODY,
                 CharacterAssets.HEAD, CharacterAssets.HANDS, CharacterAssets.WEAPONS)) {
                 var atlas = GAME.getAssetService().get(TextureAtlas.class, definition.id());
@@ -322,8 +336,8 @@ public final class CompositeGameTest {
                     require(atlas.getTextures().contains(region.getTexture()), "Region resolves to owned atlas page");
                 }
             }
-            require(GAME.getAssetService().get(TextureAtlas.class, CharacterAssets.WEAPONS.id()).getTextures().size > 1,
-                "Real common weapon atlas has multiple texture pages");
+            require(GAME.getAssetService().get(TextureAtlas.class, CharacterAssets.WEAPONS.id()).getTextures().size == 7,
+                "Regenerated real common weapon atlas has seven texture pages");
         }
 
         void check(Entity player) {
@@ -343,6 +357,8 @@ public final class CompositeGameTest {
                 var sequence = atlas.findRegions(prefixes[layer].isEmpty() ? suffix : prefixes[layer] + "/" + suffix);
                 require(sequence.size == animation.getAnimation().getKeyFrames().length, "Real layers share frame counts: " + suffix);
                 selected[layer] = sequence.get(index);
+                require(selected[layer].getRegionWidth() == 128 && selected[layer].getRegionHeight() == 128,
+                    "Actual source canvas is 128px, not logical 64px");
                 if (layer == 5) { weaponPages.add(selected[layer].getTexture()); }
             }
             var base = Graphic.MAPPER.get(player).getRegion();
@@ -352,6 +368,8 @@ public final class CompositeGameTest {
             compositor.compose(List.of(player), GAME.getCamera());
             TextureRegion composed = compositor.region(player);
             require(composed != null, "Real player remains visible to compositor");
+            require(composed.getRegionWidth() == 128 && composed.getRegionHeight() == 128,
+                "Composition retains full source canvas without shrinking");
             reference.begin();
             ScreenUtils.clear(0f, 0f, 0f, 0f);
             batch.setBlendFunctionSeparate(GL20.GL_SRC_ALPHA, GL20.GL_ONE_MINUS_SRC_ALPHA, GL20.GL_ONE, GL20.GL_ONE_MINUS_SRC_ALPHA);
@@ -359,23 +377,23 @@ public final class CompositeGameTest {
             int[] order = animation.getFdirection() == Facing.Direction.UP
                 ? new int[]{5, 0, 1, 2, 3, 4} : new int[]{0, 1, 2, 3, 4, 5};
             for (int layer : order) {
-                if (selected[layer] != null) { batch.draw(selected[layer], 0, 0, 64, 64); }
+                if (selected[layer] != null) { batch.draw(selected[layer], 0, 0); }
             }
             batch.end();
-            Pixmap expected = Pixmap.createFromFrameBuffer(0, 0, 64, 64);
+            Pixmap expected = Pixmap.createFromFrameBuffer(0, 0, 128, 128);
             reference.end();
             actual.begin();
             ScreenUtils.clear(0f, 0f, 0f, 0f);
             batch.setBlendFunctionSeparate(GL20.GL_ONE, GL20.GL_ONE_MINUS_SRC_ALPHA, GL20.GL_ONE, GL20.GL_ONE_MINUS_SRC_ALPHA);
             batch.begin();
-            batch.draw(composed, 0, 0, 64, 64);
+            batch.draw(composed, 0, 0);
             batch.end();
-            Pixmap rendered = Pixmap.createFromFrameBuffer(0, 0, 64, 64);
+            Pixmap rendered = Pixmap.createFromFrameBuffer(0, 0, 128, 128);
             actual.end();
             try {
                 boolean visible = false;
-                for (int y = 0; y < 64; y++) {
-                    for (int x = 0; x < 64; x++) {
+                for (int y = 0; y < 128; y++) {
+                    for (int x = 0; x < 128; x++) {
                         int want = expected.getPixel(x, y), got = rendered.getPixel(x, y);
                         visible |= (want & 255) != 0;
                         for (int shift = 0; shift < 32; shift += 8) {
@@ -387,7 +405,13 @@ public final class CompositeGameTest {
                     }
                 }
                 require(visible, "Real layer reference is not empty");
-                if (index == 4) {
+                worldFrame(player, expected);
+                for (int y = 0; y < 128; y++) {
+                    for (int x = 0; x < 128; x++) {
+                        if ((x < 32 || x >= 96 || y < 32 || y >= 96) && (expected.getPixel(x, y) & 255) != 0) { overhangPixels++; }
+                    }
+                }
+                if (index == 4 && !animation.getAction().equals("death")) {
                     int weaponRow = switch (weapon.id()) { case "basic_sword" -> 0; case "basic_bow" -> 4; default -> 8; };
                     int actionRow = switch (animation.getAction()) { case "idle" -> 0; case "walk" -> 1; case "jab" -> 3; default -> 2; };
                     showcase(rendered, animation.getFdirection().ordinal(), weaponRow + actionRow);
@@ -401,14 +425,91 @@ public final class CompositeGameTest {
             }
         }
 
+        private void worldFrame(Entity player, Pixmap expected) {
+            var transform = Transform.MAPPER.get(player);
+            worldCamera.position.set(transform.getPosition().x + transform.getSize().x * .5f,
+                transform.getPosition().y + transform.getSize().y * .5f, 0);
+            worldCamera.update();
+            worldEngine.removeAllEntities();
+            worldEngine.addEntity(new Entity().add(transform).add(Graphic.MAPPER.get(player))
+                .add(CompositeCharacter.MAPPER.get(player)).add(Animation2D.MAPPER.get(player))
+                .add(Loadout.MAPPER.get(player)).add(Combat.MAPPER.get(player)));
+            actual.begin();
+            ScreenUtils.clear(0f, 0f, 0f, 0f);
+            final Pixmap image;
+            try {
+                worldEngine.update(0);
+                image = Pixmap.createFromFrameBuffer(0, 0, 128, 128);
+            } finally { actual.end(); }
+            try {
+                for (int y = 0; y < 128; y++) {
+                    for (int x = 0; x < 128; x++) {
+                        int want = expected.getPixel(x, y), got = image.getPixel(x, y);
+                        for (int shift = 0; shift < 32; shift += 8) {
+                            if (Math.abs((want >>> shift & 255) - (got >>> shift & 255)) > 2) {
+                                throw new AssertionError("Native-scale world canvas differs at " + x + "," + y
+                                    + ": expected " + Integer.toHexString(want) + " got " + Integer.toHexString(got));
+                            }
+                        }
+                    }
+                }
+                require(true, "Production RenderSystem renders the full 128px source at native pixel scale about the logical center");
+                var animation = Animation2D.MAPPER.get(player);
+                if (animation.getAction().equals("idle") && animation.getFdirection() == Facing.Direction.RIGHT
+                    && animation.getFrameIndex() == 0 && "basic_sword".equals(Loadout.MAPPER.get(player).getWeaponId())) {
+                    PixmapIO.writePNG(Gdx.files.absolute("/tmp/lute-canvas-real-native.png"), image, -1, true);
+                    image.setColor(0x66ccffff);
+                    image.drawRectangle(32, 32, 64, 64);
+                    var data = GAME.getGameData().playerData();
+                    outline(image, data.collisionBounds(), 0x00ff00ff);
+                    outline(image, data.hitboxBounds(), 0xff4444ff);
+                    PixmapIO.writePNG(Gdx.files.absolute("/tmp/lute-canvas-bounds-review.png"), image, -1, true);
+                }
+            } finally { image.dispose(); }
+        }
+
+        private static void outline(Pixmap image, io.mindspice.lute.engine.data.json.CharacterBounds bounds, int color) {
+            image.setColor(color);
+            for (int i = 0; i < 8; i++) {
+                double a = i * Math.PI / 4, b = (i + 1) * Math.PI / 4;
+                float cx = 32 + (bounds.x1() + bounds.x2()) * .5f, cy = 32 + (bounds.y1() + bounds.y2()) * .5f;
+                float rx = (bounds.x2() - bounds.x1()) * .5f, ry = (bounds.y2() - bounds.y1()) * .5f;
+                image.drawLine(Math.round(cx + rx * (float) Math.cos(a)), Math.round(cy + ry * (float) Math.sin(a)),
+                    Math.round(cx + rx * (float) Math.cos(b)), Math.round(cy + ry * (float) Math.sin(b)));
+            }
+        }
+
+        void deathFrames(Entity player) {
+            var atlas = GAME.getAssetService().get(TextureAtlas.class, CharacterAssets.CHARACTER.id());
+            var loadout = Loadout.MAPPER.get(player);
+            for (String weapon : List.of("basic_sword", "basic_bow", "unarmed")) {
+                require(loadout.equipWeapon(weapon.equals("unarmed") ? null : weapon), "Death pose selects existing weapon layers");
+                for (var direction : Facing.Direction.values()) {
+                    var sequence = atlas.findRegions("death_" + direction.atlasKey);
+                    require(sequence.size == 8, "Every death facing retains all authored frames");
+                    for (int frame = 0; frame < sequence.size; frame++) {
+                        var animation = new Animation2D(CharacterAssets.CHARACTER.id(), "", Animation2D.AnimationType.ATTACK,
+                            Animation.PlayMode.LOOP, 1, .125f);
+                        animation.configureAttack(new Animation2D.Attack("death", 1, .125f, 0, ""));
+                        animation.setAnimation(new Animation<>(.125f, sequence, Animation.PlayMode.LOOP), direction);
+                        animation.incAndGetStateTime(frame * .125f);
+                        var pose = new Entity().add(animation).add(loadout).add(Combat.MAPPER.get(player))
+                            .add(Transform.MAPPER.get(player)).add(CompositeCharacter.MAPPER.get(player))
+                            .add(new Graphic(sequence.get(frame), Graphic.MAPPER.get(player).getColor()));
+                        check(pose);
+                    }
+                }
+            }
+        }
+
         private void showcase(Pixmap image, int column, int row) {
-            for (int y = 0; y < 64; y++) {
-                for (int x = 0; x < 64; x++) {
+            for (int y = 0; y < 128; y++) {
+                for (int x = 0; x < 128; x++) {
                     int pixel = image.getPixel(x, y), alpha = pixel & 255;
                     int r = Math.min(255, (pixel >>> 24) + Math.round(37 * (1 - alpha / 255f)));
                     int g = Math.min(255, (pixel >>> 16 & 255) + Math.round(48 * (1 - alpha / 255f)));
                     int b = Math.min(255, (pixel >>> 8 & 255) + Math.round(57 * (1 - alpha / 255f)));
-                    showcase.drawPixel(column * 80 + x + 8, row * 80 + 71 - y, r << 24 | g << 16 | b << 8 | 255);
+                    showcase.drawPixel(column * 144 + x + 8, row * 144 + 135 - y, r << 24 | g << 16 | b << 8 | 255);
                 }
             }
         }
@@ -420,6 +521,9 @@ public final class CompositeGameTest {
             PixmapIO.writePNG(Gdx.files.absolute("/tmp/lute-phase3-characters.png"), enlarged);
             enlarged.dispose();
             showcase.dispose();
+            worldEngine.removeAllEntities();
+            worldRenderer.dispose();
+            worldBatch.dispose();
             compositor.dispose();
             reference.dispose();
             actual.dispose();

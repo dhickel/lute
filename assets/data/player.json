@@ -2,6 +2,9 @@
   "name": "player",
   "max_health": 100,
   "move_speed": 4.0,
+  "logical_size": { "width": 64, "height": 64 },
+  "collision_bounds": { "x1": 20, "y1": 4, "x2": 44, "y2": 14 },
+  "hitbox_bounds": { "x1": 16, "y1": 6, "x2": 48, "y2": 56 },
   "loadout": {
     "head": "basic",
     "body": "basic",

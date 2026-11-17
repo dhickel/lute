@@ -25,6 +25,7 @@ public final class DataLoaderTest {
             var player = DataLoader.parsePlayerData();
             var definitions = DataLoader.parseWeaponData();
             playerSchema(player);
+            characterBoundsSchema(player);
             weaponSchema(player, definitions);
             invalidMetadata(player, definitions);
             assetIds(definitions);
@@ -41,6 +42,23 @@ public final class DataLoaderTest {
         check(player.maxHealth() == 100 && player.moveSpeed() == 4, "player stats");
         check(player.animation().frameInterval() == .125f && player.animation().speed() == 1
             && player.animation().atlasKey().isEmpty() && player.animation().soundFrame() == 0, "flat base animation");
+        check(player.logicalSize().width() == 64 && player.logicalSize().height() == 64, "logical character size");
+        check(player.collisionBounds().equals(new CharacterBounds(20, 4, 44, 14)), "authored feet ellipse");
+        check(player.hitboxBounds().equals(new CharacterBounds(16, 6, 48, 56)), "authored standing hurtbox");
+        for (String key : new String[]{"logical_size", "collision_bounds", "hitbox_bounds"}) {
+            rejects(() -> {
+                var tree = (tools.jackson.databind.node.ObjectNode) DataLoader.mapper.valueToTree(player);
+                tree.remove(key);
+                DataLoader.mapper.treeToValue(tree, PlayerData.class);
+            }, "missing " + key);
+        }
+        for (float value : new float[]{0, -1, Float.NaN, Float.POSITIVE_INFINITY}) {
+            rejects(() -> new PlayerData.LogicalSize(value, 64), "invalid logical width");
+            rejects(() -> new PlayerData.LogicalSize(64, value), "invalid logical height");
+        }
+        rejects(() -> new CharacterBounds(1, 1, 1, 4), "empty ellipse");
+        rejects(() -> new CharacterBounds(1, 1, 4, Float.NaN), "nonfinite ellipse");
+        rejects(() -> new CharacterBounds(-1, 1, 4, 4), "negative ellipse origin");
         var loadout = player.loadout();
         check(loadout.head().equals("basic") && loadout.body().equals("basic")
             && loadout.hands().equals("basic") && loadout.feet().equals("basic")
@@ -54,12 +72,65 @@ public final class DataLoaderTest {
         rejects(() -> new PlayerData.Loadout("basic", "basic", "", "basic", null), "empty hands");
         rejects(() -> new PlayerData.Loadout("basic", "basic", "basic", null, null), "missing feet");
         rejects(() -> new PlayerData.Loadout("basic", "basic", "basic", "basic", " "), "blank weapon");
-        rejects(() -> new PlayerData("player", 0, 100, loadout, player.animation(), player.sounds()), "zero move speed");
-        rejects(() -> new PlayerData("player", Float.NaN, 100, loadout, player.animation(), player.sounds()), "nonfinite move speed");
-        rejects(() -> new PlayerData("player", 1, 0, loadout, player.animation(), player.sounds()), "zero health");
-        rejects(() -> new PlayerData("player", 1, 100, null, player.animation(), player.sounds()), "missing loadout");
+        rejects(() -> new PlayerData("player", 0, 100, loadout, player.animation(), player.sounds(), player.logicalSize(), player.collisionBounds(), player.hitboxBounds()), "zero move speed");
+        rejects(() -> new PlayerData("player", Float.NaN, 100, loadout, player.animation(), player.sounds(), player.logicalSize(), player.collisionBounds(), player.hitboxBounds()), "nonfinite move speed");
+        rejects(() -> new PlayerData("player", 1, 0, loadout, player.animation(), player.sounds(), player.logicalSize(), player.collisionBounds(), player.hitboxBounds()), "zero health");
+        rejects(() -> new PlayerData("player", 1, 100, null, player.animation(), player.sounds(), player.logicalSize(), player.collisionBounds(), player.hitboxBounds()), "missing loadout");
         rejects(() -> new PlayerData.Sounds("hit", null), "missing damage sound");
         rejects(() -> new PlayerData.Sounds("", "hit"), "empty move sound");
+    }
+
+    private static void characterBoundsSchema(PlayerData player) {
+        for (String section : new String[]{"logical_size", "collision_bounds", "hitbox_bounds"}) {
+            String[] members = section.equals("logical_size") ? new String[]{"width", "height"}
+                : new String[]{"x1", "y1", "x2", "y2"};
+            for (String member : members) {
+                rejects(() -> {
+                    var tree = DataLoader.mapper.valueToTree(player);
+                    ((tools.jackson.databind.node.ObjectNode) tree.get(section)).remove(member);
+                    DataLoader.mapper.treeToValue(tree, PlayerData.class);
+                }, "JSON missing " + section + "." + member);
+                for (String invalid : new String[]{"null", "-1", "1e50", "{}"}) {
+                    rejects(() -> {
+                        var tree = DataLoader.mapper.valueToTree(player);
+                        ((tools.jackson.databind.node.ObjectNode) tree.get(section))
+                            .set(member, DataLoader.mapper.readTree(invalid));
+                        DataLoader.mapper.treeToValue(tree, PlayerData.class);
+                    }, "JSON invalid " + section + "." + member + "=" + invalid);
+                }
+            }
+            rejects(() -> {
+                var tree = DataLoader.mapper.valueToTree(player);
+                ((tools.jackson.databind.node.ObjectNode) tree).putNull(section);
+                DataLoader.mapper.treeToValue(tree, PlayerData.class);
+            }, "JSON null " + section);
+        }
+        for (String section : new String[]{"collision_bounds", "hitbox_bounds"}) {
+            for (String invalid : new String[]{"{\"x1\":20,\"y1\":4,\"x2\":20,\"y2\":14}",
+                "{\"x1\":20,\"y1\":14,\"x2\":44,\"y2\":4}",
+                "{\"x1\":20,\"y1\":4,\"x2\":65,\"y2\":14}",
+                "{\"x1\":20,\"y1\":4,\"x2\":44,\"y2\":65}"}) {
+                rejects(() -> {
+                    var tree = DataLoader.mapper.valueToTree(player);
+                    ((tools.jackson.databind.node.ObjectNode) tree).set(section, DataLoader.mapper.readTree(invalid));
+                    DataLoader.mapper.treeToValue(tree, PlayerData.class);
+                }, "JSON invalid logical-local " + section);
+            }
+        }
+        for (String size : new String[]{"{\"width\":0,\"height\":64}", "{\"width\":64,\"height\":0}",
+            "{\"width\":40,\"height\":64}", "{\"width\":64,\"height\":48}"}) {
+            rejects(() -> {
+                var tree = DataLoader.mapper.valueToTree(player);
+                ((tools.jackson.databind.node.ObjectNode) tree).set("logical_size", DataLoader.mapper.readTree(size));
+                DataLoader.mapper.treeToValue(tree, PlayerData.class);
+            }, "JSON invalid logical size or bounds outside it");
+        }
+        var tree = DataLoader.mapper.valueToTree(player);
+        ((tools.jackson.databind.node.ObjectNode) tree).set("logical_size",
+            DataLoader.mapper.readTree("{\"width\":80,\"height\":72}"));
+        var larger = DataLoader.mapper.treeToValue(tree, PlayerData.class);
+        check(larger.logicalSize().width() == 80 && larger.logicalSize().height() == 72,
+            "logical size is configured independently, not hard-coded to 64");
     }
 
     private static void weaponSchema(PlayerData player, WeaponsData definitions) throws Exception {

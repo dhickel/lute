@@ -17,14 +17,13 @@ import com.badlogic.gdx.utils.Disposable;
 import io.mindspice.lute.engine.assets.AssetService;
 import io.mindspice.lute.engine.assets.CharacterAssets;
 import io.mindspice.lute.engine.components.*;
+import io.mindspice.lute.engine.singletons.GameConsts;
 
 import java.util.*;
 
 /** Isolated premultiplied cells; only completed cells participate in world sorting. */
 public final class CharacterCompositor implements Disposable {
-    private static final int SIZE = 64;
-    private static final int PITCH = SIZE + 2;
-    private static final Set<String> ACTIONS = Set.of("idle", "walk", "slash", "jab", "shot");
+    private static final Set<String> ACTIONS = Set.of("idle", "walk", "death", "slash", "jab", "shot");
     // base, feet, body, head, hands, weapon. Up-facing weapons sit behind the body.
     private static final int[] FRONT = {0, 1, 2, 3, 4, 5};
     private static final int[] UP = {5, 0, 1, 2, 3, 4};
@@ -54,7 +53,7 @@ public final class CharacterCompositor implements Disposable {
         completed.clear();
         var visible = new ArrayList<Entity>();
         for (Entity entity : entities) {
-            if (CompositeCharacter.MAPPER.has(entity) && visible(Transform.MAPPER.get(entity), camera)) {
+            if (CompositeCharacter.MAPPER.has(entity) && visible(entity, camera)) {
                 visible.add(entity);
             }
         }
@@ -62,7 +61,13 @@ public final class CharacterCompositor implements Disposable {
         try {
             RenderState.prepare();
             if (!visible.isEmpty()) { refreshIdentities(); }
-            int maxSide = state.integer(GL20.GL_MAX_TEXTURE_SIZE) / PITCH;
+            int pitchX = 2, pitchY = 2;
+            for (var entity : visible) {
+                var canvas = CompositeCharacter.MAPPER.get(entity);
+                pitchX = Math.max(pitchX, canvas.canvasWidth() + 2);
+                pitchY = Math.max(pitchY, canvas.canvasHeight() + 2);
+            }
+            int maxSide = state.integer(GL20.GL_MAX_TEXTURE_SIZE) / Math.max(pitchX, pitchY);
             if (maxSide == 0 && !visible.isEmpty()) {
                 throw new IllegalStateException("GL maximum texture size cannot fit a character cell");
             }
@@ -74,12 +79,12 @@ public final class CharacterCompositor implements Disposable {
                 int side = Math.min(maxSide, (int) Math.ceil(Math.sqrt(count)));
                 Target target;
                 if (targetIndex == targets.size()) {
-                    target = new Target(side);
+                    target = new Target(side, pitchX, pitchY);
                     targets.add(target);
                 } else {
                     target = targets.get(targetIndex);
-                    if (target.side < side) {
-                        Target replacement = new Target(side);
+                    if (target.side < side || target.pitchX != pitchX || target.pitchY != pitchY) {
+                        Target replacement = new Target(side, pitchX, pitchY);
                         state.releasedTarget(target.buffer.getFramebufferHandle(), target.buffer.getColorBufferTexture().getTextureObjectHandle());
                         target.dispose();
                         targets.set(targetIndex, replacement);
@@ -106,7 +111,7 @@ public final class CharacterCompositor implements Disposable {
                         batch.setProjectionMatrix(target.projection);
                         batch.begin();
                         for (var command : entry.getValue()) {
-                            batch.draw(command.region, command.x, command.y, SIZE, SIZE);
+                            batch.draw(command.region, command.x, command.y);
                         }
                         batch.end();
                     }
@@ -141,7 +146,7 @@ public final class CharacterCompositor implements Disposable {
         for (int layer = 0; layer < 6; layer++) {
             if (layer == 5 && Loadout.MAPPER.get(entity).getWeaponId() == null) { continue; }
             Set<String> actions = layer == 5
-                ? new HashSet<>(List.of("idle", "walk", weapon.primary().animation().action(), weapon.secondary().animation().action()))
+                ? new HashSet<>(List.of("idle", "walk", "death", weapon.primary().animation().action(), weapon.secondary().animation().action()))
                 : ACTIONS;
             var key = new LayerKey(layer, prefixes[layer], actions);
             var cache = layers.computeIfAbsent(key, this::loadLayer);
@@ -166,11 +171,8 @@ public final class CharacterCompositor implements Disposable {
                 var sequence = new TextureRegion[frames.size];
                 for (int i = 0; i < frames.size; i++) {
                     var frame = frames.get(i);
-                    if (frame.index != i || frame.rotate || frame.offsetX != 0 || frame.offsetY != 0
-                        || frame.getRegionWidth() != SIZE || frame.getRegionHeight() != SIZE
-                        || frame.originalWidth != SIZE || frame.originalHeight != SIZE) {
-                        throw new IllegalArgumentException("Composite layer requires indexed, untrimmed 64x64 frames: " + name);
-                    }
+                    if (frame.index != i) { throw new IllegalArgumentException("Composite frame index mismatch: " + name); }
+                    AnimationSystem.validateCanvas(frame, reference.get(i).getRegionWidth(), reference.get(i).getRegionHeight(), name);
                     sequence[i] = frame;
                 }
                 result.put(suffix, sequence);
@@ -184,7 +186,14 @@ public final class CharacterCompositor implements Disposable {
             var entity = entities.get(cell);
             var frames = frames(entity);
             var order = Animation2D.MAPPER.get(entity).getFdirection() == Facing.Direction.UP ? UP : FRONT;
-            int x = cell % target.side * PITCH + 1, y = cell / target.side * PITCH + 1;
+            var canvas = CompositeCharacter.MAPPER.get(entity);
+            int x = cell % target.side * target.pitchX + 1, y = cell / target.side * target.pitchY + 1;
+            for (var frame : frames) {
+                if (frame != null && (frame.getRegionWidth() != canvas.canvasWidth()
+                    || frame.getRegionHeight() != canvas.canvasHeight())) {
+                    throw new IllegalArgumentException("Loaded canvas dimensions changed for character");
+                }
+            }
             for (int rank = 0; rank < order.length; rank++) {
                 var frame = frames[order[rank]];
                 if (frame != null) {
@@ -192,7 +201,7 @@ public final class CharacterCompositor implements Disposable {
                         .computeIfAbsent(target, ignored -> new ArrayList<>()).add(new Command(frame, x, y));
                 }
             }
-            var region = new TextureRegion(target.buffer.getColorBufferTexture(), x, y, SIZE, SIZE);
+            var region = new TextureRegion(target.buffer.getColorBufferTexture(), x, y, canvas.canvasWidth(), canvas.canvasHeight());
             region.flip(false, true);
             completed.put(entity, region);
         }
@@ -203,7 +212,9 @@ public final class CharacterCompositor implements Disposable {
         Gdx.gl.glClear(GL20.GL_COLOR_BUFFER_BIT);
     }
 
-    private boolean visible(Transform transform, OrthographicCamera camera) {
+    private boolean visible(Entity entity, OrthographicCamera camera) {
+        var transform = Transform.MAPPER.get(entity);
+        var canvas = CompositeCharacter.MAPPER.get(entity);
         var position = transform.getPosition();
         var size = transform.getSize();
         var scale = transform.getScaling();
@@ -212,7 +223,8 @@ public final class CharacterCompositor implements Disposable {
         for (int index = 0; index < corners.length; index++) {
             float signX = index == 0 || index == 3 ? -1f : 1f;
             float signY = index < 2 ? -1f : 1f;
-            rotated.set(signX * size.x * scale.x * 0.5f, signY * size.y * scale.y * 0.5f)
+            rotated.set(signX * canvas.canvasWidth() * GameConsts.UNIT_SCALE * scale.x * 0.5f,
+                signY * canvas.canvasHeight() * GameConsts.UNIT_SCALE * scale.y * 0.5f)
                 .rotateDeg(transform.getRotationDeg());
             corners[index].set(cx + rotated.x, cy + rotated.y, 0).mul(camera.combined);
         }
@@ -304,10 +316,13 @@ public final class CharacterCompositor implements Disposable {
         final int side;
         final FrameBuffer buffer;
         final Matrix4 projection;
-        Target(int side) {
+        final int pitchX, pitchY;
+        Target(int side, int pitchX, int pitchY) {
             this.side = side;
-            projection = new Matrix4().setToOrtho2D(0, 0, side * PITCH, side * PITCH);
-            buffer = new FrameBuffer(Pixmap.Format.RGBA8888, side * PITCH, side * PITCH, false);
+            this.pitchX = pitchX;
+            this.pitchY = pitchY;
+            projection = new Matrix4().setToOrtho2D(0, 0, side * pitchX, side * pitchY);
+            buffer = new FrameBuffer(Pixmap.Format.RGBA8888, side * pitchX, side * pitchY, false);
             buffer.getColorBufferTexture().setFilter(Texture.TextureFilter.Nearest, Texture.TextureFilter.Nearest);
         }
         @Override public void dispose() { buffer.dispose(); }

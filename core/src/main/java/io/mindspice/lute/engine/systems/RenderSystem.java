@@ -132,12 +132,14 @@ public class RenderSystem extends SortedIteratingSystem implements Disposable, E
             straightBlend();
             batch.setColor(color);
         }
+        float width = composite ? region.getRegionWidth() * GameConsts.UNIT_SCALE : size.x;
+        float height = composite ? region.getRegionHeight() * GameConsts.UNIT_SCALE : size.y;
         this.batch.draw(
             region,
-            pos.x - (1f - scale.x) * size.x * 0.5f,
-            pos.y - (1f - scale.y) * size.y * 0.5f,
-            size.x * 0.5f, size.y * 0.5f,
-            size.x, size.y,
+            pos.x + size.x * scale.x * 0.5f - width * 0.5f,
+            pos.y + size.y * scale.y * 0.5f - height * 0.5f,
+            width * 0.5f, height * 0.5f,
+            width, height,
             scale.x, scale.y,
             transform.getRotationDeg()
         );

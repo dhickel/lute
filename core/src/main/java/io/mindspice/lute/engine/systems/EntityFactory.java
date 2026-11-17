@@ -7,11 +7,9 @@ import com.badlogic.gdx.graphics.g2d.Animation;
 import com.badlogic.gdx.graphics.g2d.TextureAtlas;
 import com.badlogic.gdx.graphics.g2d.TextureRegion;
 import com.badlogic.gdx.maps.tiled.objects.TiledMapTileMapObject;
-import com.badlogic.gdx.math.MathUtils;
 import com.badlogic.gdx.math.Vector2;
 import com.badlogic.gdx.physics.box2d.Body;
 import com.badlogic.gdx.physics.box2d.BodyDef;
-import com.badlogic.gdx.physics.box2d.PolygonShape;
 import com.badlogic.gdx.physics.box2d.World;
 import com.badlogic.gdx.utils.GdxRuntimeException;
 import io.mindspice.lute.engine.assets.Asset;
@@ -54,8 +52,14 @@ public class EntityFactory extends EntitySystem {
         var animation = createAnimation(atlas, playerAnimation.atlasKey(),
             Animation2D.AnimationType.IDLE, playerAnimation.speed(), playerAnimation.frameInterval(), facing);
         var region = animation.getAnimation().getKeyFrame(0f);
-        var transform = createTransform(pixelPosition, region);
         var player = data.playerData();
+        var logical = player.logicalSize();
+        if (logical.width() > region.getRegionWidth() || logical.height() > region.getRegionHeight()) {
+            throw new IllegalArgumentException("Logical character frame must fit its source canvas");
+        }
+        var sizeWorld = new Vector2(logical.width(), logical.height()).scl(GameConsts.UNIT_SCALE);
+        var transform = new Transform(pixelPosition.cpy().scl(GameConsts.UNIT_SCALE).sub(sizeWorld.x / 2, sizeWorld.y / 2),
+            2, sizeWorld, new Vector2(1, 1), 0, 0);
         var size = transform.getSize();
         var weapons = createWeapons(data.weaponsData(), animation, new Vector2(size.x * 0.5f, size.y * 0.5f));
         String weaponId = player.loadout().weapon() == null ? "unarmed" : player.loadout().weapon();
@@ -69,7 +73,7 @@ public class EntityFactory extends EntitySystem {
         Entity entity = getEngine().createEntity();
         entity.add(new Graphic(region, Color.WHITE.cpy()));
         entity.add(new Player());
-        entity.add(new CompositeCharacter());
+        entity.add(new CompositeCharacter(region.getRegionWidth(), region.getRegionHeight()));
         entity.add(transform);
         entity.add(new Facing(facing));
         entity.add(new Move(player.moveSpeed()));
@@ -89,6 +93,7 @@ public class EntityFactory extends EntitySystem {
         var requiredFrames = new HashMap<String, Long>();
         requiredFrames.put("idle", 1L);
         requiredFrames.put("walk", 1L);
+        requiredFrames.put("death", 1L);
         for (var entry : definitions.weapons().entrySet()) {
             String id = entry.getKey();
             var definition = entry.getValue();
@@ -97,7 +102,7 @@ public class EntityFactory extends EntitySystem {
             var secondary = createAttack(id, definition.attackStats().secondary(), sounds.secondary(), anchor, requiredFrames);
             if (!id.equals("unarmed")) {
                 validateLayer(CharacterAssets.WEAPONS, definition.atlasKey(),
-                    Set.copyOf(List.of("idle", "walk", primary.animation().action(), secondary.animation().action())));
+                    Set.copyOf(List.of("idle", "walk", "death", primary.animation().action(), secondary.animation().action())));
             }
             weapons.put(id, new CombatWeapon.Weapon(id, definition.atlasKey(), primary, secondary));
         }
@@ -123,7 +128,7 @@ public class EntityFactory extends EntitySystem {
 
     private void validateEquipment(Loadout.Equipment equipment) {
         if (equipment == null) { throw new IllegalArgumentException("Equipment is required"); }
-        var actions = Set.of("idle", "walk", "slash", "jab", "shot");
+        var actions = Set.of("idle", "walk", "death", "slash", "jab", "shot");
         validateLayer(CharacterAssets.HEAD, equipment.head(), actions);
         validateLayer(CharacterAssets.BODY, equipment.body(), actions);
         validateLayer(CharacterAssets.HANDS, equipment.hands(), actions);
@@ -142,10 +147,9 @@ public class EntityFactory extends EntitySystem {
                 if (reference.isEmpty() || frames.size != reference.size) {
                     throw new IllegalArgumentException("Layer frame count must match character: " + asset.id() + "/" + prefix + "/" + suffix);
                 }
-                for (var frame : frames) {
-                    if (frame.getRegionWidth() != 64 || frame.getRegionHeight() != 64) {
-                        throw new IllegalArgumentException("Layer frames must be 64x64: " + asset.id() + "/" + prefix + "/" + suffix);
-                    }
+                for (int i = 0; i < frames.size; i++) {
+                    AnimationSystem.validateCanvas(frames.get(i), reference.get(i).getRegionWidth(),
+                        reference.get(i).getRegionHeight(), asset.id() + "/" + prefix + "/" + suffix);
                 }
             }
         }
@@ -230,13 +234,6 @@ public class EntityFactory extends EntitySystem {
         return anim2d;
     }
 
-    private Transform createTransform(Vector2 pixelPosition, TextureRegion region) {
-        var position = pixelPosition.cpy().scl(GameConsts.UNIT_SCALE);
-        var size = new Vector2(region.getRegionWidth(), region.getRegionHeight()).scl(GameConsts.UNIT_SCALE);
-        position.sub(size.x * 0.5f, size.y * 0.5f);
-        return new Transform(position, 2, size, new Vector2(1f, 1f), 0f, 0f);
-    }
-
     private Physic createPhysics(Vector2 position, Entity entity) {
         return new Physic(createPlayerBody(position, entity), position.cpy());
     }
@@ -249,23 +246,13 @@ public class EntityFactory extends EntitySystem {
         Body body = world.createBody(bodyDef);
         body.setUserData(entity);
 
-        // Feet ellipse in the 64px sprite, measured from the bottom-left origin.
-        float centerX = 31f * GameConsts.UNIT_SCALE;
-        float centerY = 21.4375f * GameConsts.UNIT_SCALE;
-        float radiusX = 10.875f * GameConsts.UNIT_SCALE;
-        float radiusY = 4.4375f * GameConsts.UNIT_SCALE;
-        var vertices = new Vector2[8];
-        for (int i = 0; i < vertices.length; i++) {
-            float angle = i * MathUtils.PI2 / vertices.length;
-            vertices[i] = new Vector2(centerX + radiusX * MathUtils.cos(angle),
-                centerY + radiusY * MathUtils.sin(angle));
-        }
-        var shape = new PolygonShape();
+        var player = GameCore.INSTANCE.getGameData().playerData();
         try {
-            shape.set(vertices);
-            body.createFixture(shape, 0f).setFriction(0f);
-        } finally {
-            shape.dispose();
+            CharacterFixtures.ellipse(body, player.collisionBounds(), false);
+            CharacterFixtures.ellipse(body, player.hitboxBounds(), true).setUserData(Hurtbox.INSTANCE);
+        } catch (RuntimeException | Error failure) {
+            world.destroyBody(body);
+            throw failure;
         }
         return body;
     }
