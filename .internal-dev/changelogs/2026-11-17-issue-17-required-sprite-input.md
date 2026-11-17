@@ -1,0 +1,28 @@
+# Issue 17: require complete sprite inputs before runtime publication
+
+## Date
+2026-11-17
+
+## Git Commit
+
+aa8069dbc3cd91cccb8190f197955b8e52f46b24
+
+## Change Summary
+Reject a missing top-level sprite input directory rather than reporting successful incomplete runtime generation. Test fixtures now supply the required production sprite tree. Independent phase review: PASS.
+
+## Files
+- `util/src/main/java/io/mindspice/lute/engine/util/TexturePackerTool.java`
+- `util/src/test/java/io/mindspice/lute/engine/util/TexturePackerToolTest.java`
+- `.internal-dev/knowledge/composite-sprite-assets.md`
+
+## Behavioral Impact
+Missing or empty required sprite inputs fail without publishing fresh output or changing existing owned/unowned files. Successful complete generation remains supported; ownership guards are unchanged.
+
+## Specification Impact
+Specification Impact: none. This enforces the existing complete raw-tree and required shared-atlas contract in composite-characters.md.
+
+## Risks
+Fixture coverage uses small representative sprites; actual copied local input generation also passed, with all 29 owned outputs matching hashes. Full integration is recorded separately. The Git hash is the coordinating audit baseline; the fix branch starts at its code-equivalent parent 33dbd077ff1c66bf211971086b77caf2c8800563.
+
+## Follow-up Items
+Senior implementation and independent validator both passed texturePackerToolTest, actual local generation, manifest/byte preservation checks and diff whitespace checks. GitHub #17 remains open until the separate PR is merged; no merge performed.
