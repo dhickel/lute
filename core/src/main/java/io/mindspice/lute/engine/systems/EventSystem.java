@@ -1,5 +1,6 @@
 package io.mindspice.lute.engine.systems;
 
+import com.badlogic.ashley.core.Engine;
 import com.badlogic.ashley.core.EntitySystem;
 import com.badlogic.gdx.Gdx;
 import io.mindspice.lute.engine.events.Event;
@@ -15,6 +16,8 @@ public class EventSystem extends EntitySystem {
 
     private final Event[] eventQueue;
     private int eventCount = 0;
+    private boolean dispatching;
+    private boolean retired;
 
     public EventSystem() {
         this.listeners = new HashMap<>(20);
@@ -24,12 +27,43 @@ public class EventSystem extends EntitySystem {
     }
 
 
+    @Override
+    public void addedToEngine(Engine engine) {
+        super.addedToEngine(engine);
+        retired = false;
+        var audio = engine.getSystem(AudioSystem.class);
+        if (audio != null) { audio.attachEvents(this); }
+    }
+
+    @Override
+    public void removedFromEngine(Engine engine) {
+        retired = true;
+        var audio = engine.getSystem(AudioSystem.class);
+        if (audio != null) { audio.detachEvents(this); }
+        // A discarded bus may never update again. In-flight dispatch finishes cleanup in finally.
+        if (!dispatching) {
+            Arrays.fill(eventQueue, 0, eventCount, null);
+            eventCount = 0;
+            applyQueuedChanges();
+        }
+        super.removedFromEngine(engine);
+    }
+
     public <T extends Event> void subscribe(Class<T> eventType, Consumer<T> eventConsumer) {
         subscriptions.add(Pair.of(eventType, eventConsumer));
     }
 
     public <T extends Event> void unsubscribe(Class<T> eventType, Consumer<T> eventConsumer) {
+        // Cancel only earlier pending registrations; a later subscribe must survive this removal.
+        subscriptions.removeIf(sub -> sub.first() == eventType && sub.second() == eventConsumer);
         unSubscriptions.add(Pair.of(eventType, eventConsumer));
+    }
+
+    private void applyQueuedChanges() {
+        unSubscriptions.forEach(this::unsubscribeConsumer);
+        unSubscriptions.clear();
+        subscriptions.forEach(this::subscribeConsumer);
+        subscriptions.clear();
     }
 
     private void subscribeConsumer(Pair<Class<? extends Event>, Consumer<? extends Event>> sub) {
@@ -42,7 +76,7 @@ public class EventSystem extends EntitySystem {
         var eventConsumer = unsub.second();
         var listenerList = listeners.get(eventType);
         if (listenerList != null) {
-            listenerList.remove(eventConsumer);
+            listenerList.removeIf(consumer -> consumer == eventConsumer);
 
             if (listenerList.isEmpty()) {
                 listeners.remove(eventType);
@@ -67,27 +101,29 @@ public class EventSystem extends EntitySystem {
 
     @Override
     public void update(float deltaTime) {
-        subscriptions.forEach(this::subscribeConsumer);
-        subscriptions.clear();
+        applyQueuedChanges();
+        dispatching = true;
+        try {
+            for (int i = 0; i < eventCount && !retired; ++i) {
+                Event event = eventQueue[i];
+                if (event instanceof Event.Sensor.Enter || event instanceof Event.Sensor.Exit) {
+                    Gdx.app.debug("Sensor", event.toString());
+                }
 
-        unSubscriptions.forEach(this::unsubscribeConsumer);
-        unSubscriptions.clear();
-
-        for (int i = 0; i < eventCount; ++i) {
-            Event event = eventQueue[i];
-            if (event instanceof Event.Sensor.Enter || event instanceof Event.Sensor.Exit) {
-                Gdx.app.debug("Sensor", event.toString());
+                var listenerList = listeners.get(event.getClass());
+                if (listenerList == null || listenerList.isEmpty()) { continue; }
+                Gdx.app.debug("EventQueue", "Dispatch Event: " + event +" to listeners: " + listenerList.size());
+                for (var consumer : listenerList) {
+                    if (retired) { break; }
+                    invoke(event, consumer);
+                }
             }
-
-            var listenerList = listeners.get(event.getClass());
-            if (listenerList == null || listenerList.isEmpty()) { continue; }
-            Gdx.app.debug("EventQueue", "Dispatch Event: " + event +" to listeners: " + listenerList.size());
-            listenerList.forEach(l -> invoke(event, l));
+        } finally {
+            Arrays.fill(eventQueue, 0, eventCount, null);
+            eventCount = 0;
+            dispatching = false;
+            applyQueuedChanges();
         }
-        Arrays.fill(eventQueue, 0, eventCount, null);
-        eventCount = 0;
-
-
     }
 }
 

@@ -1,20 +1,35 @@
 package io.mindspice.lute.engine.systems;
 
+import com.badlogic.ashley.core.Engine;
 import com.badlogic.ashley.core.EntitySystem;
 import com.badlogic.gdx.audio.Music;
 import com.badlogic.gdx.audio.Sound;
 import com.badlogic.gdx.math.MathUtils;
+import com.badlogic.gdx.utils.Disposable;
 import com.badlogic.gdx.utils.GdxRuntimeException;
 import io.mindspice.lute.engine.assets.AssetService;
 import io.mindspice.lute.engine.events.Event;
 import io.mindspice.lute.engine.events.EventListener;
 
 import java.util.concurrent.ThreadLocalRandom;
+import java.util.function.Consumer;
 
-public class AudioSystem extends EntitySystem implements EventListener {
+public class AudioSystem extends EntitySystem implements EventListener, Disposable {
 
 
     private final AssetService assetService;
+    private EventSystem events;
+    // Queued teardown can leave these in the current dispatch; detached audio must not touch assets.
+    private final Consumer<Event.Map.Load> mapLoadConsumer = load -> {
+        if (events != null) { onMapLoad(load); }
+    };
+    private final Consumer<Event.Sound.Play> soundConsumer = play -> {
+        if (events != null) { playSound(play.soundId()); }
+    };
+    private final Consumer<Event.Sound.PlayAtVolume> volumeConsumer = play -> {
+        if (events != null) { playSoundAtVol(play.soundId(), play.volume()); }
+    };
+    private boolean disposed;
     private Music currMusic;
     private String currMusicId;
     private float musicVolume = 0.5f;
@@ -23,17 +38,55 @@ public class AudioSystem extends EntitySystem implements EventListener {
 
     public AudioSystem(AssetService assetService) {
         this.assetService = assetService;
-        this.currMusic = null;
-        this.currMusicId = null;
-
-
-        eventSubscriber.accept(Event.Map.Load.class, this::onMapLoad);
-        eventSubscriber.accept(Event.Sound.Play.class, play -> this.playSound(play.soundId()));
-        eventSubscriber.accept(Event.Sound.PlayAtVolume.class, pav -> this.playSoundAtVol(pav.soundId(), pav.volume()));
-
-
     }
 
+    @Override
+    public void addedToEngine(Engine engine) {
+        super.addedToEngine(engine);
+        attachEvents(engine.getSystem(EventSystem.class));
+    }
+
+    @Override
+    public void removedFromEngine(Engine engine) {
+        detachEvents(events);
+        stopMusic();
+        super.removedFromEngine(engine);
+    }
+
+    void attachEvents(EventSystem events) {
+        if (disposed || events == this.events) { return; }
+        detachEvents(this.events);
+        this.events = events;
+        if (events == null) { return; }
+        subscribe(events, Event.Map.Load.class, mapLoadConsumer);
+        subscribe(events, Event.Sound.Play.class, soundConsumer);
+        subscribe(events, Event.Sound.PlayAtVolume.class, volumeConsumer);
+    }
+
+    void detachEvents(EventSystem events) {
+        if (events == null || events != this.events) { return; }
+        unsubscribe(events, Event.Map.Load.class, mapLoadConsumer);
+        unsubscribe(events, Event.Sound.Play.class, soundConsumer);
+        unsubscribe(events, Event.Sound.PlayAtVolume.class, volumeConsumer);
+        this.events = null;
+    }
+
+    @Override
+    public void dispose() {
+        if (disposed) { return; }
+        disposed = true;
+        detachEvents(events);
+        stopMusic();
+    }
+
+    private void stopMusic() {
+        if (currMusic != null && assetService.isLoaded(Music.class, currMusicId)
+            && assetService.get(Music.class, currMusicId) == currMusic) {
+            currMusic.stop();
+        }
+        currMusic = null;
+        currMusicId = null;
+    }
 
     public void setMusicVolume(float musicVolume) {
         this.musicVolume = MathUtils.clamp(musicVolume, 0f, 1f);
@@ -81,11 +134,7 @@ public class AudioSystem extends EntitySystem implements EventListener {
         Music music = assetService.get(Music.class, musicId);
         if (music == currMusic && musicId.equals(currMusicId)) { return; }
 
-        if (currMusic != null && assetService.isLoaded(Music.class, currMusicId)
-            && assetService.get(Music.class, currMusicId) == currMusic) {
-            currMusic.stop();
-        }
-
+        stopMusic();
         currMusic = music;
         currMusicId = musicId;
 

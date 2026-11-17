@@ -90,6 +90,14 @@ tasks.register('triggerDebugRenderSystemTest', JavaExec) {
 }
 check.dependsOn triggerDebugRenderSystemTest
 
+tasks.register('audioSystemTest', JavaExec) {
+  dependsOn testClasses
+  classpath = sourceSets.test.runtimeClasspath
+  mainClass = 'io.mindspice.lute.engine.systems.AudioSystemTest'
+  workingDir = rootProject.projectDir
+}
+check.dependsOn audioSystemTest
+
 tasks.register('assetServiceTest', JavaExec) {
   dependsOn testClasses
   classpath = sourceSets.test.runtimeClasspath
