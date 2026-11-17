@@ -17,9 +17,8 @@ import io.mindspice.lute.engine.assets.CharacterAssets;
 import io.mindspice.lute.engine.data.json.DataLoader;
 import io.mindspice.lute.engine.data.json.GameData;
 import io.mindspice.lute.engine.tiled.ManifestLoader;
-import io.mindspice.lute.engine.input.InputAction;
 import io.mindspice.lute.engine.input.InputManager;
-import io.mindspice.lute.engine.input.InputMap;
+import io.mindspice.lute.engine.input.InputSettings;
 import io.mindspice.lute.engine.screen.GameScreen;
 import io.mindspice.lute.engine.screen.LoadingScreen;
 import io.mindspice.lute.engine.screen.ScreenManager;
@@ -52,16 +51,7 @@ public class GameCore extends Game {
         GameConsts.loadSettings();
         Gdx.app.setLogLevel(Application.LOG_DEBUG);
 
-        InputMap inputMap = InputMap.of(
-            Pair.of(Input.Keys.W, InputAction.MOVE_UP),
-            Pair.of(Input.Keys.S, InputAction.MOVE_DOWN),
-            Pair.of(Input.Keys.A, InputAction.MOVE_LEFT),
-            Pair.of(Input.Keys.D, InputAction.MOVE_RIGHT),
-            Pair.of(Input.Keys.SPACE, InputAction.ATTACK_PRIMARY),
-            Pair.of(Input.Keys.SHIFT_LEFT, InputAction.ATTACK_SECONDARY),
-            Pair.of(Input.Keys.SHIFT_RIGHT, InputAction.ATTACK_SECONDARY)
-        );
-
+        var inputMap = InputSettings.load(Gdx.files.internal("input.setting.json"));
         this.inputManager = new InputManager(inputMap);
         this.inputMultiplexer = new InputMultiplexer(inputManager);
         Gdx.input.setInputProcessor(inputMultiplexer);
