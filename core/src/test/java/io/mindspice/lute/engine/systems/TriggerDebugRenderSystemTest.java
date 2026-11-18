@@ -22,6 +22,7 @@ import com.badlogic.gdx.math.Vector2;
 import com.badlogic.gdx.physics.box2d.*;
 import com.badlogic.gdx.utils.GdxNativesLoader;
 import com.badlogic.ashley.core.EntitySystem;
+import io.mindspice.lute.engine.components.Facing;
 import io.mindspice.lute.engine.data.json.ProjectilesData.CollisionBounds;
 import io.mindspice.lute.engine.data.json.ProjectilesData.Projectile;
 import io.mindspice.lute.engine.singletons.GameConsts;
@@ -47,6 +48,7 @@ public final class TriggerDebugRenderSystemTest {
             installConstructorStubs();
             sensors();
             projectileBoundsAndLifetime();
+            projectilePassesCrosshair();
             loadedMapGeometry();
             savedMapTriggers();
             mutableObjectTransforms();
@@ -181,6 +183,42 @@ public final class TriggerDebugRenderSystemTest {
             debug.dispose();
             world.dispose();
         }
+    }
+
+    private static void projectilePassesCrosshair() {
+        var world = new World(new Vector2(), true);
+        try {
+            var definition = new Projectile("projectiles/test", 4, 1,
+                new CollisionBounds(8, 12), 0.3f, 0, 0, 0);
+            var owner = new Entity().add(new Facing(Facing.Direction.LEFT));
+            var start = new Vector2();
+            var aim = new Vector2(1, 0);
+            var arrow = new ArrowFlight(owner, definition, start, aim, 1);
+            check(!arrow.finished(world, 0.25f), "Reaching the crosshair does not finish the shot");
+            near(arrow.tip.x, 1, "Arrow reaches crosshair at configured speed");
+            near(arrow.tip.y, 0, "Arrow arc passes through the crosshair");
+            check(!arrow.finished(world, 0.25f), "Arrow is still active past the crosshair");
+            near(arrow.tip.x, 2, "Arrow continues in the original aim direction");
+            near(arrow.tip.y, 0, "Arrow flies straight after the arc");
+            check(arrow.finished(world, 1), "Unobstructed arrow expires by lifetime");
+            near(arrow.tip.x, 4, "Expiry clamps travel past the crosshair");
+
+            var centered = new ArrowFlight(owner, definition, start, start, 1);
+            check(!centered.finished(world, 0.25f), "Centered aim still fires");
+            near(centered.tip.x, -1, "Centered aim uses the owner's facing");
+
+            var wallDef = new BodyDef();
+            wallDef.position.set(2, 0);
+            var wall = world.createBody(wallDef);
+            var shape = new PolygonShape();
+            try {
+                shape.setAsBox(0.05f, 0.25f);
+                wall.createFixture(shape, 0);
+            } finally { shape.dispose(); }
+            var blocked = new ArrowFlight(owner, definition, start, aim, 1);
+            check(blocked.finished(world, 0.75f), "A long frame sweeps into a wall beyond the crosshair");
+            near(blocked.tip.x, 1, "Wall blocks the post-crosshair segment");
+        } finally { world.dispose(); }
     }
 
     private static void loadedMapGeometry() {
