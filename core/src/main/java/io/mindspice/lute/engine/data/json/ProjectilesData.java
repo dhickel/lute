@@ -2,13 +2,12 @@ package io.mindspice.lute.engine.data.json;
 
 import com.fasterxml.jackson.annotation.JsonProperty;
 
-import java.io.IOException;
 import java.util.Map;
 
 public record ProjectilesData(Map<String, Projectile> projectiles) {
     public ProjectilesData {
-        if (projectiles == null || projectiles.isEmpty()) {
-            throw new IllegalArgumentException("Missing projectile definitions");
+        if (projectiles == null || projectiles.get("iron_arrow") == null) {
+            throw new IllegalArgumentException("Missing projectile definition: iron_arrow");
         }
         for (var entry : projectiles.entrySet()) {
             if (entry.getKey().isBlank() || entry.getValue() == null) {
@@ -18,15 +17,8 @@ public record ProjectilesData(Map<String, Projectile> projectiles) {
         projectiles = Map.copyOf(projectiles);
     }
 
-    public static Projectile loadIronArrow() {
-        try (var input = ProjectilesData.class.getResourceAsStream("/projectiles.json")) {
-            if (input == null) { throw new IllegalStateException("Missing projectiles.json"); }
-            var arrow = DataLoader.mapper.readValue(input, ProjectilesData.class).projectiles().get("iron_arrow");
-            if (arrow == null) { throw new IllegalStateException("Missing projectile definition: iron_arrow"); }
-            return arrow;
-        } catch (IOException e) {
-            throw new IllegalStateException("Cannot read projectiles.json", e);
-        }
+    public Projectile ironArrow() {
+        return projectiles.get("iron_arrow");
     }
 
     /** Speed is in world units per second, lifetime in seconds, and tip coordinates in sprite pixels. */

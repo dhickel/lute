@@ -29,6 +29,7 @@ public final class DataLoaderTest {
             characterBoundsSchema(player);
             weaponSchema(definitions);
             projectileSchema();
+            missingProjectileData();
             invalidMetadata(player, definitions);
             assetIds(definitions);
             settingsAtomicity();
@@ -36,12 +37,16 @@ public final class DataLoaderTest {
                 "generated player matches source");
             check(Files.mismatch(Path.of("raw_assets/data/weapons.json"), Path.of("assets/data/weapons.json")) == -1,
                 "generated weapons match source");
+            check(Files.mismatch(Path.of("raw_assets/data/projectiles.json"), Path.of("assets/data/projectiles.json")) == -1,
+                "generated projectiles match source");
             System.out.println("DataLoaderTest: passed");
         } finally { Gdx.files = previousFiles; }
     }
 
     private static void projectileSchema() {
-        var arrow = ProjectilesData.loadIronArrow();
+        var arrow = DataLoader.loadGameData().projectilesData().ironArrow();
+        rejects(() -> DataLoader.mapper.readValue("{\"projectiles\":{}}", ProjectilesData.class),
+            "missing iron arrow definition");
         check(arrow.atlasKey().equals("projectiles/IronArrow") && arrow.speed() == 8 && arrow.lifetime() == 5,
             "iron arrow binds the atlas region and flight settings");
         check(arrow.collisionBounds().equals(new ProjectilesData.CollisionBounds(8.5f, 10)),
@@ -55,6 +60,19 @@ public final class DataLoaderTest {
         }
         rejects(() -> DataLoader.mapper.readValue("{\"length\":8,\"width\":0}",
             ProjectilesData.CollisionBounds.class), "zero projectile width");
+    }
+
+    private static void missingProjectileData() throws Exception {
+        var emptyDirectory = Files.createTempDirectory("missing-projectile-data");
+        String projectilePath = GameConsts.DATA_PATH + "projectiles.json";
+        try {
+            useResolver(path -> new FileHandle(path.equals(projectilePath)
+                ? emptyDirectory.resolve("projectiles.json").toFile() : Path.of("assets", path).toFile()));
+            rejects(DataLoader::loadGameData, "missing runtime projectile file without a bundled fallback");
+        } finally {
+            useAssets();
+            Files.delete(emptyDirectory);
+        }
     }
 
     private static void playerSchema(PlayerData player, WeaponsData definitions) {

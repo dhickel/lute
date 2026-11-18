@@ -93,7 +93,7 @@
 
 ## Local asset tracking
 
-- **Decision:** Keep the complete `raw_assets/` and `assets/` trees local and ignored rather than tracking them in the repository. The tracked root `generate-runtime-assets.sh` generates runtime outputs from an externally provisioned complete raw tree.
+- **Decision:** Keep the complete `raw_assets/` and `assets/` trees local and ignored rather than tracking them in the repository. The tracked root `generate-runtime-assets.sh` generates runtime outputs from an externally provisioned complete raw tree. Authored gameplay JSON follows `raw_assets/data/` → `assets/data/` → `DataLoader`: startup loads player, weapon, and projectile data through `GameConsts.DATA_PATH`, and `GameData` supplies resolved data to gameplay. Do not bundle this data as classpath resources or provide a fallback to them.
 - **Justification and tradeoff:** The user requested untracking both trees. This is not an asset distribution mechanism: fresh checkouts must obtain settings, data, audio, maps, tilesets, sprites, and the Tiled project externally before generating and running asset-dependent tests or the game. Git ignore does not replace generator ownership checks, and existing Git history is not purged or rewritten.
 - **Affected specifications:** [Composite Characters](composite-characters.md); asset setup is documented in `README.md` and `docs/asset-service.md`.
 - **Source:** User-directed asset untracking and generation entrypoint relocation.

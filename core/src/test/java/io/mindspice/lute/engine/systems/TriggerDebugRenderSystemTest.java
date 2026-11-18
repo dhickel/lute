@@ -143,12 +143,12 @@ public final class TriggerDebugRenderSystemTest {
         var renderer = new RecordingRenderer();
         var debug = attach(world, renderer, null);
         var engine = debug.getEngine();
-        var combat = new CombatSystem(world);
+        var definition = new Projectile("projectiles/test", 4, 0.5f,
+            new CollisionBounds(8, 12), 0, 0, 0, 0);
+        var combat = new CombatSystem(world, definition);
         engine.addSystem(combat);
         try {
             float scale = GameConsts.UNIT_SCALE;
-            var definition = new Projectile("projectiles/test", 4, 0.5f,
-                new CollisionBounds(8, 12), 0, 0, 0, 0);
             var arrow = new ArrowFlight(new Entity(), definition, new Vector2(), new Vector2(0, 8), 1);
             combat.arrows().add(arrow);
             combat.update(0.25f);
