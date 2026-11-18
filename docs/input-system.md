@@ -15,7 +15,7 @@ LibGDX → InputMultiplexer → InputManager → InputMap / KeyManager
 
 `ControllerSystem` updates movement direction directly and does not emit `Event.Player.Moved` for movement input. The event type and event-system interfaces remain available.
 
-There is no tutorial enum conversion, bridge, extra held-action set, or second command queue. Gameplay currently uses the keyboard cache only. The manager is already registered with LibGDX; do not create another processor or register every entity with LibGDX.
+Keyboard and gamepad actions share the existing gameplay listener queues. There is no tutorial enum conversion, bridge, extra held-action set, or second command queue. The manager is already registered with LibGDX; do not create another processor or register every entity with LibGDX.
 
 ## Screen ownership and lifecycle
 
@@ -27,7 +27,7 @@ There is no tutorial enum conversion, bridge, extra held-action set, or second c
 | `hide()` | Releases held inputs, drains the controller system, unregisters current controller caches, then removes entities. |
 | `dispose()` | Calls `hide()` before disposing screen systems. `GameCore` disposes cached screens before disposing the shared manager. |
 
-The manager remains in the chain while gameplay is hidden or paused so it can observe physical key-ups. Releasing holds does not disable or gate future input; future state routing can use the existing multiplexer but is not implemented here. `GameCore.setInputProcessors(...)` clears the whole multiplexer before adding its arguments; include and order any other desired processors deliberately. `bindToWindow()` instead replaces the global processor and is for standalone ownership.
+`GameScreen` polls the gamepad before the ECS update only while visible and unpaused. The manager remains in the chain while gameplay is hidden or paused so it can observe physical key-ups. Releasing holds does not disable or gate future input; future state routing can use the existing multiplexer but is not implemented here. `GameCore.setInputProcessors(...)` clears the whole multiplexer before adding its arguments; include and order any other desired processors deliberately. `bindToWindow()` instead replaces the global processor and is for standalone ownership.
 
 This lifecycle assumes the current single gameplay screen, Tiled creation path, and screen-wide removal. Callers creating controllers outside that path must register and unregister their listeners explicitly. Removing a component or entity while a key is held has no automatic listener cleanup. Keep listeners enabled during release and drain them before unregistering; bounded queue overflow can still lose transitions.
 
@@ -51,7 +51,13 @@ Each physical slot tracks down state and its accepted action. Duplicate downs an
 
 The input settings contract uses `assets/input.setting.json` with exactly two object sections, `keyboard` and `controller`; either map may be empty. Each value must be an exact, case-sensitive `InputAction` enum name. Keyboard identifiers must be exact, case-sensitive LibGDX `Input.Keys` key constant names, such as `SPACE`, `SHIFT_LEFT`, `SHIFT_RIGHT`, and `NUM_1`, not display labels such as `Space` or `L-Shift`. Loading rejects unknown names, non-key constants such as `META` masks, duplicate aliases for the same physical key, and malformed or duplicate entries.
 
-The default keyboard bindings map W/S/A/D to movement, `SPACE` to `ATTACK_PRIMARY`, and `SHIFT_LEFT` and `SHIFT_RIGHT` to `ATTACK_SECONDARY`. Controller defaults use logical `DPAD_UP`, `DPAD_DOWN`, `DPAD_LEFT`, and `DPAD_RIGHT` identifiers for movement and `FACE_SOUTH`/`FACE_WEST` for primary/secondary attack. Controller identifiers must be nonblank and their actions valid, but they are data only: loading validates them without connecting them to runtime hardware. They are not mouse button codes. Changes take effect at startup; there is no hot reload or mouse configuration in this file.
+The default keyboard bindings map W/S/A/D to movement, `SPACE` to `ATTACK_PRIMARY`, and `SHIFT_LEFT` and `SHIFT_RIGHT` to `ATTACK_SECONDARY`. Controller defaults map the D-pad and left stick to movement and `FACE_SOUTH`/`FACE_WEST` to primary/secondary attack. The complete, case-sensitive controller identifier list is `DPAD_UP`, `DPAD_DOWN`, `DPAD_LEFT`, `DPAD_RIGHT`, `FACE_SOUTH`, `FACE_WEST`, `LEFT_STICK_UP`, `LEFT_STICK_DOWN`, `LEFT_STICK_LEFT`, and `LEFT_STICK_RIGHT`. Unknown names fail startup. These are logical controls, not mouse button codes. Changes take effect at startup; there is no hot reload or mouse configuration in this file.
+
+### Gamepad polling
+
+On LWJGL3, standard-mapped controllers are polled alongside keyboard input. The first connected controller supporting at least one configured control becomes active and retains ownership until disconnected; then the first supported remaining controller is selected. An empty controller map avoids accessing the controller backend. Disconnect releases only the active pad's delivered actions, not keyboard holds.
+
+The first sample after selecting a pad or resetting input establishes a baseline: held controls are ignored until released and pressed again. Each stick axis direction is digital, pressing at 0.50 and releasing at or below 0.35; the gap provides hysteresis and a deadzone. Both axes can be active for diagonal movement, and the existing movement system normalizes direction rather than scaling speed by tilt. Each physical binding produces its own action down/up pair, including when multiple bindings select the same action; there is no per-action aggregation or ECS change. Polling cannot detect a complete press and release between samples.
 
 `InputMap` maintains independent fixed arrays for keyboard (`Input.Keys.MAX_KEYCODE + 1`) and buttons (`Input.Buttons.FORWARD + 1`, codes 0–4). Overlapping codes do not collide. Keyboard `UNKNOWN` can be mapped but its adapter events are ignored; mouse `LEFT` (0) works independently.
 
@@ -82,7 +88,7 @@ Negative LibGDX scroll Y maps to up 1, positive Y to down 0; magnitude and horiz
 
 - Adapter callbacks return `false` so later multiplexer processors can run; an earlier processor returning `true` prevents the manager from seeing an event.
 - The adapter emits states 0 and 1, not repeat 2. LWJGL3 translates native repeats to `keyTyped`, not a portable per-key repeat notification. Direct manager broadcasts can accept state 2.
-- There is no text input, modifier/scancode data, native window lifecycle interception, or game-controller integration. Window-related enum actions can be mapped but do not intercept close or resize.
+- There is no text input, modifier/scancode data, or native window lifecycle interception. Window-related enum actions can be mapped but do not intercept close or resize.
 - `enableRawInput(true)` throws `UnsupportedOperationException`; `false` is a no-op. Cursor capture is not raw mouse motion.
 - `cleanup()`/`dispose()` detach the manager only if it is the direct processor or a direct child of the currently active top-level multiplexer. The caller must detach it from nested or formerly active multiplexers.
 
@@ -98,3 +104,5 @@ Repeatable regression and build commands:
 The static-main input regression harness is wired into `check`; the default core test task disables `failOnNoDiscoveredTests` for Gradle 9. The revised input test and desktop compilation passed `./gradlew :core:inputSystemTest :lwjgl3:compileJava --console=plain -Dorg.gradle.logging.level=lifecycle` (1,286 input checks, zero failures). The current revision also passed `./gradlew check --continue --console=plain -Dorg.gradle.logging.level=lifecycle` (21 actionable tasks; 1,286 input checks, zero failures). Earlier combined five-fix validation tested the superseded notification-restoration version, not this revision; it is historical and does not establish a current GL rerun. See `.internal-dev/bugs/.archive/controller-movement-event-test-failure.md` for the issue history.
 
 A historical desktop run reached asset loading, Tiled controller creation, map layers, and 56–62 FPS without input exceptions before intentional timeout after 15 seconds (exit 124). Existing libdecor GTK initialization warnings and the intentional `old_tree1` atlas fallback error logs occurred. No physical-key device test or instrumented active/cached screen identity or disposal test was performed.
+
+For the gamepad change, an isolated `./gradlew clean build --console=plain` succeeded with 1,365 input checks. A Linux desktop jar initialized the Controllers runtime, reached gameplay, and sustained approximately 62 FPS until an intentional 18-second timeout. No physical gamepad was attached.

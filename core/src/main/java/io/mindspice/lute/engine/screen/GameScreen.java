@@ -27,6 +27,7 @@ public class GameScreen extends ScreenAdapter implements EventEmitter {
     private final MapAssets mapAssets;
     private final List<EntitySystem> ownedSystems = new ArrayList<>();
     private boolean visible;
+    private boolean paused;
     private boolean disposed;
 
 
@@ -84,6 +85,7 @@ public class GameScreen extends ScreenAdapter implements EventEmitter {
     public void hide() {
         if (!visible) { return; }
         visible = false;
+        paused = false;
         inputManager.releaseHeldInputs();
         engine.getSystem(ControllerSystem.class).update(0f);
         for (var entity : engine.getEntitiesFor(Family.all(Controller.class).get())) {
@@ -94,6 +96,7 @@ public class GameScreen extends ScreenAdapter implements EventEmitter {
 
     @Override
     public void pause() {
+        paused = true;
         inputManager.releaseHeldInputs();
         engine.getSystem(ControllerSystem.class).update(0f);
     }
@@ -102,10 +105,14 @@ public class GameScreen extends ScreenAdapter implements EventEmitter {
     public void resume() {
         inputManager.releaseHeldInputs();
         engine.getSystem(ControllerSystem.class).update(0f);
+        paused = false;
     }
 
     @Override
     public void render(float delta) {
+        if (visible && !paused) {
+            inputManager.updateGamepad();
+        }
         engine.update(Math.min(delta, 1 / 30f));
     }
 

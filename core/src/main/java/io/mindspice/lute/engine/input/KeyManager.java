@@ -69,7 +69,7 @@ public class KeyManager {
         if (inputAction != null) { dispatch(inputAction, keyAction); }
     }
 
-    private void dispatch(InputAction inputAction, int keyAction) {
+    void dispatch(InputAction inputAction, int keyAction) {
         for (int i = 0; i < size; i++) {
             KeyListener listener = keyListeners[i];
             if (listener.isListening()) {
