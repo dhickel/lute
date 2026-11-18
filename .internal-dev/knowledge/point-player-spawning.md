@@ -6,6 +6,7 @@ Tile-independent player creation from a classed Tiled point.
 ## Source References
 - `core/src/main/java/io/mindspice/lute/engine/systems/EntityFactory.java`
 - `core/src/main/java/io/mindspice/lute/engine/systems/TiledSystem.java`
+- [Composite character contract](../specifications/composite-characters.md)
 - `core/src/main/java/io/mindspice/lute/engine/tiled/MapTriggers.java`
 - `core/src/test/java/io/mindspice/lute/engine/tiled/TiledAnimationPropertiesTest.java`
 - `raw_assets/data/player.json` and `raw_assets/maps/test_tiled/test_tiled.tmx`
@@ -16,6 +17,8 @@ Tile-independent player creation from a classed Tiled point.
 - Player animation, logical size, collision and hitbox bounds, and initial loadout come from player data, not the spawn point. The factory creates a dynamic body with a collision ellipse and a sensor hitbox, plus the player controller and camera target. The current property test requires the spawn point to have neither legacy `keyFrames` nor `atlasAsset`.
 - Named map travel, even to the current map ID, stages a fresh runtime and accepts a named `PLAYER` or `TELEPORT` point. `THIS` instead uses the existing player and a `TELEPORT` point. Failed preparation leaves the active runtime intact.
 - `TiledSystem` unregisters map-owned controllers and removes map entities on replacement. Session-owned live health, loadout, and facing components attach to the new player; combat and input are fresh. Hide/show retains the session and its current map entry, while a new session starts from JSON defaults.
+- Map-owned basic NPCs need their static solid feet ellipse and separate sensor hurtbox on the centered logical transform, not a player controller. Their explicit 24×10 and 32×50 bounds match the initial player footprints but do not depend on player JSON. `Health` makes the NPC damageable; the enemy path is unchanged.
+- Validate NPC fixture placement, static collision, sensor-only damage and the absence of a controller. Exercise map replacement and named travel away and back: old map-owned fixtures must be removed and the new NPC rebuilt without duplicates. Failed travel preparation must leave the active runtime intact. For a live check, provision the raw assets, regenerate them, and inspect collision and damage at the NPC point before and after travel. These are validation steps, not a claim that they have passed.
 
 ## Historical Incident
 A former player class default of zero caused a `keyFrames` crash; an explicit point value was used as a repair at the time. That property is not part of the current player spawn configuration. A temporary desktop harness from that earlier implementation reported movement, animation, collider and camera checks; those results are historical, not a current smoke run.

@@ -17,6 +17,7 @@ import io.mindspice.lute.engine.assets.AssetService;
 import io.mindspice.lute.engine.assets.MapAssets;
 import io.mindspice.lute.engine.assets.WeaponAssets;
 import io.mindspice.lute.engine.assets.CharacterAssets;
+import io.mindspice.lute.engine.data.json.CharacterBounds;
 import io.mindspice.lute.engine.data.json.WeaponsData;
 import io.mindspice.lute.engine.GameCore;
 import io.mindspice.lute.engine.components.CombatWeapon;
@@ -37,6 +38,9 @@ public class EntityFactory extends EntitySystem {
     private static final String PLAYER_PREFIX = "player";
     private static final String NPC_PREFIX = "basic_npc";
     private static final String ENEMY_PREFIX = "brainless_undead";
+    private static final CharacterBounds NPC_FEET = new CharacterBounds(20, 4, 44, 14);
+    private static final CharacterBounds NPC_HURTBOX = new CharacterBounds(16, 6, 48, 56);
+    private static final float NPC_MAX_HEALTH = 100f;
     private final World world;
     private final AssetService assetService;
 
@@ -81,7 +85,8 @@ public class EntityFactory extends EntitySystem {
         entity.add(new Combat());
         entity.add(animation);
         entity.add(new AnimationPlayer(entity));
-        entity.add(createPhysics(transform.getPosition(), entity));
+        entity.add(createCharacterPhysics(transform.getPosition(), entity, BodyDef.BodyType.DynamicBody,
+            player.collisionBounds(), player.hitboxBounds()));
         entity.add(new CameraFollow());
         entity.add(new Controller());
         return entity;
@@ -117,9 +122,15 @@ public class EntityFactory extends EntitySystem {
             }
         });
         Entity entity = getEngine().createEntity();
-        return entity.add(transform).add(new Facing(facing)).add(animation).add(loadout)
+        entity.add(transform).add(new Facing(facing)).add(animation).add(loadout)
             .add(new Graphic(animation.getAnimation().getKeyFrame(0f), Color.WHITE.cpy()))
             .add(new CompositeCharacter(128, 128));
+        if (!enemy) {
+            entity.add(new Health(NPC_MAX_HEALTH));
+            entity.add(createCharacterPhysics(transform.getPosition(), entity, BodyDef.BodyType.StaticBody,
+                NPC_FEET, NPC_HURTBOX));
+        }
+        return entity;
     }
 
     private static Transform characterTransform(Vector2 pixelPosition, float width, float height) {
@@ -281,26 +292,22 @@ public class EntityFactory extends EntitySystem {
         return anim2d;
     }
 
-    private Physic createPhysics(Vector2 position, Entity entity) {
-        return new Physic(createPlayerBody(position, entity), position.cpy());
-    }
-
-    private Body createPlayerBody(Vector2 position, Entity entity) {
+    private Physic createCharacterPhysics(Vector2 position, Entity entity, BodyDef.BodyType bodyType,
+                                          CharacterBounds feet, CharacterBounds hurtbox) {
         var bodyDef = new BodyDef();
-        bodyDef.type = BodyDef.BodyType.DynamicBody;
+        bodyDef.type = bodyType;
         bodyDef.position.set(position);
         bodyDef.fixedRotation = true;
         Body body = world.createBody(bodyDef);
         body.setUserData(entity);
 
-        var player = GameCore.INSTANCE.getGameData().playerData();
         try {
-            CharacterFixtures.ellipse(body, player.collisionBounds(), false);
-            CharacterFixtures.ellipse(body, player.hitboxBounds(), true).setUserData(Hurtbox.INSTANCE);
+            CharacterFixtures.ellipse(body, feet, false);
+            CharacterFixtures.ellipse(body, hurtbox, true).setUserData(Hurtbox.INSTANCE);
+            return new Physic(body, position.cpy());
         } catch (RuntimeException | Error failure) {
             world.destroyBody(body);
             throw failure;
         }
-        return body;
     }
 }

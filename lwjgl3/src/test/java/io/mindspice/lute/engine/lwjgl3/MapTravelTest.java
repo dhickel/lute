@@ -76,6 +76,9 @@ public final class MapTravelTest extends ApplicationAdapter {
         require(actualActors.size() == 2, "Actual startup map owns both actors");
         var oldNpc = actualActors.first();
         var oldEnemy = actualActors.get(1);
+        var oldNpcBody = body(oldNpc);
+        var oldNpcHealth = Health.MAPPER.get(oldNpc);
+        oldNpcHealth.damage(1);
         var initialMap = tiled.getCurrentMap();
         var initialBody = body(player);
         var initialTriggers = tiled.getMapTriggers();
@@ -98,6 +101,10 @@ public final class MapTravelTest extends ApplicationAdapter {
                 && Loadout.MAPPER.get(actualActors.first()) != Loadout.MAPPER.get(oldNpc)
                 && Loadout.MAPPER.get(actualActors.get(1)) != Loadout.MAPPER.get(oldEnemy),
                 "Actor loadouts are fresh rather than session-owned");
+            var newNpc = actualActors.first();
+            require(body(newNpc) != oldNpcBody && body(newNpc).getFixtureList().size == 2
+                && Health.MAPPER.get(newNpc) != oldNpcHealth && Health.MAPPER.get(newNpc).getCurrent() == 100f,
+                "Map replacement recreates the NPC body, both fixtures and fresh health without a body leak");
             atPoint(player(), actual.targetSpawn());
             System.out.println("MapTravelTest: actual test_tiled/" + actual.targetSpawn() + " rebuilt");
         } else {

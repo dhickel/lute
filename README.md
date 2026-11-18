@@ -25,7 +25,7 @@ Character sprites come from `raw_assets/sprites/`: base frames live in `characte
 
 ### Map actor demo
 
-The existing `NPC` and `ENEMY` points on `test_tiled` spawn map-owned actors. The NPC starts with basic body, hands, and feet equipment, without a head item or weapon. The demo enemy uses its baked body art and starts with a sword and no separate armor; its weapon can be changed through the existing `LoadoutSystem`. These actors have no AI, dialogue, player control, or camera ownership. Named travel rebuilds them with the map. The local raw Tiled project already contains the `ENEMY` point; provision the raw assets and run the root generation script before launching `./gradlew lwjgl3:run`. Visit the marked NPC and ENEMY locations on `test_tiled` to inspect their appearance and placement, then travel away and back to check that they are rebuilt.
+The existing `NPC` and `ENEMY` points on `test_tiled` spawn map-owned actors. The NPC starts with basic body, hands, and feet equipment, without a head item or weapon. The demo enemy uses its baked body art and starts with a sword and no separate armor; its weapon can be changed through the existing `LoadoutSystem`. The NPC has solid feet collision and a separate damage-receiving hurtbox; it can take damage but has no controller or AI. These actors have no dialogue, player control, or camera ownership. Named travel rebuilds them with the map. The local raw Tiled project already contains the `ENEMY` point; provision the raw assets and run the root generation script before launching `./gradlew lwjgl3:run`. Visit the marked NPC and ENEMY locations on `test_tiled` to inspect their appearance and placement, then travel away and back to check that they are rebuilt.
 
 ### Per-map generation
 
