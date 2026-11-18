@@ -72,6 +72,16 @@ public final class MapTravelTest extends ApplicationAdapter {
         require(tiled.getCurrentMap() != null, "Boot finishes loading the actual map");
         var player = player();
         atPoint(player, "PlayerSpawn");
+        var actualActors = GAME.getEngine().getEntitiesFor(Family.all(CompositeCharacter.class).exclude(Player.class).get());
+        require(actualActors.size() == 2, "Actual startup map owns both actors");
+        var oldNpc = actualActors.first();
+        var oldEnemy = actualActors.get(1);
+        var oldNpcBody = body(oldNpc);
+        var oldEnemyBody = body(oldEnemy);
+        var oldNpcHealth = Health.MAPPER.get(oldNpc);
+        var oldEnemyHealth = Health.MAPPER.get(oldEnemy);
+        oldNpcHealth.damage(1);
+        oldEnemyHealth.damage(1);
         var initialMap = tiled.getCurrentMap();
         var initialBody = body(player);
         var initialTriggers = tiled.getMapTriggers();
@@ -88,6 +98,20 @@ public final class MapTravelTest extends ApplicationAdapter {
                 && oldObjects.stream().noneMatch(entity -> entities.contains(entity, true))
                 && entities.size() == oldObjects.size() + 1 && world.getBodyCount() == initialBodies,
                 "Actual map rebuilds triggers, environmental entities and bodies");
+            require(actualActors.size() == 2 && !actualActors.contains(oldNpc, true) && !actualActors.contains(oldEnemy, true),
+                "Actual map replacement removes both old actors and recreates both");
+            require(actualActors.first() != actualActors.get(1)
+                && Loadout.MAPPER.get(actualActors.first()) != Loadout.MAPPER.get(oldNpc)
+                && Loadout.MAPPER.get(actualActors.get(1)) != Loadout.MAPPER.get(oldEnemy),
+                "Actor loadouts are fresh rather than session-owned");
+            var newNpc = actualActors.first();
+            var newEnemy = actualActors.get(1);
+            require(body(newNpc) != oldNpcBody && body(newNpc).getFixtureList().size == 2
+                && Health.MAPPER.get(newNpc) != oldNpcHealth && Health.MAPPER.get(newNpc).getCurrent() == 100f,
+                "Map replacement recreates the NPC body, fixtures and health");
+            require(body(newEnemy) != oldEnemyBody && body(newEnemy).getFixtureList().size == 2
+                && Health.MAPPER.get(newEnemy) != oldEnemyHealth && Health.MAPPER.get(newEnemy).getCurrent() == 100f,
+                "Map replacement recreates the enemy body, fixtures and health");
             atPoint(player(), actual.targetSpawn());
             System.out.println("MapTravelTest: actual test_tiled/" + actual.targetSpawn() + " rebuilt");
         } else {
@@ -96,6 +120,7 @@ public final class MapTravelTest extends ApplicationAdapter {
             atPoint(player(), actual.targetSpawn());
         }
         screens.unloadScreen("GameScreen");
+        require(actualActors.size() == 0, "Disposing the actual map removes both actors");
         require(!GAME.getAssetService().isLoaded(TiledMap.class, "test_tiled"), "Disposal releases the starting map");
 
         var entry = ManifestLoader.parseMapManifest(A);

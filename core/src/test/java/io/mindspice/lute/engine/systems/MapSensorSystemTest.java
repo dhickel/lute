@@ -435,20 +435,21 @@ public final class MapSensorSystemTest {
             var playerArea = rectangle("player-area", "SpawnArea", 35, 35, 3, 3);
             playerArea.getProperties().put("spawnType", "PLAYER");
             game.load(map(point("start", "PLAYER", 6, 7), point("portal-point", "TELEPORT", 20, 20),
-                point("npc-point", "NPC", 25, 25), point("item-point", "ITEM", 28, 28), area, playerArea,
+                point("npc-point", "NPC", 25, 25), point("enemy-point", "ENEMY", 27, 27),
+                point("item-point", "ITEM", 28, 28), area, playerArea,
                 sensor("spawn-room", 4, 4, 4, 4)));
-            check(factory.calls == 1 && game.engine.getEntities().size() == 1,
-                "Only PLAYER SpawnPoint creates an entity; other points and all areas stay data-only");
+            check(factory.calls == 1 && factory.actorTypes.equals(List.of(false, true)) && game.engine.getEntities().size() == 3,
+                "PLAYER, NPC and ENEMY points spawn entities; other points and all areas stay data-only");
             near(pixels(6), factory.lastPixels.x, "TiledSystem passes unscaled point X pixels to factory");
             near(pixels(7), factory.lastPixels.y, "TiledSystem passes unflipped point Y pixels to factory");
-            check(game.tiled.getMapTriggers().points().size() == 4 && game.tiled.getMapTriggers().areas().size() == 2,
+            check(game.tiled.getMapTriggers().points().size() == 5 && game.tiled.getMapTriggers().areas().size() == 2,
                 "All data-only markers remain available in parsed map metadata");
             position(factory.lastPlayer, 5, 5.5f, "Initial factory spawn is centered at the PLAYER point");
             game.tick(STEP * 2);
             game.expect(new Event.Sensor.Enter("spawn-room", MapTriggers.SensorType.GENERAL, factory.lastPlayer));
             game.load(map(point("next", "PLAYER", 10, 11)));
             check(factory.calls == 2 && game.engine.getEntities().size() == 1,
-                "Map replacement removes the previous map-owned player before spawning the next");
+                "Map replacement removes the previous map-owned player and actors before installing the next player");
             check(game.world.getBodyCount() == 2, "Map-owned player replacement leaves one player and boundary");
         }
     }
@@ -1041,12 +1042,18 @@ public final class MapSensorSystemTest {
     private static final class FakeFactory extends EntityFactory {
         private final Harness game;
         int calls;
+        final java.util.List<Boolean> actorTypes = new java.util.ArrayList<>();
         Vector2 lastPixels;
         Entity lastPlayer;
 
         FakeFactory(Harness game) {
             super(game.world, game.assets);
             this.game = game;
+        }
+
+        @Override public Entity getMapActor(Vector2 pixelPosition, boolean enemy) {
+            actorTypes.add(enemy);
+            return game.engine.createEntity();
         }
 
         @Override public Entity getPlayerEntity(Vector2 pixelPosition, io.mindspice.lute.engine.components.PlayerState state) {

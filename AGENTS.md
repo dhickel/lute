@@ -6,6 +6,10 @@ This is a hobbyist project. Keep the code simple, grokkable, and easy to follow.
 
 Format code for readability, with consistent indentation, sensible line breaks, and whitespace that separates logical steps. Favor clear names and straightforward expressions over clever or compressed code.
 
+## Pull Request Workflow
+
+For PR work, use and stay on the PR branch in the user's usual checkout for testing. Do not merge the PR locally or remotely or switch away from its branch unless the user explicitly asks. Opening, updating, or testing a PR does not authorize a merge.
+
 ## Validate at Data Boundaries
 
 Validate bounds, sizes, required values, nullability, and empty collections when JSON, configuration, assets, or other external data enters the system. Once that data is validated, trust it inside the closed system. Do not repeat those checks in internal records, setters, helpers, or update loops merely to defend against programming mistakes.

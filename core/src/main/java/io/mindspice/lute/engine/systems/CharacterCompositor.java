@@ -34,6 +34,7 @@ public final class CharacterCompositor implements Disposable {
     private final Map<Entity, TextureRegion> completed = new IdentityHashMap<>();
     private final Map<LayerKey, Map<String, TextureRegion[]>> layers = new HashMap<>();
     private final TextureAtlas[] identities = new TextureAtlas[6];
+    private final Map<String, TextureAtlas> bases = new HashMap<>();
     private final Vector3[] corners = {new Vector3(), new Vector3(), new Vector3(), new Vector3()};
     private final Vector2 rotated = new Vector2();
     private static final float[] CLIP_X = {-1f, 1f, 1f, -1f};
@@ -61,7 +62,7 @@ public final class CharacterCompositor implements Disposable {
         var state = new RenderState();
         try {
             RenderState.prepare();
-            if (!visible.isEmpty()) { refreshIdentities(); }
+            if (!visible.isEmpty()) { refreshIdentities(visible); }
             int pitchX = 2, pitchY = 2;
             for (var entity : visible) {
                 var canvas = CompositeCharacter.MAPPER.get(entity);
@@ -124,12 +125,18 @@ public final class CharacterCompositor implements Disposable {
         }
     }
 
-    private void refreshIdentities() {
-        var definitions = List.of(CharacterAssets.CHARACTER, CharacterAssets.FEET, CharacterAssets.BODY,
-            CharacterAssets.HEAD, CharacterAssets.HANDS, CharacterAssets.WEAPONS);
+    private void refreshIdentities(List<Entity> visible) {
+        var overlays = List.of(CharacterAssets.FEET, CharacterAssets.BODY, CharacterAssets.HEAD,
+            CharacterAssets.HANDS, CharacterAssets.WEAPONS);
         boolean changed = false;
-        for (int i = 0; i < identities.length; i++) {
-            var atlas = assets.get(TextureAtlas.class, definitions.get(i).id());
+        var baseIds = new HashSet<String>();
+        for (var entity : visible) { baseIds.add(Animation2D.MAPPER.get(entity).getAtlasId()); }
+        for (String id : baseIds) {
+            var atlas = assets.get(TextureAtlas.class, id);
+            changed |= bases.put(id, atlas) != atlas;
+        }
+        for (int i = 1; i < identities.length; i++) {
+            var atlas = assets.get(TextureAtlas.class, overlays.get(i - 1).id());
             changed |= identities[i] != atlas;
             identities[i] = atlas;
         }
@@ -141,16 +148,16 @@ public final class CharacterCompositor implements Disposable {
         var loadout = Loadout.MAPPER.get(entity);
         var equipment = loadout.getEquipment();
         var weapon = loadout.getWeapon();
-        String[] prefixes = {"", equipment.feet(), equipment.body(), equipment.head(), equipment.hands(), weapon.atlasKey()};
+        String[] prefixes = {animation.getAtlasKey(), equipment.feet(), equipment.body(), equipment.head(), equipment.hands(), weapon.atlasKey()};
         String suffix = animation.getAction() + "_" + animation.getFdirection().atlasKey;
         int frame = animation.getFrameIndex();
         var result = new TextureRegion[6];
         for (int layer = 0; layer < 6; layer++) {
-            if (layer == 5 && loadout.getWeaponId() == null) { continue; }
+            if (prefixes[layer] == null || (layer == 5 && loadout.getWeaponId() == null)) { continue; }
             Set<String> actions = layer == 5
                 ? new HashSet<>(List.of("idle", "walk", "death", weapon.primary().animation().action(), weapon.secondary().animation().action()))
                 : ACTIONS;
-            var key = new LayerKey(layer, prefixes[layer], actions);
+            var key = new LayerKey(layer, prefixes[layer], animation.getAtlasId(), animation.getAtlasKey(), actions);
             var cache = layers.computeIfAbsent(key, this::loadLayer);
             var sequence = cache.get(suffix);
             if (sequence == null) { throw new IllegalArgumentException("Unsupported character action: " + suffix); }
@@ -165,8 +172,9 @@ public final class CharacterCompositor implements Disposable {
             for (var direction : Facing.Direction.values()) {
                 String suffix = action + "_" + direction.atlasKey;
                 String name = key.prefix.isEmpty() ? suffix : key.prefix + "/" + suffix;
-                var frames = identities[key.layer].findRegions(name);
-                var reference = identities[0].findRegions(suffix);
+                var base = bases.get(key.baseId);
+                var frames = (key.layer == 0 ? base : identities[key.layer]).findRegions(name);
+                var reference = base.findRegions(key.basePrefix.isEmpty() ? suffix : key.basePrefix + "/" + suffix);
                 if (reference.size != 8 || frames.size != reference.size) {
                     throw new IllegalArgumentException("Composite layer frame count mismatch: " + name);
                 }
@@ -315,7 +323,7 @@ public final class CharacterCompositor implements Disposable {
         } finally { state.restore(); }
     }
 
-    private record LayerKey(int layer, String prefix, Set<String> actions) { }
+    private record LayerKey(int layer, String prefix, String baseId, String basePrefix, Set<String> actions) { }
     private record Command(TextureRegion region, int x, int y) { }
     private static final class Target implements Disposable {
         final int side;

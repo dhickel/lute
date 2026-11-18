@@ -25,9 +25,9 @@ public final class DataLoaderTest {
             check(GameConsts.VIEW_WIDTH == 21.3f && GameConsts.UNIT_SCALE == 1f / 32f, "settings constants");
             var player = DataLoader.parsePlayerData();
             var definitions = DataLoader.parseWeaponData();
-            playerSchema(player);
+            playerSchema(player, definitions);
             characterBoundsSchema(player);
-            weaponSchema(player, definitions);
+            weaponSchema(definitions);
             invalidMetadata(player, definitions);
             assetIds(definitions);
             settingsAtomicity();
@@ -39,7 +39,7 @@ public final class DataLoaderTest {
         } finally { Gdx.files = previousFiles; }
     }
 
-    private static void playerSchema(PlayerData player) {
+    private static void playerSchema(PlayerData player, WeaponsData definitions) {
         check(player.maxHealth() == 100 && player.moveSpeed() == 4, "player stats");
         check(player.animation().frameInterval() == .125f && player.animation().speed() == 1
             && player.animation().atlasKey().isEmpty() && player.animation().soundFrame() == 0, "flat base animation");
@@ -63,16 +63,23 @@ public final class DataLoaderTest {
         var loadout = player.loadout();
         check(loadout.head().equals("basic") && loadout.body().equals("basic")
             && loadout.hands().equals("basic") && loadout.feet().equals("basic")
-            && loadout.weapon().equals("basic_sword"), "default loadout");
+            && loadout.weapon() != null && definitions.weapons().containsKey(loadout.weapon()), "default loadout");
         check(player.sounds().move().equals("sword_hit.wav") && player.sounds().damage().equals("sword_hit.wav"),
             "player sound definitions");
-        var unarmed = new PlayerData.Loadout("basic", "basic", "basic", "basic", null);
-        check(unarmed.weapon() == null, "null weapon is explicitly unarmed");
-        rejects(() -> new PlayerData.Loadout(null, "basic", "basic", "basic", null), "missing head");
-        rejects(() -> new PlayerData.Loadout("basic", " ", "basic", "basic", null), "blank body");
-        rejects(() -> new PlayerData.Loadout("basic", "basic", "", "basic", null), "empty hands");
-        rejects(() -> new PlayerData.Loadout("basic", "basic", "basic", null, null), "missing feet");
-        rejects(() -> new PlayerData.Loadout("basic", "basic", "basic", "basic", " "), "blank weapon");
+        var unequipped = new PlayerData.Loadout(null, null, null, null, null);
+        for (String json : new String[]{"{}", "{\"head\":null,\"body\":null,\"hands\":null,\"feet\":null,\"weapon\":null}"}) {
+            check(DataLoader.mapper.readValue(json, PlayerData.Loadout.class).equals(unequipped),
+                "omitted and null IDs both leave slots empty");
+        }
+        check(DataLoader.mapper.readValue("{\"head\":\"basic\",\"body\":\"basic\",\"hands\":\"basic\",\"weapon\":\"basic_sword\"}",
+            PlayerData.Loadout.class).equals(new PlayerData.Loadout("basic", "basic", "basic", null, "basic_sword")),
+            "omitted feet leave only the feet slot empty");
+        check(DataLoader.mapper.readValue("{\"head\":\"basic\",\"body\":\"basic\",\"hands\":\"basic\",\"feet\":\"basic\"}",
+            PlayerData.Loadout.class).equals(new PlayerData.Loadout("basic", "basic", "basic", "basic", null)),
+            "omitted weapon leaves only the weapon slot empty");
+        for (String slot : new String[]{"head", "body", "hands", "feet", "weapon"}) {
+            rejects(() -> DataLoader.mapper.readValue("{\"" + slot + "\":\" \"}", PlayerData.Loadout.class), "blank " + slot);
+        }
         rejects(() -> new PlayerData("player", 0, 100, loadout, player.animation(), player.sounds(), player.logicalSize(), player.collisionBounds(), player.hitboxBounds()), "zero move speed");
         rejects(() -> new PlayerData("player", Float.NaN, 100, loadout, player.animation(), player.sounds(), player.logicalSize(), player.collisionBounds(), player.hitboxBounds()), "nonfinite move speed");
         rejects(() -> new PlayerData("player", 1, 0, loadout, player.animation(), player.sounds(), player.logicalSize(), player.collisionBounds(), player.hitboxBounds()), "zero health");
@@ -134,9 +141,9 @@ public final class DataLoaderTest {
             "logical size is configured independently, not hard-coded to 64");
     }
 
-    private static void weaponSchema(PlayerData player, WeaponsData definitions) throws Exception {
+    private static void weaponSchema(WeaponsData definitions) throws Exception {
         check(definitions.atlas().equals("weapons.atlas") && definitions.weapons().size() == 3, "shared catalog");
-        var sword = definitions.requireWeapon(player.loadout().weapon());
+        var sword = definitions.requireWeapon("basic_sword");
         var bow = definitions.requireWeapon("basic_bow");
         var unarmed = definitions.requireWeapon("unarmed");
         check(sword.atlasKey().equals("melee/basic_sword") && bow.atlasKey().equals("ranged/basic_bow")
@@ -253,8 +260,6 @@ public final class DataLoaderTest {
             rejects(() -> new Offset(invalid, 0), "nonfinite offset X");
             rejects(() -> new Offset(0, invalid), "nonfinite offset Y");
         }
-        rejects(() -> DataLoader.mapper.readValue("{\"head\":\"basic\",\"body\":\"basic\",\"hands\":\"basic\"}",
-            PlayerData.Loadout.class), "JSON missing feet");
         rejects(() -> DataLoader.mapper.readValue("{\"animation\":{},\"bounds\":{},\"stats\":{}}", AttackData.class),
             "incomplete JSON attack");
         rejects(() -> DataLoader.mapper.readValue("{\"damage\":1,\"cost\":0}", Stats.class), "missing hit frame");
@@ -263,8 +268,6 @@ public final class DataLoaderTest {
             AnimationData.class), "missing sound frame");
         rejects(() -> DataLoader.mapper.readValue("{\"type\":\"RECT\",\"y1\":0,\"x2\":64,\"y2\":64}",
             Bounds.class), "missing bounds coordinate");
-        rejects(() -> DataLoader.mapper.readValue("{\"head\":\"basic\",\"body\":\"basic\",\"hands\":\"basic\",\"feet\":\"basic\"}",
-            PlayerData.Loadout.class), "missing explicit weapon selection");
     }
 
     private static void assetIds(WeaponsData definitions) {
@@ -275,9 +278,9 @@ public final class DataLoaderTest {
         check(sounds.all().stream().allMatch(a -> a.id().startsWith("weapon/basic_sword/")), "selected weapon sound IDs");
         rejects(() -> WeaponAssets.of("missing", definitions), "unknown weapon assets");
         var atlases = CharacterAssets.all(definitions.atlas());
-        check(atlases.size() == 6 && atlases.containsAll(java.util.List.of(CharacterAssets.CHARACTER,
-            CharacterAssets.HEAD, CharacterAssets.BODY, CharacterAssets.HANDS, CharacterAssets.FEET, CharacterAssets.WEAPONS)),
-            "all shared character atlases");
+        check(atlases.size() == 7 && atlases.containsAll(java.util.List.of(CharacterAssets.CHARACTER,
+            CharacterAssets.ENEMIES, CharacterAssets.HEAD, CharacterAssets.BODY, CharacterAssets.HANDS,
+            CharacterAssets.FEET, CharacterAssets.WEAPONS)), "all shared character atlases");
         for (var atlas : atlases) {
             check(atlas.path().equals("atlases/" + atlas.id() + ".atlas"), "shared atlas logical ID and path");
         }

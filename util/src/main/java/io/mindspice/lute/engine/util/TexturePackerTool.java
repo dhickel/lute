@@ -295,8 +295,8 @@ public final class TexturePackerTool {
         if (!Files.isDirectory(sprites)) {
             throw new IllegalArgumentException("Missing or empty required sprite input: " + sprites);
         }
-        for (String required : List.of("character", "equipment/basic/body", "equipment/basic/head",
-                "equipment/basic/feet", "equipment/basic/hands",
+        for (String required : List.of("character/player", "character/basic_npc", "enemies/brainless_undead",
+                "equipment/basic/body", "equipment/basic/head", "equipment/basic/feet", "equipment/basic/hands",
                 "weapons/melee/basic_sword", "weapons/ranged/basic_bow")) {
             Path directory = sprites.resolve(required);
             if (!Files.isDirectory(directory) || spriteImages(directory).isEmpty()) {
@@ -304,8 +304,12 @@ public final class TexturePackerTool {
             }
         }
         Path equipment = sprites.resolve("equipment");
+        rejectNestedPackSettings(sprites.resolve("character"));
+        rejectNestedPackSettings(sprites.resolve("enemies"));
+        rejectNestedPackSettings(equipment);
+        rejectNestedPackSettings(sprites.resolve("weapons"));
         Path groupedEquipment = groupEquipmentSprites(equipment, stage.getParent());
-        for (String name : List.of("character", "body", "head", "feet", "hands", "weapons")) {
+        for (String name : List.of("character", "enemies", "body", "head", "feet", "hands", "weapons")) {
             boolean equipmentSlot = EQUIPMENT_SLOTS.contains(name);
             Path input = (equipmentSlot ? groupedEquipment : sprites).resolve(name);
             var settings = new TexturePacker.Settings();
@@ -331,10 +335,19 @@ public final class TexturePackerTool {
                 var image = ImageIO.read(file.toFile());
                 if (image == null) { throw new IOException("Invalid sprite image: " + file); }
                 String relative = input.relativize(file).toString().replace('\\', '/');
-                if (name.equals("character") && relative.contains("/")) {
-                    throw new IllegalArgumentException("Character frames must be flat: " + file);
+                if ((name.equals("character") || name.equals("enemies")) && !relative.contains("/")) {
+                    throw new IllegalArgumentException("Actor frames must be nested under an actor folder: " + file);
                 }
                 requireRegion(atlas, relative, image.getWidth(), image.getHeight());
+            }
+        }
+    }
+
+    private static void rejectNestedPackSettings(Path input) throws IOException {
+        try (var files = Files.walk(input)) {
+            if (files.anyMatch(file -> file.getFileName().toString().equals("pack.json")
+                && !file.getParent().equals(input))) {
+                throw new IllegalArgumentException("Nested sprite packing overrides are not supported: " + input);
             }
         }
     }

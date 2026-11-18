@@ -59,7 +59,7 @@ public final class MapTriggersTest {
                 var values = new HashSet<String>();
                 for (var value : type.get("values")) { values.add(value.asString()); }
                 check(values.equals("SensorType".equals(type.getString("name"))
-                    ? Set.of("GENERAL") : Set.of("PLAYER", "TELEPORT", "NPC", "ITEM")), "Project enum values must match Java");
+                    ? Set.of("GENERAL") : java.util.Arrays.stream(SpawnType.values()).map(Enum::name).collect(java.util.stream.Collectors.toSet())), "Project enum values must match Java");
             }
         }
         check(names.containsAll(Set.of("SensorType", "SpawnType", "Sensor", "Teleport", "SpawnPoint", "SpawnArea")),
@@ -71,8 +71,11 @@ public final class MapTriggersTest {
         TiledMap map = new PropertyLoader().sample();
         try {
             var triggers = MapTriggers.parse(map);
-            check(triggers.sensors().size() == 2 && triggers.points().size() == 2 && triggers.areas().isEmpty(),
-                "Sample must contain a test sensor, teleport, player point, and destination point");
+            check(triggers.sensors().size() == 2 && triggers.points().size() == 4 && triggers.areas().isEmpty(),
+                "Sample must contain a test sensor, teleport, player point, destination point, and two actor points");
+            check(triggers.points().stream().anyMatch(p -> p.type() == SpawnType.NPC && p.name().equals("NpcSpawn"))
+                && triggers.points().stream().anyMatch(p -> p.type() == SpawnType.ENEMY && p.name().equals("EnemySpawn")),
+                "Sample keeps explicitly typed actor points");
             var testSensor = triggers.sensors().stream().filter(s -> s.name().equals("TestSensor")).findFirst().orElseThrow();
             check(testSensor.type() == SensorType.GENERAL && testSensor.targetMap() == null, "Sample test sensor is general");
             var player = triggers.points().stream().filter(p -> p.type() == SpawnType.PLAYER).findFirst().orElseThrow();
