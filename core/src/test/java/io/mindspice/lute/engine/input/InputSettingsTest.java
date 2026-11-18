@@ -21,15 +21,23 @@ final class InputSettingsTest {
         equal(InputAction.ATTACK_PRIMARY, defaults.getKey(Input.Keys.SPACE), "Space default");
         equal(InputAction.ATTACK_SECONDARY, defaults.getKey(Input.Keys.SHIFT_LEFT), "left Shift default");
         equal(InputAction.ATTACK_SECONDARY, defaults.getKey(Input.Keys.SHIFT_RIGHT), "right Shift default");
+        equal(InputAction.MOVE_UP, defaults.getGamepad(GamepadControl.DPAD_UP), "D-pad default");
+        equal(InputAction.ATTACK_PRIMARY, defaults.getGamepad(GamepadControl.FACE_SOUTH), "south face default");
+        equal(InputAction.ATTACK_SECONDARY, defaults.getGamepad(GamepadControl.FACE_WEST), "west face default");
+        equal(InputAction.MOVE_LEFT, defaults.getGamepad(GamepadControl.LEFT_STICK_LEFT), "left stick default");
 
         var custom = load("""
-            {"controller":{"FACE_SOUTH":"ATTACK_PRIMARY"},"keyboard":{"UP":"MOVE_UP","NUM_1":"ATTACK_PRIMARY"}}
+            {"controller":{"FACE_SOUTH":"ATTACK_SECONDARY"},"keyboard":{"UP":"MOVE_UP","NUM_1":"ATTACK_PRIMARY"}}
             """);
         equal(InputAction.MOVE_UP, custom.getKey(Input.Keys.UP), "configured key replaces default");
         equal(InputAction.ATTACK_PRIMARY, custom.getKey(Input.Keys.NUM_1), "numeric key constant name");
         equal(null, custom.getKey(Input.Keys.W), "omitted key stays unbound");
+        equal(InputAction.ATTACK_SECONDARY, custom.getGamepad(GamepadControl.FACE_SOUTH), "face binding remaps");
+        equal(null, custom.getGamepad(GamepadControl.LEFT_STICK_LEFT), "omitted stick binding stays unbound");
         equal(null, custom.getButton(Input.Buttons.LEFT), "controller data does not map to mouse input");
-        equal(null, load("{\"controller\":{},\"keyboard\":{}}").getKey(Input.Keys.W), "empty maps are valid");
+        var empty = load("{\"controller\":{},\"keyboard\":{}}");
+        equal(null, empty.getKey(Input.Keys.W), "empty keyboard map is valid");
+        equal(null, empty.getGamepad(GamepadControl.FACE_SOUTH), "empty controller map is valid");
 
         rejects("", "empty file");
         rejects("{", "malformed JSON");
@@ -45,6 +53,9 @@ final class InputSettingsTest {
         rejects("{\"controller\":{},\"keyboard\":{\"W\":\"MOVE_UP\",\"W\":\"MOVE_DOWN\"}}", "duplicate key");
         rejects("{\"controller\":{\"FACE_SOUTH\":\"JUMP\"},\"keyboard\":{}}", "unknown controller action");
         rejects("{\"controller\":{\" \":\"MOVE_UP\"},\"keyboard\":{}}", "blank controller name");
+        rejects("{\"controller\":{\"face_south\":\"ATTACK_PRIMARY\"},\"keyboard\":{}}", "lowercase control name");
+        rejects("{\"controller\":{\"42\":\"ATTACK_PRIMARY\"},\"keyboard\":{}}", "raw controller button code");
+        rejects("{\"controller\":{\"DPAD_UP\":\"MOVE_UP\",\"DPAD_UP\":\"MOVE_DOWN\"},\"keyboard\":{}}", "duplicate control");
     }
 
     private static void rejects(String json, String description) {

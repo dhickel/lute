@@ -32,12 +32,10 @@ public final class InputSettings {
                 inputMap.setKey(keyCode, readAction("keyboard." + key, binding.getValue()));
             }
 
-            // Controller names are logical identifiers, not mouse or native button codes.
             for (var binding : settings.get("controller").properties()) {
-                if (binding.getKey().isBlank()) {
-                    throw new IllegalArgumentException("Controller button name must not be blank");
-                }
-                readAction("controller." + binding.getKey(), binding.getValue());
+                String name = binding.getKey();
+                var control = readGamepadControl(name);
+                inputMap.setGamepad(control, readAction("controller." + name, binding.getValue()));
             }
             return inputMap;
         } catch (IOException | RuntimeException failure) {
@@ -57,6 +55,14 @@ public final class InputSettings {
             return code;
         } catch (ReflectiveOperationException failure) {
             throw new IllegalArgumentException("Unknown keyboard key: " + key, failure);
+        }
+    }
+
+    private static GamepadControl readGamepadControl(String name) {
+        try {
+            return GamepadControl.valueOf(name);
+        } catch (IllegalArgumentException failure) {
+            throw new IllegalArgumentException("Unknown controller control: " + name, failure);
         }
     }
 

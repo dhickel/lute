@@ -4,16 +4,19 @@ import com.badlogic.gdx.Gdx;
 import com.badlogic.gdx.Input;
 import com.badlogic.gdx.InputAdapter;
 import com.badlogic.gdx.InputMultiplexer;
+import com.badlogic.gdx.controllers.Controllers;
 import com.badlogic.gdx.utils.Disposable;
 
 public class InputManager extends InputAdapter implements Disposable {
     private final KeyManager keyManager;
     private final MouseManager mouseManager;
+    private final GamepadInput gamepad;
     private final InputMap inputMap;
 
     public InputManager(InputMap inputMap) {
         keyManager = new KeyManager(20, inputMap);
         mouseManager = new MouseManager(20);
+        gamepad = new GamepadInput(inputMap, keyManager);
         this.inputMap = inputMap;
     }
 
@@ -113,9 +116,16 @@ public class InputManager extends InputAdapter implements Disposable {
         return mouseManager;
     }
 
+    public void updateGamepad() {
+        if (gamepad.isConfigured()) {
+            gamepad.update(Controllers.getControllers());
+        }
+    }
+
     public void releaseHeldInputs() {
         mouseManager.releaseHeldInputs();
         keyManager.releaseHeldInputs();
+        gamepad.releaseHeldInputs();
     }
 
     public void regKeyListener(KeyListener listener) {

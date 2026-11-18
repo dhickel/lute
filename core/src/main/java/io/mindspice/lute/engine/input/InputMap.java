@@ -9,6 +9,7 @@ import java.util.Arrays;
 public class InputMap {
     private final InputAction[] keyMap = new InputAction[Input.Keys.MAX_KEYCODE + 1];
     private final InputAction[] buttonMap = new InputAction[Input.Buttons.FORWARD + 1];
+    private final InputAction[] gamepadMap = new InputAction[GamepadControl.values().length];
 
 
     @SafeVarargs
@@ -58,5 +59,13 @@ public class InputMap {
 
     public boolean containsButton(int button) {
         return getButton(button) != null;
+    }
+
+    void setGamepad(GamepadControl control, InputAction action) {
+        gamepadMap[control.ordinal()] = action;
+    }
+
+    InputAction getGamepad(GamepadControl control) {
+        return gamepadMap[control.ordinal()];
     }
 }
