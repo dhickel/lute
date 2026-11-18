@@ -114,7 +114,7 @@ public final class TexturePackerToolTest {
         Path output = directory.resolve("assets");
         createInputs(raw);
         createMap(raw, "alpha");
-        Path arrows = raw.resolve("sprites/weapons/ranged/arrows");
+        Path arrows = raw.resolve("sprites/weapons/projectiles");
         Files.createDirectories(arrows);
         var image = new BufferedImage(32, 16, BufferedImage.TYPE_INT_ARGB);
         image.setRGB(5, 7, 0xff804020);
@@ -128,11 +128,11 @@ public final class TexturePackerToolTest {
         check(atlas.getRegions().size == 4, "Pack both single-frame arrows alongside sword and bow frames");
         check(hasRegion(atlas, "melee/basic_sword/idle_down", 0)
             && hasRegion(atlas, "ranged/basic_bow/idle_down", 0), "Arrow packing must retain existing weapon frames");
-        check(hasRegion(atlas, "ranged/arrows/arrow", -1), "Unindexed arrow must remain a static region");
-        check(hasRegion(atlas, "ranged/arrows/fire_arrow", 0), "Single indexed arrow must retain frame zero");
+        check(hasRegion(atlas, "projectiles/arrow", -1), "Unindexed arrow must remain a static projectile region");
+        check(hasRegion(atlas, "projectiles/fire_arrow", 0), "Single indexed projectile must retain frame zero");
         checkFolderIsolation(atlas);
         for (var region : atlas.getRegions()) {
-            if (!region.name.startsWith("ranged/arrows/")) { continue; }
+            if (!region.name.startsWith("projectiles/")) { continue; }
             check(!region.rotate && region.width == 32 && region.height == 16
                 && region.originalWidth == 32 && region.originalHeight == 16
                 && region.offsetX == 0 && region.offsetY == 0, "Preserve single-frame arrow canvas and orientation");

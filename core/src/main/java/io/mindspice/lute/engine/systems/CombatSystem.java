@@ -11,7 +11,8 @@ import io.mindspice.lute.engine.animation.AnimationState;
 import io.mindspice.lute.engine.components.*;
 import io.mindspice.lute.engine.components.Transform;
 import io.mindspice.lute.engine.data.json.WeaponsData.WeaponData.CollisionType;
-import io.mindspice.lute.engine.data.json.ArrowData;
+import io.mindspice.lute.engine.data.json.ProjectilesData;
+import io.mindspice.lute.engine.data.json.ProjectilesData.Projectile;
 
 import java.util.ArrayList;
 import java.util.IdentityHashMap;
@@ -21,7 +22,7 @@ import java.util.Map;
 public class CombatSystem extends IteratingSystem implements ContactListener, EntityListener {
     private final World world;
     private final List<ArrowFlight> arrows = new ArrayList<>();
-    private final ArrowData arrowType = ArrowData.loadDefault();
+    private final Projectile arrowType = ProjectilesData.loadIronArrow();
 
     List<ArrowFlight> arrows() { return arrows; }
 

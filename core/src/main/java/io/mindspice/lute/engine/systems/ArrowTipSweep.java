@@ -11,11 +11,11 @@ final class ArrowTipSweep {
     private final float travel;
     private float enter, exit;
 
-    ArrowTipSweep(Vector2 origin, Vector2 direction, float length, float width, float travel) {
+    ArrowTipSweep(Vector2 origin, Vector2 direction, Vector2[] triangle, float travel) {
         this.origin = origin;
         this.direction = direction;
         this.travel = travel;
-        triangle = new Vector2[]{new Vector2(), new Vector2(-length, width / 2), new Vector2(-length, -width / 2)};
+        this.triangle = triangle;
     }
 
     private Vector2 local(Body body, Vector2 vertex) {

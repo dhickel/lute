@@ -28,6 +28,7 @@ public final class DataLoaderTest {
             playerSchema(player, definitions);
             characterBoundsSchema(player);
             weaponSchema(definitions);
+            projectileSchema();
             invalidMetadata(player, definitions);
             assetIds(definitions);
             settingsAtomicity();
@@ -37,6 +38,23 @@ public final class DataLoaderTest {
                 "generated weapons match source");
             System.out.println("DataLoaderTest: passed");
         } finally { Gdx.files = previousFiles; }
+    }
+
+    private static void projectileSchema() {
+        var arrow = ProjectilesData.loadIronArrow();
+        check(arrow.atlasKey().equals("projectiles/IronArrow") && arrow.speed() == 8 && arrow.lifetime() == 5,
+            "iron arrow binds the atlas region and flight settings");
+        check(arrow.collisionBounds().equals(new ProjectilesData.CollisionBounds(8.5f, 10)),
+            "iron arrow binds the authored tip dimensions");
+        for (String key : new String[]{"atlas_key", "speed", "lifetime", "collision_bounds"}) {
+            rejects(() -> {
+                var tree = (tools.jackson.databind.node.ObjectNode) DataLoader.mapper.valueToTree(arrow);
+                tree.remove(key);
+                DataLoader.mapper.treeToValue(tree, ProjectilesData.Projectile.class);
+            }, "missing projectile " + key);
+        }
+        rejects(() -> DataLoader.mapper.readValue("{\"length\":8,\"width\":0}",
+            ProjectilesData.CollisionBounds.class), "zero projectile width");
     }
 
     private static void playerSchema(PlayerData player, WeaponsData definitions) {

@@ -45,6 +45,16 @@ public class TriggerDebugRenderSystem extends EntitySystem implements Disposable
                 if (fixture.isSensor()) { drawSensor(fixture); }
             }
         }
+        var combat = getEngine().getSystem(CombatSystem.class);
+        if (combat != null) {
+            // Projectile sweeps have no Box2D fixture to draw.
+            renderer.setColor(Color.YELLOW);
+            for (var arrow : combat.arrows()) {
+                arrow.worldBoundsVertex(1, a);
+                arrow.worldBoundsVertex(2, b);
+                renderer.triangle(arrow.tip.x, arrow.tip.y, a.x, a.y, b.x, b.y);
+            }
+        }
         renderer.setColor(Color.MAGENTA);
         var tiled = getEngine().getSystem(TiledSystem.class);
         var map = tiled == null ? null : tiled.getCurrentMap();

@@ -26,6 +26,7 @@ import com.badlogic.gdx.utils.Disposable;
 import com.badlogic.gdx.utils.viewport.Viewport;
 import io.mindspice.lute.engine.components.Graphic;
 import io.mindspice.lute.engine.components.Transform;
+import io.mindspice.lute.engine.data.json.ProjectilesData.Projectile;
 import io.mindspice.lute.engine.singletons.GameConsts;
 
 import java.util.ArrayList;
@@ -41,6 +42,7 @@ public class RenderSystem extends SortedIteratingSystem implements Disposable {
     private final AssetService assets;
     private TextureAtlas arrowAtlas;
     private TextureAtlas.AtlasRegion arrowRegion;
+    private Projectile arrowType;
     private final Viewport viewport;
     private final OrthographicCamera camera;
     private final List<MapLayer> fgLayers;
@@ -160,15 +162,18 @@ public class RenderSystem extends SortedIteratingSystem implements Disposable {
 
     private void drawArrow(ArrowFlight arrow) {
         var atlas = assets.get(TextureAtlas.class, CharacterAssets.WEAPONS.id());
-        if (atlas != arrowAtlas) {
-            arrowRegion = atlas.findRegion(arrow.type.region());
-            if (arrowRegion == null) { throw new IllegalStateException("Missing arrow region: " + arrow.type.region()); }
-            if (arrowRegion.rotate || arrowRegion.offsetX != 0 || arrowRegion.offsetY != 0
-                || arrow.type.tipX() < 0 || arrow.type.tipX() > arrowRegion.getRegionWidth()
-                || arrow.type.tipY() < 0 || arrow.type.tipY() > arrowRegion.getRegionHeight()) {
-                throw new IllegalStateException("Arrow geometry requires a matching untrimmed sprite: " + arrowRegion.name);
+        if (atlas != arrowAtlas || arrow.type != arrowType) {
+            var region = atlas.findRegion(arrow.type.atlasKey());
+            if (region == null) {
+                throw new IllegalStateException("Missing projectile region: " + arrow.type.atlasKey());
+            }
+            if (region.rotate || region.packedWidth != region.originalWidth || region.packedHeight != region.originalHeight
+                || arrow.type.tipX() > region.getRegionWidth() || arrow.type.tipY() > region.getRegionHeight()) {
+                throw new IllegalStateException("Projectile geometry requires a matching untrimmed sprite: " + region.name);
             }
             arrowAtlas = atlas;
+            arrowType = arrow.type;
+            arrowRegion = region;
         }
         var region = arrowRegion;
         float scale = GameConsts.UNIT_SCALE;
