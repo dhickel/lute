@@ -49,11 +49,14 @@ public class CombatSystem extends IteratingSystem implements ContactListener, En
             facing.setDirection(dy > 0 ? Facing.Direction.UP : Facing.Direction.DOWN);
         }
         var attack = aim.getWeapon().primary();
-        arrows.add(new ArrowFlight(owner, arrowType, start, target, attack.damage()));
+        var animation = Animation2D.MAPPER.get(owner);
+        int drawFrame = animation.isAttackReady() ? animation.getFrameIndex() : 0;
+        float damageScale = Math.min(drawFrame + 1, 4) / 4f;
+        arrows.add(new ArrowFlight(owner, arrowType, start, target, attack.damage() * damageScale));
         var combat = Combat.MAPPER.get(owner);
         combat.beginAttack(attack);
         activeAttacks.put(owner, combat);
-        Animation2D.MAPPER.get(owner).releaseBow();
+        animation.releaseBow();
         aim.cancel();
     }
 

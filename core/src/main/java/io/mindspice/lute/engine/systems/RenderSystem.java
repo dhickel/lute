@@ -102,12 +102,12 @@ public class RenderSystem extends SortedIteratingSystem implements Disposable, E
             batch.setColor(Color.WHITE);
             mapRenderer.setView(camera);
             bgLayers.forEach(mapRenderer::renderMapLayer);
-            forceSort();
-            super.update(deltaTime);
-            straightBlend();
             batch.setColor(Color.WHITE);
             var combat = getEngine().getSystem(CombatSystem.class);
             if (combat != null) { for (var arrow : combat.arrows()) { drawArrow(arrow); } }
+            forceSort();
+            super.update(deltaTime);
+            straightBlend();
             fgLayers.forEach(mapRenderer::renderMapLayer);
             batch.setColor(Color.WHITE);
             for (Entity entity : getEngine().getEntitiesFor(AIMERS)) {

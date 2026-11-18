@@ -57,6 +57,7 @@ public final class CombatSystemTest {
         attackSlotsAndLoadout();
         heldBow();
         cardinalBowShots();
+        bowDamageByDrawFrame();
         independentAttacksAndGeometry();
         contacts();
         characterFixturesAndContacts();
@@ -284,12 +285,32 @@ public final class CombatSystemTest {
                 body.getFixtureList().first().setUserData(Hurtbox.INSTANCE);
                 body.setTransform(x, y, 0);
                 game.input(InputAction.ATTACK_PRIMARY, 0); game.update(.5f);
-                near(90, Health.MAPPER.get(target).getCurrent(), "Tip reaches terminal hurtbox: " + facing);
+                near(97.5f, Health.MAPPER.get(target).getCurrent(), "Quick shot reaches terminal hurtbox: " + facing);
                 game.input(InputAction.ATTACK_PRIMARY, 1); game.update(0);
                 check(aim.isAiming() && game.animation().getFrameIndex() == 0, "Fresh press redraws during recovery");
                 game.input(InputAction.ATTACK_PRIMARY, 0); game.update(0);
                 game.engine.removeEntity(game.player); game.update(1);
-                near(90, Health.MAPPER.get(target).getCurrent(), "Removing owner discards in-flight arrows");
+                near(97.5f, Health.MAPPER.get(target).getCurrent(), "Removing owner discards in-flight arrows");
+            }
+        }
+    }
+
+    private static void bowDamageByDrawFrame() {
+        float[] expectedHealth = {97.5f, 95f, 92.5f, 90f, 90f};
+        for (int frame = 0; frame < expectedHealth.length; frame++) {
+            try (var game = new Harness(1, 1, 1)) {
+                var shot = attack("basic_bow", "shot", 1, 2, 1, BoundsType.RECT, CollisionType.PROJECTILE);
+                game.selectWeapon(new CombatWeapon.Weapon("basic_bow", "ranged/basic_bow", shot, shot));
+                game.player.add(new BowAim(1, 1));
+                var target = game.target(2, false);
+                Physic.MAPPER.get(target).getBody().setTransform(2, 1.3f, 0);
+                game.input(InputAction.ATTACK_PRIMARY, 1); game.update(0);
+                game.update(frame * shot.animation().frameInterval());
+                check(game.animation().getFrameIndex() == frame, "Expected draw frame " + frame);
+                game.input(InputAction.ATTACK_PRIMARY, 0); game.update(0);
+                check(game.animation().getFrameIndex() == 5, "All draw strengths start release at frame 5");
+                game.update(.5f);
+                near(expectedHealth[frame], Health.MAPPER.get(target).getCurrent(), "Damage sampled at draw frame " + frame);
             }
         }
     }
@@ -338,7 +359,7 @@ public final class CombatSystemTest {
             check(game.animation().getFrameIndex() == 5, "Quick release skips unplayed draw frames");
             near(100, Health.MAPPER.get(target).getCurrent(), "Shot is not hitscan");
             game.update(.5f);
-            near(90, Health.MAPPER.get(target).getCurrent(), "One arced tip crosses target even on long frame");
+            near(97.5f, Health.MAPPER.get(target).getCurrent(), "One quick shot hits even on long frame");
 
             input.keyDown(space); game.update(0);
             game.input(InputAction.MOVE_UP, 1); game.update(1f / 3f);
@@ -346,7 +367,7 @@ public final class CombatSystemTest {
             input.keyUp(space); game.update(0);
             check(game.animation().getFdirection() == Facing.Direction.UP, "Exact diagonal tie faces vertically");
             game.input(InputAction.MOVE_UP, 0); game.update(.5f);
-            near(80, Health.MAPPER.get(target).getCurrent(), "Vertical pose still fires along the diagonal");
+            near(90, Health.MAPPER.get(target).getCurrent(), "Vertical pose still fires along the diagonal");
 
             input.keyDown(space); game.update(0);
             game.input(InputAction.MOVE_DOWN, 1); game.update(1f / 3f);
