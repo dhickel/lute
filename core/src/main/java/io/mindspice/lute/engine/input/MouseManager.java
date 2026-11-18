@@ -8,13 +8,19 @@ import java.util.Objects;
 
 public class MouseManager {
     private MouseListener[] mouseListeners;
+    private final KeyManager actions;
     private int size = 0;
     private final boolean[] physicalDown = new boolean[Input.Buttons.FORWARD + 1];
     private final InputAction[] pressedActions = new InputAction[Input.Buttons.FORWARD + 1];
 
     public MouseManager(int size) {
+        this(size, null);
+    }
+
+    MouseManager(int size, KeyManager actions) {
         if (size < 1) { throw new IllegalArgumentException("Listener capacity must be positive"); }
         mouseListeners = new MouseListener[size];
+        this.actions = actions;
     }
 
     public void registerListener(MouseListener listener) {
@@ -82,6 +88,7 @@ public class MouseManager {
     }
 
     private void dispatchButton(InputAction action, int val) {
+        if (actions != null) { actions.dispatch(action, val); }
         for (int i = 0; i < size; i++) {
             var listener = mouseListeners[i];
             if (listener.isListening()) {

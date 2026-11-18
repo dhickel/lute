@@ -39,6 +39,23 @@ final class InputSettingsTest {
         equal(null, empty.getKey(Input.Keys.W), "empty keyboard map is valid");
         equal(null, empty.getGamepad(GamepadControl.FACE_SOUTH), "empty controller map is valid");
 
+        var mouse = load("""
+            {"keyboard":{},"controller":{},"mouse":{"MButton1":"ATTACK_PRIMARY","MButton2":"ATTACK_SECONDARY",
+              "MButton3":"MOVE_UP","MButton4":"MOVE_LEFT","MButton5":"MOVE_RIGHT"}}
+            """);
+        equal(InputAction.ATTACK_PRIMARY, mouse.getButton(Input.Buttons.LEFT), "left mouse binding");
+        equal(InputAction.ATTACK_SECONDARY, mouse.getButton(Input.Buttons.RIGHT), "right mouse binding");
+        equal(InputAction.MOVE_UP, mouse.getButton(Input.Buttons.MIDDLE), "middle mouse binding");
+        equal(InputAction.MOVE_LEFT, mouse.getButton(Input.Buttons.BACK), "back mouse binding");
+        equal(InputAction.MOVE_RIGHT, mouse.getButton(Input.Buttons.FORWARD), "forward mouse binding");
+        equal(null, defaults.getButton(Input.Buttons.LEFT), "shipped mouse bindings are empty");
+        rejects("{\"controller\":{},\"keyboard\":{},\"mouse\":null}", "mouse map must be an object");
+        rejects("{\"controller\":{},\"keyboard\":{},\"other\":{}}", "unknown section");
+        rejects("{\"controller\":{},\"keyboard\":{},\"mouse\":{\"LEFT\":\"MOVE_UP\"}}", "unknown mouse button");
+        rejects("{\"controller\":{},\"keyboard\":{},\"mouse\":{\"mbutton1\":\"MOVE_UP\"}}", "wrong mouse button case");
+        rejects("{\"controller\":{},\"keyboard\":{},\"mouse\":{\"MButton1\":\"SPACE\"}}", "mouse binds actions, not keys");
+        rejects("{\"controller\":{},\"keyboard\":{},\"mouse\":{\"MButton1\":\"MOVE_UP\",\"MButton1\":\"MOVE_DOWN\"}}", "duplicate mouse button");
+
         rejects("", "empty file");
         rejects("{", "malformed JSON");
         rejects("{\"keyboard\":{}}", "missing controller map");

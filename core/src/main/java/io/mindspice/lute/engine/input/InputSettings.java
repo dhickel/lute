@@ -17,9 +17,11 @@ public final class InputSettings {
             var settings = DataLoader.mapper.reader()
                 .with(DeserializationFeature.FAIL_ON_READING_DUP_TREE_KEY, DeserializationFeature.FAIL_ON_TRAILING_TOKENS)
                 .readTree(stream);
-            if (!settings.isObject() || settings.size() != 2
-                || !settings.path("keyboard").isObject() || !settings.path("controller").isObject()) {
-                throw new IllegalArgumentException("Expected keyboard and controller binding maps");
+            var mouseBindings = settings.path("mouse");
+            if (!settings.isObject() || settings.size() != (mouseBindings.isMissingNode() ? 2 : 3)
+                || !settings.path("keyboard").isObject() || !settings.path("controller").isObject()
+                || (!mouseBindings.isMissingNode() && !mouseBindings.isObject())) {
+                throw new IllegalArgumentException("Expected keyboard and controller binding maps and an optional mouse map");
             }
 
             var inputMap = new InputMap();
@@ -36,6 +38,10 @@ public final class InputSettings {
                 String name = binding.getKey();
                 var control = readGamepadControl(name);
                 inputMap.setGamepad(control, readAction("controller." + name, binding.getValue()));
+            }
+            for (var binding : mouseBindings.properties()) {
+                String name = binding.getKey();
+                inputMap.setButton(readMouseButton(name), readAction("mouse." + name, binding.getValue()));
             }
             return inputMap;
         } catch (IOException | RuntimeException failure) {
@@ -56,6 +62,17 @@ public final class InputSettings {
         } catch (ReflectiveOperationException failure) {
             throw new IllegalArgumentException("Unknown keyboard key: " + key, failure);
         }
+    }
+
+    private static int readMouseButton(String name) {
+        return switch (name) {
+            case "MButton1" -> Input.Buttons.LEFT;
+            case "MButton2" -> Input.Buttons.RIGHT;
+            case "MButton3" -> Input.Buttons.MIDDLE;
+            case "MButton4" -> Input.Buttons.BACK;
+            case "MButton5" -> Input.Buttons.FORWARD;
+            default -> throw new IllegalArgumentException("Unknown mouse button: " + name);
+        };
     }
 
     private static GamepadControl readGamepadControl(String name) {

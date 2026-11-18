@@ -15,7 +15,7 @@ public class InputManager extends InputAdapter implements Disposable {
 
     public InputManager(InputMap inputMap) {
         keyManager = new KeyManager(20, inputMap);
-        mouseManager = new MouseManager(20);
+        mouseManager = new MouseManager(20, keyManager);
         gamepad = new GamepadInput(inputMap, keyManager);
         this.inputMap = inputMap;
     }

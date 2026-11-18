@@ -19,5 +19,6 @@
     "SPACE": "ATTACK_PRIMARY",
     "SHIFT_LEFT": "ATTACK_SECONDARY",
     "SHIFT_RIGHT": "ATTACK_SECONDARY"
-  }
+  },
+  "mouse": {}
 }

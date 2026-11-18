@@ -150,6 +150,31 @@ public final class InputSystemTest {
                 equal(0, count[0], "synthetic release emits nothing");
                 near(0, move.getDirection().y, "synthetic release stops movement");
                 controllerAttackRouting(engine, entity, input, map, count);
+                var combat = new Combat();
+                entity.add(combat);
+                map.setButton(Input.Buttons.LEFT, InputAction.ATTACK_PRIMARY);
+                map.setButton(Input.Buttons.RIGHT, InputAction.ATTACK_SECONDARY);
+                input.touchDown(10, 20, 0, Input.Buttons.LEFT);
+                engine.update(0);
+                equal(Combat.AttackSlot.PRIMARY, combat.consumeAttackRequest(), "left click requests primary attack");
+                input.touchDown(10, 20, 0, Input.Buttons.RIGHT);
+                engine.update(0);
+                equal(Combat.AttackSlot.SECONDARY, combat.consumeAttackRequest(), "right click requests secondary attack");
+                input.releaseHeldInputs();
+                input.touchDown(10, 20, 0, Input.Buttons.LEFT);
+                engine.update(0);
+                equal(null, combat.consumeAttackRequest(), "release and duplicate down do not request attacks");
+                input.touchCancelled(10, 20, 0, Input.Buttons.LEFT);
+                map.setButton(Input.Buttons.LEFT, InputAction.MOVE_UP);
+                input.keyUp(Input.Keys.W);
+                input.keyDown(Input.Keys.W);
+                input.touchDown(10, 20, 0, Input.Buttons.LEFT);
+                input.touchCancelled(10, 20, 0, Input.Buttons.LEFT);
+                engine.update(0);
+                near(1, move.getDirection().y, "mouse cancel preserves independent keyboard hold");
+                input.keyUp(Input.Keys.W);
+                engine.update(0);
+                near(0, move.getDirection().y, "last release stops movement");
                 input.unRegKeyListener(controller.getInputListener());
                 engine.removeAllEntities();
                 engine.addEntity(new Entity().add(Controller.forInputManager(input)));
@@ -533,7 +558,8 @@ public final class InputSystemTest {
             input.touchCancelled(1, 2, 0, code);
             equal(List.of(new Event(InputAction.MOVE_DOWN, 1), new Event(InputAction.MOVE_DOWN, 0)), drainButtons(mouse),
                 "mouse uses button namespace and ignores late cancel " + code);
-            equal(List.of(), drain(keys), "mouse does not dispatch keyboard events " + code);
+            equal(List.of(new Event(InputAction.MOVE_DOWN, 1), new Event(InputAction.MOVE_DOWN, 0)), drain(keys),
+                "mouse shares the action queue without aliasing the same-code key " + code);
             map.removeKey(code);
             input.keyDown(code);
             equal(List.of(), drain(keys), "button-only binding cannot trigger a key action " + code);
@@ -541,6 +567,8 @@ public final class InputSystemTest {
             equal(List.of(new Event(InputAction.MOVE_DOWN, 1)), drainButtons(mouse), "button survives removal of same-code key " + code);
             input.touchUp(1, 2, 0, code);
             drainButtons(mouse);
+            equal(List.of(new Event(InputAction.MOVE_DOWN, 1), new Event(InputAction.MOVE_DOWN, 0)), drain(keys),
+                "mouse action survives removal of the same-code key " + code);
             input.keyUp(code);
             map.setKey(code, InputAction.MOVE_UP);
             map.removeButton(code);

@@ -15,7 +15,7 @@ LibGDX → InputMultiplexer → InputManager → InputMap / KeyManager
 
 `ControllerSystem` updates movement direction directly and does not emit `Event.Player.Moved` for movement input. The event type and event-system interfaces remain available.
 
-Keyboard and gamepad actions share the existing gameplay listener queues. There is no tutorial enum conversion, bridge, extra held-action set, or second command queue. The manager is already registered with LibGDX; do not create another processor or register every entity with LibGDX.
+Keyboard, gamepad, and mapped mouse-button actions share the existing gameplay listener queues. There is no tutorial enum conversion, bridge, extra held-action set, or second command queue. The manager is already registered with LibGDX; do not create another processor or register every entity with LibGDX.
 
 ## Screen ownership and lifecycle
 
@@ -36,9 +36,10 @@ This lifecycle assumes the current single gameplay screen, Tiled creation path, 
 ## Event capture and release
 
 ```text
-key/button down → device mapping → capture action → enabled listener → queue
-key/button up   → captured action → enabled listener → queue
-scroll          → MouseManager → enabled listener → queue
+key/button down → device mapping → capture action → enabled action listener → queue
+key/button up   → captured action → enabled action listener → queue
+mouse button    → MouseManager → action queue and positional mouse caches
+scroll          → MouseManager → enabled mouse listener → queue
 ```
 
 States are 1 for down and 0 for up. Unmapped keys and keyboard `Input.Keys.UNKNOWN` (0) are ignored by the adapter. There are no action groups or manager filter APIs; key and mouse listeners retain their individual action lists.
@@ -49,9 +50,9 @@ Each physical slot tracks down state and its accepted action. Duplicate downs an
 
 ## Bindings
 
-The input settings contract uses `assets/input.setting.json` with exactly two object sections, `keyboard` and `controller`; either map may be empty. Each value must be an exact, case-sensitive `InputAction` enum name. Keyboard identifiers must be exact, case-sensitive LibGDX `Input.Keys` key constant names, such as `SPACE`, `SHIFT_LEFT`, `SHIFT_RIGHT`, and `NUM_1`, not display labels such as `Space` or `L-Shift`. Loading rejects unknown names, non-key constants such as `META` masks, duplicate aliases for the same physical key, and malformed or duplicate entries.
+The input settings contract uses `assets/input.setting.json` with required `keyboard` and `controller` object sections and an optional `mouse` object section; each map may be empty. Each value must be an exact, case-sensitive `InputAction` enum name. Keyboard identifiers must be exact, case-sensitive LibGDX `Input.Keys` key constant names, such as `SPACE`, `SHIFT_LEFT`, `SHIFT_RIGHT`, and `NUM_1`, not display labels such as `Space` or `L-Shift`. Loading rejects unknown names, non-key constants such as `META` masks, duplicate aliases for the same physical key, and malformed or duplicate entries.
 
-The default keyboard bindings map W/S/A/D to movement, `SPACE` to `ATTACK_PRIMARY`, and `SHIFT_LEFT` and `SHIFT_RIGHT` to `ATTACK_SECONDARY`. Controller defaults map the D-pad and left stick to movement and `FACE_SOUTH`/`FACE_WEST` to primary/secondary attack. The complete, case-sensitive controller identifier list is `DPAD_UP`, `DPAD_DOWN`, `DPAD_LEFT`, `DPAD_RIGHT`, `FACE_SOUTH`, `FACE_WEST`, `LEFT_STICK_UP`, `LEFT_STICK_DOWN`, `LEFT_STICK_LEFT`, and `LEFT_STICK_RIGHT`. Unknown names fail startup. These are logical controls, not mouse button codes. Changes take effect at startup; there is no hot reload or mouse configuration in this file.
+The default keyboard bindings map W/S/A/D to movement, `SPACE` to `ATTACK_PRIMARY`, and `SHIFT_LEFT` and `SHIFT_RIGHT` to `ATTACK_SECONDARY`. Controller defaults map the D-pad and left stick to movement and `FACE_SOUTH`/`FACE_WEST` to primary/secondary attack. The complete, case-sensitive controller identifier list is `DPAD_UP`, `DPAD_DOWN`, `DPAD_LEFT`, `DPAD_RIGHT`, `FACE_SOUTH`, `FACE_WEST`, `LEFT_STICK_UP`, `LEFT_STICK_DOWN`, `LEFT_STICK_LEFT`, and `LEFT_STICK_RIGHT`. Unknown names fail startup. These are logical controls, not mouse button codes. The optional `mouse` map binds the exact, case-sensitive identifiers `MButton1`, `MButton2`, `MButton3`, `MButton4`, and `MButton5` to actions, corresponding respectively to left, right, middle, back, and forward. These are mouse bindings, not keyboard aliases. The shipped mouse map is empty. Changes take effect at startup; there is no hot reload.
 
 ### Gamepad polling
 
@@ -78,7 +79,7 @@ Both circular queues are bounded FIFO. A full queue overwrites the oldest entry 
 
 ### Cached mouse library support
 
-Cached mouse input is available to applications but is not wired into the current gameplay controller. Register a `MouseListener` through the shared manager's `regMousePosListener`, and unregister it when finished; no additional LibGDX processor is needed. Supply a positive capacity and the button actions to retain.
+Mapped mouse buttons feed the same gameplay action queues as keyboard input. `InputManager` and `MouseManager` capture each button pair for both the shared action queue and existing positional mouse caches, including balancing releases. Register a `MouseListener` through the shared manager's `regMousePosListener`, and unregister it when finished; no additional LibGDX processor is needed. Supply a positive capacity and the button actions to retain.
 
 `MouseEventConsumer.accept` receives `BUTTON` with a mapped action and state 1/0, or `SCROLL` with a null action and direction 1 up/0 down. Both share one FIFO and preserve relative order. `getPos()` returns the mutable latest screen-coordinate `Vector2` (origin top-left); copy it for a snapshot and unproject for world coordinates. Movement updates position without occupying queue space. Each queued event snapshots scalar x/y coordinates, so use those coordinates for a click rather than the later cursor position. Pointer 0 down/up/cancel updates position before its button event; an unmatched up or cancel emits no button event. Pointer 0 dragging and mouse movement also update position. This is primary mouse emulation, not multitouch.
 
