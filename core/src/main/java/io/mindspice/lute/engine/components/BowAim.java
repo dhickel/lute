@@ -6,6 +6,8 @@ import com.badlogic.gdx.math.Vector2;
 
 public final class BowAim implements Component {
     public static final ComponentMapper<BowAim> MAPPER = ComponentMapper.getFor(BowAim.class);
+    // shot_04 has the greatest bow bend; shot_05 begins the recoil.
+    public static final int FULL_DRAW_FRAME = 4;
     private static final float TILES_PER_SECOND = 6f;
     private final float tileWidth, tileHeight;
     private final Vector2 target = new Vector2();

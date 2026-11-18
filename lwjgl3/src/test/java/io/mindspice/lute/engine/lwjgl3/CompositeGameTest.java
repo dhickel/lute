@@ -176,18 +176,38 @@ public final class CompositeGameTest {
         float playerHealth = Health.MAPPER.get(player).getCurrent();
         long previousAttack = combat.getAttackId();
         Facing.Direction direction = Facing.MAPPER.get(player).getDirection();
+        var seen = new BitSet();
         try {
+            if (shot) {
+                Facing.MAPPER.get(player).setDirection(switch (direction) {
+                    case UP -> Facing.Direction.DOWN; case DOWN -> Facing.Direction.UP;
+                    case LEFT -> Facing.Direction.RIGHT; case RIGHT -> Facing.Direction.LEFT;
+                });
+            }
             Gdx.input.getInputProcessor().keyDown(key);
             engine.getSystem(ControllerSystem.class).update(0f);
             if (shot) {
                 var aim = io.mindspice.lute.engine.components.BowAim.MAPPER.get(player);
                 require(aim.isAiming() && !combat.hasAttackRequest(), "Bow press aims without attacking");
+                engine.update(0);
+                for (int frame = 0; frame <= 4; frame++) {
+                    require(animation.getFrameIndex() == frame && animation.getFdirection() != direction,
+                        "Draw in original facing through shot_04");
+                    layers.check(player);
+                    seen.set(frame);
+                    engine.update(expected.animation().frameInterval() / expected.animation().speed());
+                }
+                require(animation.getFrameIndex() == 4, "Held composite stays fully drawn");
+                var steer = switch (direction) {
+                    case UP -> Vector2.Y; case DOWN -> new Vector2(0, -1);
+                    case RIGHT -> Vector2.X; case LEFT -> new Vector2(-1, 0);
+                };
+                aim.steer(steer, 4f / 6f); // Four tiles, across the player to the opposite side.
                 Physic.MAPPER.get(target).getBody().setTransform(aim.getTargetX(), aim.getTargetY(), 0);
                 Gdx.input.getInputProcessor().keyUp(key);
                 engine.getSystem(ControllerSystem.class).update(0f);
                 require(!aim.isAiming(), "Bow release removes crosshair");
-            }
-            require(combat.hasAttackRequest(), "Actual input reaches controller request: " + key);
+            } else { require(combat.hasAttackRequest(), "Actual input reaches controller request: " + key); }
             blockedLoadout(player, weapon);
             engine.update(0f);
             require(combat.isAttacking() && combat.getActiveAttack() == expected, "Combat snapshots selected attack");
@@ -197,7 +217,10 @@ public final class CompositeGameTest {
             require(animation.isAttackReady() && animation.getAction().equals(expected.animation().action()),
                 "Actual AnimationSystem starts authored attack action");
             int count = animation.getAnimation().getKeyFrames().length;
-            var seen = new BitSet(count);
+            if (shot) {
+                require(animation.getFrameIndex() == 5 && animation.getFdirection() == direction,
+                    "Release turns the composite and starts shot_05, not shot_00");
+            }
             float step = Math.min(1f / 60f, expected.animation().frameInterval() / expected.animation().speed() * 0.5f);
             int limit = (int) Math.ceil(count * expected.animation().frameInterval() / expected.animation().speed() / step) + 3;
             boolean sensorSeen = false;

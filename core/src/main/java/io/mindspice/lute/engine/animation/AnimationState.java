@@ -7,6 +7,7 @@ import com.badlogic.gdx.graphics.g2d.Animation;
 import io.mindspice.lute.engine.components.Animation2D;
 import io.mindspice.lute.engine.components.AnimationPlayer;
 import io.mindspice.lute.engine.components.Combat;
+import io.mindspice.lute.engine.components.BowAim;
 import io.mindspice.lute.engine.components.Move;
 
 public enum AnimationState implements State<Entity> {
@@ -45,7 +46,10 @@ public enum AnimationState implements State<Entity> {
 
         @Override
         public void update(Entity entity) {
-            if (!attacking(entity)) { changeState(entity, moving(entity) ? WALK : IDLE); }
+            var aim = BowAim.MAPPER.get(entity);
+            if (!attacking(entity) && (aim == null || !aim.isAiming())) {
+                changeState(entity, moving(entity) ? WALK : IDLE);
+            }
         }
 
         @Override

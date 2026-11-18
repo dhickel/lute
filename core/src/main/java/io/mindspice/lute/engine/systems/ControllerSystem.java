@@ -42,11 +42,9 @@ public class ControllerSystem extends IteratingSystem implements EventEmitter {
                 if (aim != null && weapon != null && weapon.primary().collisionType() == CollisionType.PROJECTILE) {
                     if (!edge || !alive) { return; }
                     if (pressed) {
-                        aim.start(weapon, Transform.MAPPER.get(entity), Facing.MAPPER.get(entity).getDirection());
+                        getEngine().getSystem(CombatSystem.class).drawBow(entity, aim, weapon);
                     } else if (aim.isAiming()) {
                         getEngine().getSystem(CombatSystem.class).launch(entity, aim);
-                        aim.cancel();
-                        combat.requestAttack(Combat.AttackSlot.PRIMARY);
                     }
                 } else if (pressed && combat != null) { combat.requestAttack(Combat.AttackSlot.PRIMARY); }
             } else if (action == InputAction.ATTACK_SECONDARY) {

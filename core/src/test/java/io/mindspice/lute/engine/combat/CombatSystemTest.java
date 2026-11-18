@@ -223,7 +223,7 @@ public final class CombatSystemTest {
                         && game.combat().getActiveAttack() == expected, "Rejected switch preserves equipment, weapon and snapshot");
                     check(!game.loadouts.equipWeapon(game.player, "missing"), "Busy switch is rejected before resolving an ID");
                     int fixtures = game.body().getFixtureList().size;
-                    for (int frame = 1; frame <= 3; frame++) {
+                    for (int frame = 1; frame < game.animation().getAnimation().getKeyFrames().length; frame++) {
                         game.update(.125f);
                         game.step(); game.combatSystem.update(0);
                         check(game.combat().isAttacking(), "Attack plays through frame " + frame);
@@ -286,6 +286,7 @@ public final class CombatSystemTest {
                 game.input(InputAction.ATTACK_PRIMARY, 0); game.update(.5f);
                 near(90, Health.MAPPER.get(target).getCurrent(), "Tip reaches terminal hurtbox: " + facing);
                 game.input(InputAction.ATTACK_PRIMARY, 1); game.update(0);
+                check(aim.isAiming() && game.animation().getFrameIndex() == 0, "Fresh press redraws during recovery");
                 game.input(InputAction.ATTACK_PRIMARY, 0); game.update(0);
                 game.engine.removeEntity(game.player); game.update(1);
                 near(90, Health.MAPPER.get(target).getCurrent(), "Removing owner discards in-flight arrows");
@@ -312,13 +313,19 @@ public final class CombatSystemTest {
             input.keyDown(space);
             input.touchDown(0, 0, 0, 0);
             game.update(.1f);
+            check(game.animation().getAction().equals("shot") && game.animation().getFrameIndex() == 0,
+                "First binding starts drawing immediately");
             near(3, aim.getTargetX(), "New aim starts two tiles forward");
             near(1, aim.getTargetY(), "Aim starts on facing axis");
             game.input(InputAction.MOVE_UP, 1); game.update(.1f);
             near(1.6f, aim.getTargetY(), "Direction steers held crosshair");
             game.input(InputAction.MOVE_UP, 0); input.keyUp(space); game.update(1);
             check(aim.isAiming() && !game.combat().isAttacking(), "Releasing only one binding cannot fire");
+            check(game.animation().getFrameIndex() == 4, "Long update stops at full draw");
+            game.update(0);
+            check(game.animation().getFrameIndex() == 4, "Zero delta holds full draw");
             input.touchCancelled(0, 0, 0, 0); game.update(1);
+            check(game.animation().getType() == Animation2D.AnimationType.IDLE, "Cancellation resets drawn pose");
             near(100, Health.MAPPER.get(target).getCurrent(), "Cancellation deals no damage");
             check(!aim.isAiming() && !game.combat().isAttacking(), "Cancelled touch hides without firing");
             input.keyDown(space); game.update(0);
@@ -328,9 +335,23 @@ public final class CombatSystemTest {
             input.touchDown(0, 0, 0, 0); game.update(0);
             input.touchUp(0, 0, 0, 0); game.update(0);
             check(!aim.isAiming() && game.combat().isAttacking(), "Mouse release hides reticle and starts shot");
+            check(game.animation().getFrameIndex() == 5, "Quick release skips unplayed draw frames");
             near(100, Health.MAPPER.get(target).getCurrent(), "Shot is not hitscan");
             game.update(.5f);
             near(90, Health.MAPPER.get(target).getCurrent(), "One arced tip crosses target even on long frame");
+
+            input.keyDown(space); game.update(0);
+            game.input(InputAction.MOVE_UP, 1); game.update(1f / 3f);
+            Physic.MAPPER.get(target).getBody().setTransform(aim.getTargetX(), aim.getTargetY(), 0);
+            input.keyUp(space); game.update(0);
+            check(game.animation().getFdirection() == Facing.Direction.UP, "Exact diagonal tie faces vertically");
+            game.input(InputAction.MOVE_UP, 0); game.update(.5f);
+            near(80, Health.MAPPER.get(target).getCurrent(), "Vertical pose still fires along the diagonal");
+
+            input.keyDown(space); game.update(0);
+            game.input(InputAction.MOVE_DOWN, 1); game.update(1f / 3f);
+            input.keyUp(space); game.update(0);
+            check(game.animation().getFdirection() == Facing.Direction.UP, "Centered release retains facing despite held movement");
         }
     }
 
@@ -945,7 +966,8 @@ public final class CombatSystemTest {
             });
         }
         @Override public void updateAnimation(Animation2D component, Facing.Direction direction) {
-            int count = component.getType() == Animation2D.AnimationType.ATTACK ? 4 : 6;
+            int count = component.getAction().equals("shot") ? 8
+                : component.getType() == Animation2D.AnimationType.ATTACK ? 4 : 6;
             var frames = new TextureRegion[count];
             for (int i = 0; i < count; i++) { frames[i] = new TextureRegion(); }
             component.setAnimation(new Animation<>(component.getFrameDuration(), frames), direction);
