@@ -276,10 +276,10 @@ public final class CombatSystemTest {
                 game.player.add(aim);
                 Facing.MAPPER.get(game.player).setDirection(facing);
                 game.input(InputAction.ATTACK_PRIMARY, 1); game.update(0);
-                float x = 1 + (facing == Facing.Direction.RIGHT ? 2 : facing == Facing.Direction.LEFT ? -2 : 0);
-                float y = 1 + (facing == Facing.Direction.UP ? 3 : facing == Facing.Direction.DOWN ? -3 : 0);
-                near(x, aim.getTargetX(), "Two map tile widths from center: " + facing);
-                near(y, aim.getTargetY(), "Two map tile heights from center: " + facing);
+                float x = 1 + (facing == Facing.Direction.RIGHT ? 1 : facing == Facing.Direction.LEFT ? -1 : 0);
+                float y = 1 + (facing == Facing.Direction.UP ? 1.5f : facing == Facing.Direction.DOWN ? -1.5f : 0);
+                near(x, aim.getTargetX(), "One map tile width from center: " + facing);
+                near(y, aim.getTargetY(), "One map tile height from center: " + facing);
                 var target = game.target(1, true);
                 var body = Physic.MAPPER.get(target).getBody();
                 body.getFixtureList().first().setUserData(Hurtbox.INSTANCE);
@@ -303,7 +303,7 @@ public final class CombatSystemTest {
                 game.selectWeapon(new CombatWeapon.Weapon("basic_bow", "ranged/basic_bow", shot, shot));
                 game.player.add(new BowAim(1, 1));
                 var target = game.target(2, false);
-                Physic.MAPPER.get(target).getBody().setTransform(2, 1.3f, 0);
+                Physic.MAPPER.get(target).getBody().setTransform(2, 1, 0);
                 game.input(InputAction.ATTACK_PRIMARY, 1); game.update(0);
                 game.update(frame * shot.animation().frameInterval());
                 check(game.animation().getFrameIndex() == frame, "Expected draw frame " + frame);
@@ -330,13 +330,13 @@ public final class CombatSystemTest {
             var input = new InputManager(map);
             input.regKeyListener(Controller.MAPPER.get(game.player).getInputListener());
             var target = game.target(2, false);
-            Physic.MAPPER.get(target).getBody().setTransform(2, 1.30f, 0);
+            Physic.MAPPER.get(target).getBody().setTransform(2, 1, 0);
             input.keyDown(space);
             input.touchDown(0, 0, 0, 0);
             game.update(.1f);
             check(game.animation().getAction().equals("shot") && game.animation().getFrameIndex() == 0,
                 "First binding starts drawing immediately");
-            near(3, aim.getTargetX(), "New aim starts two tiles forward");
+            near(2, aim.getTargetX(), "New aim starts one tile forward");
             near(1, aim.getTargetY(), "Aim starts on facing axis");
             game.input(InputAction.MOVE_UP, 1); game.update(.1f);
             near(1.6f, aim.getTargetY(), "Direction steers held crosshair");
@@ -362,15 +362,15 @@ public final class CombatSystemTest {
             near(97.5f, Health.MAPPER.get(target).getCurrent(), "One quick shot hits even on long frame");
 
             input.keyDown(space); game.update(0);
-            game.input(InputAction.MOVE_UP, 1); game.update(1f / 3f);
+            game.input(InputAction.MOVE_UP, 1); game.update(1f / 6f);
             Physic.MAPPER.get(target).getBody().setTransform(aim.getTargetX(), aim.getTargetY(), 0);
             input.keyUp(space); game.update(0);
             check(game.animation().getFdirection() == Facing.Direction.UP, "Exact diagonal tie faces vertically");
             game.input(InputAction.MOVE_UP, 0); game.update(.5f);
-            near(90, Health.MAPPER.get(target).getCurrent(), "Vertical pose still fires along the diagonal");
+            near(92.5f, Health.MAPPER.get(target).getCurrent(), "Vertical pose still fires along the diagonal");
 
             input.keyDown(space); game.update(0);
-            game.input(InputAction.MOVE_DOWN, 1); game.update(1f / 3f);
+            game.input(InputAction.MOVE_DOWN, 1); game.update(1f / 6f);
             input.keyUp(space); game.update(0);
             check(game.animation().getFdirection() == Facing.Direction.UP, "Centered release retains facing despite held movement");
         }

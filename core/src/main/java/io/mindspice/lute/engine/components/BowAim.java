@@ -29,10 +29,10 @@ public final class BowAim implements Component {
         firstFrame = true;
         target.set(transform.getPosition()).mulAdd(transform.getSize(), 0.5f);
         switch (facing) {
-            case UP -> target.y += 2f * tileHeight;
-            case DOWN -> target.y -= 2f * tileHeight;
-            case LEFT -> target.x -= 2f * tileWidth;
-            case RIGHT -> target.x += 2f * tileWidth;
+            case UP -> target.y += tileHeight;
+            case DOWN -> target.y -= tileHeight;
+            case LEFT -> target.x -= tileWidth;
+            case RIGHT -> target.x += tileWidth;
         }
     }
 

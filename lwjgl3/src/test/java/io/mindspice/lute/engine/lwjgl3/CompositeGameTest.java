@@ -202,7 +202,7 @@ public final class CompositeGameTest {
                     case UP -> Vector2.Y; case DOWN -> new Vector2(0, -1);
                     case RIGHT -> Vector2.X; case LEFT -> new Vector2(-1, 0);
                 };
-                aim.steer(steer, 4f / 6f); // Four tiles, across the player to the opposite side.
+                aim.steer(steer, 3f / 6f); // Cross the player and keep the target two tiles away.
                 Physic.MAPPER.get(target).getBody().setTransform(aim.getTargetX(), aim.getTargetY(), 0);
                 Gdx.input.getInputProcessor().keyUp(key);
                 engine.getSystem(ControllerSystem.class).update(0f);
