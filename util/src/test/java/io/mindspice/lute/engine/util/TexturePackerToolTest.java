@@ -11,7 +11,8 @@ import java.nio.file.Path;
 import java.util.Comparator;
 
 public final class TexturePackerToolTest {
-    private static final String[] REQUIRED_SPRITE_INPUTS = {"character", "equipment/basic/body", "equipment/basic/head",
+    private static final String[] REQUIRED_SPRITE_INPUTS = {"character/player", "character/basic_npc",
+        "enemies/brainless_undead", "equipment/basic/body", "equipment/basic/head",
         "equipment/basic/feet", "equipment/basic/hands", "weapons/melee/basic_sword", "weapons/ranged/basic_bow"};
 
     public static void main(String[] args) throws IOException {
@@ -171,17 +172,23 @@ public final class TexturePackerToolTest {
         Files.writeString(output.resolve("unowned/notes"), "preserve unowned bytes");
         var complete = snapshot(output);
         var ownership = Files.readString(output.resolve(".runtime-assets-owned"));
-        for (String name : new String[]{"character", "body", "head", "feet", "hands", "weapons"}) {
+        for (String name : new String[]{"character", "enemies", "body", "head", "feet", "hands", "weapons"}) {
             check(ownership.contains("\tatlases/" + name + ".atlas\n"), "Complete baseline must own every sprite atlas");
             var atlas = new TextureAtlasData(new FileHandle(output.resolve("atlases/" + name + ".atlas").toFile()),
                 new FileHandle(output.resolve("atlases").toFile()), false);
-            check(atlas.getRegions().size == (name.equals("weapons") ? 2 : 1), "Complete baseline must contain required frames");
+            int expected = switch (name) {
+                case "character" -> 2;
+                case "enemies", "body", "head", "feet", "hands" -> 1;
+                default -> 2;
+            };
+            check(atlas.getRegions().size == expected, "Complete baseline must contain required frames");
             for (var page : atlas.getPages()) {
                 check(page.textureFile.exists() && ownership.contains("\tatlases/" + page.textureFile.name() + "\n"),
                     "Complete baseline must own every published sprite page");
             }
         }
-        String[] requiredDirectories = {"", "character", "equipment", "equipment/basic", "equipment/basic/body",
+        String[] requiredDirectories = {"", "character", "character/player", "character/basic_npc",
+            "enemies", "enemies/brainless_undead", "equipment", "equipment/basic", "equipment/basic/body",
             "equipment/basic/head", "equipment/basic/feet", "equipment/basic/hands", "weapons", "weapons/melee",
             "weapons/melee/basic_sword", "weapons/ranged", "weapons/ranged/basic_bow"};
         for (String input : requiredDirectories) {
@@ -222,8 +229,7 @@ public final class TexturePackerToolTest {
         Path output = directory.resolve("assets");
         createInputs(raw);
         createMap(raw, "alpha");
-        for (String input : new String[]{"character", "equipment/basic/body", "equipment/basic/head",
-                "equipment/basic/feet", "equipment/basic/hands", "weapons/melee/basic_sword", "weapons/ranged/basic_bow"}) {
+        for (String input : REQUIRED_SPRITE_INPUTS) {
             Path folder = raw.resolve("sprites").resolve(input);
             Files.createDirectories(folder);
             var image = new BufferedImage(1100, 32, BufferedImage.TYPE_INT_ARGB);
@@ -233,7 +239,7 @@ public final class TexturePackerToolTest {
         TexturePackerTool.generate(raw, output);
         checkDefaultSpritePages(output);
         // Partial packing overrides inherit the same page budget and sprite-preserving defaults.
-        for (String input : new String[]{"character", "equipment", "weapons"}) {
+        for (String input : new String[]{"character", "enemies", "equipment", "weapons"}) {
             Files.writeString(raw.resolve("sprites").resolve(input).resolve("pack.json"), "{\"paddingX\":4}");
         }
         TexturePackerTool.generate(raw, output);
@@ -241,11 +247,16 @@ public final class TexturePackerToolTest {
     }
 
     private static void checkDefaultSpritePages(Path output) throws IOException {
-        for (String name : new String[]{"character", "body", "head", "feet", "hands", "weapons"}) {
+        for (String name : new String[]{"character", "enemies", "body", "head", "feet", "hands", "weapons"}) {
             var atlas = new TextureAtlasData(new FileHandle(output.resolve("atlases/" + name + ".atlas").toFile()),
                 new FileHandle(output.resolve("atlases").toFile()), false);
-            check(atlas.getRegions().size == (name.equals("weapons") ? 2 : 1), "Every wide source canvas must be packed");
-            check(atlas.getPages().size == (name.equals("weapons") ? 2 : 1),
+            int expectedRegions = switch (name) {
+                case "character" -> 2;
+                case "enemies", "body", "head", "feet", "hands" -> 1;
+                default -> 2;
+            };
+            check(atlas.getRegions().size == expectedRegions, "Every wide source canvas must be packed");
+            check(atlas.getPages().size == (name.equals("weapons") ? 2 : name.equals("character") ? 2 : 1),
                 "Separate asset folders retain separate pages when each folder fits");
             checkFolderIsolation(atlas);
             for (var region : atlas.getRegions()) {
@@ -266,7 +277,7 @@ public final class TexturePackerToolTest {
         Path output = directory.resolve("assets");
         createInputs(raw);
         createMap(raw, "alpha");
-        String[] inputs = {"character", "equipment/basic/body", "equipment/basic/head",
+        String[] inputs = {"character/player", "character/basic_npc", "enemies/brainless_undead", "equipment/basic/body", "equipment/basic/head",
             "equipment/basic/feet", "equipment/basic/hands", "equipment/iron/body", "equipment/iron/head",
             "equipment/iron/feet", "equipment/iron/hands", "equipment/basic/accessories",
             "weapons/melee/basic_sword", "weapons/ranged/basic_bow"};
@@ -293,46 +304,49 @@ public final class TexturePackerToolTest {
             "Skipping accessories must preserve the exported source bytes");
         check(!Files.exists(output.resolve("atlases/accessories.atlas")),
             "Unsupported accessories must not create a runtime atlas");
-        for (String name : new String[]{"character", "body", "head", "feet", "hands", "weapons"}) {
+        for (String name : new String[]{"character", "enemies", "body", "head", "feet", "hands", "weapons"}) {
             var atlas = new TextureAtlasData(new FileHandle(output.resolve("atlases/" + name + ".atlas").toFile()),
                 new FileHandle(output.resolve("atlases").toFile()), false);
-            check(atlas.getRegions().size == (name.equals("character") ? 2 : 4), "Every sprite frame must be packed");
             checkFolderIsolation(atlas);
-            if (!name.equals("character")) {
-                check(atlas.getPages().size == 2, "Each fitting equipment set or weapon occupies its own page");
-            }
             for (var region : atlas.getRegions()) {
-                String prefix = name.equals("character") ? "" : name.equals("weapons")
-                    ? (region.name.startsWith("melee/") ? "melee/basic_sword/" : "ranged/basic_bow/")
-                    : (region.name.startsWith("iron/") ? "iron/" : "basic/");
-                check(region.name.equals(prefix + "idle_down") && (region.index == 0 || region.index == 1),
-                    "Sprite names and indexes must retain relative equipment paths");
+                String sourceDirectory;
+                if (name.equals("character")) {
+                    check(region.name.startsWith("player/") || region.name.startsWith("basic_npc/"),
+                        "Character regions retain actor prefixes");
+                    sourceDirectory = "character/" + region.name.substring(0, region.name.indexOf('/'));
+                } else if (name.equals("enemies")) {
+                    check(region.name.startsWith("brainless_undead/"), "Enemy regions retain actor prefixes");
+                    sourceDirectory = "enemies/" + region.name.substring(0, region.name.indexOf('/'));
+                } else if (name.equals("weapons")) {
+                    sourceDirectory = "weapons/" + region.name.substring(0, region.name.lastIndexOf('/'));
+                } else {
+                    sourceDirectory = "equipment/" + region.name.substring(0, region.name.indexOf('/')) + "/" + name;
+                }
+                check(region.index == 0 || region.index == 1, "Sprite indexes remain stable");
                 check(!region.rotate && region.width == 12 && region.height == 10
                     && region.originalWidth == 12 && region.originalHeight == 10
                     && region.offsetX == 0 && region.offsetY == 0, "Preserve dimensions, padding and orientation");
-            }
-            for (var region : atlas.getRegions()) {
                 var pageImage = ImageIO.read(region.page.textureFile.file());
                 check(pageImage.getRGB(region.left, region.top) == 0, "Retain transparent border pixels");
-                String sourceDirectory = name.equals("character") ? "character" : name.equals("weapons")
-                    ? "weapons/" + region.name.substring(0, region.name.lastIndexOf('/'))
-                    : "equipment/" + region.name.substring(0, region.name.indexOf('/')) + "/" + name;
                 var sourceImage = ImageIO.read(raw.resolve("sprites").resolve(sourceDirectory)
                     .resolve("idle_down_0" + region.index + ".png").toFile());
                 check(pageImage.getRGB(region.left + 3, region.top + 4) == sourceImage.getRGB(3, 4),
-                    "Retain each set and slot's pixels, orientation and transparent indexed frames");
+                    "Retain each source folder's pixels and indexed frames");
             }
-            for (var page : atlas.getPages()) {
-                check(page.textureFile.exists(), "All atlas pages must be published");
+            for (var page : atlas.getPages()) { check(page.textureFile.exists(), "All atlas pages must be published"); }
+            if (name.equals("character")) {
+                check(hasRegion(atlas, "player/idle_down", 0) && hasRegion(atlas, "basic_npc/idle_down", 0),
+                    "Player and NPC share one prefixed character atlas");
+                check(atlas.getPages().size >= 2, "Character actor folders remain isolated across pages");
             }
+            if (name.equals("enemies")) { check(hasRegion(atlas, "brainless_undead/idle_down", 0), "Enemy prefix is retained"); }
             if (name.equals("weapons")) {
                 check(hasRegion(atlas, "melee/basic_sword/idle_down", 0)
-                    && hasRegion(atlas, "ranged/basic_bow/idle_down", 1), "Melee and ranged must share weapons atlas");
+                    && hasRegion(atlas, "ranged/basic_bow/idle_down", 1), "Melee and ranged share weapons atlas");
             }
-            if (name.equals("character")) { check(atlas.getPages().size == 2, "Force multipage sprite output"); }
-            if (!name.equals("character") && !name.equals("weapons")) {
+            if (java.util.Set.of("body", "head", "feet", "hands").contains(name)) {
                 check(hasRegion(atlas, "basic/idle_down", 0) && hasRegion(atlas, "iron/idle_down", 1),
-                    "Gather every equipment set into its slot atlas without changing region keys");
+                    "Equipment set prefixes remain stable");
             }
         }
         Path equipmentSettings = raw.resolve("sprites/equipment/pack.json");
@@ -376,7 +390,8 @@ public final class TexturePackerToolTest {
         check(snapshot(output).equals(initial), "Invalid sprite packing must preserve outputs");
         Files.writeString(characterSettings, settings.replace("16", "64"));
         TexturePackerTool.generate(raw, output);
-        check(!Files.exists(output.resolve("atlases/character2.png")), "Remove stale sprite pages");
+        check(Files.exists(output.resolve("atlases/character2.png"))
+            && !Files.exists(output.resolve("atlases/character3.png")), "Remove stale sprite pages");
         var snapshot = snapshot(output);
         createMap(raw, "character");
         rejects(() -> TexturePackerTool.generate(raw, output));

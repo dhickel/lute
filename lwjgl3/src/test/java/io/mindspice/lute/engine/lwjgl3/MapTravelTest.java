@@ -72,6 +72,10 @@ public final class MapTravelTest extends ApplicationAdapter {
         require(tiled.getCurrentMap() != null, "Boot finishes loading the actual map");
         var player = player();
         atPoint(player, "PlayerSpawn");
+        var actualActors = GAME.getEngine().getEntitiesFor(Family.all(CompositeCharacter.class).exclude(Player.class).get());
+        require(actualActors.size() == 2, "Actual startup map owns both actors");
+        var oldNpc = actualActors.first();
+        var oldEnemy = actualActors.get(1);
         var initialMap = tiled.getCurrentMap();
         var initialBody = body(player);
         var initialTriggers = tiled.getMapTriggers();
@@ -88,6 +92,12 @@ public final class MapTravelTest extends ApplicationAdapter {
                 && oldObjects.stream().noneMatch(entity -> entities.contains(entity, true))
                 && entities.size() == oldObjects.size() + 1 && world.getBodyCount() == initialBodies,
                 "Actual map rebuilds triggers, environmental entities and bodies");
+            require(actualActors.size() == 2 && !actualActors.contains(oldNpc, true) && !actualActors.contains(oldEnemy, true),
+                "Actual map replacement removes both old actors and recreates both");
+            require(actualActors.first() != actualActors.get(1)
+                && Loadout.MAPPER.get(actualActors.first()) != Loadout.MAPPER.get(oldNpc)
+                && Loadout.MAPPER.get(actualActors.get(1)) != Loadout.MAPPER.get(oldEnemy),
+                "Actor loadouts are fresh rather than session-owned");
             atPoint(player(), actual.targetSpawn());
             System.out.println("MapTravelTest: actual test_tiled/" + actual.targetSpawn() + " rebuilt");
         } else {
@@ -96,6 +106,7 @@ public final class MapTravelTest extends ApplicationAdapter {
             atPoint(player(), actual.targetSpawn());
         }
         screens.unloadScreen("GameScreen");
+        require(actualActors.size() == 0, "Disposing the actual map removes both actors");
         require(!GAME.getAssetService().isLoaded(TiledMap.class, "test_tiled"), "Disposal releases the starting map");
 
         var entry = ManifestLoader.parseMapManifest(A);

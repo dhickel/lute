@@ -81,9 +81,10 @@ public final class CompositeGameTest {
         require(CompositeCharacter.MAPPER.has(player), "Factory marks the player for composition");
         Loadout loadout = Loadout.MAPPER.get(player);
         require(loadout.getEquipment().equals(BASIC), "Default four equipment pieces are basic");
-        require("basic_sword".equals(loadout.getWeaponId()), "Default weapon is basic_sword");
+        require(java.util.Objects.equals(GAME.getGameData().playerData().loadout().weapon(), loadout.getWeaponId()),
+            "Player default weapon comes from authored data");
         engine.update(0f);
-        screenshot("default-sword");
+        screenshot("default-weapon");
 
         Map<Fixture, Short> originalGroups = new HashMap<>();
         for (Fixture fixture : Physic.MAPPER.get(player).getBody().getFixtureList()) {
@@ -94,6 +95,7 @@ public final class CompositeGameTest {
             fixture.setFilterData(filter);
         }
         try (var layers = new LayerCheck()) {
+            verifyMapActors(engine, layers);
             for (String weapon : List.of("basic_sword", "basic_bow", "unarmed")) {
                 require(loadouts().equipWeapon(player, weapon.equals("unarmed") ? null : weapon), "Switch idle weapon: " + weapon);
                 require(loadouts().equip(player, BASIC), "Re-equip validated real equipment: " + weapon);
@@ -136,6 +138,39 @@ public final class CompositeGameTest {
         require(loadouts().equipWeapon(player, "basic_sword"), "Restore sword after gameplay coverage");
         require(loadouts().equip(player, BASIC), "Restore basic equipment");
         engine.update(0f);
+    }
+
+    private static void verifyMapActors(Engine engine, LayerCheck layers) {
+        var tiled = engine.getSystem(TiledSystem.class);
+        var actors = engine.getEntitiesFor(Family.all(CompositeCharacter.class).exclude(Player.class).get());
+        require(actors.size() == 2, "Actual startup map spawns exactly two non-player actors");
+        for (var actor : actors) {
+            var animation = Animation2D.MAPPER.get(actor);
+            boolean enemy = animation.getAtlasId().equals(CharacterAssets.ENEMIES.id());
+            require(enemy ? animation.getAtlasKey().equals("brainless_undead")
+                : animation.getAtlasId().equals(CharacterAssets.CHARACTER.id())
+                    && animation.getAtlasKey().equals("basic_npc"), "Known map actor base");
+            var marker = tiled.getMapTriggers().points().stream()
+                .filter(p -> p.name().equals(enemy ? "EnemySpawn" : "NpcSpawn")).findFirst().orElseThrow();
+            var transform = Transform.MAPPER.get(actor);
+            var center = transform.getPosition().cpy().mulAdd(transform.getSize(), .5f);
+            require(center.epsilonEquals(marker.position().cpy().scl(GameConsts.UNIT_SCALE), .0001f)
+                && transform.getSize().epsilonEquals(64 * GameConsts.UNIT_SCALE, 64 * GameConsts.UNIT_SCALE, .0001f),
+                "Actor logical bounds centered on actual map marker");
+            require(!Controller.MAPPER.has(actor) && actor.getComponent(CameraFollow.class) == null && !Combat.MAPPER.has(actor)
+                && !Health.MAPPER.has(actor) && !Physic.MAPPER.has(actor), "Map actor has no player state or behavior");
+            var loadout = Loadout.MAPPER.get(actor);
+            require(loadout.getEquipment().equals(enemy ? new Loadout.Equipment(null, null, null, null)
+                : new Loadout.Equipment(null, "basic", "basic", "basic")), "Only requested actor layers are equipped");
+            require(java.util.Objects.equals(loadout.getWeaponId(), enemy ? "basic_sword" : null), "Actor demo weapon default");
+            var swordOrNpc = layers.check(actor);
+            if (enemy) {
+                require(loadouts().equipWeapon(actor, "basic_bow"), "Enemy can equip bow without Combat");
+                require(layers.check(actor) != swordOrNpc, "Enemy bow and sword produce distinct rendered pixels");
+                require(loadouts().equipWeapon(actor, "basic_sword"), "Restore enemy demo weapon");
+            }
+        }
+        System.out.println("CompositeGameTest: real NPC and enemy marker placement, canvas, depth and weapon switch verified");
     }
 
     private static void verifyLoop(Entity player, LayerCheck layers, Animation2D.AnimationType type) {
@@ -377,8 +412,8 @@ public final class CompositeGameTest {
             showcase.fill();
             showcase.setBlending(Pixmap.Blending.None);
             batch.setProjectionMatrix(new Matrix4().setToOrtho2D(0, 0, 128, 128));
-            for (var definition : List.of(CharacterAssets.CHARACTER, CharacterAssets.FEET, CharacterAssets.BODY,
-                CharacterAssets.HEAD, CharacterAssets.HANDS, CharacterAssets.WEAPONS)) {
+            for (var definition : List.of(CharacterAssets.CHARACTER, CharacterAssets.ENEMIES, CharacterAssets.FEET,
+                CharacterAssets.BODY, CharacterAssets.HEAD, CharacterAssets.HANDS, CharacterAssets.WEAPONS)) {
                 var atlas = GAME.getAssetService().get(TextureAtlas.class, definition.id());
                 require(atlas.getRegions().size > 0 && atlas.getTextures().size > 0, "Real atlas loaded: " + definition.id());
                 for (var region : atlas.getRegions()) {
@@ -389,20 +424,21 @@ public final class CompositeGameTest {
                 "Regenerated real common weapon atlas exercises multiple texture pages");
         }
 
-        void check(Entity player) {
+        long check(Entity player) {
             Animation2D animation = Animation2D.MAPPER.get(player);
+            boolean mapActor = !animation.getAtlasKey().equals("player");
             Loadout loadout = Loadout.MAPPER.get(player);
             var equipment = loadout.getEquipment();
             var weapon = loadout.getWeapon();
             String suffix = animation.getAction() + "_" + animation.getFdirection().atlasKey;
             int index = animation.getFrameIndex();
-            var definitions = List.of(CharacterAssets.CHARACTER, CharacterAssets.FEET, CharacterAssets.BODY,
-                CharacterAssets.HEAD, CharacterAssets.HANDS, CharacterAssets.WEAPONS);
-            String[] prefixes = {"", equipment.feet(), equipment.body(), equipment.head(), equipment.hands(), weapon.atlasKey()};
+            var atlasIds = List.of(animation.getAtlasId(), CharacterAssets.FEET.id(), CharacterAssets.BODY.id(),
+                CharacterAssets.HEAD.id(), CharacterAssets.HANDS.id(), CharacterAssets.WEAPONS.id());
+            String[] prefixes = {animation.getAtlasKey(), equipment.feet(), equipment.body(), equipment.head(), equipment.hands(), weapon.atlasKey()};
             TextureRegion[] selected = new TextureRegion[6];
             for (int layer = 0; layer < 6; layer++) {
-                if (layer == 5 && loadout.getWeaponId() == null) { continue; }
-                var atlas = GAME.getAssetService().get(TextureAtlas.class, definitions.get(layer).id());
+                if (prefixes[layer] == null || (layer == 5 && loadout.getWeaponId() == null)) { continue; }
+                var atlas = GAME.getAssetService().get(TextureAtlas.class, atlasIds.get(layer));
                 var sequence = atlas.findRegions(prefixes[layer].isEmpty() ? suffix : prefixes[layer] + "/" + suffix);
                 require(sequence.size == animation.getAnimation().getKeyFrames().length, "Real layers share frame counts: " + suffix);
                 selected[layer] = sequence.get(index);
@@ -414,7 +450,15 @@ public final class CompositeGameTest {
             require(base.getTexture() == selected[0].getTexture() && base.getU() == selected[0].getU()
                 && base.getV() == selected[0].getV() && base.getU2() == selected[0].getU2() && base.getV2() == selected[0].getV2(),
                 "AnimationSystem Graphic agrees with shared action/facing/frame: " + suffix + "/" + index);
-            compositor.compose(List.of(player), GAME.getCamera());
+            var camera = GAME.getCamera();
+            if (mapActor) {
+                var transform = Transform.MAPPER.get(player);
+                worldCamera.position.set(transform.getPosition().x + transform.getSize().x * .5f,
+                    transform.getPosition().y + transform.getSize().y * .5f, 0);
+                worldCamera.update();
+                camera = worldCamera;
+            }
+            compositor.compose(List.of(player), camera);
             TextureRegion composed = compositor.region(player);
             require(composed != null, "Real player remains visible to compositor");
             require(composed.getRegionWidth() == 128 && composed.getRegionHeight() == 128,
@@ -454,8 +498,9 @@ public final class CompositeGameTest {
                     }
                 }
                 require(visible, "Real layer reference is not empty");
-                helmetOcclusion(animation, selected, rendered);
+                if (!mapActor) { helmetOcclusion(animation, selected, rendered); }
                 worldFrame(player, expected);
+                if (mapActor) { actorDepth(player, expected); }
                 for (int y = 0; y < 128; y++) {
                     for (int x = 0; x < 128; x++) {
                         if ((x < 32 || x >= 96 || y < 32 || y >= 96) && (expected.getPixel(x, y) & 255) != 0) { overhangPixels++; }
@@ -468,6 +513,9 @@ public final class CompositeGameTest {
                     if (weapon.id().equals("unarmed") && actionRow == 3) { showcase(rendered, animation.getFdirection().ordinal(), weaponRow + 2); }
                 }
                 frames++;
+                var crc = new java.util.zip.CRC32();
+                if (mapActor) { crc.update(rendered.getPixels()); }
+                return crc.getValue();
             } finally {
                 rendered.dispose();
                 expected.dispose();
@@ -555,6 +603,51 @@ public final class CompositeGameTest {
             } finally { image.dispose(); }
         }
 
+        private void actorDepth(Entity actor, Pixmap expected) {
+            var transform = Transform.MAPPER.get(actor);
+            var pixel = new Pixmap(1, 1, Pixmap.Format.RGBA8888);
+            int markerColor = 0xff00ffff;
+            pixel.drawPixel(0, 0, markerColor);
+            var texture = new Texture(pixel);
+            pixel.dispose();
+            try {
+                for (int depth : new int[]{1, 3}) {
+                    var position = transform.getPosition().cpy().mulAdd(transform.getSize(), -.5f);
+                    var marker = new Entity().add(new Graphic(new TextureRegion(texture), com.badlogic.gdx.graphics.Color.WHITE.cpy()))
+                        .add(new Transform(position, depth, transform.getSize().cpy().scl(2), new Vector2(1, 1), 0, 0));
+                    worldEngine.addEntity(marker);
+                    actual.begin();
+                    Pixmap image;
+                    try {
+                        ScreenUtils.clear(0, 0, 0, 0);
+                        worldEngine.update(0);
+                        image = Pixmap.createFromFrameBuffer(0, 0, 128, 128);
+                    } finally {
+                        actual.end();
+                        worldEngine.removeEntity(marker);
+                    }
+                    try {
+                        boolean witnessed = false;
+                        for (int y = 0; y < 128; y++) {
+                            for (int x = 0; x < 128; x++) {
+                                int actorPixel = expected.getPixel(x, y);
+                                if ((actorPixel & 255) != 255 || actorPixel == markerColor) { continue; }
+                                int got = image.getPixel(x, y);
+                                int want = depth == 1 ? actorPixel : markerColor;
+                                for (int shift = 0; shift < 32; shift += 8) {
+                                    if (Math.abs((want >>> shift & 255) - (got >>> shift & 255)) > 2) {
+                                        throw new AssertionError("World object depth did not bracket map actor at " + x + "," + y);
+                                    }
+                                }
+                                witnessed = true;
+                            }
+                        }
+                        require(witnessed, "Opaque actor pixels exercise real depth ordering");
+                    } finally { image.dispose(); }
+                }
+            } finally { texture.dispose(); }
+        }
+
         private static void outline(Pixmap image, io.mindspice.lute.engine.data.json.CharacterBounds bounds, int color) {
             image.setColor(color);
             for (int i = 0; i < 8; i++) {
@@ -572,10 +665,10 @@ public final class CompositeGameTest {
             for (String weapon : List.of("basic_sword", "basic_bow", "unarmed")) {
                 require(loadouts().equipWeapon(player, weapon.equals("unarmed") ? null : weapon), "Death pose selects existing weapon layers");
                 for (var direction : Facing.Direction.values()) {
-                    var sequence = atlas.findRegions("death_" + direction.atlasKey);
+                    var sequence = atlas.findRegions("player/death_" + direction.atlasKey);
                     require(sequence.size == 8, "Every death facing retains all authored frames");
                     for (int frame = 0; frame < sequence.size; frame++) {
-                        var animation = new Animation2D(CharacterAssets.CHARACTER.id(), "", Animation2D.AnimationType.ATTACK,
+                        var animation = new Animation2D(CharacterAssets.CHARACTER.id(), "player", Animation2D.AnimationType.ATTACK,
                             Animation.PlayMode.LOOP, 1, .125f);
                         animation.configureAttack(new Animation2D.Attack("death", 1, .125f, 0, ""));
                         animation.setAnimation(new Animation<>(.125f, sequence, Animation.PlayMode.LOOP), direction);

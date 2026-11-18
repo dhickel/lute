@@ -25,9 +25,9 @@ public final class DataLoaderTest {
             check(GameConsts.VIEW_WIDTH == 21.3f && GameConsts.UNIT_SCALE == 1f / 32f, "settings constants");
             var player = DataLoader.parsePlayerData();
             var definitions = DataLoader.parseWeaponData();
-            playerSchema(player);
+            playerSchema(player, definitions);
             characterBoundsSchema(player);
-            weaponSchema(player, definitions);
+            weaponSchema(definitions);
             invalidMetadata(player, definitions);
             assetIds(definitions);
             settingsAtomicity();
@@ -39,7 +39,7 @@ public final class DataLoaderTest {
         } finally { Gdx.files = previousFiles; }
     }
 
-    private static void playerSchema(PlayerData player) {
+    private static void playerSchema(PlayerData player, WeaponsData definitions) {
         check(player.maxHealth() == 100 && player.moveSpeed() == 4, "player stats");
         check(player.animation().frameInterval() == .125f && player.animation().speed() == 1
             && player.animation().atlasKey().isEmpty() && player.animation().soundFrame() == 0, "flat base animation");
@@ -63,7 +63,7 @@ public final class DataLoaderTest {
         var loadout = player.loadout();
         check(loadout.head().equals("basic") && loadout.body().equals("basic")
             && loadout.hands().equals("basic") && loadout.feet().equals("basic")
-            && loadout.weapon().equals("basic_sword"), "default loadout");
+            && loadout.weapon() != null && definitions.weapons().containsKey(loadout.weapon()), "default loadout");
         check(player.sounds().move().equals("sword_hit.wav") && player.sounds().damage().equals("sword_hit.wav"),
             "player sound definitions");
         var unarmed = new PlayerData.Loadout("basic", "basic", "basic", "basic", null);
@@ -134,9 +134,9 @@ public final class DataLoaderTest {
             "logical size is configured independently, not hard-coded to 64");
     }
 
-    private static void weaponSchema(PlayerData player, WeaponsData definitions) throws Exception {
+    private static void weaponSchema(WeaponsData definitions) throws Exception {
         check(definitions.atlas().equals("weapons.atlas") && definitions.weapons().size() == 3, "shared catalog");
-        var sword = definitions.requireWeapon(player.loadout().weapon());
+        var sword = definitions.requireWeapon("basic_sword");
         var bow = definitions.requireWeapon("basic_bow");
         var unarmed = definitions.requireWeapon("unarmed");
         check(sword.atlasKey().equals("melee/basic_sword") && bow.atlasKey().equals("ranged/basic_bow")
@@ -275,9 +275,9 @@ public final class DataLoaderTest {
         check(sounds.all().stream().allMatch(a -> a.id().startsWith("weapon/basic_sword/")), "selected weapon sound IDs");
         rejects(() -> WeaponAssets.of("missing", definitions), "unknown weapon assets");
         var atlases = CharacterAssets.all(definitions.atlas());
-        check(atlases.size() == 6 && atlases.containsAll(java.util.List.of(CharacterAssets.CHARACTER,
-            CharacterAssets.HEAD, CharacterAssets.BODY, CharacterAssets.HANDS, CharacterAssets.FEET, CharacterAssets.WEAPONS)),
-            "all shared character atlases");
+        check(atlases.size() == 7 && atlases.containsAll(java.util.List.of(CharacterAssets.CHARACTER,
+            CharacterAssets.ENEMIES, CharacterAssets.HEAD, CharacterAssets.BODY, CharacterAssets.HANDS,
+            CharacterAssets.FEET, CharacterAssets.WEAPONS)), "all shared character atlases");
         for (var atlas : atlases) {
             check(atlas.path().equals("atlases/" + atlas.id() + ".atlas"), "shared atlas logical ID and path");
         }

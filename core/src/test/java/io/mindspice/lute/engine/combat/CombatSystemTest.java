@@ -718,9 +718,10 @@ public final class CombatSystemTest {
                 }
             }
             field.set(GameCore.INSTANCE, data);
-            for (var asset : CharacterAssets.all(data.weaponsData().atlas())) {
+            for (var asset : List.of(CharacterAssets.CHARACTER, CharacterAssets.HEAD, CharacterAssets.BODY,
+                CharacterAssets.HANDS, CharacterAssets.FEET, CharacterAssets.WEAPONS)) {
                 var candidate = shared.get(asset.id());
-                String prefix = asset == CharacterAssets.CHARACTER ? ""
+                String prefix = asset == CharacterAssets.CHARACTER ? "player/"
                     : asset.id().equals(CharacterAssets.WEAPONS.id()) ? "melee/basic_sword/" : "basic/";
                 var frame = sourceFrame(candidate, prefix + "idle_down");
                 int width = frame.getRegionWidth();
@@ -801,10 +802,12 @@ public final class CombatSystemTest {
             var animation = Animation2D.MAPPER.get(player);
             var state = Combat.MAPPER.get(player);
             near(100, Health.MAPPER.get(player).getCurrent(), "Factory player stats");
-            check(Loadout.MAPPER.get(player).getWeapon().primary().animation().soundId().equals("weapon/basic_sword/primary/attack"),
-                "Factory passes resolved sound ID");
             var loadout = Loadout.MAPPER.get(player);
-            check(loadout != null && loadout.getWeaponId().equals("basic_sword"), "Factory installs default runtime loadout");
+            var defaultWeapon = data.playerData().loadout().weapon();
+            check(loadout != null && java.util.Objects.equals(loadout.getWeaponId(), defaultWeapon),
+                "Factory installs authored default runtime loadout");
+            check(loadout.getWeapon().primary().animation().soundId().equals("weapon/" + loadout.getWeapon().id() + "/primary/attack"),
+                "Factory passes resolved sound ID");
             var originalEquipment = loadout.getEquipment();
             var loadouts = new LoadoutSystem();
             engine.addSystem(loadouts);
@@ -852,7 +855,7 @@ public final class CombatSystemTest {
                 for (var action : new String[]{"slash", "jab", "shot"}) {
                     for (var direction : Facing.Direction.values()) {
                         shortAtlas.getRegions().clear();
-                        var key = action + "_" + direction.name().toLowerCase(java.util.Locale.ROOT);
+                        var key = "player/" + action + "_" + direction.name().toLowerCase(java.util.Locale.ROOT);
                         for (var frame : replacement.getRegions()) {
                             if (!frame.name.equals(key) || frame.index < 7) {
                                 shortAtlas.addRegion(frame.name, frame).index = frame.index;

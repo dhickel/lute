@@ -18,7 +18,7 @@ import java.util.List;
 
 public record MapTriggers(List<Sensor> sensors, List<SpawnPoint> points, List<SpawnArea> areas) {
     public enum SensorType { GENERAL }
-    public enum SpawnType { PLAYER, TELEPORT, NPC, ITEM }
+    public enum SpawnType { PLAYER, TELEPORT, NPC, ITEM, ENEMY }
 
     public record DetectorGeometry(Vector2 center, float radius, List<float[]> polygons) {
         public DetectorGeometry { polygons = List.copyOf(polygons); }

@@ -140,10 +140,21 @@ public class TiledSystem extends EntitySystem implements EventEmitter {
             initMapBoundary(next);
             loadMapObjects(next);
             if (point != null) { spawnPlayerEntity(next, point.position()); }
+            var factory = getEngine().getSystem(EntityFactory.class);
+            for (var marker : triggers.points()) {
+                switch (marker.type()) {
+                    case NPC -> next.entities.add(factory.getMapActor(marker.position(), false));
+                    case ENEMY -> next.entities.add(factory.getMapActor(marker.position(), true));
+                    default -> { }
+                }
+            }
             next.sensors = getEngine().getSystem(MapSensorSystem.class).prepareMap(triggers);
             return next;
         } catch (RuntimeException | Error failure) {
-            for (var entity : next.entities) { physicsWorld.destroyBody(Physic.MAPPER.get(entity).getBody()); }
+            for (var entity : next.entities) {
+                var physics = Physic.MAPPER.get(entity);
+                if (physics != null) { physicsWorld.destroyBody(physics.getBody()); }
+            }
             for (var body : next.bodies) { physicsWorld.destroyBody(body); }
             throw failure;
         }

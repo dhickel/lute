@@ -33,6 +33,10 @@ import java.util.Map;
 import java.util.Set;
 
 public class EntityFactory extends EntitySystem {
+    private static final Set<String> CHARACTER_ACTIONS = Set.of("idle", "walk", "death", "slash", "jab", "shot");
+    private static final String PLAYER_PREFIX = "player";
+    private static final String NPC_PREFIX = "basic_npc";
+    private static final String ENEMY_PREFIX = "brainless_undead";
     private final World world;
     private final AssetService assetService;
 
@@ -46,7 +50,9 @@ public class EntityFactory extends EntitySystem {
         var data = GameCore.INSTANCE.getGameData();
         var playerAnimation = data.playerData().animation();
         var atlas = CharacterAssets.CHARACTER;
-        var animation = createAnimation(atlas, playerAnimation.atlasKey(),
+        // The authored player animation key remains empty for the action name. The shared
+        // character atlas needs the actor folder prefix separately.
+        var animation = createAnimation(atlas, PLAYER_PREFIX,
             Animation2D.AnimationType.IDLE, playerAnimation.speed(), playerAnimation.frameInterval(), facing);
         var region = animation.getAnimation().getKeyFrame(0f);
         var player = data.playerData();
@@ -54,15 +60,14 @@ public class EntityFactory extends EntitySystem {
         if (logical.width() > region.getRegionWidth() || logical.height() > region.getRegionHeight()) {
             throw new IllegalArgumentException("Logical character frame must fit its source canvas");
         }
-        var sizeWorld = new Vector2(logical.width(), logical.height()).scl(GameConsts.UNIT_SCALE);
-        var transform = new Transform(pixelPosition.cpy().scl(GameConsts.UNIT_SCALE).sub(sizeWorld.x / 2, sizeWorld.y / 2),
-            2, sizeWorld, new Vector2(1, 1), 0, 0);
+        var transform = characterTransform(pixelPosition, logical.width(), logical.height());
         var size = transform.getSize();
         var weapons = createWeapons(data.weaponsData(), animation, new Vector2(size.x * 0.5f, size.y * 0.5f));
         if (state == null) {
             var equipment = new Loadout.Equipment(player.loadout().head(), player.loadout().body(),
                 player.loadout().hands(), player.loadout().feet());
-            var loadout = new Loadout(equipment, player.loadout().weapon(), weapons, this::validateEquipment);
+            var loadout = new Loadout(equipment, player.loadout().weapon(), weapons, selection -> validateEquipment(
+                atlas.id(), PLAYER_PREFIX, selection, true));
             state = new PlayerState(new Health(player.maxHealth()), loadout, new Facing(facing));
         }
 
@@ -82,6 +87,47 @@ public class EntityFactory extends EntitySystem {
         return entity;
     }
 
+    public Entity getMapActor(Vector2 pixelPosition, boolean enemy) {
+        var atlas = enemy ? CharacterAssets.ENEMIES : CharacterAssets.CHARACTER;
+        var prefix = enemy ? ENEMY_PREFIX : NPC_PREFIX;
+        var facing = Facing.Direction.DOWN;
+        var animation = createAnimation(atlas, prefix, Animation2D.AnimationType.IDLE, 1f, .12f, facing);
+        var transform = characterTransform(pixelPosition, 64, 64);
+        var base = assetService.get(TextureAtlas.class, atlas.id());
+        for (String action : CHARACTER_ACTIONS) {
+            for (var direction : Facing.Direction.values()) {
+                String key = animation.regionKey(action, direction);
+                var frames = base.findRegions(key);
+                if (frames.size != 8) { throw new IllegalArgumentException("Expected eight actor frames: " + atlas.id() + "/" + key); }
+                for (int i = 0; i < frames.size; i++) {
+                    var frame = frames.get(i);
+                    if (frame.index != i) { throw new IllegalArgumentException("Actor frame index mismatch: " + key); }
+                    AnimationSystem.validateCanvas(frame, 128, 128, key);
+                }
+            }
+        }
+        var weapons = createWeapons(GameCore.INSTANCE.getGameData().weaponsData(), animation, transform.getSize().cpy().scl(.5f));
+        var equipment = enemy ? new Loadout.Equipment(null, null, null, null)
+            : new Loadout.Equipment(null, "basic", "basic", "basic");
+        var loadout = new Loadout(equipment, enemy ? "basic_sword" : null, weapons, selection -> {
+            if (enemy) {
+                if (!equipment.equals(selection)) { throw new IllegalArgumentException("Baked enemies cannot equip armor layers"); }
+            } else {
+                validateEquipment(atlas.id(), prefix, selection, false);
+            }
+        });
+        Entity entity = getEngine().createEntity();
+        return entity.add(transform).add(new Facing(facing)).add(animation).add(loadout)
+            .add(new Graphic(animation.getAnimation().getKeyFrame(0f), Color.WHITE.cpy()))
+            .add(new CompositeCharacter(128, 128));
+    }
+
+    private static Transform characterTransform(Vector2 pixelPosition, float width, float height) {
+        var size = new Vector2(width, height).scl(GameConsts.UNIT_SCALE);
+        var origin = pixelPosition.cpy().scl(GameConsts.UNIT_SCALE).mulAdd(size, -.5f);
+        return new Transform(origin, 2, size, new Vector2(1, 1), 0, 0);
+    }
+
     private Map<String, CombatWeapon.Weapon> createWeapons(WeaponsData definitions, Animation2D animation, Vector2 anchor) {
         var weapons = new HashMap<String, CombatWeapon.Weapon>();
         var requiredFrames = new HashMap<String, Long>();
@@ -95,7 +141,7 @@ public class EntityFactory extends EntitySystem {
             var primary = createAttack(id, definition.attackStats().primary(), sounds.primary(), anchor, requiredFrames);
             var secondary = createAttack(id, definition.attackStats().secondary(), sounds.secondary(), anchor, requiredFrames);
             if (!id.equals("unarmed")) {
-                validateLayer(CharacterAssets.WEAPONS, definition.atlasKey(),
+                validateLayer(animation.getAtlasId(), animation.getAtlasKey(), CharacterAssets.WEAPONS, definition.atlasKey(),
                     Set.copyOf(List.of("idle", "walk", "death", primary.animation().action(), secondary.animation().action())));
             }
             weapons.put(id, new CombatWeapon.Weapon(id, definition.atlasKey(), primary, secondary));
@@ -124,23 +170,26 @@ public class EntityFactory extends EntitySystem {
         return attack;
     }
 
-    private void validateEquipment(Loadout.Equipment equipment) {
+    private void validateEquipment(String baseId, String basePrefix, Loadout.Equipment equipment, boolean helmet) {
         if (equipment == null) { throw new IllegalArgumentException("Equipment is required"); }
-        var actions = Set.of("idle", "walk", "death", "slash", "jab", "shot");
-        validateLayer(CharacterAssets.HEAD, equipment.head(), actions);
-        validateLayer(CharacterAssets.BODY, equipment.body(), actions);
-        validateLayer(CharacterAssets.HANDS, equipment.hands(), actions);
-        validateLayer(CharacterAssets.FEET, equipment.feet(), actions);
+        if (helmet) {
+            validateLayer(baseId, basePrefix, CharacterAssets.HEAD, equipment.head(), CHARACTER_ACTIONS);
+        } else if (equipment.head() != null) {
+            throw new IllegalArgumentException("Basic NPC has no helmet layer");
+        }
+        validateLayer(baseId, basePrefix, CharacterAssets.BODY, equipment.body(), CHARACTER_ACTIONS);
+        validateLayer(baseId, basePrefix, CharacterAssets.HANDS, equipment.hands(), CHARACTER_ACTIONS);
+        validateLayer(baseId, basePrefix, CharacterAssets.FEET, equipment.feet(), CHARACTER_ACTIONS);
     }
 
-    private void validateLayer(Asset.Atlas asset, String prefix, Set<String> actions) {
+    private void validateLayer(String baseId, String basePrefix, Asset.Atlas asset, String prefix, Set<String> actions) {
         if (prefix == null || prefix.isBlank()) { throw new IllegalArgumentException("Equipment region prefix is required"); }
-        var base = assetService.get(TextureAtlas.class, CharacterAssets.CHARACTER.id());
+        var base = assetService.get(TextureAtlas.class, baseId);
         var atlas = assetService.get(TextureAtlas.class, asset.id());
         for (String action : actions) {
             for (var direction : Facing.Direction.values()) {
                 String suffix = action + "_" + direction.atlasKey;
-                var reference = base.findRegions(suffix);
+                var reference = base.findRegions(basePrefix.isEmpty() ? suffix : basePrefix + "/" + suffix);
                 var frames = atlas.findRegions(prefix + "/" + suffix);
                 if (reference.isEmpty() || frames.size != reference.size) {
                     throw new IllegalArgumentException("Layer frame count must match character: " + asset.id() + "/" + prefix + "/" + suffix);

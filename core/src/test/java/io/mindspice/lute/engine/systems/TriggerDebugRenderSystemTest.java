@@ -198,7 +198,7 @@ public final class TriggerDebugRenderSystemTest {
         var system = attach(world, renderer, map);
         try {
             system.update(0);
-            check(renderer.lines.size() == 12, "Saved map must render both sensor rectangles and spawn-point crosses");
+            check(renderer.lines.size() == 16, "Saved map must render both sensor rectangles and spawn-point crosses");
             float bottom = 640f - 275.333f - 35.3333f;
             float right = 432.667f + 34.6667f;
             float top = 640f - 275.333f;
@@ -217,7 +217,11 @@ public final class TriggerDebugRenderSystemTest {
                 {302.248f - 4, spawnY, 302.248f + 4, spawnY},
                 {302.248f, spawnY - 4, 302.248f, spawnY + 4},
                 {556, 240, 564, 240},
-                {560, 236, 560, 244}
+                {560, 236, 560, 244},
+                {675.333f, 87, 683.333f, 87},
+                {679.333f, 83, 679.333f, 91},
+                {636, 430, 644, 430},
+                {640, 426, 640, 434}
             };
             var actual = new ArrayList<>(renderer.lines);
             float scale = GameConsts.UNIT_SCALE;
