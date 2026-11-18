@@ -2,16 +2,12 @@ package io.mindspice.lute.engine.screen;
 
 import com.badlogic.ashley.core.Engine;
 import com.badlogic.ashley.core.EntitySystem;
-import com.badlogic.ashley.core.Family;
 import com.badlogic.gdx.ScreenAdapter;
 import com.badlogic.gdx.math.Vector2;
 import com.badlogic.gdx.physics.box2d.World;
 import com.badlogic.gdx.utils.Disposable;
 import io.mindspice.lute.engine.GameCore;
 import io.mindspice.lute.engine.assets.MapAssets;
-import io.mindspice.lute.engine.components.Controller;
-import io.mindspice.lute.engine.events.Event;
-import io.mindspice.lute.engine.events.EventEmitter;
 import io.mindspice.lute.engine.input.InputManager;
 import io.mindspice.lute.engine.singletons.GameConsts;
 import io.mindspice.lute.engine.systems.*;
@@ -19,12 +15,13 @@ import io.mindspice.lute.engine.systems.*;
 import java.util.ArrayList;
 import java.util.List;
 
-public class GameScreen extends ScreenAdapter implements EventEmitter {
+public class GameScreen extends ScreenAdapter {
     private final InputManager inputManager;
     private final GameCore game;
     private final World physicWorld;
     private final Engine engine;
     private final MapAssets mapAssets;
+    private final TiledSystem tiled;
     private final List<EntitySystem> ownedSystems = new ArrayList<>();
     private boolean visible;
     private boolean paused;
@@ -54,8 +51,9 @@ public class GameScreen extends ScreenAdapter implements EventEmitter {
             addSystem(new AudioSystem(game.getAssetService()));
             addSystem(new CameraSystem(game.getCamera()));
             addSystem(new RenderSystem(this.game.getBatch(), this.game.getViewport(), this.game.getCamera(), game.getAssetService()));
-            addSystem(new EntityFactory(physicWorld, game.getAssetService(), inputManager));
-            addSystem(new TiledSystem(game.getAssetService(), physicWorld));
+            addSystem(new EntityFactory(physicWorld, game.getAssetService()));
+            tiled = new TiledSystem(game.getAssetService(), physicWorld, inputManager);
+            addSystem(tiled);
             addSystem(new PhysicDebugRenderSystem(physicWorld, game.getCamera()));
             addSystem(new TriggerDebugRenderSystem(physicWorld, game.getCamera()));
         } catch (RuntimeException | Error failure) {
@@ -73,12 +71,11 @@ public class GameScreen extends ScreenAdapter implements EventEmitter {
     @Override
     public void show() {
         if (disposed) { throw new IllegalStateException("Game screen is disposed"); }
-        visible = true;
+        if (visible) { return; }
         inputManager.releaseHeldInputs();
+        tiled.showMap(mapAssets);
         game.setInputProcessors(inputManager);
-
-
-        eventEmitter.accept(new Event.Map.Load(mapAssets));
+        visible = true;
     }
 
     @Override
@@ -86,12 +83,7 @@ public class GameScreen extends ScreenAdapter implements EventEmitter {
         if (!visible) { return; }
         visible = false;
         paused = false;
-        inputManager.releaseHeldInputs();
-        engine.getSystem(ControllerSystem.class).update(0f);
-        for (var entity : engine.getEntitiesFor(Family.all(Controller.class).get())) {
-            inputManager.unRegKeyListener(Controller.MAPPER.get(entity).getInputListener());
-        }
-        engine.removeAllEntities();
+        tiled.hideMap();
     }
 
     @Override
@@ -110,10 +102,10 @@ public class GameScreen extends ScreenAdapter implements EventEmitter {
 
     @Override
     public void render(float delta) {
-        if (visible && !paused) {
-            inputManager.updateGamepad();
-        }
+        if (!visible || paused) { return; }
+        inputManager.updateGamepad();
         engine.update(Math.min(delta, 1 / 30f));
+        tiled.applyPendingTravel();
     }
 
     @Override

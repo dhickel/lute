@@ -87,6 +87,10 @@ public class AssetService implements Disposable {
         return (T) entry.value;
     }
 
+    public boolean isRegistered(Asset<?> asset) {
+        return entriesFor(asset.type()).containsKey(asset.id());
+    }
+
     public boolean isLoaded(Class<?> type, String id) {
         var table = entriesFor(type);
         var entry = table.get(id);

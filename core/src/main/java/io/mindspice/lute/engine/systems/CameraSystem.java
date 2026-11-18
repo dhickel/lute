@@ -9,11 +9,9 @@ import com.badlogic.gdx.math.MathUtils;
 import com.badlogic.gdx.math.Vector2;
 import io.mindspice.lute.engine.components.CameraFollow;
 import io.mindspice.lute.engine.components.Transform;
-import io.mindspice.lute.engine.events.Event;
-import io.mindspice.lute.engine.events.EventListener;
 import io.mindspice.lute.engine.singletons.GameConsts;
 
-public class CameraSystem extends IteratingSystem implements EventListener {
+public class CameraSystem extends IteratingSystem {
     private final Camera camera;
     private float mapW;
     private float mapH;
@@ -23,8 +21,6 @@ public class CameraSystem extends IteratingSystem implements EventListener {
         super(Family.all(CameraFollow.class, Transform.class).get());
         this.camera = camera;
         this.targetPos = new Vector2();
-
-        eventSubscriber.accept(Event.Map.Changed.class, (event) -> this.setMap(event.map()));
     }
 
     @Override
@@ -61,15 +57,18 @@ public class CameraSystem extends IteratingSystem implements EventListener {
         this.targetPos.set(tX, tY);
     }
 
-    public void setMap(TiledMap map) {
+    void setMap(TiledMap map, Entity player) {
         int width = map.getProperties().get("width", 0, Integer.class);
         int tileWidth = map.getProperties().get("tilewidth", 0, Integer.class);
         int height = map.getProperties().get("height", 0, Integer.class);
         int tileHeight = map.getProperties().get("tileheight", 0, Integer.class);
 
-        mapW = width * tileWidth * GameConsts.UNIT_SCALE;
-        mapH = height * tileHeight * GameConsts.UNIT_SCALE;
-
-
+        mapW = (float) width * tileWidth * GameConsts.UNIT_SCALE;
+        mapH = (float) height * tileHeight * GameConsts.UNIT_SCALE;
+        if (player != null) {
+            calcTargetPosition(Transform.MAPPER.get(player).getPosition());
+            camera.position.set(targetPos.x, targetPos.y, camera.position.z);
+            camera.update();
+        }
     }
 }

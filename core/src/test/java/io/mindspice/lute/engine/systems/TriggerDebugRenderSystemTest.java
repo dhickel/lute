@@ -20,7 +20,7 @@ import com.badlogic.gdx.maps.tiled.objects.TiledMapTileMapObject;
 import com.badlogic.gdx.math.Vector2;
 import com.badlogic.gdx.physics.box2d.*;
 import com.badlogic.gdx.utils.GdxNativesLoader;
-import io.mindspice.lute.engine.GameCore;
+import com.badlogic.ashley.core.EntitySystem;
 import io.mindspice.lute.engine.singletons.GameConsts;
 import io.mindspice.lute.engine.tiled.FixedTmxMapLoader;
 
@@ -284,28 +284,14 @@ public final class TriggerDebugRenderSystemTest {
     }
 
     private static TriggerDebugRenderSystem attach(World world, RecordingRenderer renderer, TiledMap map) {
-        var engine = new Engine();
-        if (map != null) {
-            // TiledSystem's event helpers resolve the current engine through GameCore.
-            try {
-                var field = GameCore.class.getDeclaredField("engine");
-                field.setAccessible(true);
-                var previous = field.get(GameCore.INSTANCE);
-                engine.addSystem(new EventSystem());
-                try {
-                    field.set(GameCore.INSTANCE, engine);
-                    var tiled = new TiledSystem(null, world);
-                    var mapField = TiledSystem.class.getDeclaredField("currMap");
-                    mapField.setAccessible(true);
-                    mapField.set(tiled, map);
-                    engine.addSystem(tiled);
-                } finally {
-                    field.set(GameCore.INSTANCE, previous);
-                }
-            } catch (ReflectiveOperationException failure) {
-                throw new AssertionError("Cannot initialize the isolated map accessor", failure);
+        var tiled = new TiledSystem(null, world, null) {
+            @Override public TiledMap getCurrentMap() { return map; }
+        };
+        var engine = new Engine() {
+            @Override public <T extends EntitySystem> T getSystem(Class<T> type) {
+                return type == TiledSystem.class ? type.cast(tiled) : super.getSystem(type);
             }
-        }
+        };
         renderer.camera = new OrthographicCamera(20, 20);
         var system = new TriggerDebugRenderSystem(world, renderer.camera, renderer);
         engine.addSystem(system);

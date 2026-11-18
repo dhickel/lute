@@ -194,6 +194,9 @@ public class CombatSystem extends IteratingSystem implements ContactListener, En
     @Override
     public void entityRemoved(Entity entity) {
         arrows.removeIf(arrow -> arrow.owner == entity);
+        pendingHits.removeIf(hit -> hit.attacker() == entity || hit.target() == entity);
+        var aim = BowAim.MAPPER.get(entity);
+        if (aim != null) { aim.cancel(); }
         stopAttack(entity);
     }
 

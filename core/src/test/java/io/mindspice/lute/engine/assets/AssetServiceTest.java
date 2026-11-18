@@ -819,7 +819,7 @@ public final class AssetServiceTest {
                 var sound = backend.resource(service.get(Sound.class, weaponSounds.attack().id()));
                 events.emitEvent(new Event.Sound.Play(weaponSounds.attack().id()));
                 events.emitEvent(new Event.Sound.PlayAtVolume(weaponSounds.attack().id(), 2));
-                events.emitEvent(new Event.Map.Load(manifest));
+                audio.setMap(manifest);
                 events.update(0);
                 check(sound.plays == 2 && Math.abs(sound.volume - .33f) < .0001f,
                     "Sound events must resolve the equipped weapon's logical key");
@@ -839,8 +839,7 @@ public final class AssetServiceTest {
                 var music = backend.resource(service.get(Music.class, "TOWN"));
                 check(music.plays == 1 && music.looping && music.volume == .5f,
                     "Map start music must resolve and play the TOWN key");
-                events.emitEvent(new Event.Map.Load(manifest));
-                events.update(0);
+                audio.setMap(manifest);
                 check(music.plays == 1, "Repeated map music selection must not restart the same loaded music");
                 service.unload(Music.class, "TOWN");
                 audio.setMusicVolume(.7f);
@@ -850,6 +849,8 @@ public final class AssetServiceTest {
                 var replacement = backend.resource(service.get(Music.class, "TOWN"));
                 check(replacement != music && replacement.plays == 1 && music.stops == 0 && replacement.volume == .6f,
                     "Music reload must play the replacement without touching the disposed instance");
+                audio.setMap(null);
+                check(replacement.stops == 1, "Clearing the map stops its music before asset release");
             } finally {
                 field.set(GameCore.INSTANCE, previous);
             }

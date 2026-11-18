@@ -76,8 +76,7 @@ public class GameCore extends Game {
         };
 
         MapAssets assets = ManifestLoader.parseMapManifest("test_tiled");
-        var initialAssets = new ArrayList<>(assets.all());
-        initialAssets.addAll(CharacterAssets.all(gameData.weaponsData().atlas()));
+        var initialAssets = new ArrayList<>(CharacterAssets.all(gameData.weaponsData().atlas()));
         for (String id : gameData.weaponsData().weapons().keySet()) {
             initialAssets.addAll(WeaponAssets.of(id, gameData.weaponsData()).all());
         }

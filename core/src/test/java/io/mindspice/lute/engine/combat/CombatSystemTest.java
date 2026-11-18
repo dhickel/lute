@@ -688,7 +688,7 @@ public final class CombatSystemTest {
             engine.addSystem(new AnimationPlayerSystem());
             engine.addSystem(new AnimationSystem(assets));
             var combat = new CombatSystem(world); engine.addSystem(combat);
-            var factory = new EntityFactory(world, assets, input); engine.addSystem(factory);
+            var factory = new EntityFactory(world, assets); engine.addSystem(factory);
             var map = new MapAssets(Asset.Map.of("test", "test_tiled.tmx"), "",
                 Asset.Atlas.of("OBJECTS", "test_tiled.atlas"), Map.of(), Map.of());
             var tile = new StaticTiledMapTile(new TextureRegion(new DimensionTexture(160, 256)));
@@ -707,14 +707,14 @@ public final class CombatSystemTest {
                         for (int invalid : new int[]{8, Integer.MAX_VALUE}) {
                             var bad = withCues(original, hit ? invalid : 0, hit ? 0 : invalid);
                             field.set(GameCore.INSTANCE, replaceAttack(data, id, primary, bad));
-                            rejects(() -> factory.getPlayerEntity(new Vector2(320, 640), map),
+                            rejects(() -> factory.getPlayerEntity(new Vector2(320, 640), null),
                                 "Out of range cue in complete catalog: " + id + "/" + primary + "/" + hit);
                         }
                     }
                     var badBounds = new WeaponData.Bounds(BoundsType.RECT, 0, 0, .001f, .001f, ZERO, ZERO, ZERO, ZERO);
                     var badGeometry = new AttackData(original.animation(), badBounds, original.stats(), original.sounds(), original.collisionType());
                     field.set(GameCore.INSTANCE, replaceAttack(data, id, primary, badGeometry));
-                    rejects(() -> factory.getPlayerEntity(new Vector2(320, 640), map), "Unsafe catalog Box2D geometry");
+                    rejects(() -> factory.getPlayerEntity(new Vector2(320, 640), null), "Unsafe catalog Box2D geometry");
                 }
             }
             field.set(GameCore.INSTANCE, data);
@@ -726,7 +726,7 @@ public final class CombatSystemTest {
                 int width = frame.getRegionWidth();
                 try {
                     frame.setRegionWidth(32);
-                    rejects(() -> factory.getPlayerEntity(new Vector2(320, 640), map),
+                    rejects(() -> factory.getPlayerEntity(new Vector2(320, 640), null),
                         "Invalid loaded frame geometry: " + asset.id());
                 } finally { frame.setRegionWidth(width); }
             }
@@ -737,7 +737,7 @@ public final class CombatSystemTest {
                 var frame = sourceFrame(candidate, key);
                 candidate.getRegions().removeValue(frame, true);
                 try {
-                    rejects(() -> factory.getPlayerEntity(new Vector2(320, 640), map),
+                    rejects(() -> factory.getPlayerEntity(new Vector2(320, 640), null),
                         "Missing directional layer frame: " + asset.id());
                 } finally { candidate.getRegions().add(frame); }
             }
@@ -753,7 +753,7 @@ public final class CombatSystemTest {
                 var invalid = new PlayerData(original.name(), original.moveSpeed(), original.maxHealth(), original.loadout(),
                     original.animation(), original.sounds(), logical, original.collisionBounds(), original.hitboxBounds());
                 field.set(GameCore.INSTANCE, new GameData(invalid, data.weaponsData()));
-                rejects(() -> factory.getPlayerEntity(new Vector2(320, 640), map), "Logical dimensions must fit the loaded canvas");
+                rejects(() -> factory.getPlayerEntity(new Vector2(320, 640), null), "Logical dimensions must fit the loaded canvas");
             }
             for (boolean collision : new boolean[]{false, true}) {
                 var original = data.playerData();
@@ -763,19 +763,19 @@ public final class CombatSystemTest {
                     collision ? tiny : original.collisionBounds(), collision ? original.hitboxBounds() : tiny);
                 field.set(GameCore.INSTANCE, new GameData(invalid, data.weaponsData()));
                 int bodyCount = world.getBodyCount();
-                rejects(() -> factory.getPlayerEntity(new Vector2(320, 640), map), "Native-unsafe configured ellipse is rejected in Java");
+                rejects(() -> factory.getPlayerEntity(new Vector2(320, 640), null), "Native-unsafe configured ellipse is rejected in Java");
                 check(world.getBodyCount() == bodyCount, "Invalid character fixture construction cannot leak a partial body");
             }
             var original = data.playerData();
             var different = new PlayerData(original.name(), original.moveSpeed(), original.maxHealth(), original.loadout(),
                 original.animation(), original.sounds(), new PlayerData.LogicalSize(80, 72), original.collisionBounds(), original.hitboxBounds());
             field.set(GameCore.INSTANCE, new GameData(different, data.weaponsData()));
-            var differentPlayer = factory.getPlayerEntity(new Vector2(320, 640), map);
+            var differentPlayer = factory.getPlayerEntity(new Vector2(320, 640), null);
             near(80 * GameConsts.UNIT_SCALE, Transform.MAPPER.get(differentPlayer).getSize().x, "Factory accepts configured future logical width");
             near(72 * GameConsts.UNIT_SCALE, Transform.MAPPER.get(differentPlayer).getSize().y, "Factory accepts configured future logical height");
             world.destroyBody(Physic.MAPPER.get(differentPlayer).getBody());
             field.set(GameCore.INSTANCE, cues);
-            var player = factory.getPlayerEntity(new Vector2(320, 640), map);
+            var player = factory.getPlayerEntity(new Vector2(320, 640), null);
             check(player.getComponent(Player.class) != null, "Real player factory declares map-sensor participation");
             var transform = Transform.MAPPER.get(player);
             near(64 * GameConsts.UNIT_SCALE, transform.getSize().x, "Factory uses logical width rather than source canvas");

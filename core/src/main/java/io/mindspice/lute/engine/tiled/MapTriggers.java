@@ -72,6 +72,15 @@ public record MapTriggers(List<Sensor> sensors, List<SpawnPoint> points, List<Sp
         throw new IllegalArgumentException("Teleport targetSpawn '" + name + "' must name a TELEPORT SpawnPoint");
     }
 
+    public SpawnPoint travelDestination(String name) {
+        for (var point : points) {
+            if (point.name().equals(name) && (point.type() == SpawnType.PLAYER || point.type() == SpawnType.TELEPORT)) {
+                return point;
+            }
+        }
+        throw new IllegalArgumentException("Map targetSpawn '" + name + "' must name a PLAYER or TELEPORT SpawnPoint");
+    }
+
     private static void readLayers(MapLayers layers, boolean insideTriggers, String unsupportedTransform,
                                    List<Sensor> sensors, List<SpawnPoint> points, List<SpawnArea> areas) {
         for (var layer : layers) {

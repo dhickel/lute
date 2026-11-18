@@ -1,0 +1,29 @@
+<?xml version="1.0" encoding="UTF-8"?>
+<map version="1.10" orientation="orthogonal" width="36" height="24" tilewidth="32" tileheight="32" infinite="0">
+ <objectgroup id="1" name="Triggers">
+  <object id="1" name="PlayerSpawn" type="SpawnPoint" x="128" y="512">
+   <properties><property name="spawnType" value="PLAYER"/></properties><point/>
+  </object>
+  <object id="2" name="arrival" type="SpawnPoint" x="416" y="512">
+   <properties><property name="spawnType" value="TELEPORT"/></properties><point/>
+  </object>
+  <object id="3" name="back" type="Teleport" x="384" y="512" width="64" height="64">
+   <properties><property name="targetMap" value="travel_test_a"/><property name="targetSpawn" value="PlayerSpawn"/></properties>
+  </object>
+  <object id="4" name="local" type="Teleport" x="640" y="512" width="64" height="64">
+   <properties><property name="targetMap" value="ThIs"/><property name="targetSpawn" value="local-landing"/></properties>
+  </object>
+  <object id="5" name="local-landing" type="SpawnPoint" x="928" y="384">
+   <properties><property name="spawnType" value="TELEPORT"/></properties><point/>
+  </object>
+  <object id="6" name="area" type="SpawnArea" x="128" y="128" width="64" height="32">
+   <properties><property name="spawnType" value="TELEPORT"/></properties>
+  </object>
+  <object id="7" name="npc" type="SpawnPoint" x="224" y="320">
+   <properties><property name="spawnType" value="NPC"/></properties><point/>
+  </object>
+  <object id="8" name="item" type="SpawnPoint" x="256" y="320">
+   <properties><property name="spawnType" value="ITEM"/></properties><point/>
+  </object>
+ </objectgroup>
+</map>
