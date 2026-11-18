@@ -33,6 +33,7 @@ public class KeyManager {
     public void unregisterListener(KeyListener listener) {
         for (int i = 0; i < size; i++) {
             if (keyListeners[i] == listener) {
+                listener.detach();
                 System.arraycopy(keyListeners, i + 1, keyListeners, i, size - i - 1);
                 keyListeners[--size] = null;
                 return;
@@ -40,7 +41,12 @@ public class KeyManager {
         }
     }
 
+    void invalidateContext() {
+        for (int i = 0; i < size; i++) { keyListeners[i].invalidateContext(); }
+    }
+
     void releaseHeldInputs() {
+        invalidateContext();
         for (int keyCode = 0; keyCode < pressedActions.length; keyCode++) {
             InputAction action = pressedActions[keyCode];
             pressedActions[keyCode] = null;

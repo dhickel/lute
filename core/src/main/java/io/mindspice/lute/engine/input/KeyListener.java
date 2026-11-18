@@ -20,7 +20,33 @@ public class KeyListener {
         }
     }
 
+    private boolean contextInvalidated;
+    private boolean detached;
+
+    void detach() {
+        invalidateContext();
+        detached = true;
+    }
+
+    public boolean consumeDetach() {
+        boolean wasDetached = detached;
+        detached = false;
+        return wasDetached;
+    }
+
+    void invalidateContext() {
+        inputQueue.markContextBoundary();
+        contextInvalidated = true;
+    }
+
+    public boolean consumeInvalidation() {
+        boolean invalidated = contextInvalidated;
+        contextInvalidated = false;
+        return invalidated;
+    }
+
     public void setListening(boolean isListening) {
+        if (!isListening) { detach(); }
         this.isListening = isListening;
     }
 

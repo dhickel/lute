@@ -68,10 +68,22 @@ public final class GameScreenLifecycleTest extends ApplicationAdapter {
         var owned = snapshot(engine, foreign);
         var physics = engine.getSystem(PhysicSystem.class);
 
+        var player = engine.getEntitiesFor(com.badlogic.ashley.core.Family.all(Player.class).get()).first();
+        var loadout = io.mindspice.lute.engine.components.Loadout.MAPPER.get(player);
+        var originalWeapon = loadout.getWeaponId();
+        loadout.setWeapon("basic_bow");
+        var aim = io.mindspice.lute.engine.components.BowAim.MAPPER.get(player);
+        Gdx.input.getInputProcessor().keyDown(Input.Keys.SPACE);
+        engine.update(.01f);
+        require(aim.isAiming() && !Combat.MAPPER.get(player).isAttacking(), "Real bow draws the aiming overlay");
+        Gdx.input.getInputProcessor().keyUp(Input.Keys.SPACE);
+        engine.update(.01f);
+        require(!aim.isAiming() && Combat.MAPPER.get(player).isAttacking(), "Release renders the atlas arrow instead");
+        for (int i = 0; i < 120; i++) { engine.update(1f / 60); }
+        loadout.setWeapon(originalWeapon);
         Gdx.input.getInputProcessor().keyDown(Input.Keys.W);
         Gdx.input.getInputProcessor().keyDown(Input.Keys.SPACE);
         engine.update(0.02f);
-        var player = engine.getEntitiesFor(com.badlogic.ashley.core.Family.all(Player.class).get()).first();
         require(Combat.MAPPER.get(player).isAttacking(), "Teardown starts with a live attack");
         screens.loadScreen("away", new ScreenAdapter());
         screens.switchScreens("away");

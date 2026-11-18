@@ -10,6 +10,7 @@ import com.badlogic.gdx.utils.Array;
 import com.badlogic.gdx.utils.GdxRuntimeException;
 import io.mindspice.lute.engine.assets.AssetService;
 import io.mindspice.lute.engine.components.Animation2D;
+import io.mindspice.lute.engine.components.BowAim;
 import io.mindspice.lute.engine.components.Facing;
 import io.mindspice.lute.engine.components.Graphic;
 
@@ -45,17 +46,19 @@ public class AnimationSystem extends IteratingSystem implements EventEmitter {
         boolean atlasChanged = previousAtlas != atlas;
         if (previousAtlas != null && atlasChanged) { validateAttackFrames(anim2d, atlas); }
 
-        final float stateTime;
+        var aim = BowAim.MAPPER.get(entity);
+        boolean drawing = aim != null && aim.isAiming();
         if (anim2d.isDirty() || fDirection != anim2d.getFdirection() || atlasChanged) {
             updateAnimation(anim2d, fDirection);
             currentAtlases.put(anim2d, atlas);
-            stateTime = 0;
-        } else { stateTime = anim2d.incAndGetStateTime(deltaTime); }
+            deltaTime = 0f;
+        }
+        float stateTime = anim2d.advancePlayback(deltaTime, drawing);
 
         Animation<TextureRegion> animation = anim2d.getAnimation();
         animation.setPlayMode(anim2d.getPlayMode());
 
-        String soundId = anim2d.consumeAttackSound();
+        String soundId = drawing ? null : anim2d.consumeAttackSound();
         if (soundId != null) {
             eventEmitter.accept(new Event.Sound.Play(soundId));
         }

@@ -56,6 +56,7 @@ public class InputManager extends InputAdapter implements Disposable {
 
     @Override
     public boolean touchCancelled(int screenX, int screenY, int pointer, int button) {
+        if (pointer == 0) { mouseManager.cancelButton(button); }
         return touchUp(screenX, screenY, pointer, button);
     }
 

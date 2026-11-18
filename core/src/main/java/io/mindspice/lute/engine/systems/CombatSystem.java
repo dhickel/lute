@@ -7,9 +7,11 @@ import com.badlogic.ashley.core.Family;
 import com.badlogic.ashley.systems.IteratingSystem;
 import com.badlogic.gdx.math.Vector2;
 import com.badlogic.gdx.physics.box2d.*;
+import io.mindspice.lute.engine.animation.AnimationState;
 import io.mindspice.lute.engine.components.*;
 import io.mindspice.lute.engine.components.Transform;
 import io.mindspice.lute.engine.data.json.WeaponsData.WeaponData.CollisionType;
+import io.mindspice.lute.engine.data.json.ArrowData;
 
 import java.util.ArrayList;
 import java.util.IdentityHashMap;
@@ -18,6 +20,46 @@ import java.util.Map;
 
 public class CombatSystem extends IteratingSystem implements ContactListener, EntityListener {
     private final World world;
+    private final List<ArrowFlight> arrows = new ArrayList<>();
+    private final ArrowData arrowType = ArrowData.loadDefault();
+
+    List<ArrowFlight> arrows() { return arrows; }
+
+    void drawBow(Entity owner, BowAim aim, CombatWeapon.Weapon weapon) {
+        var combat = Combat.MAPPER.get(owner);
+        if (combat == null || combat.hasAttackRequest()) { return; }
+        if (combat.isAttacking()) {
+            if (combat.getActiveAttack().collisionType() != CollisionType.PROJECTILE) { return; }
+            stopAttack(owner); // A fresh press can draw again during the previous shot's recovery.
+        }
+        Animation2D.MAPPER.get(owner).configureAttack(weapon.primary().animation());
+        AnimationPlayer.MAPPER.get(owner).getAnimationFsm().changeState(AnimationState.ATTACK);
+        aim.start(weapon, Transform.MAPPER.get(owner), Facing.MAPPER.get(owner).getDirection());
+    }
+
+    void launch(Entity owner, BowAim aim) {
+        var transform = Transform.MAPPER.get(owner);
+        var start = transform.getPosition().cpy().mulAdd(transform.getSize(), 0.5f);
+        var target = new Vector2(aim.getTargetX(), aim.getTargetY());
+        float dx = target.x - start.x, dy = target.y - start.y;
+        var facing = Facing.MAPPER.get(owner);
+        if (Math.abs(dx) > Math.abs(dy)) {
+            facing.setDirection(dx > 0 ? Facing.Direction.RIGHT : Facing.Direction.LEFT);
+        } else if (dy != 0) { // Vertical wins ties, as in FacingSystem. At center, keep facing.
+            facing.setDirection(dy > 0 ? Facing.Direction.UP : Facing.Direction.DOWN);
+        }
+        var attack = aim.getWeapon().primary();
+        var animation = Animation2D.MAPPER.get(owner);
+        int drawFrame = animation.isAttackReady() ? animation.getFrameIndex() : 0;
+        float damageScale = Math.min(drawFrame + 1, 4) / 4f;
+        arrows.add(new ArrowFlight(owner, arrowType, start, target, attack.damage() * damageScale));
+        var combat = Combat.MAPPER.get(owner);
+        combat.beginAttack(attack);
+        activeAttacks.put(owner, combat);
+        animation.releaseBow();
+        aim.cancel();
+    }
+
     private final List<Hit> pendingHits = new ArrayList<>();
     private final Map<Entity, Combat> activeAttacks = new IdentityHashMap<>();
 
@@ -38,6 +80,7 @@ public class CombatSystem extends IteratingSystem implements ContactListener, En
         // Removing the system must not leave active attack fixtures behind.
         for (var entity : getEntities()) { stopAttack(entity); }
         world.setContactListener(null);
+        arrows.clear();
         engine.removeEntityListener(this);
         pendingHits.clear();
         super.removedFromEngine(engine);
@@ -63,6 +106,7 @@ public class CombatSystem extends IteratingSystem implements ContactListener, En
             }
         }
         pendingHits.clear();
+        arrows.removeIf(arrow -> arrow.finished(world, deltaTime));
         super.update(deltaTime);
     }
 
@@ -149,6 +193,7 @@ public class CombatSystem extends IteratingSystem implements ContactListener, En
 
     @Override
     public void entityRemoved(Entity entity) {
+        arrows.removeIf(arrow -> arrow.owner == entity);
         stopAttack(entity);
     }
 

@@ -20,6 +20,7 @@ public class Animation2D implements Component {
     private final float baseFrameDuration;
     private float frameDuration;
     private float stateTime;
+    private boolean bowReleased;
     private Animation<TextureRegion> animation;
     boolean dirty;
     private Attack attack;
@@ -144,7 +145,23 @@ public class Animation2D implements Component {
         attackSoundEmitted = false;
     }
 
+    public void releaseBow() {
+        bowReleased = true;
+    }
+
+    public float advancePlayback(float delta, boolean drawingBow) {
+        if (bowReleased) {
+            stateTime = (BowAim.FULL_DRAW_FRAME + 1) * frameDuration;
+            bowReleased = false;
+        } else {
+            incAndGetStateTime(delta);
+            if (drawingBow) { stateTime = Math.min(stateTime, BowAim.FULL_DRAW_FRAME * frameDuration); }
+        }
+        return stateTime;
+    }
+
     public void endAttack() {
+        bowReleased = false;
         speed = previousSpeed;
         frameDuration = baseFrameDuration;
     }

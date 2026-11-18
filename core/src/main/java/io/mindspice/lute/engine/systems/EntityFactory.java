@@ -120,6 +120,9 @@ public class EntityFactory extends EntitySystem {
             data.collisionType());
         attack.validateGeometry(anchor);
         long minimum = (long) Math.max(attack.hitFrame(), animation.soundFrame()) + 1;
+        if (attack.collisionType() == WeaponsData.WeaponData.CollisionType.PROJECTILE) {
+            minimum = Math.max(minimum, BowAim.FULL_DRAW_FRAME + 2L);
+        }
         requiredFrames.merge(animation.action(), minimum, Math::max);
         return attack;
     }
