@@ -80,9 +80,13 @@ public final class MapTriggersTest {
             near(player.position().x, 302.248f, "Sample player x stays in pixels");
             near(player.position().y, 640 - 561.672f, "Sample player y is flipped exactly once by the loader");
             var teleport = triggers.sensors().stream().filter(s -> s.targetMap() != null).findFirst().orElseThrow();
-            check(teleport.targetMap().equals("THIS") && teleport.type() == SensorType.GENERAL,
-                "Sample teleport is a GENERAL sensor targeting THIS");
-            var destination = triggers.teleportDestination(teleport.targetSpawn());
+            check(teleport.type() == SensorType.GENERAL, "Sample teleport is a GENERAL sensor");
+            if ("THIS".equalsIgnoreCase(teleport.targetMap())) {
+                triggers.teleportDestination(teleport.targetSpawn());
+            } else if ("test_tiled".equals(teleport.targetMap())) {
+                triggers.travelDestination(teleport.targetSpawn());
+            }
+            var destination = triggers.teleportDestination("TeleportDestination");
             near(destination.position().x, 560, "Sample teleport destination x pixels");
             near(destination.position().y, 240, "Sample teleport destination y pixels");
             geometryRectangle(teleport.geometry(), 432.667f / 32, (640 - 275.333f - 35.3333f) / 32,

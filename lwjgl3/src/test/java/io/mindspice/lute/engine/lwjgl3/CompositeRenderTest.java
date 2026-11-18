@@ -15,7 +15,6 @@ import com.badlogic.gdx.utils.BufferUtils;
 import com.badlogic.gdx.utils.ScreenUtils;
 import com.badlogic.gdx.graphics.glutils.ShaderProgram;
 import io.mindspice.lute.engine.GameCore;
-import io.mindspice.lute.engine.events.Event;
 import com.badlogic.gdx.utils.viewport.FitViewport;
 import io.mindspice.lute.engine.assets.*;
 import io.mindspice.lute.engine.components.*;
@@ -157,8 +156,6 @@ public final class CompositeRenderTest extends ApplicationAdapter {
         multipageTargets();
         renderer.dispose();
         renderer.dispose();
-        GameCore.INSTANCE.getEngine().getSystem(EventSystem.class).emitEvent(new Event.Map.Changed(new TiledMap()));
-        GameCore.INSTANCE.getEngine().getSystem(EventSystem.class).update(0);
         requireThrows(() -> renderer.update(0), "disposed renderer rejects updates");
         renderer = null;
     }

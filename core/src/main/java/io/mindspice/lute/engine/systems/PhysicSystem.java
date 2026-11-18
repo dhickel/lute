@@ -23,6 +23,10 @@ public class PhysicSystem extends IteratingSystem implements EntityListener {
         this.accumulator = 0f;
     }
 
+    void resetClock() {
+        accumulator = 0f;
+    }
+
     @Override
     public void update(float deltaTime) {
         this.accumulator += deltaTime;

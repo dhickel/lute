@@ -1,0 +1,7 @@
+{
+  "map_asset": "travel_test_b/travel_test_b.tmx",
+  "start_music": "",
+  "atlasAsset": "test_tiled.atlas",
+  "music_assets": {},
+  "sound_assets": { "TRAVEL_B": "sword_swing.wav" }
+}

@@ -90,14 +90,13 @@ public final class MapSensorSystemTest {
             characterTeleportAndRemoval();
             sameMapTeleport("THIS");
             sameMapTeleport("this");
-            unsupportedMapStaysPut();
             missingSameMapDestinationFailsBeforeLoading();
             combatAndMapContactsCoexist();
             pendingAndActivePlayerRemoval();
             replacementAndSystemCleanup();
             lockedMapCleanupIsRejected();
             initialPlayerAndDataOnlyMarkers();
-            eventDrivenPlayerSpawn();
+            replacementAfterExternalPlayerRemoval();
             invalidMapLoadCleansPartialBodies();
             tiledNativeShapesAndRotation();
             tiledCompoundSeams();
@@ -280,19 +279,6 @@ public final class MapSensorSystemTest {
         }
     }
 
-    private static void unsupportedMapStaysPut() {
-        try (var game = new Harness()) {
-            game.load(map(portal("future-map", 4, 4, 4, 4, "elsewhere", "not-local")));
-            var player = game.entity(5, 5, true, false, 2);
-            LOGS.clear();
-            game.tick(STEP * 10);
-            position(player, 5, 5, "Unsupported target map leaves the player in place");
-            check(LOGS.stream().filter(log -> log.contains("MapSensorSystem") && log.contains("elsewhere")).count() == 1,
-                "Unsupported map logs once per entry, not once per fixture or fixed tick");
-            game.expect(new Event.Sensor.Enter("future-map", MapTriggers.SensorType.GENERAL, player));
-        }
-    }
-
     private static void missingSameMapDestinationFailsBeforeLoading() {
         try (var game = new Harness()) {
             var valid = map(sensor("retained", 4, 4, 4, 4));
@@ -391,8 +377,8 @@ public final class MapSensorSystemTest {
             check(game.world.getBodyCount() == 2, "Removing MapSensorSystem destroys its bodies only");
             check(game.countExit("replacement") == 1, "System removal clears occupied contacts once");
             game.engine.removeSystem(game.tiled);
-            game.tiled.dispose();
-            game.tiled.dispose();
+            game.tiled.hideMap();
+            game.tiled.hideMap();
             check(game.world.getBodyCount() == 1,
                 "Removing then disposing TiledSystem cleans its boundary safely without touching the player");
         }
@@ -467,23 +453,20 @@ public final class MapSensorSystemTest {
         }
     }
 
-    private static void eventDrivenPlayerSpawn() {
+    private static void replacementAfterExternalPlayerRemoval() {
         try (var game = new Harness()) {
             var factory = new FakeFactory(game);
             game.engine.addSystem(factory);
-            game.availableMap = game.own(map(point("initial", "PLAYER", 6, 7), sensor("initial-room", 4, 4, 4, 4)));
-            game.events.emitEvent(new Event.Map.Load(game.mapAssets));
+            game.load(map(point("initial", "PLAYER", 6, 7), sensor("initial-room", 4, 4, 4, 4)));
             game.tick(STEP * 2);
-            check(factory.calls == 1 && game.engine.getEntities().size() == 1,
-                "Queued Map.Load spawns the player exactly once across Ashley's update boundary");
+            check(factory.calls == 1 && game.engine.getEntities().size() == 1, "Initial map spawns exactly one player");
             game.expect(new Event.Sensor.Enter("initial-room", MapTriggers.SensorType.GENERAL, factory.lastPlayer));
             game.engine.removeEntity(factory.lastPlayer);
             game.tick(STEP);
-            game.availableMap = game.own(map(point("replacement", "PLAYER", 10, 11)));
-            game.events.emitEvent(new Event.Map.Load(game.mapAssets));
+            game.load(map(point("replacement", "PLAYER", 10, 11)));
             game.tick(STEP);
             check(factory.calls == 2 && game.world.getBodyCount() == 2,
-                "Map.Load after external player removal does not double-destroy map-owned bodies");
+                "Map replacement after external player removal does not double-destroy map-owned bodies");
         }
     }
 
@@ -494,8 +477,22 @@ public final class MapSensorSystemTest {
             rejects(() -> game.tiled.setMap(invalid, game.mapAssets), "Zero-sized map boundaries are rejected");
             check(game.tiled.getCurrentMap() == null && game.world.getBodyCount() == 0,
                 "Failed geometry load cleans already-created sensor bodies and resets map ownership");
-            game.load(map(sensor("valid", 4, 4, 4, 4)));
+            var live = map(sensor("valid", 4, 4, 4, 4));
+            game.load(live);
             check(game.world.getBodyCount() == 2, "A valid map can load after geometry rejection");
+
+            var badObjects = new MapLayer();
+            badObjects.setName("Collisions");
+            badObjects.getObjects().add(new RectangleMapObject(1, 1, 1, 1));
+            var badReplacement = game.own(map(sensor("different", 10, 10, 4, 4)));
+            badReplacement.getLayers().add(badObjects);
+            try {
+                game.tiled.setMap(badReplacement, game.mapAssets);
+                throw new AssertionError("Invalid placed object must reject the staged map");
+            } catch (com.badlogic.gdx.utils.GdxRuntimeException expected) {
+                check(game.tiled.getCurrentMap() == live && game.world.getBodyCount() == 2,
+                    "Failure after staging the replacement boundary cleans it without disturbing the live map");
+            }
         }
     }
 
@@ -1048,11 +1045,11 @@ public final class MapSensorSystemTest {
         Entity lastPlayer;
 
         FakeFactory(Harness game) {
-            super(game.world, game.assets, new InputManager(InputMap.of()));
+            super(game.world, game.assets);
             this.game = game;
         }
 
-        @Override public Entity getPlayerEntity(Vector2 pixelPosition, MapAssets assets) {
+        @Override public Entity getPlayerEntity(Vector2 pixelPosition, io.mindspice.lute.engine.components.PlayerState state) {
             calls++;
             lastPixels = pixelPosition.cpy();
             var origin = pixelPosition.cpy().scl(GameConsts.UNIT_SCALE).sub(1, 1.5f);
@@ -1074,15 +1071,8 @@ public final class MapSensorSystemTest {
         final CombatSystem combat = new CombatSystem(world);
         final MapSensorSystem sensors = new MapSensorSystem(world);
         final PhysicSystem physics = new PhysicSystem(world, STEP);
-        TiledMap availableMap;
-        final AssetService assets = new AssetService(FileHandle::new) {
-            @Override public <T> T get(Class<T> type, String id) {
-                if (type == TiledMap.class && availableMap != null) { return type.cast(availableMap); }
-                throw new AssertionError("Unexpected asset lookup: " + type + " " + id);
-            }
-            @Override public void unload(Class<?> type, String id) { }
-        };
-        final TiledSystem tiled = new TiledSystem(assets, world);
+        final AssetService assets = new AssetService(FileHandle::new);
+        final TiledSystem tiled = new TiledSystem(assets, world, new InputManager(InputMap.of()));
         final MapAssets mapAssets = new MapAssets(Asset.Map.of("native-test", "unused.tmx"), "",
             Asset.Atlas.of("unused", "unused.atlas"), Map.of(), Map.of());
         final List<Event.Sensor> received = new ArrayList<>();

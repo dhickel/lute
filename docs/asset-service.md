@@ -30,7 +30,9 @@ The default loadout has basic head, body, hands, and feet equipment and `basic_s
 
 On an orthogonal map, author trigger objects in an object layer named `Trigger` or `Triggers`. Trigger layers and their ancestor groups must have zero offsets and unit parallax. `Sensor` and `Teleport` objects support filled rectangles, circles/ellipses, and simple polygons, including rotation. Rectangles and ellipses must have positive dimensions; invalid, self-intersecting, or degenerate polygons are rejected. Non-circular ellipses use a fixed eight-sided approximation. Concave polygons and simple polygons with more than eight vertices use multiple convex fixtures but remain one logical detector, without duplicate events and with the same teleport reconciliation as a single-fixture detector. Points and polylines are not detector shapes; text and tile objects are excluded. The Tiled object name identifies the sensor and must be unique among sensors. A `Sensor` has `sensorType` set to `GENERAL`; a `Teleport` also emits `GENERAL` sensor enter and exit events. These events carry the sensor name, type, and player; only the player's non-sensor fixtures participate.
 
-For a `Teleport`, set `targetMap` to `THIS` (case-insensitive) and `targetSpawn` to the name of a unique teleport-category `SpawnPoint`. Other map targets log as unsupported and leave the player in place. A same-map teleport centers the player on the destination point, stops velocity, preserves facing, and resets interpolation. The player must exit the destination teleport area before reentry can trigger it, preventing a teleport loop.
+For an in-place `Teleport`, set `targetMap` to `THIS` (case-insensitive) and `targetSpawn` to a unique `TELEPORT`-category `SpawnPoint` on the current map. It centers the player on the point, stops velocity, preserves facing, and resets interpolation.
+
+For map travel, set `targetMap` to the destination map's logical manifest ID and `targetSpawn` to a named `PLAYER` or `TELEPORT` point there. An explicit ID matching the current map still rebuilds its runtime; use `THIS` for the in-place behavior. The destination is synchronously loaded and prepared before the old runtime is replaced after the ECS and physics update. Invalid or missing destinations are logged and leave the current runtime intact. Arrival portals require exit before reentry, preventing a teleport loop. Named travel retains live health, loadout, and facing, but resets transient combat and input state. Hide/show remounts the current entry with the same session state; a new session uses player JSON defaults. No saves or disk hot reload are provided.
 
 Author a `SpawnPoint` as a zero-size point and a `SpawnArea` as an unrotated rectangle with positive dimensions, using a Tiled object name unique among spawn markers and a `spawnType` of `PLAYER`, `TELEPORT`, `NPC`, or `ITEM`. At most one `PLAYER` point is allowed; it creates the initial player. Areas and `NPC`/`ITEM` markers are data-only. The map owner cleans up sensor objects.
 
@@ -81,7 +83,7 @@ TiledMap loaded = assets.load(map);
 assets.unload(TiledMap.class, map.id());
 ```
 
-In gameplay, `TiledSystem` resolves a loaded map by the `MapAssets` map ID and unloads the previous map when switching to a different map. Coordinate the lifetimes of other map assets and their consumers separately.
+In gameplay, `TiledSystem` synchronously loads and owns map assets it acquires while preparing a runtime. It retains shared definitions needed by the destination and releases outgoing owned assets after rebinding their consumers; assets already registered by another owner remain that owner's responsibility. A named reload of the current map reuses registered asset data, not changed files on disk. The session retains player health, loadout, and facing separately from the rebuilt map entities.
 
 ## Migration from AssetManager-backed usage
 

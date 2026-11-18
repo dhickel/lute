@@ -67,6 +67,15 @@ tasks.register('gameScreenLifecycleTest', JavaExec) {
   jvmArgs '--enable-native-access=ALL-UNNAMED', '--add-exports=java.base/jdk.internal.misc=ALL-UNNAMED'
 }
 
+tasks.register('mapTravelTest', JavaExec) {
+  dependsOn testClasses
+  classpath = sourceSets.test.runtimeClasspath
+  mainClass = 'io.mindspice.lute.engine.lwjgl3.MapTravelTest'
+  workingDir = rootProject.file('assets')
+  environment 'DISPLAY', System.getenv('DISPLAY') ?: ':0'
+  jvmArgs '--enable-native-access=ALL-UNNAMED', '--add-exports=java.base/jdk.internal.misc=ALL-UNNAMED'
+}
+
 tasks.named('test') {
   failOnNoDiscoveredTests = false
 }

@@ -1,0 +1,29 @@
+<?xml version="1.0" encoding="UTF-8"?>
+<map version="1.10" orientation="orthogonal" width="32" height="24" tilewidth="32" tileheight="32" infinite="0">
+ <objectgroup id="1" name="Triggers">
+  <object id="1" name="PlayerSpawn" type="SpawnPoint" x="128" y="512">
+   <properties><property name="spawnType" value="PLAYER"/></properties><point/>
+  </object>
+  <object id="2" name="self" type="Teleport" x="96" y="512" width="64" height="64">
+   <properties><property name="targetMap" value="travel_test_a"/><property name="targetSpawn" value="PlayerSpawn"/></properties>
+  </object>
+  <object id="3" name="other" type="Teleport" x="320" y="512" width="64" height="64">
+   <properties><property name="targetMap" value="travel_test_b"/><property name="targetSpawn" value="arrival"/></properties>
+  </object>
+  <object id="4" name="unknown" type="Teleport" x="448" y="512" width="64" height="64">
+   <properties><property name="targetMap" value="travel_test_missing"/><property name="targetSpawn" value="PlayerSpawn"/></properties>
+  </object>
+  <object id="5" name="bad-area" type="Teleport" x="576" y="512" width="64" height="64">
+   <properties><property name="targetMap" value="travel_test_b"/><property name="targetSpawn" value="area"/></properties>
+  </object>
+  <object id="6" name="bad-npc" type="Teleport" x="704" y="512" width="64" height="64">
+   <properties><property name="targetMap" value="travel_test_b"/><property name="targetSpawn" value="npc"/></properties>
+  </object>
+  <object id="7" name="bad-item" type="Teleport" x="832" y="512" width="64" height="64">
+   <properties><property name="targetMap" value="travel_test_b"/><property name="targetSpawn" value="item"/></properties>
+  </object>
+  <object id="8" name="bad-missing" type="Teleport" x="832" y="384" width="64" height="64">
+   <properties><property name="targetMap" value="travel_test_b"/><property name="targetSpawn" value="missing"/></properties>
+  </object>
+ </objectgroup>
+</map>

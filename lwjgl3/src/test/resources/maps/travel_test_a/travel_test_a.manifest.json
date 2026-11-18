@@ -1,0 +1,7 @@
+{
+  "map_asset": "travel_test_a/travel_test_a.tmx",
+  "start_music": "TRAVEL_A",
+  "atlasAsset": "test_tiled.atlas",
+  "music_assets": { "TRAVEL_A": "town.ogg" },
+  "sound_assets": {}
+}

@@ -5,7 +5,6 @@ import com.badlogic.ashley.core.Entity;
 import com.badlogic.ashley.core.EntityListener;
 import com.badlogic.ashley.core.EntitySystem;
 import com.badlogic.ashley.core.Family;
-import com.badlogic.gdx.Gdx;
 import com.badlogic.gdx.math.Intersector;
 import com.badlogic.gdx.math.Vector2;
 import com.badlogic.gdx.physics.box2d.*;
@@ -55,13 +54,17 @@ public final class MapSensorSystem extends EntitySystem implements EntityListene
     }
 
     public void setMap(MapTriggers triggers) {
-        clearMap();
-        this.triggers = triggers;
+        installMap(triggers, prepareMap(triggers));
+    }
+
+    List<SensorBody> prepareMap(MapTriggers triggers) {
+        if (world.isLocked()) { throw new IllegalStateException("Cannot prepare map sensors during a physics step"); }
+        var prepared = new ArrayList<SensorBody>();
         try {
             for (var sensor : triggers.sensors()) {
                 var body = world.createBody(new BodyDef());
                 var owned = new SensorBody(sensor, body);
-                sensors.add(owned);
+                prepared.add(owned);
                 var geometry = sensor.geometry();
                 if (geometry.radius() > 0) {
                     var shape = new CircleShape();
@@ -84,9 +87,22 @@ public final class MapSensorSystem extends EntitySystem implements EntityListene
                     }
                 }
             }
+            return prepared;
         } catch (RuntimeException | Error failure) {
-            clearMap();
+            for (var sensor : prepared) { world.destroyBody(sensor.body); }
             throw failure;
+        }
+    }
+
+    void installMap(MapTriggers triggers, List<SensorBody> prepared) {
+        clearMap();
+        this.triggers = triggers;
+        sensors.addAll(prepared);
+    }
+
+    void suppressArrivalPortals(Entity player) {
+        for (var sensor : sensors) {
+            if (sensor.data.targetMap() != null && overlaps(sensor, player)) { sensor.arrivals.add(player); }
         }
     }
 
@@ -183,13 +199,15 @@ public final class MapSensorSystem extends EntitySystem implements EntityListene
             var player = visit.player();
             if (sensor.data.targetMap() == null || sensor.arrivals.contains(player) || moved.contains(player)
                 || !sensor.contacts.containsKey(player) || !overlaps(sensor, player)) { continue; }
-            if (!"THIS".equalsIgnoreCase(sensor.data.targetMap())) {
-                // Future cross-map transitions belong here; no transition is performed today.
-                Gdx.app.log("MapSensorSystem", "Unsupported teleport target map: " + sensor.data.targetMap());
-                continue;
+            if ("THIS".equalsIgnoreCase(sensor.data.targetMap())) {
+                teleport(player, triggers.teleportDestination(sensor.data.targetSpawn()).position());
+                moved.add(player);
+            } else {
+                var tiled = getEngine().getSystem(TiledSystem.class);
+                if (tiled != null && tiled.requestTravel(player, sensor.data.targetMap(), sensor.data.targetSpawn())) {
+                    moved.add(player);
+                }
             }
-            teleport(player, triggers.teleportDestination(sensor.data.targetSpawn()).position());
-            moved.add(player);
         }
     }
 
@@ -342,7 +360,7 @@ public final class MapSensorSystem extends EntitySystem implements EntityListene
         return Collections.newSetFromMap(new IdentityHashMap<>());
     }
 
-    private static final class SensorBody {
+    static final class SensorBody {
         final MapTriggers.Sensor data;
         final Body body;
         final Map<Entity, Set<FixturePair>> contacts = new IdentityHashMap<>();

@@ -82,17 +82,23 @@ public final class GameScreenLifecycleTest extends ApplicationAdapter {
         for (int i = 0; i < 120; i++) { engine.update(1f / 60); }
         loadout.setWeapon(originalWeapon);
         Gdx.input.getInputProcessor().keyDown(Input.Keys.W);
-        Gdx.input.getInputProcessor().keyDown(Input.Keys.SPACE);
+        Gdx.input.getInputProcessor().keyDown(Input.Keys.SHIFT_LEFT);
         engine.update(0.02f);
         require(Combat.MAPPER.get(player).isAttacking(), "Teardown starts with a live attack");
         screens.loadScreen("away", new ScreenAdapter());
         screens.switchScreens("away");
         require(playerCount(engine) == 0, "Hide removes the old player and its physics body");
         require(engine.getSystem(PhysicSystem.class) == physics, "Hide retains screen systems for reuse");
+        Gdx.input.getInputProcessor().keyUp(Input.Keys.W);
+        Gdx.input.getInputProcessor().keyUp(Input.Keys.SHIFT_LEFT);
         screens.switchScreens("GameScreen");
+        Gdx.input.getInputProcessor().keyDown(Input.Keys.SHIFT_LEFT);
         engine.update(0.02f);
         require(playerCount(engine) == 1, "Showing the same screen reloads one player");
         require(engine.getSystem(PhysicSystem.class) == physics, "Show reuses the same physics system");
+        var resumed = engine.getEntitiesFor(com.badlogic.ashley.core.Family.all(Player.class).get()).first();
+        require(Combat.MAPPER.get(resumed).isAttacking(), "Key-up while hidden allows a fresh press after show");
+        Gdx.input.getInputProcessor().keyUp(Input.Keys.SHIFT_LEFT);
 
         screens.unloadScreen("GameScreen");
         verifyDetached(engine, foreign, owned);
@@ -161,7 +167,7 @@ public final class GameScreenLifecycleTest extends ApplicationAdapter {
                 require(expected == partial.failure, "Constructor preserves the original installation failure");
             }
             require(partial.installed.stream().anyMatch(TiledSystem.class::isInstance),
-                "Failure occurs after the map listener was installed");
+                "Failure occurs after the map owner was installed");
             verifyDetached(partial, foreign, partial.installed);
             partial.update(0.02f);
             require(foreign.updates == 1, "Partial setup leaves the shared engine usable");

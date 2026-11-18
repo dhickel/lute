@@ -22,7 +22,6 @@ import io.mindspice.lute.engine.GameCore;
 import io.mindspice.lute.engine.components.CombatWeapon;
 import io.mindspice.lute.engine.components.*;
 import io.mindspice.lute.engine.components.Transform;
-import io.mindspice.lute.engine.input.InputManager;
 import io.mindspice.lute.engine.singletons.GameConsts;
 import io.mindspice.lute.engine.tiled.properties.PhysicObjectProps;
 import io.mindspice.lute.engine.tiled.properties.AnimatedPhysicObjectProps;
@@ -36,16 +35,14 @@ import java.util.Set;
 public class EntityFactory extends EntitySystem {
     private final World world;
     private final AssetService assetService;
-    private final InputManager inputManager;
 
-    public EntityFactory(World world, AssetService assetService, InputManager inputManager) {
+    public EntityFactory(World world, AssetService assetService) {
         this.world = world;
         this.assetService = assetService;
-        this.inputManager = inputManager;
     }
 
-    public Entity getPlayerEntity(Vector2 pixelPosition, MapAssets mapAssets) {
-        var facing = Facing.Direction.RIGHT;
+    public Entity getPlayerEntity(Vector2 pixelPosition, PlayerState state) {
+        var facing = state == null ? Facing.Direction.RIGHT : state.facing().getDirection();
         var data = GameCore.INSTANCE.getGameData();
         var playerAnimation = data.playerData().animation();
         var atlas = CharacterAssets.CHARACTER;
@@ -62,26 +59,26 @@ public class EntityFactory extends EntitySystem {
             2, sizeWorld, new Vector2(1, 1), 0, 0);
         var size = transform.getSize();
         var weapons = createWeapons(data.weaponsData(), animation, new Vector2(size.x * 0.5f, size.y * 0.5f));
-        var combat = new Combat();
-        var equipment = new Loadout.Equipment(player.loadout().head(), player.loadout().body(),
-            player.loadout().hands(), player.loadout().feet());
-        var loadout = new Loadout(equipment, player.loadout().weapon(), weapons, this::validateEquipment);
+        if (state == null) {
+            var equipment = new Loadout.Equipment(player.loadout().head(), player.loadout().body(),
+                player.loadout().hands(), player.loadout().feet());
+            var loadout = new Loadout(equipment, player.loadout().weapon(), weapons, this::validateEquipment);
+            state = new PlayerState(new Health(player.maxHealth()), loadout, new Facing(facing));
+        }
 
         Entity entity = getEngine().createEntity();
         entity.add(new Graphic(region, Color.WHITE.cpy()));
         entity.add(new Player());
         entity.add(new CompositeCharacter(region.getRegionWidth(), region.getRegionHeight()));
         entity.add(transform);
-        entity.add(new Facing(facing));
+        state.attachTo(entity);
         entity.add(new Move(player.moveSpeed()));
-        entity.add(new Health(player.maxHealth()));
-        entity.add(combat);
-        entity.add(loadout);
+        entity.add(new Combat());
         entity.add(animation);
         entity.add(new AnimationPlayer(entity));
         entity.add(createPhysics(transform.getPosition(), entity));
         entity.add(new CameraFollow());
-        entity.add(Controller.forInputManager(inputManager));
+        entity.add(new Controller());
         return entity;
     }
 

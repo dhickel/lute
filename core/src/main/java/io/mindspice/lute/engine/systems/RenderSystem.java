@@ -26,16 +26,13 @@ import com.badlogic.gdx.utils.Disposable;
 import com.badlogic.gdx.utils.viewport.Viewport;
 import io.mindspice.lute.engine.components.Graphic;
 import io.mindspice.lute.engine.components.Transform;
-import io.mindspice.lute.engine.events.Event;
-import io.mindspice.lute.engine.events.EventListener;
 import io.mindspice.lute.engine.singletons.GameConsts;
 
 import java.util.ArrayList;
 import java.util.Comparator;
 import java.util.List;
-import java.util.function.Consumer;
 
-public class RenderSystem extends SortedIteratingSystem implements Disposable, EventListener {
+public class RenderSystem extends SortedIteratingSystem implements Disposable {
     private static final Family AIMERS = Family.all(BowAim.class).get();
     private final Batch batch;
     private final CharacterCompositor compositor;
@@ -50,7 +47,6 @@ public class RenderSystem extends SortedIteratingSystem implements Disposable, E
     private final List<MapLayer> bgLayers;
 
     private final OrthogonalTiledMapRenderer mapRenderer;
-    private final Consumer<Event.Map.Changed> mapChanged = event -> setMap(event.map());
     private boolean disposed;
 
     public RenderSystem(Batch batch, Viewport viewport, OrthographicCamera camera, AssetService assets) {
@@ -71,8 +67,6 @@ public class RenderSystem extends SortedIteratingSystem implements Disposable, E
         this.bgLayers = new ArrayList<>(4);
 
         this.mapRenderer = new OrthogonalTiledMapRenderer(null, GameConsts.UNIT_SCALE, this.batch);
-
-        eventSubscriber.accept(Event.Map.Changed.class, mapChanged);
     }
 
     @Override
@@ -214,7 +208,7 @@ public class RenderSystem extends SortedIteratingSystem implements Disposable, E
     public void setMap(TiledMap map) {
         mapRenderer.setMap(map);
         cleanMapLayers();
-        loadMapLayers(map);
+        if (map != null) { loadMapLayers(map); }
     }
 
     public void cleanMapLayers() {
@@ -253,7 +247,6 @@ public class RenderSystem extends SortedIteratingSystem implements Disposable, E
     public void dispose() {
         if (disposed) { return; }
         disposed = true;
-        eventUnSubscriber.accept(Event.Map.Changed.class, mapChanged);
         var state = new RenderState();
         try {
             if (crosshair != null) { crosshair.dispose(); }
