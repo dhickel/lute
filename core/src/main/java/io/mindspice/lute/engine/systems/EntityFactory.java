@@ -38,9 +38,9 @@ public class EntityFactory extends EntitySystem {
     private static final String PLAYER_PREFIX = "player";
     private static final String NPC_PREFIX = "basic_npc";
     private static final String ENEMY_PREFIX = "brainless_undead";
-    private static final CharacterBounds NPC_FEET = new CharacterBounds(20, 4, 44, 14);
-    private static final CharacterBounds NPC_HURTBOX = new CharacterBounds(16, 6, 48, 56);
-    private static final float NPC_MAX_HEALTH = 100f;
+    private static final CharacterBounds MAP_ACTOR_FEET = new CharacterBounds(20, 4, 44, 14);
+    private static final CharacterBounds MAP_ACTOR_HURTBOX = new CharacterBounds(16, 6, 48, 56);
+    private static final float MAP_ACTOR_MAX_HEALTH = 100f;
     private final World world;
     private final AssetService assetService;
 
@@ -125,11 +125,9 @@ public class EntityFactory extends EntitySystem {
         entity.add(transform).add(new Facing(facing)).add(animation).add(loadout)
             .add(new Graphic(animation.getAnimation().getKeyFrame(0f), Color.WHITE.cpy()))
             .add(new CompositeCharacter(128, 128));
-        if (!enemy) {
-            entity.add(new Health(NPC_MAX_HEALTH));
-            entity.add(createCharacterPhysics(transform.getPosition(), entity, BodyDef.BodyType.StaticBody,
-                NPC_FEET, NPC_HURTBOX));
-        }
+        entity.add(new Health(MAP_ACTOR_MAX_HEALTH));
+        entity.add(createCharacterPhysics(transform.getPosition(), entity, BodyDef.BodyType.StaticBody,
+            MAP_ACTOR_FEET, MAP_ACTOR_HURTBOX));
         return entity;
     }
 

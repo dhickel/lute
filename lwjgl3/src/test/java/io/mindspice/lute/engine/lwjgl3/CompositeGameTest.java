@@ -159,11 +159,7 @@ public final class CompositeGameTest {
                 "Actor logical bounds centered on actual map marker");
             require(!Controller.MAPPER.has(actor) && actor.getComponent(CameraFollow.class) == null && !Combat.MAPPER.has(actor),
                 "Map actor has no player control or attack behavior");
-            if (enemy) {
-                require(!Health.MAPPER.has(actor) && !Physic.MAPPER.has(actor), "Enemy demo remains visual only");
-            } else {
-                verifyNpcFixtures(actor, transform);
-            }
+            verifyActorFixtures(actor, transform, marker.name());
             var loadout = Loadout.MAPPER.get(actor);
             require(loadout.getEquipment().equals(enemy ? new Loadout.Equipment(null, null, null, null)
                 : new Loadout.Equipment(null, "basic", "basic", "basic")), "Only requested actor layers are equipped");
@@ -178,23 +174,25 @@ public final class CompositeGameTest {
         System.out.println("CompositeGameTest: real NPC and enemy marker placement, canvas, depth and weapon switch verified");
     }
 
-    private static void verifyNpcFixtures(Entity npc, Transform transform) {
-        var body = Physic.MAPPER.get(npc).getBody();
-        require(body.getType() == BodyDef.BodyType.StaticBody && body.getUserData() == npc
+    private static void verifyActorFixtures(Entity actor, Transform transform, String spawn) {
+        require(Physic.MAPPER.has(actor), spawn + " has a physics body");
+        var body = Physic.MAPPER.get(actor).getBody();
+        require(body.getType() == BodyDef.BodyType.StaticBody && body.getUserData() == actor
             && body.getPosition().epsilonEquals(transform.getPosition(), .0001f),
-            "NPC is stationary and its body is aligned with the logical frame");
+            spawn + " is stationary and its body is aligned with the logical frame");
         var fixtures = body.getFixtureList();
-        require(fixtures.size == 2, "NPC has exactly two fixtures");
+        require(fixtures.size == 2, spawn + " has exactly two fixtures");
         var feet = fixtures.get(0).isSensor() ? fixtures.get(1) : fixtures.get(0);
         var hurtbox = feet == fixtures.get(0) ? fixtures.get(1) : fixtures.get(0);
         require(!feet.isSensor() && hurtbox.isSensor() && hurtbox.getUserData() == Hurtbox.INSTANCE,
-            "NPC has solid feet and a separately tagged damage sensor");
+            spawn + " has solid feet and a separately tagged damage sensor");
         float unit = GameConsts.UNIT_SCALE;
         var feetPoint = body.getWorldPoint(new Vector2(32, 9).scl(unit)).cpy();
         var torsoPoint = body.getWorldPoint(new Vector2(32, 40).scl(unit)).cpy();
         require(feet.testPoint(feetPoint) && !feet.testPoint(torsoPoint) && hurtbox.testPoint(torsoPoint),
-            "NPC feet block while the torso is only part of the hurtbox");
-        require(Health.MAPPER.get(npc).getCurrent() == 100f, "NPC can receive damage");
+            spawn + " feet block while the torso is only part of the hurtbox");
+        require(Health.MAPPER.has(actor) && Health.MAPPER.get(actor).getCurrent() == 100f,
+            spawn + " starts with full health");
     }
 
     private static void verifyLoop(Entity player, LayerCheck layers, Animation2D.AnimationType type) {
