@@ -96,6 +96,7 @@ public final class CompositeGameTest {
         }
         try (var layers = new LayerCheck()) {
             verifyMapActors(engine, layers);
+            verifyMapActorDamage(player);
             for (String weapon : List.of("basic_sword", "basic_bow", "unarmed")) {
                 require(loadouts().equipWeapon(player, weapon.equals("unarmed") ? null : weapon), "Switch idle weapon: " + weapon);
                 require(loadouts().equip(player, BASIC), "Re-equip validated real equipment: " + weapon);
@@ -193,6 +194,84 @@ public final class CompositeGameTest {
             spawn + " feet block while the torso is only part of the hurtbox");
         require(Health.MAPPER.has(actor) && Health.MAPPER.get(actor).getCurrent() == 100f,
             spawn + " starts with full health");
+    }
+
+    private static void verifyMapActorDamage(Entity player) {
+        var engine = GAME.getEngine();
+        var actors = engine.getEntitiesFor(Family.all(CompositeCharacter.class).exclude(Player.class).get());
+        var position = Physic.MAPPER.get(player).getBody().getPosition().cpy();
+        var cameraPosition = GAME.getCamera().position.cpy();
+        var facing = Facing.MAPPER.get(player).getDirection();
+        var weaponId = Loadout.MAPPER.get(player).getWeaponId();
+        try {
+            for (var actor : actors) {
+                String name = Animation2D.MAPPER.get(actor).getAtlasKey();
+                var health = Health.MAPPER.get(actor);
+                var origin = Physic.MAPPER.get(actor).getBody().getPosition().cpy();
+                try {
+                    for (String weapon : List.of("basic_sword", "basic_bow")) {
+                        boolean bow = weapon.equals("basic_bow");
+                        require(loadouts().equipWeapon(player, weapon), "Equip " + weapon + " for " + name);
+                        placePlayer(player, origin.cpy().sub((bow ? 64 : 48) * GameConsts.UNIT_SCALE, 0));
+                        float before = health.getCurrent();
+                        fireAtActor(player, bow, Facing.Direction.LEFT);
+                        require(health.getCurrent() == before, weapon + " miss leaves " + name + " unharmed");
+                        float damage = Loadout.MAPPER.get(player).getWeapon().primary().damage();
+                        fireAtActor(player, bow, Facing.Direction.RIGHT);
+                        require(before > damage && health.getCurrent() == before - damage,
+                            weapon + " deals exactly one full hit to " + name + ": " + before + " -> " + health.getCurrent());
+                    }
+                } finally {
+                    actor.add(new Health(health.getMaximum()));
+                }
+            }
+        } finally {
+            Gdx.input.getInputProcessor().keyUp(Input.Keys.SPACE);
+            placePlayer(player, position);
+            GAME.getCamera().position.set(cameraPosition);
+            Facing.MAPPER.get(player).setDirection(facing);
+            require(loadouts().equipWeapon(player, weaponId), "Restore player weapon after map actor attacks");
+            engine.update(0);
+        }
+        System.out.println("CompositeGameTest: both spawned actors take exactly one sword and bow hit; misses do no damage");
+    }
+
+    private static void placePlayer(Entity player, Vector2 position) {
+        var physics = Physic.MAPPER.get(player);
+        physics.getBody().setTransform(position, 0);
+        physics.getBody().setLinearVelocity(0, 0);
+        physics.getPrevPos().set(position);
+        Transform.MAPPER.get(player).getPosition().set(position);
+    }
+
+    private static void fireAtActor(Entity player, boolean bow, Facing.Direction direction) {
+        var engine = GAME.getEngine();
+        var input = Gdx.input.getInputProcessor();
+        var combat = Combat.MAPPER.get(player);
+        long previousAttack = combat.getAttackId();
+        Facing.MAPPER.get(player).setDirection(direction);
+        input.keyDown(Input.Keys.SPACE);
+        engine.update(0);
+        if (bow) {
+            var animation = Animation2D.MAPPER.get(player);
+            require(BowAim.MAPPER.get(player).isAiming() && animation.isAttackReady()
+                && animation.getAction().equals("shot") && animation.getFrameIndex() == 0,
+                "Primary press installs shot_00 before counting draw frames");
+            int aimKey = movementKey(direction);
+            input.keyDown(aimKey);
+            engine.update(1f / 6f); // Steer the crosshair one extra tile while holding the draw.
+            input.keyUp(aimKey);
+            for (int frame = 0; frame < 120 && animation.getFrameIndex() < BowAim.FULL_DRAW_FRAME; frame++) {
+                engine.update(1f / 60f);
+            }
+            require(animation.getFrameIndex() == BowAim.FULL_DRAW_FRAME, "Bow reaches full draw");
+        }
+        input.keyUp(Input.Keys.SPACE);
+        engine.update(0);
+        // Let both the attack animation and any in-flight arrow finish before reading health.
+        for (int frame = 0; frame < 120; frame++) { engine.update(1f / 60f); }
+        require(!combat.isAttacking() && combat.getAttackId() == previousAttack + 1,
+            "One primary input completes exactly one attack");
     }
 
     private static void verifyLoop(Entity player, LayerCheck layers, Animation2D.AnimationType type) {
