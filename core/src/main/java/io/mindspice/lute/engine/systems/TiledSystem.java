@@ -20,6 +20,7 @@ import com.badlogic.gdx.utils.GdxRuntimeException;
 import com.badlogic.gdx.utils.Disposable;
 import io.mindspice.lute.engine.GameCore;
 import io.mindspice.lute.engine.components.Controller;
+import io.mindspice.lute.engine.components.BowAim;
 import io.mindspice.lute.engine.tiled.MapTriggers;
 import io.mindspice.lute.engine.assets.AssetService;
 import io.mindspice.lute.engine.assets.MapAssets;
@@ -145,6 +146,9 @@ public class TiledSystem extends EntitySystem implements EventListener, EventEmi
         Entity entity = getEngine()
             .getSystem(EntityFactory.class)
             .getPlayerEntity(pixelPosition, currMapAssets);
+        var properties = currMap.getProperties();
+        entity.add(new BowAim(properties.get("tilewidth", Integer.class) * GameConsts.UNIT_SCALE,
+            properties.get("tileheight", Integer.class) * GameConsts.UNIT_SCALE));
         addMapEntity(entity);
     }
 

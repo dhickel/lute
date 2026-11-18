@@ -55,6 +55,8 @@ public final class CombatSystemTest {
         speedAndSkippedFrames();
         movementAndInput();
         attackSlotsAndLoadout();
+        heldBow();
+        cardinalBowShots();
         independentAttacksAndGeometry();
         contacts();
         characterFixturesAndContacts();
@@ -261,6 +263,74 @@ public final class CombatSystemTest {
                         "Switch unlocked after request consumed");
                 }
             }
+        }
+    }
+
+    private static void cardinalBowShots() {
+        for (var facing : Facing.Direction.values()) {
+            try (var game = new Harness(1, 1, 1)) {
+                var shot = attack("basic_bow", "shot", 1, 2, 1, BoundsType.RECT, CollisionType.PROJECTILE);
+                game.selectWeapon(new CombatWeapon.Weapon("basic_bow", "ranged/basic_bow", shot, shot));
+                var aim = new BowAim(1, 1.5f);
+                game.player.add(aim);
+                Facing.MAPPER.get(game.player).setDirection(facing);
+                game.input(InputAction.ATTACK_PRIMARY, 1); game.update(0);
+                float x = 1 + (facing == Facing.Direction.RIGHT ? 2 : facing == Facing.Direction.LEFT ? -2 : 0);
+                float y = 1 + (facing == Facing.Direction.UP ? 3 : facing == Facing.Direction.DOWN ? -3 : 0);
+                near(x, aim.getTargetX(), "Two map tile widths from center: " + facing);
+                near(y, aim.getTargetY(), "Two map tile heights from center: " + facing);
+                var target = game.target(1, true);
+                var body = Physic.MAPPER.get(target).getBody();
+                body.getFixtureList().first().setUserData(Hurtbox.INSTANCE);
+                body.setTransform(x, y, 0);
+                game.input(InputAction.ATTACK_PRIMARY, 0); game.update(.5f);
+                near(90, Health.MAPPER.get(target).getCurrent(), "Tip reaches terminal hurtbox: " + facing);
+                game.input(InputAction.ATTACK_PRIMARY, 1); game.update(0);
+                game.input(InputAction.ATTACK_PRIMARY, 0); game.update(0);
+                game.engine.removeEntity(game.player); game.update(1);
+                near(90, Health.MAPPER.get(target).getCurrent(), "Removing owner discards in-flight arrows");
+            }
+        }
+    }
+
+    private static void heldBow() {
+        try (var game = new Harness(1, 1, 1)) {
+            var bow = new CombatWeapon.Weapon("basic_bow", "ranged/basic_bow",
+                attack("basic_bow", "shot", 1, 2, 1, BoundsType.RECT, CollisionType.PROJECTILE),
+                attack("basic_bow", "jab", 1, 2, 1, BoundsType.TRIANGLE, CollisionType.MELEE));
+            game.selectWeapon(bow);
+            var aim = new BowAim(1, 1);
+            game.player.add(aim);
+            var map = InputMap.of();
+            int space = com.badlogic.gdx.Input.Keys.SPACE;
+            map.setKey(space, InputAction.ATTACK_PRIMARY);
+            map.setButton(0, InputAction.ATTACK_PRIMARY);
+            var input = new InputManager(map);
+            input.regKeyListener(Controller.MAPPER.get(game.player).getInputListener());
+            var target = game.target(2, false);
+            Physic.MAPPER.get(target).getBody().setTransform(2, 1.30f, 0);
+            input.keyDown(space);
+            input.touchDown(0, 0, 0, 0);
+            game.update(.1f);
+            near(3, aim.getTargetX(), "New aim starts two tiles forward");
+            near(1, aim.getTargetY(), "Aim starts on facing axis");
+            game.input(InputAction.MOVE_UP, 1); game.update(.1f);
+            near(1.6f, aim.getTargetY(), "Direction steers held crosshair");
+            game.input(InputAction.MOVE_UP, 0); input.keyUp(space); game.update(1);
+            check(aim.isAiming() && !game.combat().isAttacking(), "Releasing only one binding cannot fire");
+            input.touchCancelled(0, 0, 0, 0); game.update(1);
+            near(100, Health.MAPPER.get(target).getCurrent(), "Cancellation deals no damage");
+            check(!aim.isAiming() && !game.combat().isAttacking(), "Cancelled touch hides without firing");
+            input.keyDown(space); game.update(0);
+            near(1, aim.getTargetY(), "Re-aim resets prior steering");
+            input.releaseHeldInputs(); game.update(1); input.keyUp(space);
+            check(!aim.isAiming() && !game.combat().isAttacking(), "Focus release cancels without firing");
+            input.touchDown(0, 0, 0, 0); game.update(0);
+            input.touchUp(0, 0, 0, 0); game.update(0);
+            check(!aim.isAiming() && game.combat().isAttacking(), "Mouse release hides reticle and starts shot");
+            near(100, Health.MAPPER.get(target).getCurrent(), "Shot is not hitscan");
+            game.update(.5f);
+            near(90, Health.MAPPER.get(target).getCurrent(), "One arced tip crosses target even on long frame");
         }
     }
 

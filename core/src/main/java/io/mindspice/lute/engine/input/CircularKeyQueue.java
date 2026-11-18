@@ -14,6 +14,13 @@ public class CircularKeyQueue {
     private int tail;
     private volatile int size = 0;
     private boolean rejectIfFull;
+    private int previousContextSize;
+
+    void markContextBoundary() { previousContextSize = size; }
+
+    public void consumePreviousContext(KeyActionConsumer consumer) {
+        while (previousContextSize > 0) { poll(consumer); }
+    }
 
     public CircularKeyQueue(int capacity) {
         if (capacity < 1) { throw new IllegalArgumentException("Queue capacity must be positive"); }
@@ -53,6 +60,7 @@ public class CircularKeyQueue {
         if (size < capacity) {
             size++;
         } else {
+            if (previousContextSize > 0) { previousContextSize--; }
             head = (head + 1) % capacity;
         }
     }
@@ -64,6 +72,7 @@ public class CircularKeyQueue {
             inputActions[head] = null;
             head = (head + 1) % capacity;
             size--;
+            if (previousContextSize > 0) { previousContextSize--; }
             consumer.accept(action, state);
         }
     }

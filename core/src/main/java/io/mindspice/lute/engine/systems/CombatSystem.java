@@ -10,6 +10,7 @@ import com.badlogic.gdx.physics.box2d.*;
 import io.mindspice.lute.engine.components.*;
 import io.mindspice.lute.engine.components.Transform;
 import io.mindspice.lute.engine.data.json.WeaponsData.WeaponData.CollisionType;
+import io.mindspice.lute.engine.data.json.ArrowData;
 
 import java.util.ArrayList;
 import java.util.IdentityHashMap;
@@ -18,6 +19,17 @@ import java.util.Map;
 
 public class CombatSystem extends IteratingSystem implements ContactListener, EntityListener {
     private final World world;
+    private final List<ArrowFlight> arrows = new ArrayList<>();
+    private final ArrowData arrowType = ArrowData.loadDefault();
+
+    List<ArrowFlight> arrows() { return arrows; }
+
+    void launch(Entity owner, BowAim aim) {
+        var transform = Transform.MAPPER.get(owner);
+        var start = transform.getPosition().cpy().mulAdd(transform.getSize(), 0.5f);
+        arrows.add(new ArrowFlight(owner, arrowType, start, new Vector2(aim.getTargetX(), aim.getTargetY()),
+            aim.getWeapon().primary().damage()));
+    }
     private final List<Hit> pendingHits = new ArrayList<>();
     private final Map<Entity, Combat> activeAttacks = new IdentityHashMap<>();
 
@@ -38,6 +50,7 @@ public class CombatSystem extends IteratingSystem implements ContactListener, En
         // Removing the system must not leave active attack fixtures behind.
         for (var entity : getEntities()) { stopAttack(entity); }
         world.setContactListener(null);
+        arrows.clear();
         engine.removeEntityListener(this);
         pendingHits.clear();
         super.removedFromEngine(engine);
@@ -63,6 +76,7 @@ public class CombatSystem extends IteratingSystem implements ContactListener, En
             }
         }
         pendingHits.clear();
+        arrows.removeIf(arrow -> arrow.finished(world, deltaTime));
         super.update(deltaTime);
     }
 
@@ -149,6 +163,7 @@ public class CombatSystem extends IteratingSystem implements ContactListener, En
 
     @Override
     public void entityRemoved(Entity entity) {
+        arrows.removeIf(arrow -> arrow.owner == entity);
         stopAttack(entity);
     }
 

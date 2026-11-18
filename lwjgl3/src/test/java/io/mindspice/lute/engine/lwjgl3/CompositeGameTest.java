@@ -115,9 +115,10 @@ public final class CompositeGameTest {
                 }
             }
             layers.deathFrames(player);
-            require(layers.weaponPages.size() == GAME.getAssetService()
-                .get(TextureAtlas.class, CharacterAssets.WEAPONS.id()).getTextures().size,
-                "All loaded real weapon texture pages are sampled");
+            var atlas = GAME.getAssetService().get(TextureAtlas.class, CharacterAssets.WEAPONS.id());
+            var arrow = atlas.findRegion(io.mindspice.lute.engine.data.json.ArrowData.loadDefault().region());
+            require(arrow != null && layers.weaponPages.size() + 1 == atlas.getTextures().size,
+                "All character weapon pages sampled, with a separate arrow page");
             require(layers.overhangPixels > 0, "Actual regenerated frames contain visible pixels outside the logical area");
             require(layers.helmetOcclusionActions.containsAll(Set.of("jab", "slash", "shot", "death")),
                 "Real upward poses exercise opaque helmet/glove overlaps in every overlapping action");
@@ -178,7 +179,15 @@ public final class CompositeGameTest {
         try {
             Gdx.input.getInputProcessor().keyDown(key);
             engine.getSystem(ControllerSystem.class).update(0f);
-            require(combat.hasAttackRequest(), "Actual keyDown reaches controller request: " + key);
+            if (shot) {
+                var aim = io.mindspice.lute.engine.components.BowAim.MAPPER.get(player);
+                require(aim.isAiming() && !combat.hasAttackRequest(), "Bow press aims without attacking");
+                Physic.MAPPER.get(target).getBody().setTransform(aim.getTargetX(), aim.getTargetY(), 0);
+                Gdx.input.getInputProcessor().keyUp(key);
+                engine.getSystem(ControllerSystem.class).update(0f);
+                require(!aim.isAiming(), "Bow release removes crosshair");
+            }
+            require(combat.hasAttackRequest(), "Actual input reaches controller request: " + key);
             blockedLoadout(player, weapon);
             engine.update(0f);
             require(combat.isAttacking() && combat.getActiveAttack() == expected, "Combat snapshots selected attack");
@@ -208,8 +217,7 @@ public final class CompositeGameTest {
                     require(engine.getEntities().size() == entities && world.getBodyCount() == bodies,
                         "Bow shot creates no projectile entity or body");
                     require(fixtureCount(world) == fixtures, "Bow shot creates no fixture on any body");
-                    require(Health.MAPPER.get(target).getCurrent() == 1000f
-                        && Health.MAPPER.get(player).getCurrent() == playerHealth, "Bow shot deals no damage throughout playback");
+                    require(Health.MAPPER.get(player).getCurrent() == playerHealth, "Bow shot cannot hit its owner");
                 } else {
                     boolean reached = animation.hasReachedFrame(expected.hitFrame());
                     require((combat.getSensor() != null) == reached, "Melee sensor follows authored hit frame");
@@ -222,7 +230,12 @@ public final class CompositeGameTest {
             engine.update(0f);
             require(animation.getType() == Animation2D.AnimationType.IDLE, "Attack FSM returns to idle after release");
             require(combat.getAttackId() == previousAttack + 1 && !combat.hasAttackRequest(), "No queued attack from keyUp");
-            if (!shot) {
+            if (shot) {
+                float remaining = Health.MAPPER.get(target).getCurrent();
+                boolean clear = direction == Facing.Direction.LEFT || direction == Facing.Direction.RIGHT;
+                require(remaining == (clear ? 1000f - expected.damage() : 1000f),
+                    "Probe takes one hit on clear paths, none behind test-map walls: " + direction);
+            } else {
                 require(sensorSeen, "Melee attack really creates a sensor, including bow jab");
                 require(Health.MAPPER.get(target).getCurrent() == 1000f - expected.damage(),
                     "Real physics contact deals exactly one authored melee hit: " + weapon.id() + "/" + slot + "/" + direction);

@@ -44,6 +44,12 @@ public class MouseManager {
         }
     }
 
+    void cancelButton(int button) {
+        if (button >= 0 && button < pressedActions.length && pressedActions[button] == InputAction.ATTACK_PRIMARY) {
+            actions.invalidateContext();
+        }
+    }
+
     void releaseHeldInputs() {
         for (int button = 0; button < pressedActions.length; button++) {
             InputAction action = pressedActions[button];

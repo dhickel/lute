@@ -104,6 +104,7 @@ final class GamepadInput {
     }
 
     void releaseHeldInputs() {
+        actions.invalidateContext();
         for (int i = 0; i < controls.length; i++) {
             if (delivered[i]) {
                 delivered[i] = false;

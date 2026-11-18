@@ -1,0 +1,10 @@
+{
+  "region": "ranged/arrows/IronArrow",
+  "speed": 8.0,
+  "arcHeight": 0.30,
+  "tipX": 16.0,
+  "tipY": 32.0,
+  "headLength": 8.5,
+  "headWidth": 10.0,
+  "artDegrees": 90.0
+}
