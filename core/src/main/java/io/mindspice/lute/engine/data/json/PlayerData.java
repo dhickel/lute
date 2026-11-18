@@ -44,13 +44,12 @@ public record PlayerData(
         }
     }
 
-    public record Loadout(String head, String body, String hands, String feet,
-                          @JsonProperty(value = "weapon", required = true) String weapon) {
+    public record Loadout(String head, String body, String hands, String feet, String weapon) {
         public Loadout {
-            if (head == null || head.isBlank() || body == null || body.isBlank()
-                || hands == null || hands.isBlank() || feet == null || feet.isBlank()
-                || (weapon != null && weapon.isBlank())) {
-                throw new IllegalArgumentException("Equipment IDs are required; weapon may be null for unarmed");
+            for (String id : new String[]{head, body, hands, feet, weapon}) {
+                if (id != null && id.isBlank()) {
+                    throw new IllegalArgumentException("Equipped item IDs must not be blank");
+                }
             }
         }
     }

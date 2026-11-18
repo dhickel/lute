@@ -71,7 +71,7 @@ public class EntityFactory extends EntitySystem {
             var equipment = new Loadout.Equipment(player.loadout().head(), player.loadout().body(),
                 player.loadout().hands(), player.loadout().feet());
             var loadout = new Loadout(equipment, player.loadout().weapon(), weapons, selection -> validateEquipment(
-                atlas.id(), PLAYER_PREFIX, selection, true));
+                atlas.id(), PLAYER_PREFIX, selection));
             state = new PlayerState(new Health(player.maxHealth()), loadout, new Facing(facing));
         }
 
@@ -118,7 +118,7 @@ public class EntityFactory extends EntitySystem {
             if (enemy) {
                 if (!equipment.equals(selection)) { throw new IllegalArgumentException("Baked enemies cannot equip armor layers"); }
             } else {
-                validateEquipment(atlas.id(), prefix, selection, false);
+                validateEquipment(atlas.id(), prefix, selection);
             }
         });
         Entity entity = getEngine().createEntity();
@@ -179,16 +179,20 @@ public class EntityFactory extends EntitySystem {
         return attack;
     }
 
-    private void validateEquipment(String baseId, String basePrefix, Loadout.Equipment equipment, boolean helmet) {
-        if (equipment == null) { throw new IllegalArgumentException("Equipment is required"); }
-        if (helmet) {
+    private void validateEquipment(String baseId, String basePrefix, Loadout.Equipment equipment) {
+        if (equipment == null) { throw new IllegalArgumentException("Equipment selection is required"); }
+        if (equipment.head() != null) {
             validateLayer(baseId, basePrefix, CharacterAssets.HEAD, equipment.head(), CHARACTER_ACTIONS);
-        } else if (equipment.head() != null) {
-            throw new IllegalArgumentException("Basic NPC has no helmet layer");
         }
-        validateLayer(baseId, basePrefix, CharacterAssets.BODY, equipment.body(), CHARACTER_ACTIONS);
-        validateLayer(baseId, basePrefix, CharacterAssets.HANDS, equipment.hands(), CHARACTER_ACTIONS);
-        validateLayer(baseId, basePrefix, CharacterAssets.FEET, equipment.feet(), CHARACTER_ACTIONS);
+        if (equipment.body() != null) {
+            validateLayer(baseId, basePrefix, CharacterAssets.BODY, equipment.body(), CHARACTER_ACTIONS);
+        }
+        if (equipment.hands() != null) {
+            validateLayer(baseId, basePrefix, CharacterAssets.HANDS, equipment.hands(), CHARACTER_ACTIONS);
+        }
+        if (equipment.feet() != null) {
+            validateLayer(baseId, basePrefix, CharacterAssets.FEET, equipment.feet(), CHARACTER_ACTIONS);
+        }
     }
 
     private void validateLayer(String baseId, String basePrefix, Asset.Atlas asset, String prefix, Set<String> actions) {

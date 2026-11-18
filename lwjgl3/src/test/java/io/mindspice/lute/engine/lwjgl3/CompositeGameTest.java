@@ -95,6 +95,7 @@ public final class CompositeGameTest {
             fixture.setFilterData(filter);
         }
         try (var layers = new LayerCheck()) {
+            verifyOptionalArmor(player, layers);
             verifyMapActors(engine, layers);
             verifyMapActorDamage(player);
             for (String weapon : List.of("basic_sword", "basic_bow", "unarmed")) {
@@ -170,9 +171,31 @@ public final class CompositeGameTest {
                 require(loadouts().equipWeapon(actor, "basic_bow"), "Enemy can equip bow without Combat");
                 require(layers.check(actor) != swordOrNpc, "Enemy bow and sword produce distinct rendered pixels");
                 require(loadouts().equipWeapon(actor, "basic_sword"), "Restore enemy demo weapon");
+            } else {
+                verifyOptionalArmor(actor, layers);
             }
         }
         System.out.println("CompositeGameTest: real NPC and enemy marker placement, canvas, depth and weapon switch verified");
+    }
+
+    private static void verifyOptionalArmor(Entity actor, LayerCheck layers) {
+        var loadout = Loadout.MAPPER.get(actor);
+        var originalArmor = loadout.getEquipment();
+        var originalWeapon = loadout.getWeaponId();
+        require(loadouts().equipWeapon(actor, null), "Unequip weapon for armor-only comparison");
+        try {
+            require(loadouts().equip(actor, new Loadout.Equipment(null, null, null, null)), "All armor can be removed");
+            long bare = layers.check(actor);
+            for (var armor : List.of(new Loadout.Equipment("basic", null, null, null),
+                    new Loadout.Equipment(null, "basic", null, null), new Loadout.Equipment(null, null, "basic", null),
+                    new Loadout.Equipment(null, null, null, "basic"))) {
+                require(loadouts().equip(actor, armor), "Each armor slot can be equipped independently: " + armor);
+                require(layers.check(actor) != bare, "Equipped armor changes the rendered base: " + armor);
+            }
+        } finally {
+            require(loadouts().equip(actor, originalArmor), "Restore original armor");
+            require(loadouts().equipWeapon(actor, originalWeapon), "Restore original weapon");
+        }
     }
 
     private static void verifyActorFixtures(Entity actor, Transform transform, String spawn) {
@@ -615,7 +638,7 @@ public final class CompositeGameTest {
                 }
                 frames++;
                 var crc = new java.util.zip.CRC32();
-                if (mapActor) { crc.update(rendered.getPixels()); }
+                crc.update(rendered.getPixels());
                 return crc.getValue();
             } finally {
                 rendered.dispose();
@@ -625,7 +648,7 @@ public final class CompositeGameTest {
         }
 
         private void helmetOcclusion(Animation2D animation, TextureRegion[] selected, Pixmap rendered) {
-            if (animation.getFdirection() != Facing.Direction.UP) { return; }
+            if (animation.getFdirection() != Facing.Direction.UP || selected[3] == null || selected[4] == null) { return; }
             var helmet = layerPixels(selected[3]);
             var gloves = layerPixels(selected[4]);
             try {

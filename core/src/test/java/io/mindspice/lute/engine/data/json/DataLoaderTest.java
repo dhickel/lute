@@ -66,13 +66,20 @@ public final class DataLoaderTest {
             && loadout.weapon() != null && definitions.weapons().containsKey(loadout.weapon()), "default loadout");
         check(player.sounds().move().equals("sword_hit.wav") && player.sounds().damage().equals("sword_hit.wav"),
             "player sound definitions");
-        var unarmed = new PlayerData.Loadout("basic", "basic", "basic", "basic", null);
-        check(unarmed.weapon() == null, "null weapon is explicitly unarmed");
-        rejects(() -> new PlayerData.Loadout(null, "basic", "basic", "basic", null), "missing head");
-        rejects(() -> new PlayerData.Loadout("basic", " ", "basic", "basic", null), "blank body");
-        rejects(() -> new PlayerData.Loadout("basic", "basic", "", "basic", null), "empty hands");
-        rejects(() -> new PlayerData.Loadout("basic", "basic", "basic", null, null), "missing feet");
-        rejects(() -> new PlayerData.Loadout("basic", "basic", "basic", "basic", " "), "blank weapon");
+        var unequipped = new PlayerData.Loadout(null, null, null, null, null);
+        for (String json : new String[]{"{}", "{\"head\":null,\"body\":null,\"hands\":null,\"feet\":null,\"weapon\":null}"}) {
+            check(DataLoader.mapper.readValue(json, PlayerData.Loadout.class).equals(unequipped),
+                "omitted and null IDs both leave slots empty");
+        }
+        check(DataLoader.mapper.readValue("{\"head\":\"basic\",\"body\":\"basic\",\"hands\":\"basic\",\"weapon\":\"basic_sword\"}",
+            PlayerData.Loadout.class).equals(new PlayerData.Loadout("basic", "basic", "basic", null, "basic_sword")),
+            "omitted feet leave only the feet slot empty");
+        check(DataLoader.mapper.readValue("{\"head\":\"basic\",\"body\":\"basic\",\"hands\":\"basic\",\"feet\":\"basic\"}",
+            PlayerData.Loadout.class).equals(new PlayerData.Loadout("basic", "basic", "basic", "basic", null)),
+            "omitted weapon leaves only the weapon slot empty");
+        for (String slot : new String[]{"head", "body", "hands", "feet", "weapon"}) {
+            rejects(() -> DataLoader.mapper.readValue("{\"" + slot + "\":\" \"}", PlayerData.Loadout.class), "blank " + slot);
+        }
         rejects(() -> new PlayerData("player", 0, 100, loadout, player.animation(), player.sounds(), player.logicalSize(), player.collisionBounds(), player.hitboxBounds()), "zero move speed");
         rejects(() -> new PlayerData("player", Float.NaN, 100, loadout, player.animation(), player.sounds(), player.logicalSize(), player.collisionBounds(), player.hitboxBounds()), "nonfinite move speed");
         rejects(() -> new PlayerData("player", 1, 0, loadout, player.animation(), player.sounds(), player.logicalSize(), player.collisionBounds(), player.hitboxBounds()), "zero health");
@@ -253,8 +260,6 @@ public final class DataLoaderTest {
             rejects(() -> new Offset(invalid, 0), "nonfinite offset X");
             rejects(() -> new Offset(0, invalid), "nonfinite offset Y");
         }
-        rejects(() -> DataLoader.mapper.readValue("{\"head\":\"basic\",\"body\":\"basic\",\"hands\":\"basic\"}",
-            PlayerData.Loadout.class), "JSON missing feet");
         rejects(() -> DataLoader.mapper.readValue("{\"animation\":{},\"bounds\":{},\"stats\":{}}", AttackData.class),
             "incomplete JSON attack");
         rejects(() -> DataLoader.mapper.readValue("{\"damage\":1,\"cost\":0}", Stats.class), "missing hit frame");
@@ -263,8 +268,6 @@ public final class DataLoaderTest {
             AnimationData.class), "missing sound frame");
         rejects(() -> DataLoader.mapper.readValue("{\"type\":\"RECT\",\"y1\":0,\"x2\":64,\"y2\":64}",
             Bounds.class), "missing bounds coordinate");
-        rejects(() -> DataLoader.mapper.readValue("{\"head\":\"basic\",\"body\":\"basic\",\"hands\":\"basic\",\"feet\":\"basic\"}",
-            PlayerData.Loadout.class), "missing explicit weapon selection");
     }
 
     private static void assetIds(WeaponsData definitions) {

@@ -813,9 +813,11 @@ public final class CombatSystemTest {
             engine.addSystem(loadouts);
             rejects(() -> loadouts.equip(player, new Loadout.Equipment("missing", "basic", "basic", "basic")),
                 "Equipment switching validates loaded atlas regions");
-            rejects(() -> loadouts.equip(player, new Loadout.Equipment(null, "basic", "basic", "basic")),
-                "Equipment switching validates missing metadata");
+            rejects(() -> loadouts.equip(player, new Loadout.Equipment(" ", null, null, null)),
+                "Equipment switching rejects blank IDs");
             check(loadout.getEquipment().equals(originalEquipment), "Invalid equipment switch is atomic");
+            var empty = new Loadout.Equipment(null, null, null, null);
+            check(loadouts.equip(player, empty) && loadout.getEquipment().equals(empty), "All armor slots can be empty");
             check(loadouts.equip(player, originalEquipment), "Valid loaded equipment is accepted");
             for (String id : new String[]{"basic_sword", "basic_bow", null}) {
                 check(loadouts.equipWeapon(player, id), "Factory loadout selects weapon");
