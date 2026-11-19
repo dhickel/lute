@@ -14,6 +14,8 @@ public final class GameConsts {
     public static float VIEW_HEIGHT = 12f;
     public static float VIEW_WIDTH = 21.3f;
     public static float PHYSIC_INTERVAL = 1f / 60f;
+    private static final double DEFAULT_DAY_LENGTH_MINUTES = 24.0;
+    public static double DAY_LENGTH_MINUTES = DEFAULT_DAY_LENGTH_MINUTES;
     public static final Vector2 PHYSIC_SCALING = new Vector2(1f, 1f);
     public static float CAMERA_SMOOTH_FACTOR = 4f;
     public static String PROJECT_PATH = "game.tiled-project";
@@ -26,11 +28,12 @@ public final class GameConsts {
 
     public static void loadSettings() {
         try (var file = Gdx.files.internal("game.settings.json").read()) {
-            var settings = DataLoader.mapper.readValue(file, Settings.class);
+            var settings = parseSettings(DataLoader.mapper.readTree(file));
             UNIT_SCALE = settings.unitScale();
             VIEW_HEIGHT = settings.viewHeight();
             VIEW_WIDTH = settings.viewWidth();
             PHYSIC_INTERVAL = settings.physicInterval();
+            DAY_LENGTH_MINUTES = settings.dayLengthMinutes();
             PHYSIC_SCALING.set(settings.physicScaling().x(), settings.physicScaling().y());
             CAMERA_SMOOTH_FACTOR = settings.cameraSmoothFactor();
             PROJECT_PATH = settings.projectPath();
@@ -55,12 +58,15 @@ public final class GameConsts {
     public record Settings(float unitScale, float viewHeight, float viewWidth, float physicInterval,
                            Scaling physicScaling, float cameraSmoothFactor, String projectPath,
                            String mapsPath, String dataPath, String soundPath, String musicPath,
-                           String objectPath, String atlasPath) {
+                           String objectPath, String atlasPath, Double dayLengthMinutes) {
         public Settings {
+            dayLengthMinutes = dayLengthMinutes == null ? DEFAULT_DAY_LENGTH_MINUTES : dayLengthMinutes;
             positive(unitScale, "unitScale");
             positive(viewHeight, "viewHeight");
             positive(viewWidth, "viewWidth");
             positive(physicInterval, "physicInterval");
+            positive(dayLengthMinutes, "dayLengthMinutes");
+            positive(24 * 60 / dayLengthMinutes, "inGameSecondsPerSimulationSecond");
             positive(cameraSmoothFactor, "cameraSmoothFactor");
             java.util.Objects.requireNonNull(physicScaling, "physicScaling");
             if (projectPath == null || projectPath.isBlank()) {
@@ -74,8 +80,33 @@ public final class GameConsts {
         }
     }
 
+    public static Settings parseSettings(String json) {
+        try {
+            return parseSettings(DataLoader.mapper.readTree(json));
+        } catch (IOException failure) {
+            throw new IllegalArgumentException("Invalid game settings JSON", failure);
+        }
+    }
+
+    private static Settings parseSettings(tools.jackson.databind.JsonNode root) throws IOException {
+        if (root == null || !root.isObject()) {
+            throw new IllegalArgumentException("Game settings must be a JSON object");
+        }
+        var dayLength = root.get("dayLengthMinutes");
+        if (dayLength != null && (!dayLength.isNumber() || dayLength.isNull())) {
+            throw new IllegalArgumentException("dayLengthMinutes must be a JSON number");
+        }
+        return DataLoader.mapper.treeToValue(root, Settings.class);
+    }
+
     private static void positive(float value, String name) {
         if (!Float.isFinite(value) || value <= 0) {
+            throw new IllegalArgumentException(name + " must be finite and positive");
+        }
+    }
+
+    private static void positive(double value, String name) {
+        if (!Double.isFinite(value) || value <= 0) {
             throw new IllegalArgumentException(name + " must be finite and positive");
         }
     }

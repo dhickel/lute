@@ -38,6 +38,7 @@ public class GameScreen extends ScreenAdapter {
         this.physicWorld.setAutoClearForces(false);
 
         try {
+            addSystem(new WorldTimeSystem(GameConsts.DAY_LENGTH_MINUTES));
             addSystem(new EventSystem());
             addSystem(new AttackCooldownSystem());
             addSystem(new ControllerSystem());
