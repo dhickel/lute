@@ -158,7 +158,8 @@ public final class MapTravelTest extends ApplicationAdapter {
         input.keyDown(Input.Keys.SPACE); screen.render(0f);
         input.keyUp(Input.Keys.SPACE); screen.render(0f);
         input.keyDown(Input.Keys.SPACE); input.keyDown(Input.Keys.W); screen.render(0f);
-        require(!BowAim.MAPPER.get(start).isAiming() && arrowCount() == 1 && Combat.MAPPER.get(start).isCoolingDown(),
+        require(!BowAim.MAPPER.get(start).isAiming() && arrowCount() == 1
+            && Combat.MAPPER.get(start).isCoolingDown("basic_bow", Combat.AttackSlot.PRIMARY),
             "Depart with held inputs, a live arrow and an active cooldown; immediate redraw is blocked");
         var oldBody = body(start);
         enter("self");
@@ -174,7 +175,8 @@ public final class MapTravelTest extends ApplicationAdapter {
             && loadout.getWeaponId().equals("basic_bow"), "Live loadout preserves equipped gear and weapon");
         require(arrowCount() == 0 && !BowAim.MAPPER.get(rebuilt).isAiming(), "Travel discards arrows and aiming");
         require(!Combat.MAPPER.get(rebuilt).isAttacking() && !Combat.MAPPER.get(rebuilt).hasAttackRequest()
-            && !Combat.MAPPER.get(rebuilt).isCoolingDown(), "Fresh combat state includes a cleared cooldown");
+            && !Combat.MAPPER.get(rebuilt).isCoolingDown("basic_bow", Combat.AttackSlot.PRIMARY),
+            "Fresh combat state includes a cleared cooldown");
         input.keyDown(Input.Keys.W); input.keyDown(Input.Keys.SPACE); frame();
         input.keyUp(Input.Keys.W); input.keyUp(Input.Keys.SPACE); frame();
         atPoint(rebuilt, "PlayerSpawn");

@@ -192,12 +192,12 @@ public final class CombatSystemTest {
             game.attack();
             long id = game.combat().getAttackId();
             check(game.combat().getSensor() != null, "First melee attack has a sensor");
-            game.input(InputAction.ATTACK_SECONDARY, 1); game.update(.25f);
-            check(game.combat().getAttackId() == id, "Other slot cannot bypass the shared cooldown");
+            game.input(InputAction.ATTACK_PRIMARY, 0); game.update(0);
+            game.input(InputAction.ATTACK_PRIMARY, 1); game.update(.125f);
+            check(game.combat().getAttackId() == id, "Primary cannot restart during its cooldown");
             game.update(.125f);
-            check(game.combat().getAttackId() == id && !game.animation().isFinished(),
-                "An early press is not buffered, and reaching cooldown does not end playback");
-            game.input(InputAction.ATTACK_SECONDARY, 0); game.update(0);
+            check(game.combat().getAttackId() == id && !game.animation().isFinished(), "An early press is not buffered");
+            check(game.combat().isCoolingDown("test", Combat.AttackSlot.PRIMARY), "Primary is still cooling down");
             game.input(InputAction.ATTACK_SECONDARY, 1); game.update(0);
             check(game.combat().getAttackId() == id + 1 && game.combat().getSensor() == null,
                 "Replacement tears down the old sensor before the next animation pass");
@@ -211,12 +211,25 @@ public final class CombatSystemTest {
         }
         try (var game = new Harness(4, 0, 0)) {
             game.attack(); game.update(.125f); game.update(0);
-            check(!game.combat().isAttacking() && game.combat().isCoolingDown(),
+            check(!game.combat().isAttacking() && game.combat().isCoolingDown("test", Combat.AttackSlot.PRIMARY),
                 "A faster animation can finish before its cooldown");
             game.attack();
             check(game.combat().getAttackId() == 1, "Idle animation does not bypass cooldown");
-            game.update(.25f); game.attack();
-            check(game.combat().getAttackId() == 2, "Cooldown expires independently of animation speed");
+            var first = Loadout.MAPPER.get(game.player).getWeapon();
+            var otherAttack = attack("other", "slash", 4, 0, 0, BoundsType.SEMICIRCLE, CollisionType.MELEE);
+            var other = new CombatWeapon.Weapon("other", "melee/other", otherAttack, otherAttack);
+            game.player.add(new Loadout(Loadout.MAPPER.get(game.player).getEquipment(), first.id(),
+                Map.of(first.id(), first, other.id(), other), equipment -> {}));
+            check(game.loadouts.equipWeapon(game.player, other.id()), "Idle player can switch weapons during cooldown");
+            game.attack();
+            check(game.combat().getActiveAttack() == otherAttack, "Same slot on another weapon is ready");
+            game.update(.125f); game.update(0);
+            check(game.loadouts.equipWeapon(game.player, first.id()), "Switch back after the other attack ends");
+            game.attack();
+            check(game.combat().getAttackId() == 2, "Switching away and back does not reset the first cooldown");
+            game.input(InputAction.ATTACK_PRIMARY, 0); game.update(0);
+            game.input(InputAction.ATTACK_PRIMARY, 1); game.update(.125f);
+            check(game.combat().getAttackId() == 3, "First cooldown expires while the other is still running");
         }
     }
 
@@ -253,9 +266,9 @@ public final class CombatSystemTest {
                     var expected = action == InputAction.ATTACK_PRIMARY ? weapon.primary() : weapon.secondary();
                     game.attack(action);
                     check(game.combat().getActiveAttack() == expected, "Input selects immutable attack snapshot: " + action);
-                    game.combat().requestAttack(Combat.AttackSlot.SECONDARY);
-                    check(!game.combat().hasAttackRequest() && game.combat().getActiveAttack() == expected,
-                        "Busy request neither queues nor replaces active attack");
+                    check(game.combat().isCoolingDown(weapon.id(),
+                        action == InputAction.ATTACK_PRIMARY ? Combat.AttackSlot.PRIMARY : Combat.AttackSlot.SECONDARY),
+                        "Selected attack starts its own cooldown");
                     check(!game.loadouts.equipWeapon(game.player, "basic_sword") && !game.loadouts.equip(game.player, changed),
                         "Weapon and equipment changes rejected during attack");
                     check(loadout.getEquipment().equals(equipment) && loadout.getWeapon() == weapon
@@ -348,24 +361,24 @@ public final class CombatSystemTest {
             game.input(InputAction.ATTACK_PRIMARY, 1); game.update(0);
             game.input(InputAction.ATTACK_PRIMARY, 0); game.update(0);
             game.input(InputAction.ATTACK_SECONDARY, 1); game.update(.125f);
-            check(game.combat().getActiveAttack() == shot, "Bow release locks out the melee slot");
-            game.input(InputAction.ATTACK_SECONDARY, 0); game.update(0);
-            game.input(InputAction.ATTACK_SECONDARY, 1); game.update(.125f);
             game.update(0);
-            check(game.combat().getActiveAttack() == jab && game.animation().getFrameIndex() == 0,
-                "Bow recovery can be replaced by melee at cooldown expiry");
+            check(game.combat().getActiveAttack() == jab && game.animation().getFrameIndex() == 0
+                && game.combat().isCoolingDown("basic_bow", Combat.AttackSlot.PRIMARY),
+                "Jab can replace bow recovery while the shot is still cooling down");
             near(100, Health.MAPPER.get(arrowTarget).getCurrent(), "The first arrow is still in flight");
-            game.input(InputAction.ATTACK_PRIMARY, 1); game.update(.125f);
-            check(!aim.isAiming(), "Melee locks out bow draw");
-            game.input(InputAction.ATTACK_PRIMARY, 0); game.update(.125f);
+            game.attack(InputAction.ATTACK_SECONDARY);
+            check(game.combat().getAttackId() == 2, "Jab cannot repeat during its own cooldown");
             var meleeTarget = game.target(1, false);
+            // Inside the jab triangle but below the first arrow's trajectory.
+            Physic.MAPPER.get(meleeTarget).getBody().setTransform(1.45f, .6f, 0);
             game.body().setAwake(true);
             game.step(); game.step(); // Leave this hit queued until the bow press cancels the jab.
             game.input(InputAction.ATTACK_PRIMARY, 1); game.update(.125f);
             near(90, Health.MAPPER.get(meleeTarget).getCurrent(), "Draw cancellation preserves queued melee contact");
-            check(aim.isAiming() && game.combat().getSensor() == null && game.animation().getFrameIndex() == 0,
-                "Bow draw replaces melee at cooldown expiry and removes the sensor");
-            game.update(.5f);
+            check(aim.isAiming() && game.combat().getSensor() == null && game.animation().getFrameIndex() == 0
+                && game.combat().isCoolingDown("basic_bow", Combat.AttackSlot.SECONDARY),
+                "Once the shot cooldown expires, bow draw replaces the jab even during the jab cooldown");
+            game.update(1f);
             near(97.5f, Health.MAPPER.get(arrowTarget).getCurrent(), "Replacing recovery does not discard the arrow");
         }
     }

@@ -27,7 +27,8 @@ public class CombatSystem extends IteratingSystem implements ContactListener, En
 
     void drawBow(Entity owner, BowAim aim, CombatWeapon.Weapon weapon) {
         var combat = Combat.MAPPER.get(owner);
-        if (combat == null || combat.isCoolingDown() || combat.hasAttackRequest()) { return; }
+        if (combat == null || combat.isCoolingDown(weapon.id(), Combat.AttackSlot.PRIMARY)
+            || combat.hasAttackRequest()) { return; }
         if (combat.isAttacking()) {
             // Bow input runs before combat. Keep contacts from the preceding physics step.
             applyPendingHits();
@@ -57,7 +58,7 @@ public class CombatSystem extends IteratingSystem implements ContactListener, En
         float damageScale = Math.min(drawFrame + 1, 4) / 4f;
         arrows.add(new ArrowFlight(owner, arrowType, start, target, attack.damage() * damageScale));
         var combat = Combat.MAPPER.get(owner);
-        combat.beginAttack(attack);
+        combat.beginAttack(Combat.AttackSlot.PRIMARY, attack);
         activeAttacks.put(owner, combat);
         animation.releaseBow();
         aim.cancel();
@@ -126,14 +127,16 @@ public class CombatSystem extends IteratingSystem implements ContactListener, En
         var requested = combat.consumeAttackRequest();
         var animation = Animation2D.MAPPER.get(entity);
         var aim = BowAim.MAPPER.get(entity);
-        if (requested != null && alive && !combat.isCoolingDown() && (aim == null || !aim.isAiming())) {
+        if (requested != null && alive && (aim == null || !aim.isAiming())) {
             var weapon = Loadout.MAPPER.get(entity).getWeapon();
-            var next = requested == Combat.AttackSlot.PRIMARY ? weapon.primary() : weapon.secondary();
-            stopAttack(entity);
-            animation.queueAttack(next.animation());
-            combat.beginAttack(next);
-            activeAttacks.put(entity, combat);
-            return;
+            if (!combat.isCoolingDown(weapon.id(), requested)) {
+                var next = requested == Combat.AttackSlot.PRIMARY ? weapon.primary() : weapon.secondary();
+                stopAttack(entity);
+                animation.queueAttack(next.animation());
+                combat.beginAttack(requested, next);
+                activeAttacks.put(entity, combat);
+                return;
+            }
         }
         if (!combat.isAttacking()) { return; }
         var attack = combat.getActiveAttack();

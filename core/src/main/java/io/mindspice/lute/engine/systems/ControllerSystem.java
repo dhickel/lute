@@ -46,10 +46,10 @@ public class ControllerSystem extends IteratingSystem implements EventEmitter {
                     } else if (aim.isAiming()) {
                         getEngine().getSystem(CombatSystem.class).launch(entity, aim);
                     }
-                } else if (pressed && combat != null) { combat.requestAttack(Combat.AttackSlot.PRIMARY); }
+                } else if (pressed) { requestAttack(combat, weapon, Combat.AttackSlot.PRIMARY); }
             } else if (action == InputAction.ATTACK_SECONDARY) {
-                if (pressed && combat != null && (aim == null || !aim.isAiming())) {
-                    combat.requestAttack(Combat.AttackSlot.SECONDARY);
+                if (pressed && (aim == null || !aim.isAiming())) {
+                    requestAttack(combat, weapon, Combat.AttackSlot.SECONDARY);
                 }
             } else { movement(controller, action, state); }
         });
@@ -57,6 +57,12 @@ public class ControllerSystem extends IteratingSystem implements EventEmitter {
             aim.steer(controller.getHeldDirection(), deltaTime);
             if (move != null) { move.getDirection().setZero(); }
         } else if (move != null) { move.getDirection().set(controller.getHeldDirection()); }
+    }
+
+    private void requestAttack(Combat combat, CombatWeapon.Weapon weapon, Combat.AttackSlot slot) {
+        if (combat != null && (weapon == null || !combat.isCoolingDown(weapon.id(), slot))) {
+            combat.requestAttack(slot);
+        }
     }
 
     private void movement(Controller controller, InputAction action, int state) {
