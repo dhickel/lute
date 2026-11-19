@@ -6,7 +6,9 @@ import com.badlogic.ashley.core.Entity;
 import com.badlogic.gdx.physics.box2d.Fixture;
 
 import java.util.Collections;
+import java.util.HashMap;
 import java.util.IdentityHashMap;
+import java.util.Map;
 import java.util.Set;
 
 public class Combat implements Component {
@@ -14,6 +16,7 @@ public class Combat implements Component {
     private AttackSlot attackRequested;
     private CombatWeapon.Attack activeAttack;
     private boolean attacking;
+    private final Map<AttackKey, Float> cooldowns = new HashMap<>();
     private Fixture sensor;
     private long attackId;
     private final Set<Entity> hitTargets = Collections.newSetFromMap(new IdentityHashMap<>());
@@ -23,12 +26,26 @@ public class Combat implements Component {
     public long getAttackId() { return attackId; }
 
     public enum AttackSlot { PRIMARY, SECONDARY }
+    private record AttackKey(String weaponId, AttackSlot slot) { }
 
     public boolean hasAttackRequest() { return attackRequested != null; }
+    public boolean isCoolingDown(String weaponId, AttackSlot slot) {
+        return cooldowns.containsKey(new AttackKey(weaponId, slot));
+    }
+
+    public void tickCooldown(float deltaTime) {
+        var entries = cooldowns.entrySet().iterator();
+        while (entries.hasNext()) {
+            var entry = entries.next();
+            float remaining = entry.getValue() - deltaTime;
+            if (remaining <= 0f) { entries.remove(); }
+            else { entry.setValue(remaining); }
+        }
+    }
     public CombatWeapon.Attack getActiveAttack() { return activeAttack; }
 
     public void requestAttack(AttackSlot slot) {
-        if (!isAttacking() && attackRequested == null) { attackRequested = slot; }
+        if (attackRequested == null) { attackRequested = slot; }
     }
 
     public AttackSlot consumeAttackRequest() {
@@ -37,8 +54,9 @@ public class Combat implements Component {
         return requested;
     }
 
-    public void beginAttack(CombatWeapon.Attack attack) {
+    public void beginAttack(AttackSlot slot, CombatWeapon.Attack attack) {
         activeAttack = attack;
+        cooldowns.put(new AttackKey(attack.weaponId(), slot), attack.cooldownSeconds());
         attacking = true;
         attackId++;
         hitTargets.clear();

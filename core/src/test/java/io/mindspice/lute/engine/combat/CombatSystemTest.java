@@ -56,9 +56,12 @@ public final class CombatSystemTest {
         frameTiming();
         speedAndSkippedFrames();
         movementAndInput();
+        cooldownCancelsMeleeRecovery();
         attackSlotsAndLoadout();
+        testWeaponCycle();
         heldBow();
         cardinalBowShots();
+        cooldownBetweenBowAndMelee();
         bowDamageByDrawFrame();
         independentAttacksAndGeometry();
         contacts();
@@ -184,6 +187,53 @@ public final class CombatSystemTest {
         }
     }
 
+    private static void cooldownCancelsMeleeRecovery() {
+        try (var game = new Harness(1, 0, 0)) {
+            var target = game.target(1, false);
+            game.attack();
+            long id = game.combat().getAttackId();
+            check(game.combat().getSensor() != null, "First melee attack has a sensor");
+            game.input(InputAction.ATTACK_PRIMARY, 0); game.update(0);
+            game.input(InputAction.ATTACK_PRIMARY, 1); game.update(.125f);
+            check(game.combat().getAttackId() == id, "Primary cannot restart during its cooldown");
+            game.update(.125f);
+            check(game.combat().getAttackId() == id && !game.animation().isFinished(), "An early press is not buffered");
+            check(game.combat().isCoolingDown("test", Combat.AttackSlot.PRIMARY), "Primary is still cooling down");
+            game.input(InputAction.ATTACK_SECONDARY, 1); game.update(0);
+            check(game.combat().getAttackId() == id + 1 && game.combat().getSensor() == null,
+                "Replacement tears down the old sensor before the next animation pass");
+            check(game.animation().getAction().equals("slash"), "Old rendered frame keeps its original action");
+            game.update(0); game.step(); game.update(0);
+            check(game.animation().getAction().equals("jab") && game.animation().getFrameIndex() == 0,
+                "Replacement starts the selected action from frame zero");
+            near(80, Health.MAPPER.get(target).getCurrent(), "Each attack can hit the same target once");
+            game.events.update(0);
+            check(game.sounds.size() == 2, "Replacement gets its own sound cue");
+        }
+        try (var game = new Harness(4, 0, 0)) {
+            game.attack(); game.update(.125f); game.update(0);
+            check(!game.combat().isAttacking() && game.combat().isCoolingDown("test", Combat.AttackSlot.PRIMARY),
+                "A faster animation can finish before its cooldown");
+            game.attack();
+            check(game.combat().getAttackId() == 1, "Idle animation does not bypass cooldown");
+            var first = Loadout.MAPPER.get(game.player).getWeapon();
+            var otherAttack = attack("other", "slash", 4, 0, 0, BoundsType.SEMICIRCLE, CollisionType.MELEE);
+            var other = new CombatWeapon.Weapon("other", "melee/other", otherAttack, otherAttack);
+            game.player.add(new Loadout(Loadout.MAPPER.get(game.player).getEquipment(), first.id(),
+                Map.of(first.id(), first, other.id(), other), equipment -> {}));
+            check(game.loadouts.equipWeapon(game.player, other.id()), "Idle player can switch weapons during cooldown");
+            game.attack();
+            check(game.combat().getActiveAttack() == otherAttack, "Same slot on another weapon is ready");
+            game.update(.125f); game.update(0);
+            check(game.loadouts.equipWeapon(game.player, first.id()), "Switch back after the other attack ends");
+            game.attack();
+            check(game.combat().getAttackId() == 2, "Switching away and back does not reset the first cooldown");
+            game.input(InputAction.ATTACK_PRIMARY, 0); game.update(0);
+            game.input(InputAction.ATTACK_PRIMARY, 1); game.update(.125f);
+            check(game.combat().getAttackId() == 3, "First cooldown expires while the other is still running");
+        }
+    }
+
     private static void attackSlotsAndLoadout() {
         var sword = new CombatWeapon.Weapon("basic_sword", "melee/basic_sword",
             attack("basic_sword", "slash", 1, 2, 1, BoundsType.SEMICIRCLE, CollisionType.MELEE),
@@ -217,9 +267,9 @@ public final class CombatSystemTest {
                     var expected = action == InputAction.ATTACK_PRIMARY ? weapon.primary() : weapon.secondary();
                     game.attack(action);
                     check(game.combat().getActiveAttack() == expected, "Input selects immutable attack snapshot: " + action);
-                    game.combat().requestAttack(Combat.AttackSlot.SECONDARY);
-                    check(!game.combat().hasAttackRequest() && game.combat().getActiveAttack() == expected,
-                        "Busy request neither queues nor replaces active attack");
+                    check(game.combat().isCoolingDown(weapon.id(),
+                        action == InputAction.ATTACK_PRIMARY ? Combat.AttackSlot.PRIMARY : Combat.AttackSlot.SECONDARY),
+                        "Selected attack starts its own cooldown");
                     check(!game.loadouts.equipWeapon(game.player, "basic_sword") && !game.loadouts.equip(game.player, changed),
                         "Weapon and equipment changes rejected during attack");
                     check(loadout.getEquipment().equals(equipment) && loadout.getWeapon() == weapon
@@ -269,6 +319,34 @@ public final class CombatSystemTest {
         }
     }
 
+    private static void testWeaponCycle() {
+        try (var game = new Harness(1, 0, 0)) {
+            var sword = Loadout.MAPPER.get(game.player).getWeapon();
+            var shot = attack("bow", "shot", 1, 2, 1, BoundsType.RECT, CollisionType.PROJECTILE);
+            var bow = new CombatWeapon.Weapon("bow", "ranged/bow", shot, shot);
+            var loadout = new Loadout(Loadout.MAPPER.get(game.player).getEquipment(), sword.id(),
+                Map.of(sword.id(), sword, bow.id(), bow), equipment -> {});
+            game.player.add(loadout).add(new BowAim(1, 1)).add(new Controller(List.of(sword.id(), bow.id())));
+            var aim = BowAim.MAPPER.get(game.player);
+
+            game.input(InputAction.CYCLE_WEAPON, 1);
+            game.input(InputAction.ATTACK_PRIMARY, 1);
+            game.update(0);
+            check(loadout.getWeapon() == bow && aim.isAiming(), "R then attack uses the new weapon in the same update");
+            game.input(InputAction.CYCLE_WEAPON, 1); game.update(0);
+            check(loadout.getWeapon() == bow, "Cycle is ignored while drawing the bow");
+            game.input(InputAction.ATTACK_PRIMARY, 0); game.update(0);
+            game.input(InputAction.CYCLE_WEAPON, 1); game.update(0);
+            check(loadout.getWeapon() == bow, "Cycle honors the active attack guard");
+            game.finish();
+            game.input(InputAction.CYCLE_WEAPON, 0);
+            game.input(InputAction.CYCLE_WEAPON, 2); game.update(0);
+            check(loadout.getWeapon() == bow, "Release and repeat do not cycle");
+            game.input(InputAction.CYCLE_WEAPON, 1); game.update(0);
+            check(loadout.getWeapon() == sword, "Next press wraps back to the first configured weapon");
+        }
+    }
+
     private static void cardinalBowShots() {
         for (var facing : Facing.Direction.values()) {
             try (var game = new Harness(1, 1, 1)) {
@@ -289,11 +367,48 @@ public final class CombatSystemTest {
                 game.input(InputAction.ATTACK_PRIMARY, 0); game.update(.5f);
                 near(97.5f, Health.MAPPER.get(target).getCurrent(), "Quick shot reaches terminal hurtbox: " + facing);
                 game.input(InputAction.ATTACK_PRIMARY, 1); game.update(0);
-                check(aim.isAiming() && game.animation().getFrameIndex() == 0, "Fresh press redraws during recovery");
+                check(!aim.isAiming(), "Redraw is blocked immediately after release even on a long update");
+                game.input(InputAction.ATTACK_PRIMARY, 0); game.update(.125f);
+                game.input(InputAction.ATTACK_PRIMARY, 1); game.update(.125f);
+                check(aim.isAiming() && game.animation().getFrameIndex() == 0, "Fresh press redraws during recovery at cooldown expiry");
                 game.input(InputAction.ATTACK_PRIMARY, 0); game.update(0);
                 game.engine.removeEntity(game.player); game.update(1);
                 near(97.5f, Health.MAPPER.get(target).getCurrent(), "Removing owner discards in-flight arrows");
             }
+        }
+    }
+
+    private static void cooldownBetweenBowAndMelee() {
+        try (var game = new Harness(1, 0, 0)) {
+            var shot = attack("basic_bow", "shot", 1, 2, 1, BoundsType.RECT, CollisionType.PROJECTILE);
+            var jab = attack("basic_bow", "jab", 1, 0, 0, BoundsType.TRIANGLE, CollisionType.MELEE);
+            game.selectWeapon(new CombatWeapon.Weapon("basic_bow", "ranged/basic_bow", shot, jab));
+            var aim = new BowAim(8, 1);
+            game.player.add(aim);
+            var arrowTarget = game.target(2, false);
+            Physic.MAPPER.get(arrowTarget).getBody().setTransform(8, 1, 0);
+            game.input(InputAction.ATTACK_PRIMARY, 1); game.update(0);
+            game.input(InputAction.ATTACK_PRIMARY, 0); game.update(0);
+            game.input(InputAction.ATTACK_SECONDARY, 1); game.update(.125f);
+            game.update(0);
+            check(game.combat().getActiveAttack() == jab && game.animation().getFrameIndex() == 0
+                && game.combat().isCoolingDown("basic_bow", Combat.AttackSlot.PRIMARY),
+                "Jab can replace bow recovery while the shot is still cooling down");
+            near(100, Health.MAPPER.get(arrowTarget).getCurrent(), "The first arrow is still in flight");
+            game.attack(InputAction.ATTACK_SECONDARY);
+            check(game.combat().getAttackId() == 2, "Jab cannot repeat during its own cooldown");
+            var meleeTarget = game.target(1, false);
+            // Inside the jab triangle but below the first arrow's trajectory.
+            Physic.MAPPER.get(meleeTarget).getBody().setTransform(1.45f, .6f, 0);
+            game.body().setAwake(true);
+            game.step(); game.step(); // Leave this hit queued until the bow press cancels the jab.
+            game.input(InputAction.ATTACK_PRIMARY, 1); game.update(.125f);
+            near(90, Health.MAPPER.get(meleeTarget).getCurrent(), "Draw cancellation preserves queued melee contact");
+            check(aim.isAiming() && game.combat().getSensor() == null && game.animation().getFrameIndex() == 0
+                && game.combat().isCoolingDown("basic_bow", Combat.AttackSlot.SECONDARY),
+                "Once the shot cooldown expires, bow draw replaces the jab even during the jab cooldown");
+            game.update(1f);
+            near(97.5f, Health.MAPPER.get(arrowTarget).getCurrent(), "Replacing recovery does not discard the arrow");
         }
     }
 
@@ -379,10 +494,10 @@ public final class CombatSystemTest {
     }
 
     private static void independentAttacksAndGeometry() {
-        var primary = new CombatWeapon.Attack("test", 41, 0,
+        var primary = new CombatWeapon.Attack("test", 41, 0, .375f,
             new Animation2D.Attack("slash", 1, .125f, 1, "primary"), "hit", BoundsType.RECT,
             new CombatWeapon.Bounds(32, 16, 72, 48, ZERO, ZERO, ZERO, ZERO), CollisionType.MELEE);
-        var secondary = new CombatWeapon.Attack("test", 17, 2,
+        var secondary = new CombatWeapon.Attack("test", 17, 2, .375f,
             new Animation2D.Attack("jab", 1, .125f, 3, "secondary"), "hit", BoundsType.TRIANGLE,
             new CombatWeapon.Bounds(32, 24, 56, 40, ZERO, ZERO, ZERO, ZERO), CollisionType.MELEE);
         for (var input : new InputAction[]{InputAction.ATTACK_PRIMARY, InputAction.ATTACK_SECONDARY}) {
@@ -499,7 +614,7 @@ public final class CombatSystemTest {
                 hurtbox.setUserData(Hurtbox.INSTANCE);
                 var bounds = feetOnly ? new CombatWeapon.Bounds(32, 4, 72, 4.5f, ZERO, ZERO, ZERO, ZERO)
                     : new CombatWeapon.Bounds(32, 24, 72, 56, ZERO, ZERO, ZERO, ZERO);
-                var attack = new CombatWeapon.Attack("test", 10, 0,
+                var attack = new CombatWeapon.Attack("test", 10, 0, .375f,
                     new Animation2D.Attack("slash", 1, .125f, 0, "sound"), "hit", BoundsType.RECT, bounds, CollisionType.MELEE);
                 game.selectWeapon(new CombatWeapon.Weapon("test", "melee/test", attack, attack));
                 if (!feetOnly) {
@@ -617,7 +732,7 @@ public final class CombatSystemTest {
                 try { polygon.set(vertices); check(polygon.getVertexCount() == vertices.length, "Valid native polygon"); }
                 finally { polygon.dispose(); }
             }
-            var shifted = new CombatWeapon.Attack(weapon.weaponId(), weapon.damage(), weapon.hitFrame(),
+            var shifted = new CombatWeapon.Attack(weapon.weaponId(), weapon.damage(), weapon.hitFrame(), weapon.cooldownSeconds(),
                 weapon.animation(), weapon.hitSoundId(), shape,
                 new CombatWeapon.Bounds(32, 0, 72, 64, new Offset(-3, 7), new Offset(5, -9),
                     new Offset(-11, -13), new Offset(17, 19)), weapon.collisionType());
@@ -641,7 +756,7 @@ public final class CombatSystemTest {
             for (var bounds : new CombatWeapon.Bounds[]{new CombatWeapon.Bounds(0, 0, .001f, .001f, ZERO, ZERO, ZERO, ZERO),
                 new CombatWeapon.Bounds(0, 0, 1e24f, 64, ZERO, ZERO, ZERO, ZERO),
                 new CombatWeapon.Bounds(0, 0, 1e15f, 1e15f, ZERO, ZERO, ZERO, ZERO)}) {
-                var unsafe = new CombatWeapon.Attack("bad", 10, 0, new Animation2D.Attack("slash", 1, .125f, 0, "sound"),
+                var unsafe = new CombatWeapon.Attack("bad", 10, 0, .375f, new Animation2D.Attack("slash", 1, .125f, 0, "sound"),
                     "hit", shape, bounds, CollisionType.MELEE);
                 rejects(() -> unsafe.validateGeometry(anchor), "Unsafe geometry");
             }
@@ -687,6 +802,7 @@ public final class CombatSystemTest {
             field.set(GameCore.INSTANCE, data);
             bindEngine(engine);
             engine.addSystem(new EventSystem());
+            engine.addSystem(new AttackCooldownSystem());
             engine.addSystem(new AnimationPlayerSystem());
             engine.addSystem(new AnimationSystem(assets));
             var combat = new CombatSystem(world, data.projectilesData().ironArrow()); engine.addSystem(combat);
@@ -889,7 +1005,7 @@ public final class CombatSystemTest {
         var animation = attack.animation();
         var stats = attack.stats();
         return new AttackData(new AnimationData(animation.speed(), animation.atlasKey(), soundFrame, animation.frameInterval()),
-            attack.bounds(), new Stats(stats.damage(), stats.cost(), hitFrame), attack.sounds(), attack.collisionType());
+            attack.bounds(), new Stats(stats.damage(), stats.cost(), hitFrame, stats.cooldownSeconds()), attack.sounds(), attack.collisionType());
     }
 
     private static GameData replaceAttack(GameData data, String id, boolean primary, AttackData replacement) {
@@ -955,7 +1071,7 @@ public final class CombatSystemTest {
     private static CombatWeapon.Attack attack(String id, String action, float speed, int hit, int sound,
                                                BoundsType shape, CollisionType collisionType) {
         String soundPrefix = "weapon/" + id + (action.equals("jab") ? "/secondary" : "/primary");
-        return new CombatWeapon.Attack(id, 10, hit,
+        return new CombatWeapon.Attack(id, 10, hit, collisionType == CollisionType.PROJECTILE ? .25f : .375f,
             new Animation2D.Attack(action, speed, .125f, sound, soundPrefix + "/attack"),
             soundPrefix + "/hit", shape, new CombatWeapon.Bounds(32, 0, 72, 64, ZERO, ZERO, ZERO, ZERO), collisionType);
     }
@@ -1015,6 +1131,7 @@ public final class CombatSystemTest {
             previousEngine = bindEngine(engine);
             engine.addSystem(events);
             events.subscribe(Event.Sound.Play.class, e -> sounds.add(e.soundId()));
+            engine.addSystem(new AttackCooldownSystem());
             engine.addSystem(new ControllerSystem()); engine.addSystem(new FacingSystem());
             engine.addSystem(new AnimationPlayerSystem()); engine.addSystem(new FakeAnimationSystem());
             engine.addSystem(combatSystem); engine.addSystem(loadouts); engine.addSystem(new PhysicMoveSystem());

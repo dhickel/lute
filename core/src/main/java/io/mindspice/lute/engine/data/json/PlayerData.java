@@ -3,6 +3,9 @@ package io.mindspice.lute.engine.data.json;
 import com.fasterxml.jackson.annotation.JsonAlias;
 import com.fasterxml.jackson.annotation.JsonProperty;
 
+import java.util.HashSet;
+import java.util.List;
+
 public record PlayerData(
     String name,
     @JsonAlias("move_speed") float moveSpeed,
@@ -44,13 +47,20 @@ public record PlayerData(
         }
     }
 
-    public record Loadout(String head, String body, String hands, String feet, String weapon) {
+    public record Loadout(String head, String body, String hands, String feet, String weapon,
+                          @JsonProperty("weapon_cycle") List<String> weaponCycle) {
         public Loadout {
             for (String id : new String[]{head, body, hands, feet, weapon}) {
                 if (id != null && id.isBlank()) {
                     throw new IllegalArgumentException("Equipped item IDs must not be blank");
                 }
             }
+            weaponCycle = weaponCycle == null ? List.of() : weaponCycle;
+            if (weaponCycle.stream().anyMatch(id -> id == null || id.isBlank())
+                || new HashSet<>(weaponCycle).size() != weaponCycle.size()) {
+                throw new IllegalArgumentException("weapon_cycle must contain distinct, nonblank weapon IDs");
+            }
+            weaponCycle = List.copyOf(weaponCycle);
         }
     }
 

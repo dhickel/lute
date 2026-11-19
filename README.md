@@ -32,6 +32,10 @@ Authored gameplay JSON follows the same source-to-runtime path: provision `raw_a
 }
 ```
 
+Existing externally provisioned `raw_assets/data/weapons.json` files must be migrated: add a finite, positive `stats.cooldown_seconds` to every primary and secondary attack, including unarmed. The locally tuned values are sword primary `0.30` and secondary `0.24`, bow primary `0.25` and secondary `0.32`, and unarmed `0.32` for both slots. These local asset edits are not tracked.
+
+Cooldowns are independent per fighter, stable weapon definition ID, and attack slot; there is no global timer. They age during gameplay before input independently of playback, including while another weapon is equipped. Switching away and back does not reset them; fresh map combat state clears them. Melee acceptance or arrow release starts the corresponding cooldown, not bow draw or aim cancellation. A ready attack can replace current playback even while the old attack is still cooling down. This can truncate not-yet-reached hit or sound cues, even when the old cooldown is long. Queued physics hits are resolved first, the old melee sensor is removed, and existing arrows continue. Inputs are not buffered, natural animation completion does not clear cooldown, and normal movement is unchanged. Cooldowns add no weapon-swapping restriction beyond existing attack-state guards. Bow draw uses the primary slot's readiness, and aim reserves input while held.
+
 After provisioning or changing source assets, run:
 
 ```sh

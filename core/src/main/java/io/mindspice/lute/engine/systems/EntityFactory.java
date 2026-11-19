@@ -88,7 +88,7 @@ public class EntityFactory extends EntitySystem {
         entity.add(createCharacterPhysics(transform.getPosition(), entity, BodyDef.BodyType.DynamicBody,
             player.collisionBounds(), player.hitboxBounds()));
         entity.add(new CameraFollow());
-        entity.add(new Controller());
+        entity.add(new Controller(player.loadout().weaponCycle()));
         return entity;
     }
 
@@ -166,7 +166,8 @@ public class EntityFactory extends EntitySystem {
         var animation = new Animation2D.Attack(settings.atlasKey(), settings.speed(), settings.frameInterval(),
             settings.soundFrame(), sounds.attack().id());
         var bounds = data.bounds();
-        var attack = new CombatWeapon.Attack(id, data.stats().damage(), data.stats().hitFrame(), animation,
+        var attack = new CombatWeapon.Attack(id, data.stats().damage(), data.stats().hitFrame(),
+            data.stats().cooldownSeconds(), animation,
             sounds.hit().id(), bounds.type(), new CombatWeapon.Bounds(bounds.x1(), bounds.y1(), bounds.x2(), bounds.y2(),
                 bounds.offsetUp(), bounds.offsetDown(), bounds.offsetLeft(), bounds.offsetRight()),
             data.collisionType());

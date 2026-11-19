@@ -24,12 +24,23 @@ public class Animation2D implements Component {
     private Animation<TextureRegion> animation;
     boolean dirty;
     private Attack attack;
+    private Attack queuedAttack;
     private Map<String, Long> requiredAttackFrames = Map.of();
     private boolean attackSoundEmitted;
 
     public record Attack(String action, float speed, float frameInterval, int soundFrame, String soundId) { }
 
     public void configureAttack(Attack attack) { this.attack = attack; }
+
+    // Keep the rendered pose and its metadata in sync until the next animation pass.
+    public void queueAttack(Attack attack) { queuedAttack = attack; }
+
+    public void restartQueuedAttack() {
+        if (queuedAttack == null) { return; }
+        attack = queuedAttack;
+        queuedAttack = null;
+        resetAttackPlayback();
+    }
 
     public void setRequiredAttackFrames(Map<String, Long> frames) { requiredAttackFrames = Map.copyOf(frames); }
 
@@ -140,9 +151,16 @@ public class Animation2D implements Component {
 
     public void beginAttack() {
         previousSpeed = speed;
+        if (queuedAttack != null) { restartQueuedAttack(); }
+        else { resetAttackPlayback(); }
+    }
+
+    private void resetAttackPlayback() {
         speed = attack.speed();
         frameDuration = attack.frameInterval();
+        bowReleased = false;
         attackSoundEmitted = false;
+        dirty = true;
     }
 
     public void releaseBow() {

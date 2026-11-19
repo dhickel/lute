@@ -47,7 +47,9 @@ public enum AnimationState implements State<Entity> {
         @Override
         public void update(Entity entity) {
             var aim = BowAim.MAPPER.get(entity);
-            if (!attacking(entity) && (aim == null || !aim.isAiming())) {
+            if (attacking(entity)) {
+                Animation2D.MAPPER.get(entity).restartQueuedAttack();
+            } else if (aim == null || !aim.isAiming()) {
                 changeState(entity, moving(entity) ? WALK : IDLE);
             }
         }

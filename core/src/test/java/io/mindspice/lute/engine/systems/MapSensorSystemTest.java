@@ -303,7 +303,7 @@ public final class MapSensorSystemTest {
             game.load(map(sensor("feet", 2.4f, 4, 1.2f, .6f), sensor("attack-only", 4, 5, .5f, .5f)));
             var player = game.entity(2, 4, true, false, 1);
             var target = game.entity(3.2f, 4.75f, false, false, 2);
-            var attack = new CombatWeapon.Attack("test", 10, 0,
+            var attack = new CombatWeapon.Attack("test", 10, 0, .375f,
                 new Animation2D.Attack("jab", 1, .125f, 0, "attack"), "hit", BoundsType.RECT,
                 new CombatWeapon.Bounds(pixels(1), 0, pixels(3), pixels(2),
                     new Offset(0, 0), new Offset(0, 0), new Offset(0, 0), new Offset(0, 0)),

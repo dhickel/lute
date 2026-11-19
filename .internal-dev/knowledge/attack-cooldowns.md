@@ -1,0 +1,17 @@
+# Attack cooldown identity
+
+## Topic
+Attack data, cooldown identity, and animation cancellation.
+
+## Source References
+- [Composite character specification](../specifications/composite-characters.md)
+- [PR #30](https://github.com/dhickel/lute/pull/30)
+
+## Key Takeaways
+A duration authored per attack does not make timers independent. The player can alternate a weapon's primary and secondary attacks, or switch weapons when allowed; neither action clears that player's running timers. Track cooldown by stable weapon definition ID plus attack slot, not by animation name or attack object identity. Different attacks can share a pose (such as `jab`), and a weapon can use the same attack record for both slots.
+
+## Project Relevance
+When adding an attack input, test a rejected repeat as well as a ready attack in the other slot and a weapon switch away and back.
+
+## Open Questions
+Manual playtesting will determine whether the authored timings need tuning.

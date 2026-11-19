@@ -10,6 +10,7 @@ public enum InputAction {
     MOVE_RIGHT,
     ATTACK_PRIMARY,
     ATTACK_SECONDARY,
+    CYCLE_WEAPON,
     SCROLL_UP,
     SCROLL_DOWN,
     GUI_UP,
