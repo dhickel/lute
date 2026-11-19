@@ -14,6 +14,7 @@ public class Combat implements Component {
     private AttackSlot attackRequested;
     private CombatWeapon.Attack activeAttack;
     private boolean attacking;
+    private float cooldownRemaining;
     private Fixture sensor;
     private long attackId;
     private final Set<Entity> hitTargets = Collections.newSetFromMap(new IdentityHashMap<>());
@@ -25,10 +26,15 @@ public class Combat implements Component {
     public enum AttackSlot { PRIMARY, SECONDARY }
 
     public boolean hasAttackRequest() { return attackRequested != null; }
+    public boolean isCoolingDown() { return cooldownRemaining > 0f; }
+
+    public void tickCooldown(float deltaTime) {
+        cooldownRemaining = Math.max(0f, cooldownRemaining - deltaTime);
+    }
     public CombatWeapon.Attack getActiveAttack() { return activeAttack; }
 
     public void requestAttack(AttackSlot slot) {
-        if (!isAttacking() && attackRequested == null) { attackRequested = slot; }
+        if (!isCoolingDown() && attackRequested == null) { attackRequested = slot; }
     }
 
     public AttackSlot consumeAttackRequest() {
@@ -39,6 +45,7 @@ public class Combat implements Component {
 
     public void beginAttack(CombatWeapon.Attack attack) {
         activeAttack = attack;
+        cooldownRemaining = attack.cooldownSeconds();
         attacking = true;
         attackId++;
         hitTargets.clear();

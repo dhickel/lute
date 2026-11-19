@@ -39,6 +39,7 @@ public class GameScreen extends ScreenAdapter {
 
         try {
             addSystem(new EventSystem());
+            addSystem(new AttackCooldownSystem());
             addSystem(new ControllerSystem());
             addSystem(new FacingSystem());
             addSystem(new AnimationPlayerSystem());

@@ -198,7 +198,9 @@ public final class DataLoaderTest {
                 var json = authored.get(entry.getKey()).get("attack_stats").get(slot);
                 check(attack.stats().damage() == json.get("stats").get("damage").asInt()
                     && attack.stats().cost() == json.get("stats").get("cost").asInt()
-                    && attack.stats().hitFrame() == json.get("stats").get("hit_frame").asInt(), "authored " + slot + " stats");
+                    && attack.stats().hitFrame() == json.get("stats").get("hit_frame").asInt()
+                    && attack.stats().cooldownSeconds() == (float) json.get("stats").get("cooldown_seconds").asDouble(),
+                    "authored " + slot + " stats");
                 check(attack.animation().speed() == (float) json.get("animation").get("speed").asDouble()
                     && attack.animation().soundFrame() == json.get("animation").get("sound_frame").asInt()
                     && attack.animation().frameInterval() == (float) json.get("animation").get("frame_interval").asDouble(),
@@ -210,7 +212,8 @@ public final class DataLoaderTest {
         check(sword.attackStats().secondary().stats().damage() < sword.attackStats().primary().stats().damage()
             && sword.attackStats().secondary().stats().hitFrame() != sword.attackStats().primary().stats().hitFrame(),
             "jab has distinct lower tuning");
-        var stats = DataLoader.mapper.readValue("{\"damage\":1,\"cost\":0,\"hit_frame\":2}", Stats.class);
+        var stats = DataLoader.mapper.readValue("{\"damage\":1,\"cost\":0,\"hit_frame\":2,\"cooldown_seconds\":0.375}", Stats.class);
+        check(stats.cooldownSeconds() == .375f, "cooldown in seconds");
         var animation = DataLoader.mapper.readValue("{\"speed\":1,\"atlas_key\":\"jab\",\"sound_frame\":3,\"frame_interval\":0.15}", AnimationData.class);
         check(stats.hitFrame() == 2 && animation.soundFrame() == 3, "zero-based JSON cue frames");
     }
@@ -239,9 +242,12 @@ public final class DataLoaderTest {
             primary.bounds(), primary.stats(), primary.sounds(), CollisionType.MELEE), "shot marked melee");
         rejects(() -> new AttackData(primary.animation(), primary.bounds(), primary.stats(), primary.sounds(), CollisionType.PROJECTILE),
             "slash marked projectile");
-        rejects(() -> new Stats(10, 0, -1), "negative hit frame");
-        rejects(() -> new Stats(0, 0, 0), "zero damage");
-        rejects(() -> new Stats(10, -1, 0), "negative cost");
+        rejects(() -> new Stats(10, 0, -1, .25f), "negative hit frame");
+        rejects(() -> new Stats(0, 0, 0, .25f), "zero damage");
+        rejects(() -> new Stats(10, -1, 0, .25f), "negative cost");
+        for (float invalid : new float[]{0f, -.25f, Float.NaN, Float.POSITIVE_INFINITY, Float.NEGATIVE_INFINITY}) {
+            rejects(() -> new Stats(10, 0, 0, invalid), "invalid cooldown: " + invalid);
+        }
         rejects(() -> new AnimationData(0, "jab", 0, .125f), "zero speed");
         rejects(() -> new AnimationData(1, "jab", -1, .125f), "negative sound frame");
         rejects(() -> new AnimationData(1, "", 0, 0), "zero base interval");
@@ -298,8 +304,10 @@ public final class DataLoaderTest {
         }
         rejects(() -> DataLoader.mapper.readValue("{\"animation\":{},\"bounds\":{},\"stats\":{}}", AttackData.class),
             "incomplete JSON attack");
-        rejects(() -> DataLoader.mapper.readValue("{\"damage\":1,\"cost\":0}", Stats.class), "missing hit frame");
-        rejects(() -> DataLoader.mapper.readValue("{\"damage\":1,\"cost\":0,\"hit_frame\":null}", Stats.class), "null hit frame");
+        rejects(() -> DataLoader.mapper.readValue("{\"damage\":1,\"cost\":0,\"cooldown_seconds\":0.25}", Stats.class), "missing hit frame");
+        rejects(() -> DataLoader.mapper.readValue("{\"damage\":1,\"cost\":0,\"hit_frame\":null,\"cooldown_seconds\":0.25}", Stats.class), "null hit frame");
+        rejects(() -> DataLoader.mapper.readValue("{\"damage\":1,\"cost\":0,\"hit_frame\":2}", Stats.class), "missing cooldown");
+        rejects(() -> DataLoader.mapper.readValue("{\"damage\":1,\"cost\":0,\"hit_frame\":2,\"cooldown_seconds\":null}", Stats.class), "null cooldown");
         rejects(() -> DataLoader.mapper.readValue("{\"speed\":1,\"atlas_key\":\"jab\",\"frame_interval\":0.1}",
             AnimationData.class), "missing sound frame");
         rejects(() -> DataLoader.mapper.readValue("{\"type\":\"RECT\",\"y1\":0,\"x2\":64,\"y2\":64}",
