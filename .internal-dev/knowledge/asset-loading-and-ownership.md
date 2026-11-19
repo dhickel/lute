@@ -20,6 +20,8 @@ AssetManager reference counts track managed loads and dependencies, not `get` ca
 
 For storage microbenchmarks, use multiple JVM forks and warmup rounds, identical deterministic shuffled query sets, and consumed, checked results; compare per-fork distributions rather than relying on a single number. Setup is outside lookup timing, but identity hashing and checksum work are included. Queue update timings also include simulated loading and reflect the queue algorithm, not hashing alone; sequential cases can receive unequal warmup. Source-level composite key construction does not guarantee allocation: JIT behavior varied across forks, including one composite fork at 24 B/get when other composite forks and all typed forks measured zero. The first run measured zero for both. These results contain no hardware cache-miss measurements and cannot establish a cache mechanism or gameplay improvement.
 
+A legacy classpath loader is not precedent for authored gameplay data. Player, weapon, and projectile JSON belong in the externally provisioned `raw_assets/data/` tree, are copied to `assets/data/` by generation, and are loaded at startup through `GameConsts.DATA_PATH` by `DataLoader`. `GameData` supplies the resolved data to gameplay; neither bundled resources nor a classpath fallback are part of this path. Both asset trees remain ignored.
+
 The four typed maps already enumerate every registered asset. An additional `owned` collection duplicated that index merely to preserve incidental diagnostic/disposal order, not a required dependency order. Keep only the separate loading `queue`, whose ordering and cancellation serve actual loading behavior; test diagnostic completeness rather than cross-type insertion order.
 
 ## Project Relevance

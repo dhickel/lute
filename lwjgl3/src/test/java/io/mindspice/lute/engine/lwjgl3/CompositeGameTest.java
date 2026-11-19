@@ -120,7 +120,7 @@ public final class CompositeGameTest {
             }
             layers.deathFrames(player);
             var atlas = GAME.getAssetService().get(TextureAtlas.class, CharacterAssets.WEAPONS.id());
-            var arrow = atlas.findRegion(io.mindspice.lute.engine.data.json.ArrowData.loadDefault().region());
+            var arrow = atlas.findRegion(GAME.getGameData().projectilesData().ironArrow().atlasKey());
             require(arrow != null && layers.weaponPages.size() + 1 == atlas.getTextures().size,
                 "All character weapon pages sampled, with a separate arrow page");
             require(layers.overhangPixels > 0, "Actual regenerated frames contain visible pixels outside the logical area");

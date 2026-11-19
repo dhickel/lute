@@ -1,6 +1,7 @@
 package io.mindspice.lute.engine.systems;
 
 import com.badlogic.ashley.core.Engine;
+import com.badlogic.ashley.core.Entity;
 import com.badlogic.gdx.Application;
 import com.badlogic.gdx.Gdx;
 import com.badlogic.gdx.Graphics;
@@ -21,6 +22,9 @@ import com.badlogic.gdx.math.Vector2;
 import com.badlogic.gdx.physics.box2d.*;
 import com.badlogic.gdx.utils.GdxNativesLoader;
 import com.badlogic.ashley.core.EntitySystem;
+import io.mindspice.lute.engine.components.Facing;
+import io.mindspice.lute.engine.data.json.ProjectilesData.CollisionBounds;
+import io.mindspice.lute.engine.data.json.ProjectilesData.Projectile;
 import io.mindspice.lute.engine.singletons.GameConsts;
 import io.mindspice.lute.engine.tiled.FixedTmxMapLoader;
 
@@ -43,6 +47,8 @@ public final class TriggerDebugRenderSystemTest {
         try {
             installConstructorStubs();
             sensors();
+            projectileBoundsAndLifetime();
+            projectilePassesCrosshair();
             loadedMapGeometry();
             savedMapTriggers();
             mutableObjectTransforms();
@@ -132,6 +138,87 @@ public final class TriggerDebugRenderSystemTest {
             check(renderer.disposed, "System must dispose its renderer");
             world.dispose();
         }
+    }
+
+    private static void projectileBoundsAndLifetime() {
+        var world = new World(new Vector2(), true);
+        var renderer = new RecordingRenderer();
+        var debug = attach(world, renderer, null);
+        var engine = debug.getEngine();
+        var definition = new Projectile("projectiles/test", 4, 0.5f,
+            new CollisionBounds(8, 12), 0, 0, 0, 0);
+        var combat = new CombatSystem(world, definition);
+        engine.addSystem(combat);
+        try {
+            float scale = GameConsts.UNIT_SCALE;
+            var arrow = new ArrowFlight(new Entity(), definition, new Vector2(), new Vector2(0, 8), 1);
+            combat.arrows().add(arrow);
+            combat.update(0.25f);
+            debug.update(0);
+            check(renderer.triangles.size() == 1 && renderer.colors.equals(List.of(Color.YELLOW)),
+                "Debug overlay draws one yellow projectile outline");
+            var triangle = renderer.triangles.getFirst();
+            float[] expected = {0, 1, -6 * scale, 1 - 8 * scale, 6 * scale, 1 - 8 * scale};
+            for (int i = 0; i < expected.length; i++) {
+                near(triangle[i], expected[i], "Vertical projectile outline vertex coordinate " + i);
+            }
+
+            // A frame longer than the remaining lifetime must not sweep past the expiry point.
+            var wallDef = new BodyDef();
+            wallDef.position.set(0, 3);
+            var wall = world.createBody(wallDef);
+            var shape = new PolygonShape();
+            try {
+                shape.setAsBox(0.25f, 0.05f);
+                wall.createFixture(shape, 0);
+            } finally { shape.dispose(); }
+            combat.update(1);
+            near(arrow.tip.y, 2, "Position clamps at lifetime expiry before sweeping into the wall");
+            check(combat.arrows().isEmpty(), "Expired projectile is removed");
+            renderer.clear();
+            debug.update(0);
+            check(renderer.triangles.isEmpty(), "Expired projectile has no debug outline");
+        } finally {
+            engine.removeSystem(combat);
+            debug.dispose();
+            world.dispose();
+        }
+    }
+
+    private static void projectilePassesCrosshair() {
+        var world = new World(new Vector2(), true);
+        try {
+            var definition = new Projectile("projectiles/test", 4, 1,
+                new CollisionBounds(8, 12), 0.3f, 0, 0, 0);
+            var owner = new Entity().add(new Facing(Facing.Direction.LEFT));
+            var start = new Vector2();
+            var aim = new Vector2(1, 0);
+            var arrow = new ArrowFlight(owner, definition, start, aim, 1);
+            check(!arrow.finished(world, 0.25f), "Reaching the crosshair does not finish the shot");
+            near(arrow.tip.x, 1, "Arrow reaches crosshair at configured speed");
+            near(arrow.tip.y, 0, "Arrow arc passes through the crosshair");
+            check(!arrow.finished(world, 0.25f), "Arrow is still active past the crosshair");
+            near(arrow.tip.x, 2, "Arrow continues in the original aim direction");
+            near(arrow.tip.y, 0, "Arrow flies straight after the arc");
+            check(arrow.finished(world, 1), "Unobstructed arrow expires by lifetime");
+            near(arrow.tip.x, 4, "Expiry clamps travel past the crosshair");
+
+            var centered = new ArrowFlight(owner, definition, start, start, 1);
+            check(!centered.finished(world, 0.25f), "Centered aim still fires");
+            near(centered.tip.x, -1, "Centered aim uses the owner's facing");
+
+            var wallDef = new BodyDef();
+            wallDef.position.set(2, 0);
+            var wall = world.createBody(wallDef);
+            var shape = new PolygonShape();
+            try {
+                shape.setAsBox(0.05f, 0.25f);
+                wall.createFixture(shape, 0);
+            } finally { shape.dispose(); }
+            var blocked = new ArrowFlight(owner, definition, start, aim, 1);
+            check(blocked.finished(world, 0.75f), "A long frame sweeps into a wall beyond the crosshair");
+            near(blocked.tip.x, 1, "Wall blocks the post-crosshair segment");
+        } finally { world.dispose(); }
     }
 
     private static void loadedMapGeometry() {
@@ -339,6 +426,7 @@ public final class TriggerDebugRenderSystemTest {
     private static final class RecordingRenderer extends ShapeRenderer {
         final List<float[]> lines = new ArrayList<>();
         final List<float[]> circles = new ArrayList<>();
+        final List<float[]> triangles = new ArrayList<>();
         final List<Color> colors = new ArrayList<>();
         OrthographicCamera camera;
         int begins;
@@ -354,6 +442,10 @@ public final class TriggerDebugRenderSystemTest {
             lines.add(new float[]{x1, y1, x2, y2});
             colors.add(new Color(getColor()));
         }
+        @Override public void triangle(float x1, float y1, float x2, float y2, float x3, float y3) {
+            triangles.add(new float[]{x1, y1, x2, y2, x3, y3});
+            colors.add(new Color(getColor()));
+        }
         @Override public void circle(float x, float y, float radius, int segments) {
             TriggerDebugRenderSystemTest.check(segments == 32, "Sensor circle tessellation");
             circles.add(new float[]{x, y, radius});
@@ -366,6 +458,7 @@ public final class TriggerDebugRenderSystemTest {
         void clear() {
             lines.clear();
             circles.clear();
+            triangles.clear();
             colors.clear();
         }
     }

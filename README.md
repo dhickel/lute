@@ -13,6 +13,25 @@ This project was generated with a template including simple application launcher
 
 Both `raw_assets/` and `assets/` are local and ignored by Git; their contents are not included in the current tracked tree or new checkouts. Existing Git history retains old asset objects; it has not been purged. In a new checkout, provide the complete current `raw_assets/` tree externally, including settings, data, audio, maps, tilesets, sprites, and the Tiled project. Edit source assets in `raw_assets/`, not the generated files in `assets/`. Shared settings and the Tiled project live at the source root; `data/` and `audio/` contain shared game data and sounds. Each map directory, such as `raw_assets/maps/test_tiled/`, contains a matching TMX and manifest and an `objects/` directory with source images and `pack.json`. Shared terrain tilesets live under `raw_assets/tilesets/` and can be referenced by multiple maps. The manifest must name `<map>.atlas` and `<map>/<map>.tmx`, and include `music_assets` and `sound_assets` objects, even when empty.
 
+Authored gameplay JSON follows the same source-to-runtime path: provision `raw_assets/data/player.json`, `weapons.json`, and `projectiles.json`, then generate `assets/data/`. At startup, `DataLoader` loads them through `GameConsts.DATA_PATH`, and `GameData` supplies the resolved data to gameplay. There is no bundled-resource or classpath fallback. If the externally provisioned tree lacks `raw_assets/data/projectiles.json`, create it with this starter data:
+
+```json
+{
+  "projectiles": {
+    "iron_arrow": {
+      "atlas_key": "projectiles/IronArrow",
+      "speed": 8.0,
+      "lifetime": 5.0,
+      "collision_bounds": { "length": 8.5, "width": 10.0 },
+      "arc_height": 0.30,
+      "tip_x": 16.0,
+      "tip_y": 32.0,
+      "art_degrees": 90.0
+    }
+  }
+}
+```
+
 After provisioning or changing source assets, run:
 
 ```sh

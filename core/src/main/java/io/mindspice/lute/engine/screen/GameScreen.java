@@ -43,7 +43,7 @@ public class GameScreen extends ScreenAdapter {
             addSystem(new FacingSystem());
             addSystem(new AnimationPlayerSystem());
             addSystem(new AnimationSystem(this.game.getAssetService()));
-            addSystem(new CombatSystem(physicWorld));
+            addSystem(new CombatSystem(physicWorld, game.getGameData().projectilesData().ironArrow()));
             addSystem(new LoadoutSystem());
             addSystem(new MapSensorSystem(physicWorld));
             addSystem(new PhysicMoveSystem());

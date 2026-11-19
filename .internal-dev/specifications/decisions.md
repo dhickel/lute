@@ -39,12 +39,20 @@
 
 ## Animation-driven attack lifetime
 
-- **Decision:** Weapon definitions use `attack_stats` with distinct primary and secondary attack records, each containing animation, bounds, stats, collision type, and its own attack and hit sound paths and logical IDs. Each attack owns `sounds.attack` and `sounds.hit` paths; existing WAV files are approved for reuse. For melee attacks, `stats.hit_frame` starts the attack sensor; animation completion ends the attack. This supersedes the former single-attack schema. Bow projectile execution is deferred. Frames are zero-based: frame 0 is immediate at animation start, and frame 2 starts the third frame. `animation.speed` scales the animation clock and therefore both frame timing and total attack lifetime. The independent `attack_duration` timer and unused `hitDelay` are removed.
+- **Decision:** Weapon definitions use `attack_stats` with distinct primary and secondary attack records, each containing animation, bounds, stats, collision type, and its own attack and hit sound paths and logical IDs. Each attack owns `sounds.attack` and `sounds.hit` paths; existing WAV files are approved for reuse. For melee attacks, `stats.hit_frame` starts the attack sensor; animation completion ends the attack. This supersedes the former single-attack schema. Bow projectile execution is specified in [Composite Characters](composite-characters.md). Frames are zero-based: frame 0 is immediate at animation start, and frame 2 starts the third frame. `animation.speed` scales the animation clock and therefore both frame timing and total attack lifetime. The independent `attack_duration` timer and unused `hitDelay` are removed.
 - **Ownership:** Player JSON supplies the base animation `frame_interval` in seconds; the equipped weapon's animation supplies its attack `frame_interval`. Both must be finite and positive. Combat passes the attack interval, animation speed, sound frame, and resolved attack-sound ID to `Animation2D` when accepting an attack. Animation emits the sound once when playback reaches or crosses `animation.sound_frame`; it does not inspect weapon definitions or manage fixtures. `EntityFactory` validates hit and sound frame limits against every facing direction when composing the entity. Animation revalidates those limits if a previously seen atlas identity is replaced. Combat reads animation progress and owns fixture creation, damage, and cleanup. An accepted attack can be active before its sensor exists. Hit sounds are loaded but not emitted.
 - **Ordering and tradeoff:** The animation FSM and playback update before combat, and combat updates before physics. Accepted input configures the attack in the combat pass; its animation begins on the following update. Frame 0 is relative to that animation start. Physics retains ordinary fixed ticks with no forced contact refresh: an entire active interval skipped by an update, or shorter than a physics tick, can produce no hit.
 - **Affected specifications and sources:** `assets/data/weapons.json`, `WeaponsData`, `Combat`, `CombatWeapon`, `Animation2D`, `AnimationState`, `AnimationSystem`, `CombatSystem`, `GameScreen`, and `EntityFactory`.
 - **Source:** User-directed weapon asset and animation-timing refactor. This supersedes the former explicit combat-duration decision.
 - **Review timing:** Revisit if attack timing, animation ownership, or physics contact guarantees change.
+
+## Projectile collision geometry
+
+- **Decision:** Keep the existing swept triangular projectile collision test, using local fixture queries. The yellow debug outline depicts instantaneous geometry and does not perform an additional collision check.
+- **Justification and tradeoff:** The sweep preserves projectile width and prevents tunneling. It requires more work than a ray or per-frame overlap test, but neither alternative provides both properties.
+- **Affected specifications:** [Composite Characters](composite-characters.md).
+- **Source:** User-directed projectile collision decision.
+- **Review timing:** Revisit only if profiling many projectiles indicates a cost.
 
 ## Settings and weapon asset ownership
 
@@ -85,7 +93,7 @@
 
 ## Local asset tracking
 
-- **Decision:** Keep the complete `raw_assets/` and `assets/` trees local and ignored rather than tracking them in the repository. The tracked root `generate-runtime-assets.sh` generates runtime outputs from an externally provisioned complete raw tree.
+- **Decision:** Keep the complete `raw_assets/` and `assets/` trees local and ignored rather than tracking them in the repository. The tracked root `generate-runtime-assets.sh` generates runtime outputs from an externally provisioned complete raw tree. Authored gameplay JSON follows `raw_assets/data/` → `assets/data/` → `DataLoader`: startup loads player, weapon, and projectile data through `GameConsts.DATA_PATH`, and `GameData` supplies resolved data to gameplay. Do not bundle this data as classpath resources or provide a fallback to them.
 - **Justification and tradeoff:** The user requested untracking both trees. This is not an asset distribution mechanism: fresh checkouts must obtain settings, data, audio, maps, tilesets, sprites, and the Tiled project externally before generating and running asset-dependent tests or the game. Git ignore does not replace generator ownership checks, and existing Git history is not purged or rewritten.
 - **Affected specifications:** [Composite Characters](composite-characters.md); asset setup is documented in `README.md` and `docs/asset-service.md`.
 - **Source:** User-directed asset untracking and generation entrypoint relocation.

@@ -13,7 +13,8 @@ public class DataLoader {
     public static GameData loadGameData() {
         return new GameData(
             parsePlayerData(),
-            parseWeaponData()
+            parseWeaponData(),
+            parseProjectileData()
         );
     }
 
@@ -21,6 +22,15 @@ public class DataLoader {
         String filepath = GameConsts.DATA_PATH + "player.json";
         try (var file = Gdx.files.internal(filepath).read()) {
             return mapper.readValue(file, PlayerData.class);
+        } catch (IOException e) {
+            throw new GdxRuntimeException("Failed to read file at path: " + filepath, e);
+        }
+    }
+
+    public static ProjectilesData parseProjectileData() {
+        String filepath = GameConsts.DATA_PATH + "projectiles.json";
+        try (var file = Gdx.files.internal(filepath).read()) {
+            return mapper.readValue(file, ProjectilesData.class);
         } catch (IOException e) {
             throw new GdxRuntimeException("Failed to read file at path: " + filepath, e);
         }
