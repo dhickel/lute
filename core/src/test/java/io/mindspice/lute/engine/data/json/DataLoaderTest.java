@@ -102,17 +102,23 @@ public final class DataLoaderTest {
             && loadout.weapon() != null && definitions.weapons().containsKey(loadout.weapon()), "default loadout");
         check(player.sounds().move().equals("sword_hit.wav") && player.sounds().damage().equals("sword_hit.wav"),
             "player sound definitions");
-        var unequipped = new PlayerData.Loadout(null, null, null, null, null);
+        var unequipped = new PlayerData.Loadout(null, null, null, null, null, null);
         for (String json : new String[]{"{}", "{\"head\":null,\"body\":null,\"hands\":null,\"feet\":null,\"weapon\":null}"}) {
             check(DataLoader.mapper.readValue(json, PlayerData.Loadout.class).equals(unequipped),
                 "omitted and null IDs both leave slots empty");
         }
         check(DataLoader.mapper.readValue("{\"head\":\"basic\",\"body\":\"basic\",\"hands\":\"basic\",\"weapon\":\"basic_sword\"}",
-            PlayerData.Loadout.class).equals(new PlayerData.Loadout("basic", "basic", "basic", null, "basic_sword")),
+            PlayerData.Loadout.class).equals(new PlayerData.Loadout("basic", "basic", "basic", null, "basic_sword", null)),
             "omitted feet leave only the feet slot empty");
         check(DataLoader.mapper.readValue("{\"head\":\"basic\",\"body\":\"basic\",\"hands\":\"basic\",\"feet\":\"basic\"}",
-            PlayerData.Loadout.class).equals(new PlayerData.Loadout("basic", "basic", "basic", "basic", null)),
+            PlayerData.Loadout.class).equals(new PlayerData.Loadout("basic", "basic", "basic", "basic", null, null)),
             "omitted weapon leaves only the weapon slot empty");
+        var cycle = DataLoader.mapper.readValue("{\"weapon_cycle\":[\"basic_sword\",\"basic_bow\"]}", PlayerData.Loadout.class);
+        check(cycle.weaponCycle().equals(java.util.List.of("basic_sword", "basic_bow")), "test weapon cycle preserves order");
+        for (String invalid : new String[]{"[\" \" ]", "[null]", "[\"basic_sword\",\"basic_sword\"]"}) {
+            rejects(() -> DataLoader.mapper.readValue("{\"weapon_cycle\":" + invalid + "}", PlayerData.Loadout.class),
+                "invalid weapon cycle: " + invalid);
+        }
         for (String slot : new String[]{"head", "body", "hands", "feet", "weapon"}) {
             rejects(() -> DataLoader.mapper.readValue("{\"" + slot + "\":\" \"}", PlayerData.Loadout.class), "blank " + slot);
         }

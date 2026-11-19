@@ -20,10 +20,9 @@ public class ControllerSystem extends IteratingSystem implements EventEmitter {
         var aim = BowAim.MAPPER.get(entity);
         var move = Move.MAPPER.get(entity);
         var loadout = Loadout.MAPPER.get(entity);
-        var weapon = loadout == null ? null : loadout.getWeapon();
         var health = Health.MAPPER.get(entity);
         boolean alive = health == null || health.isAlive();
-        if (aim != null && (!alive || aim.getWeapon() != weapon)) { aim.cancel(); }
+        if (aim != null && (!alive || loadout == null || aim.getWeapon() != loadout.getWeapon())) { aim.cancel(); }
         if (listener.consumeInvalidation()) {
             if (aim != null) { aim.cancel(); }
             listener.getQueue().consumePreviousContext((action, state) -> {
@@ -37,6 +36,7 @@ public class ControllerSystem extends IteratingSystem implements EventEmitter {
         listener.consume((action, state) -> {
             if (state != 0 && state != 1) { return; }
             boolean pressed = state == 1;
+            var weapon = loadout == null ? null : loadout.getWeapon();
             if (action == InputAction.ATTACK_PRIMARY) {
                 boolean edge = controller.primaryEdge(pressed);
                 if (aim != null && weapon != null && weapon.primary().collisionType() == CollisionType.PROJECTILE) {
@@ -50,6 +50,14 @@ public class ControllerSystem extends IteratingSystem implements EventEmitter {
             } else if (action == InputAction.ATTACK_SECONDARY) {
                 if (pressed && (aim == null || !aim.isAiming())) {
                     requestAttack(combat, weapon, Combat.AttackSlot.SECONDARY);
+                }
+            } else if (action == InputAction.CYCLE_WEAPON) {
+                if (pressed && alive && weapon != null && (aim == null || !aim.isAiming())) {
+                    var cycle = controller.getWeaponCycle();
+                    if (!cycle.isEmpty()) {
+                        int next = (cycle.indexOf(weapon.id()) + 1) % cycle.size();
+                        getEngine().getSystem(LoadoutSystem.class).equipWeapon(entity, cycle.get(next));
+                    }
                 }
             } else { movement(controller, action, state); }
         });

@@ -11,11 +11,10 @@ public class DataLoader {
     public static final JsonMapper mapper = JsonMapper.builder().build();
 
     public static GameData loadGameData() {
-        return new GameData(
-            parsePlayerData(),
-            parseWeaponData(),
-            parseProjectileData()
-        );
+        var player = parsePlayerData();
+        var weapons = parseWeaponData();
+        player.loadout().weaponCycle().forEach(weapons::requireWeapon);
+        return new GameData(player, weapons, parseProjectileData());
     }
 
     public static PlayerData parsePlayerData() {

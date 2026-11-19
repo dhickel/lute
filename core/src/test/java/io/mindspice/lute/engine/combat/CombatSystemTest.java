@@ -58,6 +58,7 @@ public final class CombatSystemTest {
         movementAndInput();
         cooldownCancelsMeleeRecovery();
         attackSlotsAndLoadout();
+        testWeaponCycle();
         heldBow();
         cardinalBowShots();
         cooldownBetweenBowAndMelee();
@@ -315,6 +316,34 @@ public final class CombatSystemTest {
                         "Switch unlocked after request consumed");
                 }
             }
+        }
+    }
+
+    private static void testWeaponCycle() {
+        try (var game = new Harness(1, 0, 0)) {
+            var sword = Loadout.MAPPER.get(game.player).getWeapon();
+            var shot = attack("bow", "shot", 1, 2, 1, BoundsType.RECT, CollisionType.PROJECTILE);
+            var bow = new CombatWeapon.Weapon("bow", "ranged/bow", shot, shot);
+            var loadout = new Loadout(Loadout.MAPPER.get(game.player).getEquipment(), sword.id(),
+                Map.of(sword.id(), sword, bow.id(), bow), equipment -> {});
+            game.player.add(loadout).add(new BowAim(1, 1)).add(new Controller(List.of(sword.id(), bow.id())));
+            var aim = BowAim.MAPPER.get(game.player);
+
+            game.input(InputAction.CYCLE_WEAPON, 1);
+            game.input(InputAction.ATTACK_PRIMARY, 1);
+            game.update(0);
+            check(loadout.getWeapon() == bow && aim.isAiming(), "R then attack uses the new weapon in the same update");
+            game.input(InputAction.CYCLE_WEAPON, 1); game.update(0);
+            check(loadout.getWeapon() == bow, "Cycle is ignored while drawing the bow");
+            game.input(InputAction.ATTACK_PRIMARY, 0); game.update(0);
+            game.input(InputAction.CYCLE_WEAPON, 1); game.update(0);
+            check(loadout.getWeapon() == bow, "Cycle honors the active attack guard");
+            game.finish();
+            game.input(InputAction.CYCLE_WEAPON, 0);
+            game.input(InputAction.CYCLE_WEAPON, 2); game.update(0);
+            check(loadout.getWeapon() == bow, "Release and repeat do not cycle");
+            game.input(InputAction.CYCLE_WEAPON, 1); game.update(0);
+            check(loadout.getWeapon() == sword, "Next press wraps back to the first configured weapon");
         }
     }
 

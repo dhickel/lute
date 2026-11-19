@@ -88,7 +88,7 @@ public class EntityFactory extends EntitySystem {
         entity.add(createCharacterPhysics(transform.getPosition(), entity, BodyDef.BodyType.DynamicBody,
             player.collisionBounds(), player.hitboxBounds()));
         entity.add(new CameraFollow());
-        entity.add(new Controller());
+        entity.add(new Controller(player.loadout().weaponCycle()));
         return entity;
     }
 

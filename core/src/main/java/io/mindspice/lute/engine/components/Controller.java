@@ -13,6 +13,7 @@ public class Controller implements Component {
     public static final ComponentMapper<Controller> MAPPER = ComponentMapper.getFor(Controller.class);
 
     private final KeyListener inputListener;
+    private final List<String> weaponCycle;
     private final Vector2 heldDirection = new Vector2();
     private int primaryHolds;
 
@@ -29,14 +30,18 @@ public class Controller implements Component {
         return primaryHolds > 0 && --primaryHolds == 0;
     }
 
-    public Controller() {
+    public Controller() { this(List.of()); }
+
+    public Controller(List<String> weaponCycle) {
+        this.weaponCycle = weaponCycle;
         this.inputListener = new KeyListener(32, List.of(
             InputAction.MOVE_UP,
             InputAction.MOVE_DOWN,
             InputAction.MOVE_LEFT,
             InputAction.MOVE_RIGHT,
             InputAction.ATTACK_PRIMARY,
-            InputAction.ATTACK_SECONDARY
+            InputAction.ATTACK_SECONDARY,
+            InputAction.CYCLE_WEAPON
         ));
     }
 
@@ -46,6 +51,8 @@ public class Controller implements Component {
         return controller;
     }
 
+
+    public List<String> getWeaponCycle() { return weaponCycle; }
 
     public KeyListener getInputListener() {
         return inputListener;

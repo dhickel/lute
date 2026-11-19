@@ -21,6 +21,7 @@ final class InputSettingsTest {
         equal(InputAction.ATTACK_PRIMARY, defaults.getKey(Input.Keys.SPACE), "Space default");
         equal(InputAction.ATTACK_SECONDARY, defaults.getKey(Input.Keys.SHIFT_LEFT), "left Shift default");
         equal(InputAction.ATTACK_SECONDARY, defaults.getKey(Input.Keys.SHIFT_RIGHT), "right Shift default");
+        equal(InputAction.CYCLE_WEAPON, defaults.getKey(Input.Keys.R), "R cycles test weapons");
         equal(InputAction.MOVE_UP, defaults.getGamepad(GamepadControl.DPAD_UP), "D-pad default");
         equal(InputAction.ATTACK_PRIMARY, defaults.getGamepad(GamepadControl.FACE_SOUTH), "south face default");
         equal(InputAction.ATTACK_SECONDARY, defaults.getGamepad(GamepadControl.FACE_WEST), "west face default");
