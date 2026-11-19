@@ -72,9 +72,10 @@ public final class GameScreenLifecycleTest extends ApplicationAdapter {
         var time = engine.getSystem(WorldTimeSystem.class);
         require(time.getDayLengthMinutes() == GameConsts.DAY_LENGTH_MINUTES,
             "GameScreen supplies the configured day length to world time");
+        double clampedWorldSeconds = (24 * 60 / GameConsts.DAY_LENGTH_MINUTES) / 30;
         var beforeVisibleUpdate = time.getTotalInGameSeconds();
         original.render(1f);
-        near(time.getTotalInGameSeconds(), beforeVisibleUpdate + 2,
+        near(time.getTotalInGameSeconds(), beforeVisibleUpdate + clampedWorldSeconds,
             "Visible game rendering advances world time with the clamped simulation delta");
         original.pause();
         var pausedAt = time.getTotalInGameSeconds();
@@ -82,7 +83,7 @@ public final class GameScreenLifecycleTest extends ApplicationAdapter {
         near(time.getTotalInGameSeconds(), pausedAt, "Paused game rendering does not advance world time");
         original.resume();
         original.render(1f);
-        near(time.getTotalInGameSeconds(), pausedAt + 2, "Resumed game rendering advances world time");
+        near(time.getTotalInGameSeconds(), pausedAt + clampedWorldSeconds, "Resumed game rendering advances world time");
 
         var player = engine.getEntitiesFor(com.badlogic.ashley.core.Family.all(Player.class).get()).first();
         var loadout = io.mindspice.lute.engine.components.Loadout.MAPPER.get(player);
@@ -108,7 +109,7 @@ public final class GameScreenLifecycleTest extends ApplicationAdapter {
         near(time.getTotalInGameSeconds(), beforeHide, "Hidden game rendering does not advance world time");
         screens.switchScreens("GameScreen");
         original.render(1f);
-        near(time.getTotalInGameSeconds(), beforeHide + 2, "Shown game rendering resumes world time");
+        near(time.getTotalInGameSeconds(), beforeHide + clampedWorldSeconds, "Shown game rendering resumes world time");
         require(playerCount(engine) == 1, "Hide/show retains the live player while checking world time");
         screens.switchScreens("away");
         require(playerCount(engine) == 0, "Hide removes the old player and its physics body");
