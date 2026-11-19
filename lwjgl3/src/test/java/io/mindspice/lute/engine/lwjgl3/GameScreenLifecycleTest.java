@@ -15,9 +15,11 @@ import io.mindspice.lute.engine.components.Combat;
 import io.mindspice.lute.engine.components.Player;
 import io.mindspice.lute.engine.screen.GameScreen;
 import io.mindspice.lute.engine.screen.ScreenManager;
+import io.mindspice.lute.engine.singletons.GameConsts;
 import io.mindspice.lute.engine.systems.EventSystem;
 import io.mindspice.lute.engine.systems.PhysicSystem;
 import io.mindspice.lute.engine.systems.TiledSystem;
+import io.mindspice.lute.engine.systems.WorldTimeSystem;
 import io.mindspice.lute.engine.tiled.ManifestLoader;
 
 import java.lang.reflect.Field;
@@ -67,6 +69,20 @@ public final class GameScreenLifecycleTest extends ApplicationAdapter {
         engine.addSystem(foreign);
         var owned = snapshot(engine, foreign);
         var physics = engine.getSystem(PhysicSystem.class);
+        var time = engine.getSystem(WorldTimeSystem.class);
+        require(time.getDayLengthMinutes() == GameConsts.DAY_LENGTH_MINUTES,
+            "GameScreen supplies the configured day length to world time");
+        var beforeVisibleUpdate = time.getTotalInGameSeconds();
+        original.render(1f);
+        near(time.getTotalInGameSeconds(), beforeVisibleUpdate + 2,
+            "Visible game rendering advances world time with the clamped simulation delta");
+        original.pause();
+        var pausedAt = time.getTotalInGameSeconds();
+        original.render(1f);
+        near(time.getTotalInGameSeconds(), pausedAt, "Paused game rendering does not advance world time");
+        original.resume();
+        original.render(1f);
+        near(time.getTotalInGameSeconds(), pausedAt + 2, "Resumed game rendering advances world time");
 
         var player = engine.getEntitiesFor(com.badlogic.ashley.core.Family.all(Player.class).get()).first();
         var loadout = io.mindspice.lute.engine.components.Loadout.MAPPER.get(player);
@@ -85,7 +101,15 @@ public final class GameScreenLifecycleTest extends ApplicationAdapter {
         Gdx.input.getInputProcessor().keyDown(Input.Keys.SHIFT_LEFT);
         engine.update(0.02f);
         require(Combat.MAPPER.get(player).isAttacking(), "Teardown starts with a live attack");
+        var beforeHide = time.getTotalInGameSeconds();
         screens.loadScreen("away", new ScreenAdapter());
+        screens.switchScreens("away");
+        original.render(1f);
+        near(time.getTotalInGameSeconds(), beforeHide, "Hidden game rendering does not advance world time");
+        screens.switchScreens("GameScreen");
+        original.render(1f);
+        near(time.getTotalInGameSeconds(), beforeHide + 2, "Shown game rendering resumes world time");
+        require(playerCount(engine) == 1, "Hide/show retains the live player while checking world time");
         screens.switchScreens("away");
         require(playerCount(engine) == 0, "Hide removes the old player and its physics body");
         require(engine.getSystem(PhysicSystem.class) == physics, "Hide retains screen systems for reuse");
@@ -202,6 +226,13 @@ public final class GameScreenLifecycleTest extends ApplicationAdapter {
         var field = type.getDeclaredField(name);
         field.setAccessible(true);
         return field;
+    }
+
+    private static void near(double actual, double expected, String message) {
+        checks++;
+        if (Math.abs(actual - expected) > 0.000001) {
+            throw new AssertionError(message + ": expected " + expected + ", got " + actual);
+        }
     }
 
     private static void require(boolean condition, String message) {

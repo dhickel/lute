@@ -27,6 +27,14 @@ tasks.named('test') {
   failOnNoDiscoveredTests = false
 }
 
+tasks.register('worldTimeSystemTest', JavaExec) {
+  dependsOn testClasses
+  classpath = sourceSets.test.runtimeClasspath
+  mainClass = 'io.mindspice.lute.engine.systems.WorldTimeSystemTest'
+  workingDir = rootProject.projectDir
+}
+check.dependsOn worldTimeSystemTest
+
 tasks.register('inputSystemTest', JavaExec) {
   dependsOn testClasses
   classpath = sourceSets.test.runtimeClasspath

@@ -25,6 +25,7 @@ import io.mindspice.lute.engine.singletons.GameConsts;
 import io.mindspice.lute.engine.systems.CombatSystem;
 import io.mindspice.lute.engine.systems.EventSystem;
 import io.mindspice.lute.engine.systems.TiledSystem;
+import io.mindspice.lute.engine.systems.WorldTimeSystem;
 import io.mindspice.lute.engine.events.Event;
 import io.mindspice.lute.engine.tiled.ManifestLoader;
 
@@ -70,6 +71,7 @@ public final class MapTravelTest extends ApplicationAdapter {
         bind((GameScreen) loaded.get("GameScreen"));
         for (int i = 0; i < 200 && tiled.getCurrentMap() == null; i++) { GAME.render(); }
         require(tiled.getCurrentMap() != null, "Boot finishes loading the actual map");
+        var time = GAME.getEngine().getSystem(WorldTimeSystem.class);
         var player = player();
         atPoint(player, "PlayerSpawn");
         var actualActors = GAME.getEngine().getEntitiesFor(Family.all(CompositeCharacter.class).exclude(Player.class).get());
@@ -127,6 +129,7 @@ public final class MapTravelTest extends ApplicationAdapter {
         bind(new GameScreen(entry));
         screens.loadScreen("travel", screen);
         screens.switchScreens("travel");
+        time = GAME.getEngine().getSystem(WorldTimeSystem.class);
         var changes = new ArrayList<String>();
         GAME.getEngine().getSystem(EventSystem.class).subscribe(Event.Map.Changed.class, event -> changes.add(event.mapId()));
         atPoint(player(), "PlayerSpawn");
@@ -162,8 +165,12 @@ public final class MapTravelTest extends ApplicationAdapter {
             && Combat.MAPPER.get(start).isCoolingDown("basic_bow", Combat.AttackSlot.PRIMARY),
             "Depart with held inputs, a live arrow and an active cooldown; immediate redraw is blocked");
         var oldBody = body(start);
+        var beforeSelfTravel = time.getTotalInGameSeconds();
         enter("self");
         var rebuilt = player();
+        require(GAME.getEngine().getSystem(WorldTimeSystem.class) == time
+            && time.getTotalInGameSeconds() > beforeSelfTravel,
+            "Named travel retains the session world-time system and accumulated time");
         require(rebuilt != start && body(rebuilt) != oldBody && tiled.getCurrentMap() == sourceMap,
             "Reentry reloads the same logical map and creates fresh runtime entities and bodies");
         require(world.getBodyCount() == sourceBodies, "Self reload leaves no extra bodies");
@@ -219,7 +226,11 @@ public final class MapTravelTest extends ApplicationAdapter {
         require(player() == visitor && body(visitor) == visitorBody, "THIS retains player and body identity");
         atPoint(visitor, "local-landing");
 
+        var beforeHideShow = time.getTotalInGameSeconds();
         screens.switchScreens("travel");
+        require(GAME.getEngine().getSystem(WorldTimeSystem.class) == time
+            && time.getTotalInGameSeconds() == beforeHideShow,
+            "Hide/show retains world time without advancing while hidden");
         require(player() != visitor && Health.MAPPER.get(player()) == health && Loadout.MAPPER.get(player()) == loadout,
             "Hide/show remounts the current map and retains live player state");
         atPoint(player(), "arrival");
@@ -238,6 +249,9 @@ public final class MapTravelTest extends ApplicationAdapter {
         require(Health.MAPPER.get(fresh) != health && Health.MAPPER.get(fresh).getCurrent() == GAME.getGameData().playerData().maxHealth()
             && Loadout.MAPPER.get(fresh).getWeaponId().equals(GAME.getGameData().playerData().loadout().weapon())
             && Facing.MAPPER.get(fresh).getDirection() == Facing.Direction.RIGHT, "A fresh session seeds the JSON defaults");
+        var freshTime = GAME.getEngine().getSystem(WorldTimeSystem.class);
+        require(freshTime != time && freshTime.getTotalInGameSeconds() == 21_600,
+            "A fresh GameScreen starts a fresh world-time session");
     }
 
     private void bind(GameScreen next) throws ReflectiveOperationException {

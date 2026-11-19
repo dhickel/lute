@@ -1,5 +1,13 @@
 # Durable Decisions
 
+## Session world time
+
+- **Decision:** Each `GameScreen` owns an enabled, queryable world clock starting at day 0, 06:00 (21,600 total in-game seconds). Optional numeric `dayLengthMinutes` in game settings specifies simulation minutes per in-game day; omission defaults to 24, giving 60 in-game seconds per simulation second. Fractional values are accepted; explicit null, non-numbers, non-finite or non-positive values, and values producing a non-finite or non-positive derived rate are rejected. `GameConsts` supplies the setting to the clock. It exposes total seconds, zero-based day index, and fractional minute of day, and its priority of -100 advances it before default-priority systems.
+- **Lifecycle and tradeoff:** The clock follows the screen's simulation updates, including the 1/30-second render delta clamp; hidden or paused rendering does not advance it. Named travel and hide/show retain the clock, while a new screen starts a new clock. This is session time, not wall time or saved state.
+- **Affected specifications:** This decision establishes the session clock contract; future uses are uncommitted [horizon ideas](horizon-ideas.md).
+- **Source:** World-time system implementation and focused clock, screen lifecycle, and map travel tests.
+- **Review timing:** Revisit if time rate, ownership, scheduling, or persistence changes.
+
 ## Tiled sensors, teleports, and spawn markers
 
 - **Decision:** The sensor shape contract supports filled rectangles, circles/ellipses, and simple polygons, including rotation, for `Sensor` and `Teleport` objects on orthogonal maps. Objects belong to `Trigger` or `Triggers` object layers and have unique sensor names. Trigger layers and ancestor groups retain zero offsets and unit parallax. Rectangles and ellipses have positive dimensions; invalid, self-intersecting, or degenerate polygons are rejected. Non-circular ellipses use a fixed eight-sided approximation. Concave polygons and simple polygons with more than eight vertices use multiple convex fixtures but remain one logical detector, with no duplicate events and the same teleport reconciliation as a single-fixture detector. Points and polylines are not detector shapes; text and tile objects are excluded. `Sensor.sensorType` uses `GENERAL`, and teleports also emit `GENERAL` sensor enter and exit events. Typed events carry the sensor name, type, and player, and only the player's non-sensor fixtures participate. The map owner cleans up sensor objects.
