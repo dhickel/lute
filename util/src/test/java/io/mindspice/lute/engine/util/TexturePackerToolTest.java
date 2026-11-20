@@ -13,7 +13,7 @@ import java.util.Comparator;
 public final class TexturePackerToolTest {
     private static final String[] REQUIRED_SPRITE_INPUTS = {"character/player", "character/basic_npc",
         "enemies/brainless_undead", "equipment/basic/body", "equipment/basic/head",
-        "equipment/basic/feet", "equipment/basic/hands", "weapons/melee/basic_sword", "weapons/ranged/basic_bow"};
+        "equipment/basic/feet", "equipment/basic/hands", "weapons/melee/basic_sword", "weapons/ranged/basic_bow", "objects/campfire1"};
 
     public static void main(String[] args) throws IOException {
         Path directory = Files.createTempDirectory("lute-runtime-generation-");
@@ -99,6 +99,7 @@ public final class TexturePackerToolTest {
             atlasCollisions(directory.resolve("collisions"));
             publicationRollback(directory.resolve("publication"));
             spriteAtlases(directory.resolve("sprites"));
+            sharedObjectsAtlas(directory.resolve("shared-objects"));
             spritePageDefaults(directory.resolve("sprite-page-defaults"));
             singleFrameArrows(directory.resolve("single-frame-arrows"));
             System.out.println("TexturePackerToolTest: passed (required sprite inputs, names, two maps, ownership, stale outputs, collisions, rollback, path and symlink safety)");
@@ -222,6 +223,37 @@ public final class TexturePackerToolTest {
             return;
         }
         throw new AssertionError("Missing or empty required sprites must fail generation");
+    }
+
+    private static void sharedObjectsAtlas(Path directory) throws IOException {
+        Path raw = directory.resolve("raw_assets");
+        Path output = directory.resolve("assets");
+        createInputs(raw);
+        createMap(raw, "alpha");
+        createMap(raw, "beta");
+        var source = raw.resolve("sprites/objects");
+        var image = new BufferedImage(32, 32, BufferedImage.TYPE_INT_ARGB);
+        image.setRGB(5, 5, 0xffff8000);
+        ImageIO.write(image, "png", source.resolve("sign.png").toFile());
+        Files.delete(source.resolve("campfire1/idle_down_00.png"));
+        for (int i = 0; i < 6; i++) {
+            ImageIO.write(image, "png", source.resolve("campfire1/campfire1_0" + i + ".png").toFile());
+        }
+        TexturePackerTool.generate(raw, output);
+        var atlases = new FileHandle(output.resolve("atlases").toFile());
+        var objects = new TextureAtlasData(atlases.child("objects.atlas"), atlases, false);
+        check(objects.getRegions().size == 7 && hasRegion(objects, "sign", -1), "Static object uses its unindexed key");
+        for (int i = 0; i < 6; i++) {
+            check(hasRegion(objects, "campfire1/campfire1", i), "Shared object atlas retains each indexed frame");
+        }
+        for (var frame : objects.getRegions()) {
+            check(frame.width == 32 && frame.height == 32 && !frame.rotate, "Object art preserves its sprite canvas");
+        }
+        for (String map : new String[]{"alpha", "beta"}) {
+            var owned = new TextureAtlasData(atlases.child(map + ".atlas"), atlases, false);
+            check(hasRegion(owned, "house", -1) && !hasRegion(owned, "campfire1/campfire1", 0),
+                "Map atlases retain local objects but never duplicate shared campfire frames");
+        }
     }
 
     private static void spritePageDefaults(Path directory) throws IOException {

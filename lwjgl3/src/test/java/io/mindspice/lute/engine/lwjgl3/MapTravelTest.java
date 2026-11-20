@@ -20,6 +20,7 @@ import com.badlogic.gdx.physics.box2d.CircleShape;
 import com.badlogic.gdx.physics.box2d.World;
 import io.mindspice.lute.engine.GameCore;
 import io.mindspice.lute.engine.assets.CharacterAssets;
+import io.mindspice.lute.engine.assets.ObjectAssets;
 import io.mindspice.lute.engine.components.*;
 import io.mindspice.lute.engine.screen.GameScreen;
 import io.mindspice.lute.engine.screen.ScreenManager;
@@ -27,6 +28,7 @@ import io.mindspice.lute.engine.singletons.GameConsts;
 import io.mindspice.lute.engine.systems.AwarenessSystem;
 import io.mindspice.lute.engine.systems.CombatSystem;
 import io.mindspice.lute.engine.systems.EventSystem;
+import io.mindspice.lute.engine.systems.EntityFactory;
 import io.mindspice.lute.engine.systems.TiledSystem;
 import io.mindspice.lute.engine.systems.WorldTimeSystem;
 import io.mindspice.lute.engine.events.Event;
@@ -91,6 +93,7 @@ public final class MapTravelTest extends ApplicationAdapter {
         for (int i = 0; i < 200 && tiled.getCurrentMap() == null; i++) { GAME.render(); }
         require(tiled.getCurrentMap() != null, "Boot finishes loading the actual map");
         var time = GAME.getEngine().getSystem(WorldTimeSystem.class);
+        checkCampfire();
         var player = player();
         atPoint(player, "PlayerSpawn");
         var actualActors = GAME.getEngine().getEntitiesFor(Family.all(CompositeCharacter.class).exclude(Player.class).get());
@@ -171,6 +174,8 @@ public final class MapTravelTest extends ApplicationAdapter {
         screens.unloadScreen("GameScreen");
         require(actualActors.size() == 0, "Disposing the actual map removes both actors");
         require(!GAME.getAssetService().isLoaded(TiledMap.class, "test_tiled"), "Disposal releases the starting map");
+        require(GAME.getAssetService().isLoaded(TextureAtlas.class, ObjectAssets.OBJECTS.id()),
+            "Removing the map does not unload the shared objects atlas");
 
         var entry = ManifestLoader.parseMapManifest(A);
         bind(new GameScreen(entry));
@@ -322,6 +327,39 @@ public final class MapTravelTest extends ApplicationAdapter {
         body(player).setTransform(center.mulAdd(Transform.MAPPER.get(player).getSize(), -.5f), 0);
         body(player).setLinearVelocity(0, 0);
         body(player).setAwake(true);
+    }
+
+    private void checkCampfire() {
+        var point = tiled.getMapTriggers().points().stream().filter(p -> p.name().equals("FireSpawn")).findFirst().orElseThrow();
+        var center = point.position().cpy().scl(GameConsts.UNIT_SCALE);
+        var engine = GAME.getEngine();
+        var campfire = engine.getEntitiesFor(Family.all(Graphic.class, Animation2D.class, Physic.class).get());
+        Entity fire = null;
+        for (var entity : campfire) {
+            if (ObjectAssets.OBJECTS.id().equals(Animation2D.MAPPER.get(entity).getAtlasId())) { fire = entity; }
+        }
+        require(fire != null && body(fire).getPosition().epsilonEquals(center), "Campfire body is centered on FireSpawn");
+        var transform = Transform.MAPPER.get(fire);
+        require(transform.getRotationDeg() == 0f && transform.getSize().equals(new Vector2(1, 1)),
+            "DOWN preserves original 32x32 art orientation and size");
+        var fixture = body(fire).getFixtureList().first();
+        require(body(fire).getType() == BodyDef.BodyType.StaticBody && !fixture.isSensor()
+            && fixture.testPoint(center.x, center.y - .25f) && !fixture.testPoint(center), "Campfire has a solid base ellipse");
+        screen.render(0f);
+        var first = Graphic.MAPPER.get(fire).getRegion();
+        for (int i = 0; i < 12; i++) { frame(); }
+        require(Graphic.MAPPER.get(fire).getRegion() != first && Animation2D.MAPPER.get(fire).getAnimation().getKeyFrames().length == 6,
+            "Campfire advances through its six frames");
+        require(transform.getPosition().epsilonEquals(center.cpy().sub(.5f, .5f)), "Physics steps preserve the centered sprite");
+        var factory = engine.getSystem(EntityFactory.class);
+        var rotated = factory.getSpawnedObject(point.position(), point.spawnKey(), Facing.Direction.RIGHT);
+        engine.addEntity(rotated);
+        try {
+            var rotatedFixture = body(rotated).getFixtureList().first();
+            require(Transform.MAPPER.get(rotated).getRotationDeg() == 90f
+                && rotatedFixture.testPoint(center.x + .25f, center.y)
+                && !rotatedFixture.testPoint(center.x, center.y - .25f), "RIGHT rotates the sprite and base ellipse around the point");
+        } finally { engine.removeEntity(rotated); }
     }
 
     private void frame() { screen.render(GameConsts.PHYSIC_INTERVAL); }

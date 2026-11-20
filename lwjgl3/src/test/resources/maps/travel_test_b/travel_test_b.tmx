@@ -23,7 +23,7 @@
    <properties><property name="spawnType" value="NPC"/><property name="facing" value="RIGHT"/><property name="actorId" value="basic_npc"/></properties><point/>
   </object>
   <object id="8" name="item" type="SpawnPoint" x="256" y="320">
-   <properties><property name="spawnType" value="ITEM"/></properties><point/>
+   <properties><property name="spawnType" value="ITEM"/><property name="spawnKey" value="campfire1"/><property name="facing" value="RIGHT"/></properties><point/>
   </object>
  </objectgroup>
 </map>

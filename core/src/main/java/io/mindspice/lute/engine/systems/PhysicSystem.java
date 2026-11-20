@@ -6,6 +6,7 @@ import com.badlogic.ashley.core.EntityListener;
 import com.badlogic.ashley.core.Family;
 import com.badlogic.ashley.systems.IteratingSystem;
 import com.badlogic.gdx.math.MathUtils;
+import com.badlogic.gdx.physics.box2d.BodyDef;
 import com.badlogic.gdx.physics.box2d.World;
 import io.mindspice.lute.engine.components.Physic;
 import io.mindspice.lute.engine.components.Transform;
@@ -69,9 +70,10 @@ public class PhysicSystem extends IteratingSystem implements EntityListener {
     }
 
     private void interpolateEntity(Entity entity, float alpha) {
-
-        Transform transform = Transform.MAPPER.get(entity);
         Physic physic = Physic.MAPPER.get(entity);
+        // Static fixtures may use a different origin from their authored render transform.
+        if (physic.getBody().getType() == BodyDef.BodyType.StaticBody) { return; }
+        Transform transform = Transform.MAPPER.get(entity);
 
         transform.getPosition().set(
             MathUtils.lerp(physic.getPrevPos().x, physic.getBody().getPosition().x, alpha),

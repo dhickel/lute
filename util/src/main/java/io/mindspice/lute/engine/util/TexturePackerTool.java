@@ -300,7 +300,7 @@ public final class TexturePackerTool {
         }
         for (String required : List.of("character/player", "character/basic_npc", "enemies/brainless_undead",
                 "equipment/basic/body", "equipment/basic/head", "equipment/basic/feet", "equipment/basic/hands",
-                "weapons/melee/basic_sword", "weapons/ranged/basic_bow")) {
+                "weapons/melee/basic_sword", "weapons/ranged/basic_bow", "objects")) {
             Path directory = sprites.resolve(required);
             if (!Files.isDirectory(directory) || spriteImages(directory).isEmpty()) {
                 throw new IllegalArgumentException("Missing or empty required sprite input: " + directory);
@@ -311,8 +311,9 @@ public final class TexturePackerTool {
         rejectNestedPackSettings(sprites.resolve("enemies"));
         rejectNestedPackSettings(equipment);
         rejectNestedPackSettings(sprites.resolve("weapons"));
+        rejectNestedPackSettings(sprites.resolve("objects"));
         Path groupedEquipment = groupEquipmentSprites(equipment, stage.getParent());
-        for (String name : List.of("character", "enemies", "body", "head", "feet", "hands", "weapons")) {
+        for (String name : List.of("character", "enemies", "body", "head", "feet", "hands", "weapons", "objects")) {
             boolean equipmentSlot = EQUIPMENT_SLOTS.contains(name);
             Path input = (equipmentSlot ? groupedEquipment : sprites).resolve(name);
             var settings = new TexturePacker.Settings();

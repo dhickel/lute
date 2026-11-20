@@ -14,7 +14,7 @@ public record PlayerData(
     AnimationData animation,
     Sounds sounds,
     @JsonProperty("logical_size") LogicalSize logicalSize,
-    @JsonProperty("collision_bounds") CharacterBounds collisionBounds,
+    @JsonProperty(required = true) CollisionData collision,
     @JsonProperty("hitbox_bounds") CharacterBounds hitboxBounds
 ) {
     public PlayerData {
@@ -26,14 +26,14 @@ public record PlayerData(
             throw new IllegalArgumentException("Player animation atlas_key must be empty for the flat character atlas");
         }
         if (sounds == null) { throw new IllegalArgumentException("Player sounds are required"); }
-        validateBounds(logicalSize, collisionBounds, hitboxBounds);
+        validateBounds(logicalSize, collision, hitboxBounds);
     }
 
-    static void validateBounds(LogicalSize logicalSize, CharacterBounds collisionBounds, CharacterBounds hitboxBounds) {
-        if (logicalSize == null || collisionBounds == null || hitboxBounds == null) {
+    static void validateBounds(LogicalSize logicalSize, CollisionData collision, CharacterBounds hitboxBounds) {
+        if (logicalSize == null || collision == null || hitboxBounds == null) {
             throw new IllegalArgumentException("Character logical size, collision bounds and hitbox bounds are required");
         }
-        for (var bounds : new CharacterBounds[]{collisionBounds, hitboxBounds}) {
+        for (var bounds : new CharacterBounds[]{collision.bounds(), hitboxBounds}) {
             if (bounds.x2() > logicalSize.width() || bounds.y2() > logicalSize.height()) {
                 throw new IllegalArgumentException("Character bounds must fit the logical frame");
             }

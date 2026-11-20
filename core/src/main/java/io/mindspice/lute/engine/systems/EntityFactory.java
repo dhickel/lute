@@ -19,7 +19,9 @@ import io.mindspice.lute.engine.assets.AssetService;
 import io.mindspice.lute.engine.assets.MapAssets;
 import io.mindspice.lute.engine.assets.WeaponAssets;
 import io.mindspice.lute.engine.assets.CharacterAssets;
+import io.mindspice.lute.engine.assets.ObjectAssets;
 import io.mindspice.lute.engine.data.json.CharacterBounds;
+import io.mindspice.lute.engine.data.json.CollisionData;
 import io.mindspice.lute.engine.data.json.MapActorData;
 import io.mindspice.lute.engine.data.json.WeaponsData;
 import io.mindspice.lute.engine.GameCore;
@@ -84,7 +86,7 @@ public class EntityFactory extends EntitySystem {
         entity.add(animation);
         entity.add(new AnimationPlayer(entity));
         entity.add(createCharacterPhysics(transform.getPosition(), entity, BodyDef.BodyType.DynamicBody,
-            player.collisionBounds(), player.hitboxBounds(), Actor.Role.PLAYER, 0f));
+            player.collision(), player.hitboxBounds(), Actor.Role.PLAYER, 0f));
         entity.add(new CameraFollow());
         entity.add(new Controller(player.loadout().weaponCycle()));
         return entity;
@@ -143,7 +145,7 @@ public class EntityFactory extends EntitySystem {
             .add(new CompositeCharacter(region.getRegionWidth(), region.getRegionHeight()));
         entity.add(new Health(definition.maxHealth()));
         entity.add(createCharacterPhysics(transform.getPosition(), entity, BodyDef.BodyType.StaticBody,
-            definition.collisionBounds(), definition.hitboxBounds(), role, definition.detectionBounds().radius()));
+            definition.collision(), definition.hitboxBounds(), role, definition.detectionBounds().radius()));
         return entity;
     }
 
@@ -232,6 +234,70 @@ public class EntityFactory extends EntitySystem {
         }
     }
 
+    public Entity getSpawnedObject(Vector2 pixelPosition, String spawnKey, Facing.Direction facing) {
+        var definition = GameCore.INSTANCE.getGameData().objectsData().get(spawnKey);
+        if (definition == null) { throw new IllegalArgumentException("Unknown object spawnKey: " + spawnKey); }
+        var atlas = ObjectAssets.OBJECTS;
+        var settings = definition.animation();
+        Animation2D animation = null;
+        TextureRegion region;
+        if (settings == null) {
+            region = assetService.get(TextureAtlas.class, atlas.id()).findRegion(spawnKey, -1);
+            if (region == null) { throw new IllegalArgumentException("No static object atlas region for " + spawnKey); }
+        } else {
+            animation = createAnimation(atlas, settings.atlasKey(), Animation2D.AnimationType.DEFAULT,
+                settings.speed(), settings.frameInterval(), facing);
+            var frames = animation.getAnimation().getKeyFrames();
+            region = frames[0];
+            for (var frame : frames) {
+                if (frame.getRegionWidth() != region.getRegionWidth() || frame.getRegionHeight() != region.getRegionHeight()) {
+                    throw new IllegalArgumentException("Object animation frame sizes differ for " + spawnKey);
+                }
+            }
+        }
+
+        float rotation = switch (facing) {
+            case DOWN -> 0f;
+            case RIGHT -> 90f;
+            case UP -> 180f;
+            case LEFT -> -90f;
+        };
+        float width = region.getRegionWidth();
+        float height = region.getRegionHeight();
+        float unit = GameConsts.UNIT_SCALE;
+        var size = new Vector2(width, height).scl(unit);
+        var center = pixelPosition.cpy().scl(unit);
+        var position = center.cpy().mulAdd(size, -.5f);
+        var entity = getEngine().createEntity();
+        entity.add(new Transform(position, 2, size, new Vector2(1, 1), rotation, 0f));
+        entity.add(new Graphic(region, Color.WHITE.cpy()));
+        if (animation != null) {
+            entity.add(new Facing(facing));
+            entity.add(animation);
+        }
+        var collision = definition.collision();
+        if (collision != null) {
+            var bounds = collision.bounds();
+            if (bounds.x2() > width || bounds.y2() > height) {
+                throw new IllegalArgumentException("Object collision bounds exceed the sprite canvas for " + spawnKey);
+            }
+            var bodyDef = new BodyDef();
+            bodyDef.type = BodyDef.BodyType.StaticBody;
+            bodyDef.position.set(center);
+            bodyDef.angle = (float) Math.toRadians(rotation);
+            var body = world.createBody(bodyDef);
+            try {
+                CharacterFixtures.create(body, collision, false, width * .5f, height * .5f);
+                body.setUserData(entity);
+                entity.add(new Physic(body, position.cpy()));
+            } catch (RuntimeException | Error failure) {
+                world.destroyBody(body);
+                throw failure;
+            }
+        }
+        return entity;
+    }
+
     public Entity getPhysicObjectEntity(PhysicObjectProps props, TiledMapTileMapObject object, MapAssets mapAssets) {
         var atlas = mapAssets.atlasAsset();
         String assetKey = props.atlasKey();
@@ -312,7 +378,7 @@ public class EntityFactory extends EntitySystem {
     }
 
     private Physic createCharacterPhysics(Vector2 position, Entity entity, BodyDef.BodyType bodyType,
-                                          CharacterBounds feet, CharacterBounds hurtbox, Actor.Role role,
+                                          CollisionData collision, CharacterBounds hurtbox, Actor.Role role,
                                           float awarenessRadiusPixels) {
         var bodyDef = new BodyDef();
         bodyDef.type = bodyType;
@@ -322,7 +388,8 @@ public class EntityFactory extends EntitySystem {
         body.setUserData(entity);
 
         try {
-            CharacterFixtures.ellipse(body, feet, false);
+            CharacterFixtures.create(body, collision, false, 0f, 0f);
+            var feet = collision.bounds();
             CharacterFixtures.ellipse(body, hurtbox, true).setUserData(Hurtbox.INSTANCE);
             float unit = GameConsts.UNIT_SCALE;
             var actor = new Actor(role, (feet.x1() + feet.x2()) * .5f * unit,

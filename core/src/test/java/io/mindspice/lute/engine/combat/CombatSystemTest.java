@@ -25,7 +25,7 @@ import io.mindspice.lute.engine.data.json.PlayerData;
 import io.mindspice.lute.engine.data.json.DataLoader;
 import io.mindspice.lute.engine.data.json.AnimationData;
 import io.mindspice.lute.engine.data.json.GameData;
-import io.mindspice.lute.engine.data.json.ProjectilesData.CollisionBounds;
+import io.mindspice.lute.engine.data.json.CollisionData;
 import io.mindspice.lute.engine.data.json.ProjectilesData.Projectile;
 import io.mindspice.lute.engine.data.json.WeaponsData;
 import io.mindspice.lute.engine.data.json.WeaponsData.WeaponData;
@@ -871,8 +871,8 @@ public final class CombatSystemTest {
             for (var logical : new PlayerData.LogicalSize[]{new PlayerData.LogicalSize(129, 64), new PlayerData.LogicalSize(64, 129)}) {
                 var original = data.playerData();
                 var invalid = new PlayerData(original.name(), original.moveSpeed(), original.maxHealth(), original.loadout(),
-                    original.animation(), original.sounds(), logical, original.collisionBounds(), original.hitboxBounds());
-                field.set(GameCore.INSTANCE, new GameData(invalid, data.weaponsData(), data.projectilesData(), data.charactersData(), data.enemiesData()));
+                    original.animation(), original.sounds(), logical, original.collision(), original.hitboxBounds());
+                field.set(GameCore.INSTANCE, new GameData(invalid, data.weaponsData(), data.projectilesData(), data.charactersData(), data.enemiesData(), data.objectsData()));
                 rejects(() -> factory.getPlayerEntity(new Vector2(320, 640), null, Facing.Direction.RIGHT), "Logical dimensions must fit the loaded canvas");
             }
             for (boolean collision : new boolean[]{false, true}) {
@@ -880,16 +880,16 @@ public final class CombatSystemTest {
                 var tiny = new CharacterBounds(0, 0, .001f, .001f);
                 var invalid = new PlayerData(original.name(), original.moveSpeed(), original.maxHealth(), original.loadout(),
                     original.animation(), original.sounds(), original.logicalSize(),
-                    collision ? tiny : original.collisionBounds(), collision ? original.hitboxBounds() : tiny);
-                field.set(GameCore.INSTANCE, new GameData(invalid, data.weaponsData(), data.projectilesData(), data.charactersData(), data.enemiesData()));
+                    collision ? CollisionData.ellipse(tiny) : original.collision(), collision ? original.hitboxBounds() : tiny);
+                field.set(GameCore.INSTANCE, new GameData(invalid, data.weaponsData(), data.projectilesData(), data.charactersData(), data.enemiesData(), data.objectsData()));
                 int bodyCount = world.getBodyCount();
                 rejects(() -> factory.getPlayerEntity(new Vector2(320, 640), null, Facing.Direction.RIGHT), "Native-unsafe configured ellipse is rejected in Java");
                 check(world.getBodyCount() == bodyCount, "Invalid character fixture construction cannot leak a partial body");
             }
             var original = data.playerData();
             var different = new PlayerData(original.name(), original.moveSpeed(), original.maxHealth(), original.loadout(),
-                original.animation(), original.sounds(), new PlayerData.LogicalSize(80, 72), original.collisionBounds(), original.hitboxBounds());
-            field.set(GameCore.INSTANCE, new GameData(different, data.weaponsData(), data.projectilesData(), data.charactersData(), data.enemiesData()));
+                original.animation(), original.sounds(), new PlayerData.LogicalSize(80, 72), original.collision(), original.hitboxBounds());
+            field.set(GameCore.INSTANCE, new GameData(different, data.weaponsData(), data.projectilesData(), data.charactersData(), data.enemiesData(), data.objectsData()));
             var differentPlayer = factory.getPlayerEntity(new Vector2(320, 640), null, Facing.Direction.RIGHT);
             near(80 * GameConsts.UNIT_SCALE, Transform.MAPPER.get(differentPlayer).getSize().x, "Factory accepts configured future logical width");
             near(72 * GameConsts.UNIT_SCALE, Transform.MAPPER.get(differentPlayer).getSize().y, "Factory accepts configured future logical height");
@@ -906,7 +906,7 @@ public final class CombatSystemTest {
             check(fixtures.size == 2, "Factory creates separate persistent feet and hurtbox fixtures");
             for (var fixture : fixtures) {
                 boolean hurtbox = fixture.getUserData() == Hurtbox.INSTANCE;
-                ellipse(fixture, hurtbox ? data.playerData().hitboxBounds() : data.playerData().collisionBounds(), hurtbox);
+                ellipse(fixture, hurtbox ? data.playerData().hitboxBounds() : data.playerData().collision().bounds(), hurtbox);
             }
             near(320 * GameConsts.UNIT_SCALE, transform.getPosition().x + transform.getSize().x / 2,
                 "Real factory centers initial PLAYER point X");
@@ -1016,7 +1016,7 @@ public final class CombatSystemTest {
         var changed = new AttackStats(primary ? replacement : attacks.primary(), primary ? attacks.secondary() : replacement);
         weapons.put(id, new WeaponData(changed, original.atlasKey()));
         return new GameData(data.playerData(), new WeaponsData(data.weaponsData().atlas(), weapons),
-            data.projectilesData(), data.charactersData(), data.enemiesData());
+            data.projectilesData(), data.charactersData(), data.enemiesData(), data.objectsData());
     }
 
     private static TextureAtlas.AtlasRegion sourceFrame(TextureAtlas atlas, String key) {
@@ -1124,7 +1124,7 @@ public final class CombatSystemTest {
         final Engine engine = new Engine();
         final EventSystem events = new EventSystem();
         final CombatSystem combatSystem = new CombatSystem(world,
-            new Projectile("projectiles/test", 8, 5, new CollisionBounds(8.5f, 10), 0.3f, 16, 32, 90));
+            new Projectile("projectiles/test", 8, 5, CollisionData.ellipse(new CharacterBounds(0, 0, 10, 8.5f)), 0.3f, 16, 32, 90));
         final LoadoutSystem loadouts = new LoadoutSystem();
         final List<String> sounds = new ArrayList<>();
         final Entity player = new Entity();

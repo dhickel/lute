@@ -4,12 +4,15 @@ import com.badlogic.ashley.core.Entity;
 import com.badlogic.gdx.math.Vector2;
 import com.badlogic.gdx.physics.box2d.BodyDef;
 import com.badlogic.gdx.physics.box2d.CircleShape;
+import com.badlogic.gdx.physics.box2d.PolygonShape;
 import com.badlogic.gdx.physics.box2d.World;
 import io.mindspice.lute.engine.components.Facing;
 import io.mindspice.lute.engine.components.Health;
 import io.mindspice.lute.engine.components.Hurtbox;
-import io.mindspice.lute.engine.data.json.ProjectilesData.CollisionBounds;
+import io.mindspice.lute.engine.data.json.CharacterBounds;
+import io.mindspice.lute.engine.data.json.CollisionData;
 import io.mindspice.lute.engine.data.json.ProjectilesData.Projectile;
+import io.mindspice.lute.engine.singletons.GameConsts;
 
 public final class ArrowFlightTest {
     private static final Projectile TYPE = projectile(.5f);
@@ -17,6 +20,7 @@ public final class ArrowFlightTest {
     private ArrowFlightTest() { }
 
     public static void run() {
+        collisionShapes();
         var aim = new Vector2(1, 0);
         var world = new World(Vector2.Zero, true);
         try {
@@ -42,6 +46,54 @@ public final class ArrowFlightTest {
             require(launch(TYPE, aim).finished(world, 6f) && Health.MAPPER.get(target).getCurrent() == 90,
                 "A long update hits a small hurtbox below the old straight extension");
         } finally { world.dispose(); }
+    }
+
+    private static void collisionShapes() {
+        var world = new World(Vector2.Zero, true);
+        try {
+            float unit = GameConsts.UNIT_SCALE;
+            for (var shape : CollisionData.Shape.values()) {
+                var bounds = new CharacterBounds(0, 0, 20, shape == CollisionData.Shape.CIRCLE ? 20 : 8);
+                var collision = new CollisionData(shape, bounds, 90f);
+                var body = world.createBody(new BodyDef());
+                var fixture = CharacterFixtures.create(body, collision, false, 10, bounds.y2() / 2);
+                require(!fixture.isSensor(), shape + " fixture is solid");
+                if (shape == CollisionData.Shape.CIRCLE) {
+                    var circle = (CircleShape) fixture.getShape();
+                    require(circle.getPosition().isZero() && circle.getRadius() == 10 * unit,
+                        "CIRCLE creates a native circle around the bounds center");
+                } else {
+                    var polygon = (PolygonShape) fixture.getShape();
+                    int count = switch (shape) { case RECT -> 4; case TRIANGLE -> 3; default -> 8; };
+                    require(polygon.getVertexCount() == count, shape + " vertex count");
+                    require(polygonSpan(polygon, true) <= 8 * unit + .0001f
+                        && Math.abs(polygonSpan(polygon, false) - 20 * unit) < .0001f,
+                        shape + " rotates its width axis around the center");
+                }
+                world.destroyBody(body);
+
+                var type = new Projectile("test", 12, 5, collision, 0, 0, 0, 0);
+                var arrow = launch(type, new Vector2(3, 0));
+                var target = hurtbox(world, new Vector2(1.5f, 0));
+                require(arrow.finished(world, .25f) && Health.MAPPER.get(target).getCurrent() == 90,
+                    shape + " sweeps across a small target when rotated");
+                var bodies = new com.badlogic.gdx.utils.Array<com.badlogic.gdx.physics.box2d.Body>();
+                world.getBodies(bodies);
+                world.destroyBody(bodies.first());
+            }
+        } finally { world.dispose(); }
+    }
+
+    private static float polygonSpan(PolygonShape polygon, boolean horizontal) {
+        float min = Float.POSITIVE_INFINITY, max = Float.NEGATIVE_INFINITY;
+        var point = new Vector2();
+        for (int i = 0; i < polygon.getVertexCount(); i++) {
+            polygon.getVertex(i, point);
+            float value = horizontal ? point.x : point.y;
+            min = Math.min(min, value);
+            max = Math.max(max, value);
+        }
+        return max - min;
     }
 
     private static void verifySpeed(World world, float aimX, float lift) {
@@ -85,7 +137,7 @@ public final class ArrowFlightTest {
     }
 
     private static Projectile projectile(float arcHeight) {
-        return new Projectile("test", 12, 5, new CollisionBounds(8.5f, 10), arcHeight, 0, 0, 0);
+        return new Projectile("test", 12, 5, CollisionData.ellipse(new CharacterBounds(0, 0, 10, 8.5f)), arcHeight, 0, 0, 0);
     }
 
     private static ArrowFlight launch(Projectile type, Vector2 aim) {

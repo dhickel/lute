@@ -17,7 +17,7 @@ final class ArrowFlight {
     private final Vector2 start, aimPoint, travel;
     private final float damage;
     private final double span, rise, bend, sweepStep, endProgress;
-    private final Vector2[] triangle;
+    private final Vector2[] vertices;
     private final float collisionPad;
     private double elapsed, progress;
 
@@ -45,18 +45,27 @@ final class ArrowFlight {
         sweepStep = bend == 0 ? Double.POSITIVE_INFINITY : Math.sqrt(2 * GameConsts.UNIT_SCALE / bend);
         direction = travel.cpy().nor();
         updateDirection(0);
-        float length = type.collisionBounds().length() * GameConsts.UNIT_SCALE;
-        float halfWidth = type.collisionBounds().width() * GameConsts.UNIT_SCALE / 2;
-        triangle = new Vector2[]{new Vector2(), new Vector2(-length, halfWidth), new Vector2(-length, -halfWidth)};
-        collisionPad = length + halfWidth;
+        var bounds = type.collision().bounds();
+        float length = (bounds.y2() - bounds.y1()) * GameConsts.UNIT_SCALE;
+        float halfWidth = (bounds.x2() - bounds.x1()) * GameConsts.UNIT_SCALE / 2;
+        vertices = CharacterFixtures.centeredVertices(type.collision());
+        float pad = length + halfWidth;
+        for (var vertex : vertices) {
+            // Map up to the flight tangent, with the top midpoint of the bounds at the art tip.
+            vertex.set(vertex.y - length / 2, -vertex.x);
+            pad = Math.max(pad, vertex.len());
+        }
+        collisionPad = pad;
         // A near-north shot that hasn't cleared the launch strip ends at its apex.
         double apex = bend > 0 ? rise / bend : Double.POSITIVE_INFINITY;
         endProgress = blend > 0 && blend < 1 && Math.abs(travel.x) * apex < 32 * GameConsts.UNIT_SCALE + collisionPad
             ? apex : Double.POSITIVE_INFINITY;
     }
 
+    int boundsVertexCount() { return vertices.length; }
+
     void worldBoundsVertex(int index, Vector2 out) {
-        var vertex = triangle[index];
+        var vertex = vertices[index];
         out.set(tip.x + vertex.x * direction.x - vertex.y * direction.y,
             tip.y + vertex.x * direction.y + vertex.y * direction.x);
     }
@@ -122,7 +131,7 @@ final class ArrowFlight {
     }
 
     private boolean hit(World world, Vector2 next) {
-        var sweep = new ArrowTipSweep(tip, direction, triangle, tip.dst(next));
+        var sweep = new ArrowTipSweep(tip, direction, vertices, tip.dst(next));
         class Nearest implements QueryCallback {
             float distance = Float.POSITIVE_INFINITY;
             Entity target;

@@ -39,7 +39,7 @@ import io.mindspice.lute.engine.components.Health;
 import io.mindspice.lute.engine.components.Hurtbox;
 import io.mindspice.lute.engine.components.Loadout;
 import io.mindspice.lute.engine.data.json.CharacterBounds;
-import io.mindspice.lute.engine.data.json.ProjectilesData.CollisionBounds;
+import io.mindspice.lute.engine.data.json.CollisionData;
 import io.mindspice.lute.engine.data.json.ProjectilesData.Projectile;
 import io.mindspice.lute.engine.components.Physic;
 import io.mindspice.lute.engine.components.Player;
@@ -442,8 +442,9 @@ public final class MapSensorSystemTest {
                 point("item-point", "ITEM", 28, 28), area, playerArea,
                 sensor("spawn-room", 4, 4, 4, 4)));
             check(factory.calls == 1 && factory.actorTypes.equals(List.of(Actor.Role.NPC, Actor.Role.ENEMY))
-                    && factory.actorIds.equals(List.of("npc-point", "enemy-point")) && game.engine.getEntities().size() == 3,
-                "PLAYER, NPC and ENEMY points spawn entities; other points and all areas stay data-only");
+                    && factory.actorIds.equals(List.of("npc-point", "enemy-point")) && game.engine.getEntities().size() == 4
+                    && "campfire1".equals(factory.objectKey) && factory.objectFacing == Facing.Direction.DOWN,
+                "PLAYER, NPC, ENEMY and ITEM points spawn entities; teleport points and areas do not");
             near(pixels(6), factory.lastPixels.x, "TiledSystem passes unscaled point X pixels to factory");
             near(pixels(7), factory.lastPixels.y, "TiledSystem passes unflipped point Y pixels to factory");
             check(game.tiled.getMapTriggers().points().size() == 5 && game.tiled.getMapTriggers().areas().size() == 2,
@@ -990,6 +991,10 @@ public final class MapSensorSystemTest {
         object.getProperties().put("spawnType", type);
         switch (type) {
             case "PLAYER" -> object.getProperties().put("facing", "UP");
+            case "ITEM" -> {
+                object.getProperties().put("spawnKey", "campfire1");
+                object.getProperties().put("facing", "DOWN");
+            }
             case "NPC", "ENEMY" -> {
                 object.getProperties().put("actorId", name);
                 object.getProperties().put("facing", "LEFT");
@@ -1058,6 +1063,8 @@ public final class MapSensorSystemTest {
         final java.util.List<String> actorIds = new java.util.ArrayList<>();
         Vector2 lastPixels;
         Entity lastPlayer;
+        String objectKey;
+        Facing.Direction objectFacing;
 
         FakeFactory(Harness game) {
             super(game.world, game.assets);
@@ -1067,6 +1074,12 @@ public final class MapSensorSystemTest {
         @Override public Entity getMapActor(Vector2 pixelPosition, Actor.Role role, String actorId, Facing.Direction facing) {
             actorTypes.add(role);
             actorIds.add(actorId);
+            return game.engine.createEntity();
+        }
+
+        @Override public Entity getSpawnedObject(Vector2 pixelPosition, String spawnKey, Facing.Direction facing) {
+            objectKey = spawnKey;
+            objectFacing = facing;
             return game.engine.createEntity();
         }
 
@@ -1090,7 +1103,7 @@ public final class MapSensorSystemTest {
         };
         final EventSystem events = new EventSystem();
         final CombatSystem combat = new CombatSystem(world,
-            new Projectile("projectiles/test", 8, 5, new CollisionBounds(8.5f, 10), 0.3f, 16, 32, 90));
+            new Projectile("projectiles/test", 8, 5, CollisionData.ellipse(new CharacterBounds(0, 0, 10, 8.5f)), 0.3f, 16, 32, 90));
         final MapSensorSystem sensors = new MapSensorSystem(world);
         final PhysicSystem physics = new PhysicSystem(world, STEP);
         final AssetService assets = new AssetService(FileHandle::new);

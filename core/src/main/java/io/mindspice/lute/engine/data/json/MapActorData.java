@@ -5,7 +5,7 @@ import com.fasterxml.jackson.annotation.JsonProperty;
 public sealed interface MapActorData permits MapActorData.Npc, MapActorData.Enemy {
     AnimationData animation();
     PlayerData.LogicalSize logicalSize();
-    CharacterBounds collisionBounds();
+    CollisionData collision();
     CharacterBounds hitboxBounds();
     DetectionBounds detectionBounds();
     int maxHealth();
@@ -18,12 +18,12 @@ public sealed interface MapActorData permits MapActorData.Npc, MapActorData.Enem
         AnimationData animation,
         PlayerData.Sounds sounds,
         @JsonProperty("logical_size") PlayerData.LogicalSize logicalSize,
-        @JsonProperty("collision_bounds") CharacterBounds collisionBounds,
+        @JsonProperty(required = true) CollisionData collision,
         @JsonProperty("hitbox_bounds") CharacterBounds hitboxBounds,
         @JsonProperty("detection_bounds") DetectionBounds detectionBounds
     ) implements MapActorData {
         public Npc {
-            validate(moveSpeed, maxHealth, animation, sounds, logicalSize, collisionBounds, hitboxBounds, detectionBounds);
+            validate(moveSpeed, maxHealth, animation, sounds, logicalSize, collision, hitboxBounds, detectionBounds);
             if (loadout == null) { throw new IllegalArgumentException("NPC loadout is required"); }
         }
 
@@ -37,12 +37,12 @@ public sealed interface MapActorData permits MapActorData.Npc, MapActorData.Enem
         AnimationData animation,
         PlayerData.Sounds sounds,
         @JsonProperty("logical_size") PlayerData.LogicalSize logicalSize,
-        @JsonProperty("collision_bounds") CharacterBounds collisionBounds,
+        @JsonProperty(required = true) CollisionData collision,
         @JsonProperty("hitbox_bounds") CharacterBounds hitboxBounds,
         @JsonProperty("detection_bounds") DetectionBounds detectionBounds
     ) implements MapActorData {
         public Enemy {
-            validate(moveSpeed, maxHealth, animation, sounds, logicalSize, collisionBounds, hitboxBounds, detectionBounds);
+            validate(moveSpeed, maxHealth, animation, sounds, logicalSize, collision, hitboxBounds, detectionBounds);
             if (weapon != null && weapon.isBlank()) { throw new IllegalArgumentException("Enemy weapon must not be blank"); }
         }
     }
@@ -57,7 +57,7 @@ public sealed interface MapActorData permits MapActorData.Npc, MapActorData.Enem
     }
 
     private static void validate(float speed, int health, AnimationData animation, PlayerData.Sounds sounds,
-                                 PlayerData.LogicalSize size, CharacterBounds feet, CharacterBounds hitbox,
+                                 PlayerData.LogicalSize size, CollisionData feet, CharacterBounds hitbox,
                                  DetectionBounds detection) {
         if (!Float.isFinite(speed) || speed <= 0f || health <= 0) {
             throw new IllegalArgumentException("Actor movement speed and health must be positive and finite");

@@ -50,9 +50,12 @@ public class TriggerDebugRenderSystem extends EntitySystem implements Disposable
             // Projectile sweeps have no Box2D fixture to draw.
             renderer.setColor(Color.YELLOW);
             for (var arrow : combat.arrows()) {
-                arrow.worldBoundsVertex(1, a);
-                arrow.worldBoundsVertex(2, b);
-                renderer.triangle(arrow.tip.x, arrow.tip.y, a.x, a.y, b.x, b.y);
+                int count = arrow.boundsVertexCount();
+                for (int i = 0; i < count; i++) {
+                    arrow.worldBoundsVertex(i, a);
+                    arrow.worldBoundsVertex((i + 1) % count, b);
+                    renderer.line(a.x, a.y, b.x, b.y);
+                }
             }
         }
         renderer.setColor(Color.MAGENTA);
