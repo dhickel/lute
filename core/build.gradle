@@ -83,6 +83,13 @@ tasks.register('mapSensorSystemTest', JavaExec) {
 }
 check.dependsOn mapSensorSystemTest
 
+tasks.register('awarenessSystemTest', JavaExec) {
+  dependsOn testClasses
+  classpath = sourceSets.test.runtimeClasspath
+  mainClass = 'io.mindspice.lute.engine.systems.AwarenessSystemTest'
+}
+check.dependsOn awarenessSystemTest
+
 tasks.register('combatSystemTest', JavaExec) {
   dependsOn testClasses
   classpath = sourceSets.test.runtimeClasspath + files(rootProject.file('assets'))

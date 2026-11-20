@@ -43,6 +43,8 @@ public class GameScreen extends ScreenAdapter {
             addSystem(new AttackCooldownSystem());
             addSystem(new ControllerSystem());
             addSystem(new FacingSystem());
+            // Read the last completed physics/teleport snapshot before resolving this frame's animation.
+            addSystem(new AwarenessSystem(physicWorld));
             addSystem(new AnimationPlayerSystem());
             addSystem(new AnimationSystem(this.game.getAssetService()));
             addSystem(new CombatSystem(physicWorld, game.getGameData().projectilesData().ironArrow()));

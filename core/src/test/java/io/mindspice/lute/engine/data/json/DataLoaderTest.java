@@ -30,6 +30,7 @@ public final class DataLoaderTest {
             weaponSchema(definitions);
             projectileSchema();
             missingProjectileData();
+            actorsSchema();
             invalidMetadata(player, definitions);
             assetIds(definitions);
             settingsAtomicity();
@@ -72,6 +73,35 @@ public final class DataLoaderTest {
         } finally {
             useAssets();
             Files.delete(emptyDirectory);
+        }
+    }
+
+    private static void actorsSchema() throws Exception {
+        var directory = Files.createTempDirectory("actor-data");
+        var fixture = directory.resolve("actors.json");
+        try {
+            useResolver(path -> new FileHandle(path.equals(GameConsts.DATA_PATH + "actors.json")
+                ? fixture.toFile() : Path.of("assets", path).toFile()));
+            var defaults = DataLoader.loadGameData().actorsData();
+            check(defaults.npc().awarenessRadius() == 96 && defaults.enemy().awarenessRadius() == 160,
+                "Legacy asset packs receive per-role defaults");
+            Files.writeString(fixture, """
+                {"npc":{"awareness_radius":72},"enemy":{"awareness_radius":192.5}}
+                """);
+            var authored = DataLoader.loadGameData().actorsData();
+            check(authored.npc().awarenessRadius() == 72 && authored.enemy().awarenessRadius() == 192.5f,
+                "Authored pixel radii are exposed in GameData");
+            for (String invalid : new String[]{"{}", "null", "{\"awareness_radius\":0}",
+                    "{\"awareness_radius\":-1}", "{\"awareness_radius\":1e100}"}) {
+                Files.writeString(fixture, "{\"npc\":" + invalid + ",\"enemy\":{\"awareness_radius\":160}}");
+                rejects(DataLoader::parseActorsData, "Invalid actor definition: " + invalid);
+            }
+            Files.writeString(fixture, "{\"npc\":{\"awareness_radius\":96}}");
+            rejects(DataLoader::parseActorsData, "Missing enemy definition");
+        } finally {
+            useAssets();
+            Files.deleteIfExists(fixture);
+            Files.delete(directory);
         }
     }
 

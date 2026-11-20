@@ -11,11 +11,13 @@ import com.badlogic.gdx.backends.lwjgl3.Lwjgl3ApplicationConfiguration;
 import com.badlogic.gdx.utils.Disposable;
 import io.mindspice.lute.engine.GameCore;
 import io.mindspice.lute.engine.assets.MapAssets;
+import io.mindspice.lute.engine.components.Actor;
 import io.mindspice.lute.engine.components.Combat;
 import io.mindspice.lute.engine.components.Player;
 import io.mindspice.lute.engine.screen.GameScreen;
 import io.mindspice.lute.engine.screen.ScreenManager;
 import io.mindspice.lute.engine.singletons.GameConsts;
+import io.mindspice.lute.engine.systems.AwarenessSystem;
 import io.mindspice.lute.engine.systems.EventSystem;
 import io.mindspice.lute.engine.systems.PhysicSystem;
 import io.mindspice.lute.engine.systems.TiledSystem;
@@ -102,15 +104,22 @@ public final class GameScreenLifecycleTest extends ApplicationAdapter {
         Gdx.input.getInputProcessor().keyDown(Input.Keys.SHIFT_LEFT);
         engine.update(0.02f);
         require(Combat.MAPPER.get(player).isAttacking(), "Teardown starts with a live attack");
+        var awareness = engine.getSystem(AwarenessSystem.class);
+        var actors = engine.getEntitiesFor(com.badlogic.ashley.core.Family.all(Actor.class).get());
+        var oldEnemy = actors.get(2);
         var beforeHide = time.getTotalInGameSeconds();
         screens.loadScreen("away", new ScreenAdapter());
         screens.switchScreens("away");
         original.render(1f);
         near(time.getTotalInGameSeconds(), beforeHide, "Hidden game rendering does not advance world time");
+        require(actors.size() == 0 && awareness.inRange(oldEnemy, Actor.Role.PLAYER).isEmpty(),
+            "Hide removes awareness actors and queryable fixtures");
         screens.switchScreens("GameScreen");
         original.render(1f);
         near(time.getTotalInGameSeconds(), beforeHide + clampedWorldSeconds, "Shown game rendering resumes world time");
         require(playerCount(engine) == 1, "Hide/show retains the live player while checking world time");
+        require(actors.size() == 3 && !actors.contains(oldEnemy, true)
+            && awareness.inRange(oldEnemy, Actor.Role.PLAYER).isEmpty(), "Show rebuilds actors without reusing old targets");
         screens.switchScreens("away");
         require(playerCount(engine) == 0, "Hide removes the old player and its physics body");
         require(engine.getSystem(PhysicSystem.class) == physics, "Hide retains screen systems for reuse");

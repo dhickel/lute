@@ -1,0 +1,4 @@
+{
+  "npc": { "awareness_radius": 72 },
+  "enemy": { "awareness_radius": 192.5 }
+}

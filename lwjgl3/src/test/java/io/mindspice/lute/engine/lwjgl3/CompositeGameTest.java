@@ -205,11 +205,24 @@ public final class CompositeGameTest {
             && body.getPosition().epsilonEquals(transform.getPosition(), .0001f),
             spawn + " is stationary and its body is aligned with the logical frame");
         var fixtures = body.getFixtureList();
-        require(fixtures.size == 2, spawn + " has exactly two fixtures");
-        var feet = fixtures.get(0).isSensor() ? fixtures.get(1) : fixtures.get(0);
-        var hurtbox = feet == fixtures.get(0) ? fixtures.get(1) : fixtures.get(0);
-        require(!feet.isSensor() && hurtbox.isSensor() && hurtbox.getUserData() == Hurtbox.INSTANCE,
-            spawn + " has solid feet and a separately tagged damage sensor");
+        require(fixtures.size == 3, spawn + " has solid feet, hurtbox and awareness fixtures");
+        Fixture feet = null;
+        Fixture hurtbox = null;
+        Fixture awareness = null;
+        for (var fixture : fixtures) {
+            if (!fixture.isSensor()) { feet = fixture; }
+            else if (fixture.getUserData() == Hurtbox.INSTANCE) { hurtbox = fixture; }
+            else if (fixture.getShape() instanceof CircleShape circle) {
+                awareness = fixture;
+                require(fixture.getFilterData().maskBits == 0
+                    && circle.getPosition().epsilonEquals(new Vector2(32, 9).scl(GameConsts.UNIT_SCALE), .0001f),
+                    spawn + " has a contact-free awareness circle at its physical feet");
+            }
+        }
+        require(feet != null && hurtbox != null && awareness != null,
+            spawn + " has typed feet, hurtbox and awareness fixtures");
+        require(hurtbox.isSensor() && hurtbox.getUserData() == Hurtbox.INSTANCE,
+            spawn + " has a separately tagged damage sensor");
         float unit = GameConsts.UNIT_SCALE;
         var feetPoint = body.getWorldPoint(new Vector2(32, 9).scl(unit)).cpy();
         var torsoPoint = body.getWorldPoint(new Vector2(32, 40).scl(unit)).cpy();

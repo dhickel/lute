@@ -15,6 +15,8 @@ import com.badlogic.gdx.maps.objects.RectangleMapObject;
 import com.badlogic.gdx.maps.tiled.TiledMap;
 import com.badlogic.gdx.math.Vector2;
 import com.badlogic.gdx.physics.box2d.Body;
+import com.badlogic.gdx.physics.box2d.BodyDef;
+import com.badlogic.gdx.physics.box2d.CircleShape;
 import com.badlogic.gdx.physics.box2d.World;
 import io.mindspice.lute.engine.GameCore;
 import io.mindspice.lute.engine.assets.CharacterAssets;
@@ -22,6 +24,7 @@ import io.mindspice.lute.engine.components.*;
 import io.mindspice.lute.engine.screen.GameScreen;
 import io.mindspice.lute.engine.screen.ScreenManager;
 import io.mindspice.lute.engine.singletons.GameConsts;
+import io.mindspice.lute.engine.systems.AwarenessSystem;
 import io.mindspice.lute.engine.systems.CombatSystem;
 import io.mindspice.lute.engine.systems.EventSystem;
 import io.mindspice.lute.engine.systems.TiledSystem;
@@ -61,6 +64,22 @@ public final class MapTravelTest extends ApplicationAdapter {
         finally { Gdx.app.exit(); }
     }
 
+    private static void checkSensor(Entity entity, Actor.Role role, float pixels) {
+        var actor = Actor.MAPPER.get(entity);
+        var body = body(entity);
+        require(actor.role() == role && body.getType() == BodyDef.BodyType.StaticBody,
+            "Map actor has its authored role and remains static");
+        for (var fixture : body.getFixtureList()) {
+            if (fixture.isSensor() && fixture.getShape() instanceof CircleShape circle) {
+                require(fixture.getFilterData().maskBits == 0 && circle.getRadius() == pixels * GameConsts.UNIT_SCALE
+                    && circle.getPosition().equals(new Vector2(actor.feetX(), actor.feetY())),
+                    "Attached circle uses the authored pixel radius and physical feet center without contacts");
+                return;
+            }
+        }
+        throw new AssertionError("Missing attached awareness circle for " + role);
+    }
+
     private void runTests() throws ReflectiveOperationException {
         GAME.create();
         initialized = true;
@@ -78,6 +97,23 @@ public final class MapTravelTest extends ApplicationAdapter {
         require(actualActors.size() == 2, "Actual startup map owns both actors");
         var oldNpc = actualActors.first();
         var oldEnemy = actualActors.get(1);
+        var awareness = GAME.getEngine().getSystem(AwarenessSystem.class);
+        var actorData = GAME.getGameData().actorsData();
+        checkSensor(oldNpc, Actor.Role.NPC, actorData.npc().awarenessRadius());
+        checkSensor(oldEnemy, Actor.Role.ENEMY, actorData.enemy().awarenessRadius());
+        require(Actor.MAPPER.get(player).role() == Actor.Role.PLAYER && body(player).getFixtureList().size == 2,
+            "Player is detectable without owning a third fixture");
+        var enemyPosition = body(oldEnemy).getPosition().cpy();
+        var playerPosition = body(player).getPosition().cpy();
+        body(oldEnemy).setTransform(-100, -100, 0);
+        body(player).setTransform(-99, -100, 0);
+        screen.render(0);
+        require(awareness.inRange(oldEnemy, Actor.Role.PLAYER).equals(List.of(player))
+            && Facing.MAPPER.get(oldEnemy).getDirection() == Facing.Direction.RIGHT
+            && Animation2D.MAPPER.get(oldEnemy).getFdirection() == Facing.Direction.RIGHT,
+            "Live graph uses physical positions and updates idle animation before rendering");
+        body(oldEnemy).setTransform(enemyPosition, 0);
+        body(player).setTransform(playerPosition, 0);
         var oldNpcBody = body(oldNpc);
         var oldEnemyBody = body(oldEnemy);
         var oldNpcHealth = Health.MAPPER.get(oldNpc);
@@ -108,12 +144,15 @@ public final class MapTravelTest extends ApplicationAdapter {
                 "Actor loadouts are fresh rather than session-owned");
             var newNpc = actualActors.first();
             var newEnemy = actualActors.get(1);
-            require(body(newNpc) != oldNpcBody && body(newNpc).getFixtureList().size == 2
+            require(body(newNpc) != oldNpcBody && body(newNpc).getFixtureList().size == 3
                 && Health.MAPPER.get(newNpc) != oldNpcHealth && Health.MAPPER.get(newNpc).getCurrent() == 100f,
                 "Map replacement recreates the NPC body, fixtures and health");
-            require(body(newEnemy) != oldEnemyBody && body(newEnemy).getFixtureList().size == 2
+            require(body(newEnemy) != oldEnemyBody && body(newEnemy).getFixtureList().size == 3
                 && Health.MAPPER.get(newEnemy) != oldEnemyHealth && Health.MAPPER.get(newEnemy).getCurrent() == 100f,
                 "Map replacement recreates the enemy body, fixtures and health");
+            require(awareness.inRange(oldEnemy, Actor.Role.PLAYER).isEmpty(), "Retired enemy cannot query after travel");
+            checkSensor(newNpc, Actor.Role.NPC, actorData.npc().awarenessRadius());
+            checkSensor(newEnemy, Actor.Role.ENEMY, actorData.enemy().awarenessRadius());
             atPoint(player(), actual.targetSpawn());
             System.out.println("MapTravelTest: actual test_tiled/" + actual.targetSpawn() + " rebuilt");
         } else {
