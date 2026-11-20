@@ -3,7 +3,7 @@
 Record possible future direction that has not been accepted as a commitment.
 
 - Consider scheduled events driven by session world time; scheduling and event delivery are not implemented.
-- Consider a day/night cycle using world time, including lighting; no day/night or lighting behavior is implemented.
+- Consider an automatic day/night cycle using world time, including moon behavior. The current lighting pass is a manual session toggle and does not follow world time.
 
 - Consider save persistence for player state; the current session retains live health, loadout, and facing but does not save them to disk.
 - Consider additional perceived item types beyond actors; these are not implemented.

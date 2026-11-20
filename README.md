@@ -128,11 +128,35 @@ Existing externally provisioned `raw_assets/data/weapons.json` files must be mig
 
 Cooldowns are independent per fighter, stable weapon definition ID, and attack slot; there is no global timer. They age during gameplay before input independently of playback, including while another weapon is equipped. Switching away and back does not reset them; fresh map combat state clears them. Melee acceptance or arrow release starts the corresponding cooldown, not bow draw or aim cancellation. A ready attack can replace current playback even while the old attack is still cooling down. This can truncate not-yet-reached hit or sound cues, even when the old cooldown is long. Queued physics hits are resolved first, the old melee sensor is removed, and existing arrows continue. Inputs are not buffered, natural animation completion does not clear cooldown, and normal movement is unchanged. Cooldowns add no weapon-swapping restriction beyond existing attack-state guards. Bow draw uses the primary slot's readiness, and aim reserves input while held.
 
+### Night lighting migration and validation
+
+In `raw_assets/data/objects.json`, every OBJECT/ITEM definition must contain `animation`, `collision`, and `emissive`, even when their value is null. Set `emissive: null` for nonemitters. The existing `campfire1` keeps its art, collision, and FireSpawn placement; its locally authored emissive value is:
+
+```json
+{ "color": "#FFAA55", "radius_pixels": 128, "intensity": 0.9,
+  "pulse": { "period_seconds": 1.2, "radius_strength": 0.12, "intensity_strength": 0.18 } }
+```
+
+Add `"nightAmbient": { "tint": "#8299CC", "brightness": 0.35 }` to `raw_assets/game.settings.json`. These are local authored values, not defaults. Regenerate and restart after changing ambient settings. See [asset authoring](docs/asset-service.md) for validation and the complete object example.
+
+Press N in gameplay to toggle day and night. Each new screen starts in day; mode and pulse phase survive travel and hide/show, and pause freezes the pulse. The toggle does not change world time. At night solid Box2D fixtures cast shadows, except the emitter's own fixtures; sensors and arrows without solids do not. Lighting follows collision geometry rather than art silhouettes. Crosshair and debug overlays remain unlit.
+
 After provisioning or changing source assets, run:
 
 ```sh
 ./generate-runtime-assets.sh
 ```
+
+For focused regressions and the integrated checks, run:
+
+```sh
+./gradlew :core:lightingDataTest :core:lightingBehaviorTest :core:dataLoaderTest :core:inputSystemTest :core:worldTimeSystemTest
+./gradlew check
+./gradlew :lwjgl3:lightingRenderTest :lwjgl3:compositeRenderTest :lwjgl3:gameScreenLifecycleTest :lwjgl3:mapTravelTest
+./gradlew :lwjgl3:run
+```
+
+The synthetic lighting data, behavior, and render tests do not require the ignored game assets; the render test requires a GL-capable display. Other integration checks and the game require provisioned assets. On `test_tiled`, compare day, N-enabled night, and return to day; inspect the campfire pulse and moving-player shadow without relocating FireSpawn.
 
 The root script works from any current directory, reports a missing `raw_assets/` directory, and creates `assets/` before invoking `:util:generateRuntimeAssets`; generation is not automatic when running or building the game. It copies shared files, generates a per-map object atlas under `assets/atlases/`, and publishes map directories under `assets/maps/` and referenced shared tilesets under `assets/tilesets/`. Object image collections resolve through the atlas at runtime; terrain sheets remain separate. Object packing must preserve paths, indexes, dimensions, and orientation: do not enable rotation, whitespace stripping, path flattening, or nested pack settings.
 
