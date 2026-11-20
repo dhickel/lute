@@ -13,6 +13,7 @@ import io.mindspice.lute.engine.GameCore;
 import io.mindspice.lute.engine.assets.MapAssets;
 import io.mindspice.lute.engine.components.Actor;
 import io.mindspice.lute.engine.components.Combat;
+import io.mindspice.lute.engine.components.Emissive;
 import io.mindspice.lute.engine.components.Player;
 import io.mindspice.lute.engine.screen.GameScreen;
 import io.mindspice.lute.engine.screen.ScreenManager;
@@ -62,6 +63,8 @@ public final class GameScreenLifecycleTest extends ApplicationAdapter {
         var loaded = (Map<?, ?>) field(ScreenManager.class, "loadedScreens").get(screens);
         var original = (GameScreen) loaded.get("GameScreen");
         var assets = ManifestLoader.parseMapManifest("test_tiled");
+        var input = Gdx.input.getInputProcessor();
+        input.keyDown(Input.Keys.N); // The shared manager observes this before the gameplay listener is attached.
         // LoadingScreen loads one asset per render; keep this finite even if startup breaks.
         for (int i = 0; i < 200 && engine.getSystem(TiledSystem.class).getCurrentMap() == null; i++) {
             GAME.render();
@@ -76,15 +79,56 @@ public final class GameScreenLifecycleTest extends ApplicationAdapter {
             "GameScreen supplies the configured day length to world time");
         double clampedWorldSeconds = (24 * 60 / GameConsts.DAY_LENGTH_MINUTES) / 30;
         var beforeVisibleUpdate = time.getTotalInGameSeconds();
+        double initialSeconds = seconds(original);
+        input.keyDown(Input.Keys.N);
         original.render(1f);
+        require(!night(original), "The initial session starts in day even with N held from loading");
+        input.keyUp(Input.Keys.N);
+        near(seconds(original), initialSeconds + 1 / 30f, "Pulse time uses the clamped simulation delta in day");
         near(time.getTotalInGameSeconds(), beforeVisibleUpdate + clampedWorldSeconds,
             "Visible game rendering advances world time with the clamped simulation delta");
-        original.pause();
+        double beforeNight = time.getTotalInGameSeconds();
+        input.keyDown(Input.Keys.N);
+        original.render(1f);
+        require(night(original), "A fresh press toggles on the next gameplay frame");
+        near(time.getTotalInGameSeconds() - beforeNight, beforeNight - beforeVisibleUpdate,
+            "Equal simulation deltas advance world time identically in both modes");
+        input.keyDown(Input.Keys.N);
+        GAME.getInputManager().getKeyManager().broadcast(Input.Keys.N, 2);
+        original.render(0f);
+        require(night(original), "Duplicate down and repeat do not toggle");
+        input.keyUp(Input.Keys.N);
+        original.render(0f);
+        require(night(original), "Release does not toggle");
+        tapNight();
+        original.render(0f);
+        require(!night(original), "A complete tap between frames is not lost");
+        tapNight(); tapNight();
+        original.render(0f);
+        require(!night(original), "Two distinct queued presses toggle twice");
+        input.keyDown(Input.Keys.N); original.render(0f);
+        GAME.pause(); // Held across a context change after its toggling edge was consumed.
         var pausedAt = time.getTotalInGameSeconds();
+        double pausedSeconds = seconds(original);
         original.render(1f);
         near(time.getTotalInGameSeconds(), pausedAt, "Paused game rendering does not advance world time");
-        original.resume();
+        near(seconds(original), pausedSeconds, "Pulse time freezes during pause");
+        GAME.resume();
+        input.keyDown(Input.Keys.N);
         original.render(1f);
+        near(seconds(original), pausedSeconds + 1 / 30f, "Resume advances the existing pulse time once");
+        require(night(original), "A consumed press held across pause cannot retrigger on resume");
+        input.keyUp(Input.Keys.N);
+        tapNight(); // Never rendered; this tap belongs to the context about to end.
+        GAME.pause(); GAME.resume(); original.render(0f);
+        require(night(original), "Unconsumed tap at pause does not toggle after resume");
+        GAME.pause(); input.keyDown(Input.Keys.N); GAME.resume();
+        input.keyDown(Input.Keys.N); original.render(0f);
+        require(night(original), "A key pressed while paused is ignored until physical release");
+        input.keyUp(Input.Keys.N);
+        tapNight(); original.render(0f);
+        require(!night(original), "Real key-up rearms the physical key after pause");
+        tapNight(); original.render(0f);
         near(time.getTotalInGameSeconds(), pausedAt + clampedWorldSeconds, "Resumed game rendering advances world time");
 
         var player = engine.getEntitiesFor(com.badlogic.ashley.core.Family.all(Player.class).get()).first();
@@ -93,29 +137,36 @@ public final class GameScreenLifecycleTest extends ApplicationAdapter {
         loadout.setWeapon("basic_bow");
         var aim = io.mindspice.lute.engine.components.BowAim.MAPPER.get(player);
         Gdx.input.getInputProcessor().keyDown(Input.Keys.SPACE);
-        engine.update(.01f);
+        original.render(.01f);
         require(aim.isAiming() && !Combat.MAPPER.get(player).isAttacking(), "Real bow draws the aiming overlay");
         Gdx.input.getInputProcessor().keyUp(Input.Keys.SPACE);
-        engine.update(.01f);
+        original.render(.01f);
         require(!aim.isAiming() && Combat.MAPPER.get(player).isAttacking(), "Release renders the atlas arrow instead");
-        for (int i = 0; i < 120; i++) { engine.update(1f / 60); }
+        for (int i = 0; i < 120; i++) { original.render(1f / 60); }
         loadout.setWeapon(originalWeapon);
         Gdx.input.getInputProcessor().keyDown(Input.Keys.W);
         Gdx.input.getInputProcessor().keyDown(Input.Keys.SHIFT_LEFT);
-        engine.update(0.02f);
+        original.render(0.02f);
         require(Combat.MAPPER.get(player).isAttacking(), "Teardown starts with a live attack");
         var awareness = engine.getSystem(AwarenessSystem.class);
         var actors = engine.getEntitiesFor(com.badlogic.ashley.core.Family.all(Actor.class).get());
         var oldEnemy = actors.get(2);
         var beforeHide = time.getTotalInGameSeconds();
+        var beforeHideSeconds = seconds(original);
+        input.keyDown(Input.Keys.N); // Queued in the old visible context and held into the next.
         screens.loadScreen("away", new ScreenAdapter());
         screens.switchScreens("away");
         original.render(1f);
         near(time.getTotalInGameSeconds(), beforeHide, "Hidden game rendering does not advance world time");
+        near(seconds(original), beforeHideSeconds, "Pulse time freezes while hidden");
         require(actors.size() == 0 && awareness.inRange(oldEnemy, Actor.Role.PLAYER).isEmpty(),
             "Hide removes awareness actors and queryable fixtures");
         screens.switchScreens("GameScreen");
+        input.keyDown(Input.Keys.N);
         original.render(1f);
+        require(night(original), "Hidden stale press and still-held down cannot retrigger on show");
+        near(seconds(original), beforeHideSeconds + 1 / 30f, "Show resumes the same pulse clock");
+        input.keyUp(Input.Keys.N);
         near(time.getTotalInGameSeconds(), beforeHide + clampedWorldSeconds, "Shown game rendering resumes world time");
         require(playerCount(engine) == 1, "Hide/show retains the live player while checking world time");
         require(actors.size() == 3 && !actors.contains(oldEnemy, true)
@@ -125,15 +176,20 @@ public final class GameScreenLifecycleTest extends ApplicationAdapter {
         require(engine.getSystem(PhysicSystem.class) == physics, "Hide retains screen systems for reuse");
         Gdx.input.getInputProcessor().keyUp(Input.Keys.W);
         Gdx.input.getInputProcessor().keyUp(Input.Keys.SHIFT_LEFT);
+        tapNight(); // Press and release entirely while away.
         screens.switchScreens("GameScreen");
+        original.render(0f);
+        require(night(original), "A hidden tap is not replayed");
         Gdx.input.getInputProcessor().keyDown(Input.Keys.SHIFT_LEFT);
-        engine.update(0.02f);
+        original.render(0.02f);
         require(playerCount(engine) == 1, "Showing the same screen reloads one player");
         require(engine.getSystem(PhysicSystem.class) == physics, "Show reuses the same physics system");
         var resumed = engine.getEntitiesFor(com.badlogic.ashley.core.Family.all(Player.class).get()).first();
         require(Combat.MAPPER.get(resumed).isAttacking(), "Key-up while hidden allows a fresh press after show");
         Gdx.input.getInputProcessor().keyUp(Input.Keys.SHIFT_LEFT);
 
+        var oldFire = engine.getEntitiesFor(com.badlogic.ashley.core.Family.all(Emissive.class).get()).first();
+        input.keyDown(Input.Keys.N); // Held through disposal and recreation.
         screens.unloadScreen("GameScreen");
         verifyDetached(engine, foreign, owned);
         require(physics.getEngine() == null, "Disposed screen's physics system cannot receive engine updates");
@@ -153,7 +209,16 @@ public final class GameScreenLifecycleTest extends ApplicationAdapter {
             var replacement = new GameScreen(assets);
             screens.loadScreen("GameScreen", replacement);
             screens.switchScreens("GameScreen");
-            engine.update(0.02f);
+            var lights = engine.getEntitiesFor(com.badlogic.ashley.core.Family.all(Emissive.class).get());
+            input.keyDown(Input.Keys.N);
+            replacement.render(0f);
+            require(!night(replacement) && seconds(replacement) == 0d, "New session starts day at zero, ignoring held N");
+            require(!lights.contains(oldFire, true) && lights.size() > 0, "Only freshly mounted lights exist on first frame");
+            input.keyUp(Input.Keys.N);
+            input.keyDown(Input.Keys.N);
+            replacement.render(.02f);
+            require(night(replacement), "Fresh press after real key-up toggles the replacement screen");
+            oldFire = lights.first();
             require(playerCount(engine) == 1, "Recreation installs exactly one live player: " + i);
             require(engine.getSystem(PhysicSystem.class) != physics, "Recreation uses fresh physics");
             require(engine.getSystem(EventSystem.class) != owned.getFirst(), "Recreation uses a fresh event bus");
@@ -164,6 +229,7 @@ public final class GameScreenLifecycleTest extends ApplicationAdapter {
             engine.update(0.02f);
         }
 
+        input.keyUp(Input.Keys.N);
         var neverShown = new GameScreen(assets);
         var hiddenSystems = snapshot(engine, foreign);
         screens.loadScreen("hidden", neverShown);
@@ -176,7 +242,7 @@ public final class GameScreenLifecycleTest extends ApplicationAdapter {
         var shutdownScreen = new GameScreen(assets);
         screens.loadScreen("shutdown", shutdownScreen);
         screens.switchScreens("shutdown");
-        engine.update(0.02f);
+        shutdownScreen.render(0.02f);
         require(playerCount(engine) == 1, "Final screen is active before normal application shutdown");
         var shutdownSystems = snapshot(engine, foreign);
         GAME.dispose();
@@ -228,6 +294,19 @@ public final class GameScreenLifecycleTest extends ApplicationAdapter {
         require(engine.getEntities().size() == 0, "Disposed screen leaves no entities referencing its World");
     }
 
+    private static void tapNight() {
+        Gdx.input.getInputProcessor().keyDown(Input.Keys.N);
+        Gdx.input.getInputProcessor().keyUp(Input.Keys.N);
+    }
+
+    static boolean night(GameScreen screen) throws ReflectiveOperationException {
+        return field(GameScreen.class, "night").getBoolean(screen);
+    }
+
+    static double seconds(GameScreen screen) throws ReflectiveOperationException {
+        return field(GameScreen.class, "sessionSeconds").getDouble(screen);
+    }
+
     private static int playerCount(Engine engine) {
         return engine.getEntitiesFor(com.badlogic.ashley.core.Family.all(Player.class).get()).size();
     }
@@ -240,7 +319,7 @@ public final class GameScreenLifecycleTest extends ApplicationAdapter {
 
     private static void near(double actual, double expected, String message) {
         checks++;
-        if (Math.abs(actual - expected) > 0.000001) {
+        if (!(Math.abs(actual - expected) <= 0.000001)) {
             throw new AssertionError(message + ": expected " + expected + ", got " + actual);
         }
     }

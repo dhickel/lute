@@ -10,6 +10,10 @@ import com.badlogic.gdx.audio.Music;
 import com.badlogic.gdx.audio.Sound;
 import com.badlogic.gdx.backends.lwjgl3.Lwjgl3Application;
 import com.badlogic.gdx.backends.lwjgl3.Lwjgl3ApplicationConfiguration;
+import com.badlogic.gdx.backends.lwjgl3.Lwjgl3ApplicationLogger;
+import com.badlogic.gdx.graphics.Pixmap;
+import com.badlogic.gdx.graphics.Texture;
+import com.badlogic.gdx.graphics.glutils.HdpiUtils;
 import com.badlogic.gdx.graphics.g2d.TextureAtlas;
 import com.badlogic.gdx.maps.objects.RectangleMapObject;
 import com.badlogic.gdx.maps.tiled.TiledMap;
@@ -17,11 +21,16 @@ import com.badlogic.gdx.math.Vector2;
 import com.badlogic.gdx.physics.box2d.Body;
 import com.badlogic.gdx.physics.box2d.BodyDef;
 import com.badlogic.gdx.physics.box2d.CircleShape;
+import com.badlogic.gdx.physics.box2d.Fixture;
 import com.badlogic.gdx.physics.box2d.World;
+import com.badlogic.gdx.utils.Array;
 import io.mindspice.lute.engine.GameCore;
 import io.mindspice.lute.engine.assets.CharacterAssets;
 import io.mindspice.lute.engine.assets.ObjectAssets;
 import io.mindspice.lute.engine.components.*;
+import io.mindspice.lute.engine.data.json.DataLoader;
+import io.mindspice.lute.engine.data.json.GameData;
+import io.mindspice.lute.engine.data.json.ObjectData;
 import io.mindspice.lute.engine.screen.GameScreen;
 import io.mindspice.lute.engine.screen.ScreenManager;
 import io.mindspice.lute.engine.singletons.GameConsts;
@@ -29,15 +38,24 @@ import io.mindspice.lute.engine.systems.AwarenessSystem;
 import io.mindspice.lute.engine.systems.CombatSystem;
 import io.mindspice.lute.engine.systems.EventSystem;
 import io.mindspice.lute.engine.systems.EntityFactory;
+import io.mindspice.lute.engine.systems.PhysicDebugRenderSystem;
+import io.mindspice.lute.engine.systems.TriggerDebugRenderSystem;
 import io.mindspice.lute.engine.systems.TiledSystem;
 import io.mindspice.lute.engine.systems.WorldTimeSystem;
 import io.mindspice.lute.engine.events.Event;
 import io.mindspice.lute.engine.tiled.ManifestLoader;
+import io.mindspice.lute.engine.tiled.MapTriggers;
 
 import java.lang.reflect.Field;
 import java.util.ArrayList;
+import java.util.HashMap;
+import java.util.HashSet;
 import java.util.List;
 import java.util.Map;
+import java.util.Set;
+
+import static io.mindspice.lute.engine.lwjgl3.GameScreenLifecycleTest.night;
+import static io.mindspice.lute.engine.lwjgl3.GameScreenLifecycleTest.seconds;
 
 public final class MapTravelTest extends ApplicationAdapter {
     private static final GameCore GAME = GameCore.INSTANCE;
@@ -52,7 +70,8 @@ public final class MapTravelTest extends ApplicationAdapter {
     public static void main(String[] args) {
         var config = new Lwjgl3ApplicationConfiguration();
         config.setTitle("Map travel regression");
-        config.setWindowedMode(320, 240);
+        // Resolve the 12-pixel authored light radius with enough framebuffer samples to test its pulse.
+        config.setWindowedMode(640, 480);
         config.setInitialVisible(false);
         config.disableAudio(true);
         new Lwjgl3Application(new MapTravelTest(), config);
@@ -177,8 +196,16 @@ public final class MapTravelTest extends ApplicationAdapter {
         require(GAME.getAssetService().isLoaded(TextureAtlas.class, ObjectAssets.OBJECTS.id()),
             "Removing the map does not unload the shared objects atlas");
 
+        installLightFixtures();
         var entry = ManifestLoader.parseMapManifest(A);
-        bind(new GameScreen(entry));
+        var startupAmbient = GameConsts.NIGHT_AMBIENT;
+        try {
+            GameConsts.NIGHT_AMBIENT = new GameConsts.NightAmbient("#0000FF", .25f);
+            bind(new GameScreen(entry));
+        } finally { GameConsts.NIGHT_AMBIENT = startupAmbient; }
+        // Read world pixels, not the debug crosses drawn over every spawn marker.
+        GAME.getEngine().getSystem(PhysicDebugRenderSystem.class).setProcessing(false);
+        GAME.getEngine().getSystem(TriggerDebugRenderSystem.class).setProcessing(false);
         screens.loadScreen("travel", screen);
         screens.switchScreens("travel");
         time = GAME.getEngine().getSystem(WorldTimeSystem.class);
@@ -190,6 +217,18 @@ public final class MapTravelTest extends ApplicationAdapter {
         atPoint(start, "PlayerSpawn");
         for (int i = 0; i < 5; i++) { frame(); }
         require(player() == start && changes.equals(List.of(A, A)), "Only boot and one explicit reload at arrival");
+
+        checkLightMount(false);
+        var sourceLights = lights();
+        var sourceFixtures = fixtures();
+        var redCenter = center("red");
+        int daylight = pixel(redCenter);
+        require((daylight >>> 8) == 0xffffff, "White static art is unmodified in the initial daylight frame");
+        Gdx.input.getInputProcessor().keyDown(Input.Keys.N);
+        Gdx.input.getInputProcessor().keyUp(Input.Keys.N);
+        screen.render(0);
+        checkRedLight(redCenter);
+        int lit = pixel(redCenter);
 
         var health = Health.MAPPER.get(start);
         health.damage(23);
@@ -218,8 +257,13 @@ public final class MapTravelTest extends ApplicationAdapter {
             "Depart with held inputs, a live arrow and an active cooldown; immediate redraw is blocked");
         var oldBody = body(start);
         var beforeSelfTravel = time.getTotalInGameSeconds();
-        enter("self");
+        enterNamed("self");
         var rebuilt = player();
+        require(java.util.Collections.disjoint(sourceLights, lights()) && java.util.Collections.disjoint(sourceFixtures, fixtures()),
+            "No previous emitters or fixtures in the first frame of a named same-ID rebuild");
+        checkRedLight(redCenter);
+        sourceLights = lights();
+        sourceFixtures = fixtures();
         require(GAME.getEngine().getSystem(WorldTimeSystem.class) == time
             && time.getTotalInGameSeconds() > beforeSelfTravel,
             "Named travel retains the session world-time system and accumulated time");
@@ -251,6 +295,7 @@ public final class MapTravelTest extends ApplicationAdapter {
                 && !GAME.getAssetService().isLoaded(TextureAtlas.class, B) && !GAME.getAssetService().isLoaded(Sound.class, "TRAVEL_B"),
                 "Invalid destination releases the candidate assets: " + invalid);
         }
+        verifyStagedFailure(sourceMap, rebuilt, sourceBodies, redCenter);
         input.keyDown(Input.Keys.D); frame();
         require(body(rebuilt).getLinearVelocity().x > 0, "Player is still controllable after failed travel");
         input.keyUp(Input.Keys.D); frame();
@@ -261,8 +306,17 @@ public final class MapTravelTest extends ApplicationAdapter {
         var oldAttack = Combat.MAPPER.get(rebuilt);
         for (int i = 0; i < 120 && oldAttack.getSensor() == null; i++) { frame(); }
         require(oldAttack.isAttacking() && oldAttack.getSensor() != null, "Depart with an active melee fixture");
-        enter("other");
+        enterNamed("other");
         var visitor = player();
+        require(java.util.Collections.disjoint(sourceLights, lights()) && java.util.Collections.disjoint(sourceFixtures, fixtures()),
+            "No source emitter or fixture remains on the first destination frame");
+        checkLightMount(true);
+        int panel = pixel(redCenter);
+        require((panel >>> 16) == 0 && Math.abs((panel >>> 8 & 255) - 64) <= 2,
+            "White panel where the retired red light and solid stood shows only the captured ambient: " + Integer.toHexString(panel));
+        checkRedLight(center("red"));
+        System.out.printf("MapTravelTest: same world point RGBA: A/day=%08x, A/night=%08x, B/first night frame=%08x%n",
+            daylight, lit, panel);
         require(visitor != rebuilt && tiled.getCurrentMap() != sourceMap, "Independent manifest ID changes runtime map and player");
         require(!oldAttack.isAttacking() && oldAttack.getSensor() == null && !Combat.MAPPER.get(visitor).isAttacking()
             && body(visitor).getFixtureList().size == 2, "Travel destroys the outgoing active melee fixture");
@@ -274,12 +328,22 @@ public final class MapTravelTest extends ApplicationAdapter {
         for (int i = 0; i < 5; i++) { frame(); }
         require(player() == visitor, "Overlapping return portal waits for an exit and reentry");
         var visitorBody = body(visitor);
+        var visitorLights = lights();
+        var beforeLocal = seconds(screen);
         enter("local");
+        require(night(screen) && seconds(screen) == beforeLocal + 2d * GameConsts.PHYSIC_INTERVAL
+                && lights().equals(visitorLights), "THIS teleport keeps pulse time, mode and mounted light identities");
         require(player() == visitor && body(visitor) == visitorBody, "THIS retains player and body identity");
         atPoint(visitor, "local-landing");
+        checkRedLight(center("red"));
 
         var beforeHideShow = time.getTotalInGameSeconds();
+        var beforeRemount = seconds(screen);
         screens.switchScreens("travel");
+        require(night(screen) && seconds(screen) == beforeRemount && java.util.Collections.disjoint(visitorLights, lights()),
+            "Hide/show rebuilds the lights without resetting phase or mode");
+        screen.render(0f);
+        checkRedLight(center("red"));
         require(GAME.getEngine().getSystem(WorldTimeSystem.class) == time
             && time.getTotalInGameSeconds() == beforeHideShow,
             "Hide/show retains world time without advancing while hidden");
@@ -294,6 +358,7 @@ public final class MapTravelTest extends ApplicationAdapter {
         require(Health.MAPPER.get(player()) == health && world.getBodyCount() == sourceBodies, "Returning preserves state and balances body ownership");
 
         screens.unloadScreen("travel");
+        require(lights().isEmpty(), "Screen teardown retires every mounted emitter");
         bind(new GameScreen(entry));
         screens.loadScreen("fresh", screen);
         screens.switchScreens("fresh");
@@ -301,9 +366,174 @@ public final class MapTravelTest extends ApplicationAdapter {
         require(Health.MAPPER.get(fresh) != health && Health.MAPPER.get(fresh).getCurrent() == GAME.getGameData().playerData().maxHealth()
             && Loadout.MAPPER.get(fresh).getWeaponId().equals(GAME.getGameData().playerData().loadout().weapon())
             && Facing.MAPPER.get(fresh).getDirection() == Facing.Direction.UP, "A fresh session uses JSON defaults and the starting marker's facing");
+        require(!night(screen) && seconds(screen) == 0d && lights().size() == 4,
+            "New screen has a fresh day session and only its own map lights");
         var freshTime = GAME.getEngine().getSystem(WorldTimeSystem.class);
         require(freshTime != time && freshTime.getTotalInGameSeconds() == 21_600,
             "A fresh GameScreen starts a fresh world-time session");
+
+        screens.unloadScreen("fresh");
+        bind(new GameScreen(ManifestLoader.parseMapManifest(B)));
+        screens.loadScreen("playerless", screen);
+        var valid = GAME.getGameData();
+        try {
+            var invalid = new HashMap<>(valid.objectsData());
+            invalid.remove("wisp");
+            setObjects(invalid);
+            try {
+                screens.switchScreens("playerless");
+                throw new AssertionError("Invalid object should fail the initial mount");
+            } catch (IllegalArgumentException expected) {
+                require(expected.getMessage().contains("wisp"), "Show fails during object preparation");
+            }
+            input.keyDown(Input.Keys.N);
+            screen.render(.02f);
+            require(!night(screen) && seconds(screen) == 0d && world.getBodyCount() == 0 && lights().isEmpty(),
+                "Failed show starts neither the session nor its mounted lights and bodies");
+        } finally { field(GameCore.class, "gameData").set(GAME, valid); }
+        screens.switchScreens("playerless");
+        input.keyDown(Input.Keys.N); screen.render(0f);
+        require(!night(screen), "A key held from the failed show cannot toggle on retry");
+        input.keyUp(Input.Keys.N);
+        require(GAME.getEngine().getEntitiesFor(Family.all(Player.class).get()).size() == 0,
+            "Direct entry without a PLAYER marker mounts the map without a player");
+        input.keyDown(Input.Keys.N); input.keyUp(Input.Keys.N); frame();
+        require(night(screen) && seconds(screen) == GameConsts.PHYSIC_INTERVAL, "Night input works without a player");
+    }
+
+    private void installLightFixtures() throws ReflectiveOperationException {
+        var objects = new HashMap<>(GAME.getGameData().objectsData());
+        try (var file = Gdx.files.classpath("fixtures/travel-lights.json").read()) {
+            objects.putAll(DataLoader.parseObjectDefinitions(file));
+        } catch (java.io.IOException e) { throw new AssertionError(e); }
+        setObjects(objects);
+        var atlas = GAME.getAssetService().get(TextureAtlas.class, ObjectAssets.OBJECTS.id());
+        var white = new Pixmap(32, 32, Pixmap.Format.RGBA8888);
+        try {
+            white.setColor(1, 1, 1, 1);
+            white.fill();
+            var texture = new Texture(white);
+            // addRegion transfers this texture to the shared objects atlas, which owns disposal.
+            for (String key : List.of("red-lamp", "blue-lamp", "panel")) { atlas.addRegion(key, texture, 0, 0, 32, 32); }
+        } finally { white.dispose(); }
+    }
+
+    private static void setObjects(Map<String, ObjectData> definitions) throws ReflectiveOperationException {
+        var data = GAME.getGameData();
+        field(GameCore.class, "gameData").set(GAME, new GameData(data.playerData(), data.weaponsData(),
+            data.projectilesData(), data.charactersData(), data.enemiesData(), definitions));
+    }
+
+    private Vector2 center(String marker) {
+        var point = tiled.getMapTriggers().points().stream().filter(p -> p.name().equals(marker)).findFirst().orElseThrow();
+        return point.position().cpy().scl(GameConsts.UNIT_SCALE);
+    }
+
+    private static Set<Entity> lights() {
+        var result = new HashSet<Entity>();
+        GAME.getEngine().getEntitiesFor(Family.all(Emissive.class).get()).forEach(result::add);
+        return result;
+    }
+
+    private Set<Fixture> fixtures() {
+        var nativeFixtures = new Array<Fixture>();
+        world.getFixtures(nativeFixtures);
+        var result = new HashSet<Fixture>();
+        nativeFixtures.forEach(result::add);
+        return result;
+    }
+
+    private void checkLightMount(boolean otherMap) {
+        // The same four definitions swap ITEM/OBJECT routes on B. No hand-added components or bodies.
+        var entities = GAME.getEngine().getEntitiesFor(Family.all(Transform.class, Graphic.class).get());
+        require(lights().size() == 4, "Exactly four emitters from this mount");
+        for (var point : tiled.getMapTriggers().points()) {
+            if (point.type() != MapTriggers.SpawnType.ITEM && point.type() != MapTriggers.SpawnType.OBJECT) { continue; }
+            var definition = GAME.getGameData().objectsData().get(point.spawnKey());
+            Entity spawned = null;
+            var center = center(point.name());
+            for (var entity : entities) {
+                var t = Transform.MAPPER.get(entity);
+                if (t.getPosition().cpy().mulAdd(t.getSize(), .5f).epsilonEquals(center, .0001f)) {
+                    require(spawned == null, "Only one sprite at " + point.name());
+                    spawned = entity;
+                }
+            }
+            require(spawned != null, "Art centered on the authored " + point.type() + " point: " + point.name());
+            require(Physic.MAPPER.has(spawned) == definition.collision().isPresent()
+                && Animation2D.MAPPER.has(spawned) == definition.animation().isPresent(), "Independent collision/animation: " + point.name());
+            float angle = switch (point.facing()) { case UP -> 180f; case LEFT -> -90f; case DOWN -> 0f; case RIGHT -> 90f; };
+            require(Transform.MAPPER.get(spawned).getRotationDeg() == angle, "Facing rotates the centered art: " + point.name());
+            if (Physic.MAPPER.has(spawned)) {
+                require(body(spawned).getPosition().epsilonEquals(center) && !body(spawned).getFixtureList().first().isSensor(),
+                    "Light's own solid rotates about spawn center: " + point.name());
+            }
+            var light = Emissive.MAPPER.get(spawned);
+            require((light != null) == definition.emissive().isPresent(), "Null emissive leaves ordinary art: " + point.name());
+            if (light != null) {
+                var data = definition.emissive().orElseThrow();
+                require(light.radius(0d) == data.radiusPixels() * GameConsts.UNIT_SCALE
+                    && light.intensity(0d) == data.intensity(), "Factory converts pixel radius once: " + point.name());
+            }
+        }
+        require(tiled.getMapTriggers().points().stream().anyMatch(p -> p.name().equals("panel")) == otherMap,
+            "Ambient-only panel belongs only to B");
+    }
+
+    private static int pixel(Vector2 position) {
+        var window = GAME.getViewport().project(position.cpy());
+        var sample = Pixmap.createFromFrameBuffer(HdpiUtils.toBackBufferX((int) window.x), HdpiUtils.toBackBufferY((int) window.y), 1, 1);
+        try { return sample.getPixel(0, 0); }
+        finally { sample.dispose(); }
+    }
+
+    private void checkRedLight(Vector2 center) throws ReflectiveOperationException {
+        int peak = pixel(center);
+        int left = pixel(center.cpy().sub(.31f, 0)) >>> 24;
+        int right = pixel(center.cpy().add(.31f, 0)) >>> 24;
+        // The center pixel can be half a raster pixel off-axis. Compare to the independently authored pulse.
+        double expectedRed = 255 * .6 * (1 + .5 * Math.sin(seconds(screen) * 4 * Math.PI));
+        require(Math.abs((peak >>> 24) - expectedRed) < 16 && (peak >>> 16 & 255) < 3 && Math.abs((peak >>> 8 & 255) - 64) <= 2,
+            "Frame follows the session phase on blue ambient; expected red " + expectedRed + ", got " + Integer.toHexString(peak));
+        require((peak >>> 24) > left + 35 && (peak >>> 24) > right + 35,
+            "Peak stays centered, not at the facing-rotated offset fixture: " + left + "/" + (peak >>> 24) + "/" + right);
+    }
+
+    private void verifyStagedFailure(TiledMap sourceMap, Entity player, int bodies, Vector2 redCenter)
+            throws ReflectiveOperationException {
+        var original = GAME.getGameData();
+        var corrupt = new HashMap<>(original.objectsData());
+        // The last B marker has valid static art and collision, but its authored pixel radius underflows in world units.
+        corrupt.put("panel", corrupt.get("underflow-panel"));
+        var sourceLights = lights();
+        var sourceFixtures = fixtures();
+        var previousLogger = Gdx.app.getApplicationLogger();
+        var errors = new ArrayList<Throwable>();
+        setObjects(corrupt);
+        try {
+            Gdx.app.setApplicationLogger(new Lwjgl3ApplicationLogger() {
+                @Override public void error(String tag, String message, Throwable error) {
+                    if (tag.equals("TiledSystem") && message.contains(B + "/arrival")) { errors.add(error); }
+                    super.error(tag, message, error);
+                }
+            });
+            enter("other");
+        } finally {
+            Gdx.app.setApplicationLogger(previousLogger);
+            field(GameCore.class, "gameData").set(GAME, original);
+        }
+        require(errors.size() == 1 && errors.getFirst() instanceof IllegalArgumentException
+                && errors.getFirst().getMessage().contains("world radius"),
+            "Destination reaches the conversion failure after staging earlier solid emitters: " + errors);
+        screen.render(0f);
+        require(tiled.getCurrentMap() == sourceMap && player() == player && lights().equals(sourceLights) && night(screen),
+            "Failed prepare preserves the previous map and all mounted lights");
+        require(world.getBodyCount() == bodies && fixtures().equals(sourceFixtures),
+            "Neither failed conversion nor earlier staged entities leave native bodies or fixtures");
+        require(!GAME.getAssetService().isLoaded(TiledMap.class, B), "Candidate map released on staged failure");
+        System.out.printf("MapTravelTest: failed prepare retained %d emitters, %d bodies and %d fixtures%n",
+            sourceLights.size(), bodies, sourceFixtures.size());
+        checkRedLight(redCenter);
     }
 
     private void bind(GameScreen next) throws ReflectiveOperationException {
@@ -312,10 +542,26 @@ public final class MapTravelTest extends ApplicationAdapter {
         world = (World) field(GameScreen.class, "physicWorld").get(screen);
     }
 
-    private void enter(String name) {
+    private void moveToPortal(String name) {
         var object = (RectangleMapObject) tiled.getCurrentMap().getLayers().get("Triggers").getObjects().get(name);
         var center = object.getRectangle().getCenter(new Vector2()).scl(GameConsts.UNIT_SCALE);
         move(center);
+    }
+
+    private void enterNamed(String name) throws ReflectiveOperationException {
+        var outgoing = player();
+        double before = seconds(screen);
+        moveToPortal(name);
+        int ticks = 0;
+        while (ticks < 2 && player() == outgoing) { frame(); ticks++; }
+        require(player() != outgoing, "Contact installs a new runtime: " + name);
+        screen.render(0f); // First destination frame; no further simulation tick.
+        require(night(screen) && seconds(screen) == before + ticks * (double) GameConsts.PHYSIC_INTERVAL,
+            "First frame retains mode and continuous session time: " + name);
+    }
+
+    private void enter(String name) {
+        moveToPortal(name);
         frame();
         frame(); // A newly overlapping Box2D pair can first report contact on the next tick.
     }
@@ -339,6 +585,10 @@ public final class MapTravelTest extends ApplicationAdapter {
             if (ObjectAssets.OBJECTS.id().equals(Animation2D.MAPPER.get(entity).getAtlasId())) { fire = entity; }
         }
         require(fire != null && body(fire).getPosition().epsilonEquals(center), "Campfire body is centered on FireSpawn");
+        var light = Emissive.MAPPER.get(fire);
+        var authored = GAME.getGameData().objectsData().get(point.spawnKey()).emissive().orElseThrow();
+        require(light != null && light.radius(0d) == authored.radiusPixels() * GameConsts.UNIT_SCALE
+                && light.intensity(0d) == authored.intensity(), "Real FireSpawn carries the configured world-unit emitter");
         var transform = Transform.MAPPER.get(fire);
         require(transform.getRotationDeg() == 0f && transform.getSize().equals(new Vector2(1, 1)),
             "DOWN preserves original 32x32 art orientation and size");

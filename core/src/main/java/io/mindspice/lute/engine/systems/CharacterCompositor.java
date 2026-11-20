@@ -30,6 +30,7 @@ public final class CharacterCompositor implements Disposable {
     private static final int[] UP = {5, 0, 1, 2, 4, 3};
     private final AssetService assets;
     private final SpriteBatch batch;
+    private final CompatibilityVertexArrays compatArrays = RenderState.compatibilityArrays();
     private final List<Target> targets = new ArrayList<>();
     private final Map<Entity, TextureRegion> completed = new IdentityHashMap<>();
     private final Map<LayerKey, Map<String, TextureRegion[]>> layers = new HashMap<>();
@@ -61,7 +62,7 @@ public final class CharacterCompositor implements Disposable {
         }
         var state = new RenderState();
         try {
-            RenderState.prepare();
+            state.prepare(compatArrays);
             if (!visible.isEmpty()) { refreshIdentities(visible); }
             int pitchX = 2, pitchY = 2;
             for (var entity : visible) {
@@ -81,11 +82,13 @@ public final class CharacterCompositor implements Disposable {
                 int side = Math.min(maxSide, (int) Math.ceil(Math.sqrt(count)));
                 Target target;
                 if (targetIndex == targets.size()) {
+                    state.prepareTextureUpload();
                     target = new Target(side, pitchX, pitchY);
                     targets.add(target);
                 } else {
                     target = targets.get(targetIndex);
                     if (target.side < side || target.pitchX != pitchX || target.pitchY != pitchY) {
+                        state.prepareTextureUpload();
                         Target replacement = new Target(side, pitchX, pitchY);
                         state.releasedTarget(target.buffer.getFramebufferHandle(), target.buffer.getColorBufferTexture().getTextureObjectHandle());
                         target.dispose();
@@ -120,8 +123,8 @@ public final class CharacterCompositor implements Disposable {
                 }
             }
         } finally {
-            if (batch.isDrawing()) { batch.end(); }
-            state.restore();
+            try { if (batch.isDrawing()) { batch.end(); } }
+            finally { state.restore(); }
         }
     }
 
@@ -318,6 +321,7 @@ public final class CharacterCompositor implements Disposable {
             completed.clear();
             layers.clear();
             Arrays.fill(identities, null);
+            if (compatArrays != null) { compatArrays.dispose(); }
             state.releasedShader(batch.getShader().getHandle());
             batch.dispose();
         } finally { state.restore(); }

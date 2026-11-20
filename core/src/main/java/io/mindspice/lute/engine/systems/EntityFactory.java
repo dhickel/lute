@@ -275,6 +275,8 @@ public class EntityFactory extends EntitySystem {
             entity.add(new Facing(facing));
             entity.add(animation);
         }
+        // Convert and validate the light's world radius before allocating a staged native body.
+        definition.emissive().ifPresent(light -> entity.add(new Emissive(light, unit)));
         if (definition.collision().isPresent()) {
             var collision = definition.collision().orElseThrow();
             var bounds = collision.bounds();

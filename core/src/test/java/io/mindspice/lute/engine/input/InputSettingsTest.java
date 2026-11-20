@@ -22,6 +22,13 @@ final class InputSettingsTest {
         equal(InputAction.ATTACK_SECONDARY, defaults.getKey(Input.Keys.SHIFT_LEFT), "left Shift default");
         equal(InputAction.ATTACK_SECONDARY, defaults.getKey(Input.Keys.SHIFT_RIGHT), "right Shift default");
         equal(InputAction.CYCLE_WEAPON, defaults.getKey(Input.Keys.R), "R cycles test weapons");
+        equal(InputAction.TOGGLE_NIGHT, defaults.getKey(Input.Keys.N), "N toggles gameplay night");
+        for (var control : GamepadControl.values()) {
+            InputSystemTest.check(defaults.getGamepad(control) != InputAction.TOGGLE_NIGHT, "No shipped night button: " + control);
+        }
+        for (int button = Input.Buttons.LEFT; button <= Input.Buttons.FORWARD; button++) {
+            InputSystemTest.check(defaults.getButton(button) != InputAction.TOGGLE_NIGHT, "No shipped night mouse button: " + button);
+        }
         equal(InputAction.MOVE_UP, defaults.getGamepad(GamepadControl.DPAD_UP), "D-pad default");
         equal(InputAction.ATTACK_PRIMARY, defaults.getGamepad(GamepadControl.FACE_SOUTH), "south face default");
         equal(InputAction.ATTACK_SECONDARY, defaults.getGamepad(GamepadControl.FACE_WEST), "west face default");

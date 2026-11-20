@@ -1,9 +1,7 @@
 <?xml version="1.0" encoding="UTF-8"?>
 <map version="1.10" orientation="orthogonal" width="36" height="24" tilewidth="32" tileheight="32" infinite="0">
  <objectgroup id="1" name="Triggers">
-  <object id="1" name="PlayerSpawn" type="SpawnPoint" x="128" y="512">
-   <properties><property name="spawnType" value="PLAYER"/><property name="facing" value="UP"/></properties><point/>
-  </object>
+  <!-- No PLAYER point: named arrival creates a player, but a new session here has none. -->
   <object id="2" name="arrival" type="SpawnPoint" x="416" y="512">
    <properties><property name="spawnType" value="TELEPORT"/></properties><point/>
   </object>
@@ -24,6 +22,19 @@
   </object>
   <object id="8" name="item" type="SpawnPoint" x="256" y="320">
    <properties><property name="spawnType" value="ITEM"/><property name="spawnKey" value="campfire1"/><property name="facing" value="RIGHT"/></properties><point/>
+  </object>
+  <object id="9" name="red" type="SpawnPoint" x="544" y="448">
+   <properties><property name="spawnType" value="ITEM"/><property name="spawnKey" value="red-lamp"/><property name="facing" value="LEFT"/></properties><point/>
+  </object>
+  <object id="10" name="blue" type="SpawnPoint" x="736" y="448">
+   <properties><property name="spawnType" value="OBJECT"/><property name="spawnKey" value="blue-lamp"/><property name="facing" value="UP"/></properties><point/>
+  </object>
+  <object id="11" name="wisp" type="SpawnPoint" x="768" y="192">
+   <properties><property name="spawnType" value="OBJECT"/><property name="spawnKey" value="wisp"/><property name="facing" value="RIGHT"/></properties><point/>
+  </object>
+  <!-- Last on purpose: failed preparation here must retire all earlier staged fires and solids. -->
+  <object id="12" name="panel" type="SpawnPoint" x="384" y="448">
+   <properties><property name="spawnType" value="ITEM"/><property name="spawnKey" value="panel"/><property name="facing" value="DOWN"/></properties><point/>
   </object>
  </objectgroup>
 </map>

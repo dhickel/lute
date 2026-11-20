@@ -8,7 +8,9 @@ import com.badlogic.gdx.physics.box2d.World;
 import com.badlogic.gdx.utils.Disposable;
 import io.mindspice.lute.engine.GameCore;
 import io.mindspice.lute.engine.assets.MapAssets;
+import io.mindspice.lute.engine.input.InputAction;
 import io.mindspice.lute.engine.input.InputManager;
+import io.mindspice.lute.engine.input.KeyListener;
 import io.mindspice.lute.engine.singletons.GameConsts;
 import io.mindspice.lute.engine.systems.*;
 
@@ -22,6 +24,11 @@ public class GameScreen extends ScreenAdapter {
     private final Engine engine;
     private final MapAssets mapAssets;
     private final TiledSystem tiled;
+    private final RenderSystem renderer;
+    private final GameConsts.NightAmbient ambient = GameConsts.NIGHT_AMBIENT;
+    private final KeyListener nightInput = new KeyListener(32, List.of(InputAction.TOGGLE_NIGHT));
+    private boolean night;
+    private double sessionSeconds;
     private final List<EntitySystem> ownedSystems = new ArrayList<>();
     private boolean visible;
     private boolean paused;
@@ -54,7 +61,8 @@ public class GameScreen extends ScreenAdapter {
             addSystem(new PhysicSystem(physicWorld, GameConsts.PHYSIC_INTERVAL));
             addSystem(new AudioSystem(game.getAssetService()));
             addSystem(new CameraSystem(game.getCamera()));
-            addSystem(new RenderSystem(this.game.getBatch(), this.game.getViewport(), this.game.getCamera(), game.getAssetService()));
+            renderer = new RenderSystem(game.getBatch(), game.getViewport(), game.getCamera(), game.getAssetService());
+            addSystem(renderer);
             addSystem(new EntityFactory(physicWorld, game.getAssetService()));
             tiled = new TiledSystem(game.getAssetService(), physicWorld, inputManager);
             addSystem(tiled);
@@ -79,12 +87,14 @@ public class GameScreen extends ScreenAdapter {
         inputManager.releaseHeldInputs();
         tiled.showMap(mapAssets);
         game.setInputProcessors(inputManager);
+        inputManager.regKeyListener(nightInput);
         visible = true;
     }
 
     @Override
     public void hide() {
         if (!visible) { return; }
+        inputManager.unRegKeyListener(nightInput);
         visible = false;
         paused = false;
         tiled.hideMap();
@@ -92,6 +102,8 @@ public class GameScreen extends ScreenAdapter {
 
     @Override
     public void pause() {
+        if (!visible || paused) { return; }
+        inputManager.unRegKeyListener(nightInput);
         paused = true;
         inputManager.releaseHeldInputs();
         engine.getSystem(ControllerSystem.class).update(0f);
@@ -99,16 +111,24 @@ public class GameScreen extends ScreenAdapter {
 
     @Override
     public void resume() {
+        if (!visible || !paused) { return; }
         inputManager.releaseHeldInputs();
         engine.getSystem(ControllerSystem.class).update(0f);
         paused = false;
+        inputManager.regKeyListener(nightInput);
     }
 
     @Override
     public void render(float delta) {
         if (!visible || paused) { return; }
         inputManager.updateGamepad();
-        engine.update(Math.min(delta, 1 / 30f));
+        // Detach and map replacement mark old transitions; only presses from this context count.
+        nightInput.getQueue().consumePreviousContext((action, state) -> { });
+        nightInput.consume((action, state) -> { if (state == 1) { night = !night; } });
+        float step = delta > 0f ? Math.min(delta, 1 / 30f) : 0f;
+        sessionSeconds += step;
+        renderer.gameplayFrame(physicWorld, ambient, night, sessionSeconds);
+        engine.update(step);
         tiled.applyPendingTravel();
     }
 

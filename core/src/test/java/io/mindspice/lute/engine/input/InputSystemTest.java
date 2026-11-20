@@ -28,6 +28,7 @@ public final class InputSystemTest {
     public static void main(String[] args) {
         run("controller movement input", InputSystemTest::controllerMovementInput);
         run("adapter keys", InputSystemTest::adapterKeys);
+        run("night action contexts", InputSystemTest::nightActionContexts);
         run("adapter mouse", InputSystemTest::adapterMouse);
         run("cached mouse", MouseListenerTest::run);
         run("listener fanout", InputSystemTest::listenerFanout);
@@ -225,6 +226,28 @@ public final class InputSystemTest {
         engine.update(0);
         engine.update(0);
         equal(previousCount, count[0], "attack without Combat emits no movement event");
+    }
+
+    private static void nightActionContexts() {
+        var map = new InputMap();
+        map.setKey(Input.Keys.J, InputAction.TOGGLE_NIGHT); // The action is not tied to the shipped keycode.
+        var input = new InputManager(map);
+        var cache = new KeyListener(16, List.of(InputAction.TOGGLE_NIGHT));
+        var press = new Event(InputAction.TOGGLE_NIGHT, 1);
+        var release = new Event(InputAction.TOGGLE_NIGHT, 0);
+        input.regKeyListener(cache);
+        input.keyDown(Input.Keys.N);
+        input.keyDown(Input.Keys.J);
+        input.keyDown(Input.Keys.J);
+        input.releaseHeldInputs();
+        input.keyDown(Input.Keys.J); // Still physically down across the context boundary.
+        input.keyUp(Input.Keys.J);
+        input.keyDown(Input.Keys.J);
+        input.keyUp(Input.Keys.J);
+        List<Event> stale = new ArrayList<>();
+        cache.getQueue().consumePreviousContext((action, state) -> stale.add(new Event(action, state)));
+        equal(List.of(press, release), stale, "reset balances the old remapped press in the outgoing context");
+        equal(List.of(press, release), drain(cache), "only a fresh tap reaches the new context");
     }
 
     private static void adapterKeys() {

@@ -58,6 +58,16 @@ tasks.register('compositeRenderTest', JavaExec) {
   jvmArgs '--enable-native-access=ALL-UNNAMED', '--add-exports=java.base/jdk.internal.misc=ALL-UNNAMED'
 }
 
+tasks.register('lightingRenderTest', JavaExec) {
+  dependsOn testClasses
+  // Do not allow the synthetic test to resolve generated game art/settings from the classpath.
+  // Keep the desktop GL service descriptor, not the generated game resources beside it.
+  classpath = sourceSets.test.runtimeClasspath - files(sourceSets.main.output.resourcesDir) + files('src/main/resources')
+  mainClass = 'io.mindspice.lute.engine.lwjgl3.LightingRenderTest'
+  environment 'DISPLAY', System.getenv('DISPLAY') ?: ':0'
+  jvmArgs '--enable-native-access=ALL-UNNAMED', '--add-exports=java.base/jdk.internal.misc=ALL-UNNAMED'
+}
+
 tasks.register('gameScreenLifecycleTest', JavaExec) {
   dependsOn testClasses
   classpath = sourceSets.test.runtimeClasspath
