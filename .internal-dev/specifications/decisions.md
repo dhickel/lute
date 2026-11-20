@@ -75,6 +75,14 @@
 - **Source:** User-directed attack cooldown contract.
 - **Review timing:** Revisit if attack cadence, cue timing, or recovery replacement changes.
 
+## Arrow flight near north
+
+- **Decision:** Use one world-Y parabola through the aim point, tangent-facing and traveled at arc-length speed. Taper base lift smoothly from zero at 10° to full at 25° from the actual north aim vector. Within that transition band, expire at the apex if the arrow has not cleared the launch strip; otherwise continue on the same parabola until impact or lifetime expiry. Centered aim follows the owner's facing in a straight line.
+- **Justification and tradeoff:** The taper avoids a northward arc reversing through the shooter while preserving lift away from north. Conditional apex expiry occurs after the aim point; impact or lifetime expiry can still end flight before it. In the transition band, apex progress is `0.5 + travel.y / (8 * lift) > 1` because lift is at most `0.15 * distance` and `travel.y` is at least `cos(25°) * distance`. Other unaccepted approaches and their tradeoffs are recorded in [Horizon Ideas](horizon-ideas.md).
+- **Affected specification:** [Composite Characters](composite-characters.md).
+- **Source:** Current `ArrowFlight` implementation and user live acceptance of the UP behavior.
+- **Review timing:** Revisit if projectile flight or collision semantics change.
+
 ## Projectile collision geometry
 
 - **Decision:** Keep the existing swept triangular projectile collision test, using local fixture queries. The yellow debug outline depicts instantaneous geometry and does not perform an additional collision check.

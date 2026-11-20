@@ -194,30 +194,27 @@ public final class TriggerDebugRenderSystemTest {
             var start = new Vector2();
             var aim = new Vector2(1, 0);
             var arrow = new ArrowFlight(owner, definition, start, aim, 1);
-            check(!arrow.finished(world, 0.25f), "Reaching the crosshair does not finish the shot");
-            near(arrow.tip.x, 1, "Arrow reaches crosshair at configured speed");
-            near(arrow.tip.y, 0, "Arrow arc passes through the crosshair");
-            check(!arrow.finished(world, 0.25f), "Arrow is still active past the crosshair");
-            near(arrow.tip.x, 2, "Arrow continues in the original aim direction");
-            near(arrow.tip.y, 0, "Arrow flies straight after the arc");
+            check(!arrow.finished(world, 0.25f) && arrow.tip.x < 1,
+                "The curved path to the crosshair is longer than the straight line");
+            check(!arrow.finished(world, 0.5f) && arrow.tip.x > 1 && arrow.tip.y < 0,
+                "Arrow continues down the same curve past the crosshair");
             check(arrow.finished(world, 1), "Unobstructed arrow expires by lifetime");
-            near(arrow.tip.x, 4, "Expiry clamps travel past the crosshair");
 
             var centered = new ArrowFlight(owner, definition, start, start, 1);
             check(!centered.finished(world, 0.25f), "Centered aim still fires");
             near(centered.tip.x, -1, "Centered aim uses the owner's facing");
 
             var wallDef = new BodyDef();
-            wallDef.position.set(2, 0);
+            wallDef.position.set(2, -1.2f);
             var wall = world.createBody(wallDef);
             var shape = new PolygonShape();
             try {
-                shape.setAsBox(0.05f, 0.25f);
+                shape.setAsBox(0.05f, 0.1f);
                 wall.createFixture(shape, 0);
             } finally { shape.dispose(); }
             var blocked = new ArrowFlight(owner, definition, start, aim, 1);
-            check(blocked.finished(world, 0.75f), "A long frame sweeps into a wall beyond the crosshair");
-            near(blocked.tip.x, 1, "Wall blocks the post-crosshair segment");
+            check(blocked.finished(world, 0.75f), "A long frame sweeps into a wall below the aim line");
+            check(blocked.tip.x > 1 && blocked.tip.x < 2, "Wall blocks the post-crosshair segment");
         } finally { world.dispose(); }
     }
 

@@ -8,4 +8,8 @@ Record possible future direction that has not been accepted as a commitment.
 - Consider save persistence for player state; the current session retains live health, loadout, and facing but does not save them to disk.
 - Consider additional perceived item types beyond actors; these are not implemented.
 - Consider selectable arrow types in the future; the current bow uses one default arrow definition.
+- Unaccepted near-north arrow flight alternatives:
+  - Keep full northward lift but expire at the apex. Short shots can disappear near the crosshair.
+  - Apply lift perpendicular to the aim direction. This introduces sideways drift and changes the collision lane. A prior local prototype was rejected for flattening after aim, not necessarily for perpendicular lift alone.
+  - Separate visual height from the ground and collision path. This is a natural top-down model, but requires explicit collision, occlusion, and speed semantics to avoid a mismatch between what is drawn and what gameplay resolves.
 - Consider inventory and weapon management in the future; the temporary weapon cycle does not define either.
