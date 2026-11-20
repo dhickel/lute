@@ -194,21 +194,18 @@ public final class TriggerDebugRenderSystemTest {
             var start = new Vector2();
             var aim = new Vector2(1, 0);
             var arrow = new ArrowFlight(owner, definition, start, aim, 1);
-            check(!arrow.finished(world, 0.25f), "Reaching the crosshair does not finish the shot");
-            near(arrow.tip.x, 1, "Arrow reaches crosshair at configured speed");
-            near(arrow.tip.y, 0, "Arrow arc passes through the crosshair");
-            check(!arrow.finished(world, 0.25f), "Arrow is still active past the crosshair");
-            near(arrow.tip.x, 2, "Arrow continues in the original aim direction");
-            check(arrow.tip.y < 0, "Arrow descends below the original aim line");
+            check(!arrow.finished(world, 0.25f) && arrow.tip.x < 1,
+                "The curved path to the crosshair is longer than the straight line");
+            check(!arrow.finished(world, 0.5f) && arrow.tip.x > 1 && arrow.tip.y < 0,
+                "Arrow continues down the same curve past the crosshair");
             check(arrow.finished(world, 1), "Unobstructed arrow expires by lifetime");
-            near(arrow.tip.x, 4, "Expiry clamps travel past the crosshair");
 
             var centered = new ArrowFlight(owner, definition, start, start, 1);
             check(!centered.finished(world, 0.25f), "Centered aim still fires");
             near(centered.tip.x, -1, "Centered aim uses the owner's facing");
 
             var wallDef = new BodyDef();
-            wallDef.position.set(2, -.52f);
+            wallDef.position.set(2, -1.2f);
             var wall = world.createBody(wallDef);
             var shape = new PolygonShape();
             try {

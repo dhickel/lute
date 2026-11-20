@@ -20,54 +20,68 @@ public final class ArrowFlightTest {
         var aim = new Vector2(1, 0);
         var world = new World(Vector2.Zero, true);
         try {
-            var arrow = launch(TYPE, aim);
-            var higherArc = launch(projectile(1f), aim);
-            float halfAimTime = .5f / TYPE.speed();
-            require(!arrow.finished(world, halfAimTime) && arrow.tip.x == .5f && arrow.tip.y > .1f,
-                "A one-tile shot has visible lift at the authored speed and lifetime");
-            require(!higherArc.finished(world, halfAimTime) && higherArc.tip.y > arrow.tip.y + .02f,
-                "Increasing arc height measurably raises the apex even for a short shot");
-
-            // Compare the slopes of equally short chords immediately on either side of the join.
-            float step = halfAimTime / 16f;
-            require(!arrow.finished(world, halfAimTime - step), "Arrow is live just before aim");
-            var beforeAim = arrow.tip.cpy();
-            require(!arrow.finished(world, step) && arrow.tip.equals(aim), "Arrow crosses the exact aim without expiring");
-            require(!higherArc.finished(world, halfAimTime) && higherArc.tip.equals(aim),
-                "Raising the apex does not change where or when the arrow crosses aim");
-            require(!arrow.finished(world, step) && arrow.tip.y < 0, "Arrow descends below the aim line");
-            float entrySlope = -beforeAim.y / (aim.x - beforeAim.x);
-            float exitSlope = arrow.tip.y / (arrow.tip.x - aim.x);
-            require(Math.abs(exitSlope - entrySlope) < .03f, "The descent matches the incoming tangent");
-
-            require(!arrow.finished(world, 4f), "Close aim does not end flight early");
-            float lateSlope = arrow.direction.y / arrow.direction.x;
-            require(arrow.finished(world, 5f) && arrow.tip.x == 60,
-                "Expiry clips the last update at the authored flight distance");
-            float finalSlope = arrow.direction.y / arrow.direction.x;
-            require(finalSlope < lateSlope - .01f && finalSlope > exitSlope * 1.6f,
-                "Descent steepens until expiry without runaway curvature after a close aim");
-
+            verifySpeed(world, 1f, .15f);
+            verifySpeed(world, 8f, .5f);
+            verifyNorthShots(world);
             var centered = launch(TYPE, Vector2.Zero);
-            require(!centered.finished(world, 2.5f) && centered.tip.x == 30 && centered.tip.y > 0,
-                "Centered aim uses facing and still arcs");
+            require(!centered.finished(world, .5f / TYPE.speed()) && centered.tip.equals(new Vector2(.5f, 0)),
+                "Centered aim uses facing and the configured speed");
 
             var target = hurtbox(world, aim);
             require(launch(TYPE, aim).finished(world, 2f) && Health.MAPPER.get(target).getCurrent() == 90,
                 "One long update sweeps through the exact crosshair");
 
-            var apexTarget = hurtbox(world, new Vector2(.5f, .182f));
+            var apexTarget = hurtbox(world, new Vector2(.5f, .15f));
             require(launch(projectile(2f), aim).finished(world, 2f) && Health.MAPPER.get(apexTarget).getCurrent() == 90,
                 "A long update follows the short pre-aim arc instead of sweeping straight to aim");
         } finally { world.dispose(); }
 
         world = new World(Vector2.Zero, true);
         try {
-            // At x=4.75 the continued arc is more than two units below the line of aim.
-            var target = hurtbox(world, new Vector2(4.75f, -2.177f));
+            var target = hurtbox(world, new Vector2(2f, -1.2f));
             require(launch(TYPE, aim).finished(world, 6f) && Health.MAPPER.get(target).getCurrent() == 90,
                 "A long update hits a small hurtbox below the old straight extension");
         } finally { world.dispose(); }
+    }
+
+    private static void verifySpeed(World world, float aimX, float lift) {
+        var arrow = launch(TYPE, new Vector2(aimX, 0));
+        float elapsed = 0;
+        for (float u : new float[]{.5f, 1f, 1.5f, 2f}) {
+            // Independent midpoint integration of distance along the expected curve.
+            double distance = 0;
+            for (int i = 0; i < 4096; i++) {
+                double sample = u * (i + .5) / 4096;
+                distance += Math.hypot(aimX, 4 * lift * (1 - 2 * sample)) * u / 4096;
+            }
+            float time = (float) (distance / TYPE.speed());
+            require(!arrow.finished(world, time - elapsed), "Arrow remains active across aim");
+            elapsed = time;
+            require(Math.abs(arrow.tip.x - aimX * u) < .0001f
+                && Math.abs(arrow.tip.y - 4 * lift * u * (1 - u)) < .0001f,
+                "Configured speed follows the same parabola before and after aim: distance=" + aimX + ", progress=" + u);
+            require(Math.abs(arrow.direction.y / arrow.direction.x - 4 * lift * (1 - 2 * u) / aimX) < .0001f,
+                "Sprite follows the same tangent through aim");
+        }
+    }
+
+    private static void verifyNorthShots(World world) {
+        for (float angle : new float[]{-5, 0, 5}) {
+            var aim = new Vector2(0, 1).rotateDeg(angle);
+            var arrow = launch(TYPE, aim);
+            require(!arrow.finished(world, .25f) && arrow.tip.epsilonEquals(aim.cpy().scl(3), .0001f),
+                "Near-north shots continue forward at configured speed");
+        }
+        for (float angle : new float[]{-17.5f, 17.5f}) {
+            var aim = new Vector2(0, 1).rotateDeg(angle);
+            var arrow = launch(TYPE, aim);
+            float apex = .5f + aim.y / .6f;
+            require(arrow.finished(world, 4f)
+                    && arrow.tip.epsilonEquals(new Vector2(aim.x * apex, aim.y * apex + .3f * apex * (1 - apex)), .0001f),
+                "A short transition shot uses half lift and expires at the apex without retracing");
+            var longArrow = launch(TYPE, aim.cpy().scl(4));
+            require(!longArrow.finished(world, 2f), "A longer transition shot can clear the launch strip");
+        }
     }
 
     private static Projectile projectile(float arcHeight) {

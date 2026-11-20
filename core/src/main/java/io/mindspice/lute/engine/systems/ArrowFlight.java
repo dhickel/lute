@@ -14,12 +14,12 @@ final class ArrowFlight {
     final Projectile type;
     final Vector2 tip;
     final Vector2 direction;
-    private final Vector2 start, aimPoint, aimDirection;
-    private final float damage, aimTime, lift, descentTime;
-    private final boolean crossesAim;
+    private final Vector2 start, aimPoint, travel;
+    private final float damage;
+    private final double span, rise, bend, sweepStep, endProgress;
     private final Vector2[] triangle;
     private final float collisionPad;
-    private float elapsed;
+    private double elapsed, progress;
 
     ArrowFlight(Entity owner, Projectile type, Vector2 start, Vector2 aimPoint, float damage) {
         this.owner = owner;
@@ -29,26 +29,30 @@ final class ArrowFlight {
         this.damage = damage;
         tip = start.cpy();
         float distance = start.dst(aimPoint);
-        aimDirection = distance == 0 ? switch (Facing.MAPPER.get(owner).getDirection()) {
+        travel = distance == 0 ? switch (Facing.MAPPER.get(owner).getDirection()) {
             case UP -> new Vector2(0, 1);
             case DOWN -> new Vector2(0, -1);
             case LEFT -> new Vector2(-1, 0);
             case RIGHT -> new Vector2(1, 0);
-        } : aimPoint.cpy().sub(start).nor();
-        direction = aimDirection.cpy();
-        aimTime = distance == 0 ? type.lifetime() : distance / type.speed();
-        crossesAim = distance > 0 && aimTime <= type.lifetime();
-        // A soft distance-based limit keeps close shots from getting too steep,
-        // without making authored height changes ineffective once they reach a hard cap.
-        float liftLimit = type.speed() * aimTime * .2f;
-        lift = type.arcHeight() / (1f + type.arcHeight() / liftLimit);
-        // Soften the continuation if needed: the descent slope can grow by at most 50%
-        // from the slope at aim, while still getting steeper all the way to expiry.
-        descentTime = Math.max(aimTime, 4f * (type.lifetime() - aimTime));
+        } : aimPoint.cpy().sub(start);
+        span = travel.len();
+        double northAngle = Math.toDegrees(Math.atan2(Math.abs(travel.x), travel.y));
+        double blend = Math.max(0, Math.min(1, (northAngle - 10) / 15));
+        double lift = Math.min(type.arcHeight(), distance * .15f) * blend * blend * (3 - 2 * blend);
+        rise = travel.y + 4 * lift;
+        bend = 8 * lift;
+        // Keep the parabola within a quarter sprite pixel of each collision chord.
+        sweepStep = bend == 0 ? Double.POSITIVE_INFINITY : Math.sqrt(2 * GameConsts.UNIT_SCALE / bend);
+        direction = travel.cpy().nor();
+        updateDirection(0);
         float length = type.collisionBounds().length() * GameConsts.UNIT_SCALE;
         float halfWidth = type.collisionBounds().width() * GameConsts.UNIT_SCALE / 2;
         triangle = new Vector2[]{new Vector2(), new Vector2(-length, halfWidth), new Vector2(-length, -halfWidth)};
         collisionPad = length + halfWidth;
+        // A near-north shot that hasn't cleared the launch strip ends at its apex.
+        double apex = bend > 0 ? rise / bend : Double.POSITIVE_INFINITY;
+        endProgress = blend > 0 && blend < 1 && Math.abs(travel.x) * apex < 32 * GameConsts.UNIT_SCALE + collisionPad
+            ? apex : Double.POSITIVE_INFINITY;
     }
 
     void worldBoundsVertex(int index, Vector2 out) {
@@ -58,35 +62,55 @@ final class ArrowFlight {
     }
 
     boolean finished(World world, float dt) {
-        float time = elapsed;
+        if (dt <= 0) { return false; }
         elapsed = Math.min(elapsed + dt, type.lifetime());
-        // Subdivide the short pre-aim arc separately so a long update cannot skip its apex.
-        float flightStep = type.lifetime() / 16f;
-        float aimStep = Math.min(flightStep, aimTime / 16f);
-        while (time < elapsed) {
-            float nextTime = time < aimTime ? Math.min(aimTime, time + aimStep) : time + flightStep;
-            nextTime = Math.min(elapsed, nextTime);
-            var next = start.cpy().mulAdd(aimDirection, type.speed() * nextTime);
-            if (crossesAim && nextTime == aimTime) {
-                next.set(aimPoint);
-            } else {
-                next.y += arcOffset(nextTime);
-            }
+        double end = Math.min(endProgress, progressAtDistance(elapsed * type.speed()));
+        while (progress < end) {
+            double nextProgress = Math.min(end, progress + sweepStep);
+            // Preserve aim as an exact sweep boundary, not a trajectory change.
+            if (progress < 1) { nextProgress = Math.min(1, nextProgress); }
+            var next = nextProgress == 1 && !start.equals(aimPoint) ? aimPoint : new Vector2(
+                (float) (start.x + travel.x * nextProgress),
+                (float) (start.y + nextProgress * (rise - bend * nextProgress / 2)));
             if (advance(world, next)) { return true; }
-            time = nextTime;
+            progress = nextProgress;
         }
-        return elapsed >= type.lifetime();
+        updateDirection(progress);
+        return progress >= endProgress || elapsed >= type.lifetime();
     }
 
-    private float arcOffset(float time) {
-        if (time <= aimTime) {
-            float progress = time / aimTime;
-            return 4f * lift * progress * (1f - progress);
+    private double progressAtDistance(double distance) {
+        if (bend == 0) { return distance / span; }
+        double low = progress;
+        double high = Math.max(1, low * 2);
+        while (distanceAt(high) < distance) { high *= 2; }
+        for (int i = 0; i < 40; i++) {
+            double mid = (low + high) / 2;
+            if (distanceAt(mid) < distance) { low = mid; }
+            else { high = mid; }
         }
-        // Match the pre-aim tangent at the join, then keep bending down instead of
-        // extending the aim line or carrying the steep near-shot parabola indefinitely.
-        float pastAim = time - aimTime;
-        return -4f * lift * (pastAim / aimTime) * (1f + pastAim / descentTime);
+        return high;
+    }
+
+    private double distanceAt(double at) {
+        double drop = bend * at;
+        // For nearly straight intervals avoid subtracting almost equal antiderivative values.
+        if (drop < 1e-6 * span) { return at * Math.hypot(travel.x, rise - drop / 2); }
+        return (arcIntegral(rise) - arcIntegral(rise - drop)) / bend;
+    }
+
+    // Integral of hypot(horizontal, slope), with a separate exact vertical limit.
+    private double arcIntegral(double slope) {
+        double x = Math.abs(travel.x);
+        double y = Math.abs(slope);
+        if (x == 0) { return slope * y / 2; }
+        double magnitude = Math.hypot(x, y);
+        return Math.copySign((y * magnitude + x * x * Math.log((y + magnitude) / x)) / 2, slope);
+    }
+
+    private void updateDirection(double at) {
+        float y = (float) (rise - bend * at);
+        if (travel.x != 0 || y != 0) { direction.set(travel.x, y).nor(); }
     }
 
     private boolean advance(World world, Vector2 next) {
