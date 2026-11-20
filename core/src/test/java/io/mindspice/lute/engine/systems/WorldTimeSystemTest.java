@@ -65,6 +65,7 @@ public final class WorldTimeSystemTest {
     private static String settingsJson(String dayLengthMinutes) {
         return "{"
             + "\"unitScale\":0.03125,\"viewHeight\":18,\"viewWidth\":32,"
+            + "\"nightAmbient\":{\"tint\":\"#8299CC\",\"brightness\":0.35},"
             + "\"physicInterval\":0.016666668,\"physicScaling\":{\"x\":1,\"y\":1},"
             + "\"cameraSmoothFactor\":4,\"startupMap\":\"test_tiled\",\"projectPath\":\"game.tiled-project\","
             + "\"mapsPath\":\"maps/\",\"dataPath\":\"data/\",\"soundPath\":\"audio/\","

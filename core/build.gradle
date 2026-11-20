@@ -59,6 +59,13 @@ tasks.register('dataLoaderTest', JavaExec) {
 }
 check.dependsOn dataLoaderTest
 
+tasks.register('lightingDataTest', JavaExec) {
+  dependsOn testClasses
+  classpath = sourceSets.test.runtimeClasspath
+  mainClass = 'io.mindspice.lute.engine.data.json.LightingDataTest'
+}
+check.dependsOn lightingDataTest
+
 tasks.register('tiledAnimationPropertiesTest', JavaExec) {
   dependsOn testClasses
   classpath = sourceSets.test.runtimeClasspath
