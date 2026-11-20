@@ -4,7 +4,7 @@ import com.fasterxml.jackson.annotation.JsonProperty;
 
 public record ObjectData(
     @JsonProperty(value = "animation", required = true) AnimationData animation,
-    @JsonProperty(value = "collision_bounds", required = true) CharacterBounds collisionBounds
+    @JsonProperty(required = true) CollisionData collision
 ) {
     public ObjectData {
         if (animation != null && animation.atlasKey().isBlank()) {

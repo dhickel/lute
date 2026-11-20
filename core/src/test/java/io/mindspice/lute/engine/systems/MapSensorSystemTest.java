@@ -39,7 +39,7 @@ import io.mindspice.lute.engine.components.Health;
 import io.mindspice.lute.engine.components.Hurtbox;
 import io.mindspice.lute.engine.components.Loadout;
 import io.mindspice.lute.engine.data.json.CharacterBounds;
-import io.mindspice.lute.engine.data.json.ProjectilesData.CollisionBounds;
+import io.mindspice.lute.engine.data.json.CollisionData;
 import io.mindspice.lute.engine.data.json.ProjectilesData.Projectile;
 import io.mindspice.lute.engine.components.Physic;
 import io.mindspice.lute.engine.components.Player;
@@ -1103,7 +1103,7 @@ public final class MapSensorSystemTest {
         };
         final EventSystem events = new EventSystem();
         final CombatSystem combat = new CombatSystem(world,
-            new Projectile("projectiles/test", 8, 5, new CollisionBounds(8.5f, 10), 0.3f, 16, 32, 90));
+            new Projectile("projectiles/test", 8, 5, CollisionData.ellipse(new CharacterBounds(0, 0, 10, 8.5f)), 0.3f, 16, 32, 90));
         final MapSensorSystem sensors = new MapSensorSystem(world);
         final PhysicSystem physics = new PhysicSystem(world, STEP);
         final AssetService assets = new AssetService(FileHandle::new);

@@ -7,15 +7,15 @@ import com.badlogic.gdx.physics.box2d.*;
 /** Continuous collision in the arrow's coordinates: the tip starts at (0,0) and moves along +X. */
 final class ArrowTipSweep {
     private final Vector2 origin, direction;
-    private final Vector2[] triangle;
+    private final Vector2[] moving;
     private final float travel;
     private float enter, exit;
 
-    ArrowTipSweep(Vector2 origin, Vector2 direction, Vector2[] triangle, float travel) {
+    ArrowTipSweep(Vector2 origin, Vector2 direction, Vector2[] moving, float travel) {
         this.origin = origin;
         this.direction = direction;
         this.travel = travel;
-        this.triangle = triangle;
+        this.moving = moving;
     }
 
     private Vector2 local(Body body, Vector2 vertex) {
@@ -63,7 +63,7 @@ final class ArrowTipSweep {
     // Intersect the times when projections overlap on every edge normal of both shapes.
     private float polygonDistance(Vector2[] target) {
         enter = 0; exit = travel;
-        return axesOverlap(triangle, target) && axesOverlap(target, target) ? enter : Float.POSITIVE_INFINITY;
+        return axesOverlap(moving, target) && axesOverlap(target, target) ? enter : Float.POSITIVE_INFINITY;
     }
 
     private boolean axesOverlap(Vector2[] edges, Vector2[] target) {
@@ -75,9 +75,13 @@ final class ArrowTipSweep {
                 float p = v.dot(nx, ny);
                 low = Math.min(low, p); high = Math.max(high, p);
             }
-            float p1 = triangle[1].dot(nx, ny), p2 = triangle[2].dot(nx, ny);
-            low -= Math.max(0, Math.max(p1, p2));
-            high -= Math.min(0, Math.min(p1, p2));
+            float movingLow = Float.POSITIVE_INFINITY, movingHigh = Float.NEGATIVE_INFINITY;
+            for (var v : moving) {
+                float p = v.dot(nx, ny);
+                movingLow = Math.min(movingLow, p); movingHigh = Math.max(movingHigh, p);
+            }
+            low -= movingHigh;
+            high -= movingLow;
             if (nx == 0) {
                 if (low > 0 || high < 0) { return false; }
             } else {
@@ -90,12 +94,13 @@ final class ArrowTipSweep {
         return true;
     }
 
-    // In relative motion the circle center moves left against the triangle expanded by its radius.
+    // In relative motion the circle center moves left against the polygon expanded by its radius.
     private float circleDistance(Vector2 center, float radius) {
-        if (Intersector.isPointInTriangle(center, triangle[0], triangle[1], triangle[2])) { return 0; }
+        boolean inside = true;
         float first = Float.POSITIVE_INFINITY;
-        for (int i = 0; i < 3; i++) {
-            var a = triangle[i]; var b = triangle[(i + 1) % 3];
+        for (int i = 0; i < moving.length; i++) {
+            var a = moving[i]; var b = moving[(i + 1) % moving.length];
+            inside &= (b.x - a.x) * (center.y - a.y) >= (b.y - a.y) * (center.x - a.x);
             if (Intersector.distanceSegmentPoint(a, b, center) <= radius) { return 0; }
             float dy = center.y - a.y;
             if (Math.abs(dy) <= radius) {
@@ -110,6 +115,6 @@ final class ArrowTipSweep {
             float along = offset.sub(t, 0).dot(edge);
             if (t >= 0 && t <= travel && along >= 0 && along <= edge.len2()) { first = Math.min(first, t); }
         }
-        return first;
+        return inside ? 0 : first;
     }
 }

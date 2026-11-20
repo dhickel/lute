@@ -23,7 +23,8 @@ import com.badlogic.gdx.physics.box2d.*;
 import com.badlogic.gdx.utils.GdxNativesLoader;
 import com.badlogic.ashley.core.EntitySystem;
 import io.mindspice.lute.engine.components.Facing;
-import io.mindspice.lute.engine.data.json.ProjectilesData.CollisionBounds;
+import io.mindspice.lute.engine.data.json.CharacterBounds;
+import io.mindspice.lute.engine.data.json.CollisionData;
 import io.mindspice.lute.engine.data.json.ProjectilesData.Projectile;
 import io.mindspice.lute.engine.singletons.GameConsts;
 import io.mindspice.lute.engine.tiled.FixedTmxMapLoader;
@@ -146,7 +147,7 @@ public final class TriggerDebugRenderSystemTest {
         var debug = attach(world, renderer, null);
         var engine = debug.getEngine();
         var definition = new Projectile("projectiles/test", 4, 0.5f,
-            new CollisionBounds(8, 12), 0, 0, 0, 0);
+            new CollisionData(CollisionData.Shape.TRIANGLE, new CharacterBounds(0, 0, 12, 8), 0f), 0, 0, 0, 0);
         var combat = new CombatSystem(world, definition);
         engine.addSystem(combat);
         try {
@@ -155,13 +156,12 @@ public final class TriggerDebugRenderSystemTest {
             combat.arrows().add(arrow);
             combat.update(0.25f);
             debug.update(0);
-            check(renderer.triangles.size() == 1 && renderer.colors.equals(List.of(Color.YELLOW)),
+            check(renderer.lines.size() == 3 && renderer.colors.equals(List.of(Color.YELLOW, Color.YELLOW, Color.YELLOW)),
                 "Debug overlay draws one yellow projectile outline");
-            var triangle = renderer.triangles.getFirst();
-            float[] expected = {0, 1, -6 * scale, 1 - 8 * scale, 6 * scale, 1 - 8 * scale};
-            for (int i = 0; i < expected.length; i++) {
-                near(triangle[i], expected[i], "Vertical projectile outline vertex coordinate " + i);
-            }
+            var outline = new ArrayList<>(renderer.lines);
+            removeLine(outline, 0, 1, -6 * scale, 1 - 8 * scale);
+            removeLine(outline, -6 * scale, 1 - 8 * scale, 6 * scale, 1 - 8 * scale);
+            removeLine(outline, 6 * scale, 1 - 8 * scale, 0, 1);
 
             // A frame longer than the remaining lifetime must not sweep past the expiry point.
             var wallDef = new BodyDef();
@@ -177,7 +177,7 @@ public final class TriggerDebugRenderSystemTest {
             check(combat.arrows().isEmpty(), "Expired projectile is removed");
             renderer.clear();
             debug.update(0);
-            check(renderer.triangles.isEmpty(), "Expired projectile has no debug outline");
+            check(renderer.lines.isEmpty(), "Expired projectile has no debug outline");
         } finally {
             engine.removeSystem(combat);
             debug.dispose();
@@ -189,7 +189,7 @@ public final class TriggerDebugRenderSystemTest {
         var world = new World(new Vector2(), true);
         try {
             var definition = new Projectile("projectiles/test", 4, 1,
-                new CollisionBounds(8, 12), 0.3f, 0, 0, 0);
+                new CollisionData(CollisionData.Shape.TRIANGLE, new CharacterBounds(0, 0, 12, 8), 0f), 0.3f, 0, 0, 0);
             var owner = new Entity().add(new Facing(Facing.Direction.LEFT));
             var start = new Vector2();
             var aim = new Vector2(1, 0);
@@ -282,7 +282,7 @@ public final class TriggerDebugRenderSystemTest {
         var system = attach(world, renderer, map);
         try {
             system.update(0);
-            check(renderer.lines.size() == 16, "Saved map must render both sensor rectangles and spawn-point crosses");
+            check(renderer.lines.size() == 18, "Saved map must render both sensor rectangles and all five spawn-point crosses");
             float bottom = 640f - 275.333f - 35.3333f;
             float right = 432.667f + 34.6667f;
             float top = 640f - 275.333f;
@@ -305,7 +305,9 @@ public final class TriggerDebugRenderSystemTest {
                 {675.333f, 87, 683.333f, 87},
                 {679.333f, 83, 679.333f, 91},
                 {636, 430, 644, 430},
-                {640, 426, 640, 434}
+                {640, 426, 640, 434},
+                {130, 476, 138, 476},
+                {134, 472, 134, 480}
             };
             var actual = new ArrayList<>(renderer.lines);
             float scale = GameConsts.UNIT_SCALE;
@@ -423,7 +425,6 @@ public final class TriggerDebugRenderSystemTest {
     private static final class RecordingRenderer extends ShapeRenderer {
         final List<float[]> lines = new ArrayList<>();
         final List<float[]> circles = new ArrayList<>();
-        final List<float[]> triangles = new ArrayList<>();
         final List<Color> colors = new ArrayList<>();
         OrthographicCamera camera;
         int begins;
@@ -440,8 +441,7 @@ public final class TriggerDebugRenderSystemTest {
             colors.add(new Color(getColor()));
         }
         @Override public void triangle(float x1, float y1, float x2, float y2, float x3, float y3) {
-            triangles.add(new float[]{x1, y1, x2, y2, x3, y3});
-            colors.add(new Color(getColor()));
+            throw new AssertionError("Expected line-based outlines");
         }
         @Override public void circle(float x, float y, float radius, int segments) {
             TriggerDebugRenderSystemTest.check(segments == 32, "Sensor circle tessellation");
@@ -455,7 +455,6 @@ public final class TriggerDebugRenderSystemTest {
         void clear() {
             lines.clear();
             circles.clear();
-            triangles.clear();
             colors.clear();
         }
     }

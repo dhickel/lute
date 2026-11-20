@@ -21,6 +21,7 @@ import io.mindspice.lute.engine.assets.WeaponAssets;
 import io.mindspice.lute.engine.assets.CharacterAssets;
 import io.mindspice.lute.engine.assets.ObjectAssets;
 import io.mindspice.lute.engine.data.json.CharacterBounds;
+import io.mindspice.lute.engine.data.json.CollisionData;
 import io.mindspice.lute.engine.data.json.MapActorData;
 import io.mindspice.lute.engine.data.json.WeaponsData;
 import io.mindspice.lute.engine.GameCore;
@@ -85,7 +86,7 @@ public class EntityFactory extends EntitySystem {
         entity.add(animation);
         entity.add(new AnimationPlayer(entity));
         entity.add(createCharacterPhysics(transform.getPosition(), entity, BodyDef.BodyType.DynamicBody,
-            player.collisionBounds(), player.hitboxBounds(), Actor.Role.PLAYER, 0f));
+            player.collision(), player.hitboxBounds(), Actor.Role.PLAYER, 0f));
         entity.add(new CameraFollow());
         entity.add(new Controller(player.loadout().weaponCycle()));
         return entity;
@@ -144,7 +145,7 @@ public class EntityFactory extends EntitySystem {
             .add(new CompositeCharacter(region.getRegionWidth(), region.getRegionHeight()));
         entity.add(new Health(definition.maxHealth()));
         entity.add(createCharacterPhysics(transform.getPosition(), entity, BodyDef.BodyType.StaticBody,
-            definition.collisionBounds(), definition.hitboxBounds(), role, definition.detectionBounds().radius()));
+            definition.collision(), definition.hitboxBounds(), role, definition.detectionBounds().radius()));
         return entity;
     }
 
@@ -274,8 +275,9 @@ public class EntityFactory extends EntitySystem {
             entity.add(new Facing(facing));
             entity.add(animation);
         }
-        var bounds = definition.collisionBounds();
-        if (bounds != null) {
+        var collision = definition.collision();
+        if (collision != null) {
+            var bounds = collision.bounds();
             if (bounds.x2() > width || bounds.y2() > height) {
                 throw new IllegalArgumentException("Object collision bounds exceed the sprite canvas for " + spawnKey);
             }
@@ -285,7 +287,7 @@ public class EntityFactory extends EntitySystem {
             bodyDef.angle = (float) Math.toRadians(rotation);
             var body = world.createBody(bodyDef);
             try {
-                CharacterFixtures.ellipseAt(body, bounds, false, width * .5f, height * .5f);
+                CharacterFixtures.create(body, collision, false, width * .5f, height * .5f);
                 body.setUserData(entity);
                 entity.add(new Physic(body, position.cpy()));
             } catch (RuntimeException | Error failure) {
@@ -376,7 +378,7 @@ public class EntityFactory extends EntitySystem {
     }
 
     private Physic createCharacterPhysics(Vector2 position, Entity entity, BodyDef.BodyType bodyType,
-                                          CharacterBounds feet, CharacterBounds hurtbox, Actor.Role role,
+                                          CollisionData collision, CharacterBounds hurtbox, Actor.Role role,
                                           float awarenessRadiusPixels) {
         var bodyDef = new BodyDef();
         bodyDef.type = bodyType;
@@ -386,7 +388,8 @@ public class EntityFactory extends EntitySystem {
         body.setUserData(entity);
 
         try {
-            CharacterFixtures.ellipse(body, feet, false);
+            CharacterFixtures.create(body, collision, false, 0f, 0f);
+            var feet = collision.bounds();
             CharacterFixtures.ellipse(body, hurtbox, true).setUserData(Hurtbox.INSTANCE);
             float unit = GameConsts.UNIT_SCALE;
             var actor = new Actor(role, (feet.x1() + feet.x2()) * .5f * unit,

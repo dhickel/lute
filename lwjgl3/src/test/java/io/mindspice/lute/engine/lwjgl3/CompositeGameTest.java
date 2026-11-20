@@ -733,7 +733,7 @@ public final class CompositeGameTest {
                     image.setColor(0x66ccffff);
                     image.drawRectangle(32, 32, 64, 64);
                     var data = GAME.getGameData().playerData();
-                    outline(image, data.collisionBounds(), 0x00ff00ff);
+                    outline(image, data.collision().bounds(), 0x00ff00ff);
                     outline(image, data.hitboxBounds(), 0xff4444ff);
                     PixmapIO.writePNG(Gdx.files.absolute("/tmp/lute-canvas-bounds-review.png"), image, -1, true);
                 }
