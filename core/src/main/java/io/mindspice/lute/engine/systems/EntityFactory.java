@@ -10,6 +10,8 @@ import com.badlogic.gdx.maps.tiled.objects.TiledMapTileMapObject;
 import com.badlogic.gdx.math.Vector2;
 import com.badlogic.gdx.physics.box2d.Body;
 import com.badlogic.gdx.physics.box2d.BodyDef;
+import com.badlogic.gdx.physics.box2d.CircleShape;
+import com.badlogic.gdx.physics.box2d.FixtureDef;
 import com.badlogic.gdx.physics.box2d.World;
 import com.badlogic.gdx.utils.GdxRuntimeException;
 import io.mindspice.lute.engine.assets.Asset;
@@ -86,13 +88,15 @@ public class EntityFactory extends EntitySystem {
         entity.add(animation);
         entity.add(new AnimationPlayer(entity));
         entity.add(createCharacterPhysics(transform.getPosition(), entity, BodyDef.BodyType.DynamicBody,
-            player.collisionBounds(), player.hitboxBounds()));
+            player.collisionBounds(), player.hitboxBounds(), Actor.Role.PLAYER, 0f));
         entity.add(new CameraFollow());
         entity.add(new Controller(player.loadout().weaponCycle()));
         return entity;
     }
 
-    public Entity getMapActor(Vector2 pixelPosition, boolean enemy) {
+    public Entity getMapActor(Vector2 pixelPosition, Actor.Role role) {
+        if (role == Actor.Role.PLAYER) { throw new IllegalArgumentException("Expected an NPC or enemy"); }
+        boolean enemy = role == Actor.Role.ENEMY;
         var atlas = enemy ? CharacterAssets.ENEMIES : CharacterAssets.CHARACTER;
         var prefix = enemy ? ENEMY_PREFIX : NPC_PREFIX;
         var facing = Facing.Direction.DOWN;
@@ -111,7 +115,9 @@ public class EntityFactory extends EntitySystem {
                 }
             }
         }
-        var weapons = createWeapons(GameCore.INSTANCE.getGameData().weaponsData(), animation, transform.getSize().cpy().scl(.5f));
+        var data = GameCore.INSTANCE.getGameData();
+        var weapons = createWeapons(data.weaponsData(), animation, transform.getSize().cpy().scl(.5f));
+        var definition = enemy ? data.actorsData().enemy() : data.actorsData().npc();
         var equipment = enemy ? new Loadout.Equipment(null, null, null, null)
             : new Loadout.Equipment(null, "basic", "basic", "basic");
         var loadout = new Loadout(equipment, enemy ? "basic_sword" : null, weapons, selection -> {
@@ -127,7 +133,7 @@ public class EntityFactory extends EntitySystem {
             .add(new CompositeCharacter(128, 128));
         entity.add(new Health(MAP_ACTOR_MAX_HEALTH));
         entity.add(createCharacterPhysics(transform.getPosition(), entity, BodyDef.BodyType.StaticBody,
-            MAP_ACTOR_FEET, MAP_ACTOR_HURTBOX));
+            MAP_ACTOR_FEET, MAP_ACTOR_HURTBOX, role, definition.awarenessRadius()));
         return entity;
     }
 
@@ -296,7 +302,8 @@ public class EntityFactory extends EntitySystem {
     }
 
     private Physic createCharacterPhysics(Vector2 position, Entity entity, BodyDef.BodyType bodyType,
-                                          CharacterBounds feet, CharacterBounds hurtbox) {
+                                          CharacterBounds feet, CharacterBounds hurtbox, Actor.Role role,
+                                          float awarenessRadiusPixels) {
         var bodyDef = new BodyDef();
         bodyDef.type = bodyType;
         bodyDef.position.set(position);
@@ -307,6 +314,28 @@ public class EntityFactory extends EntitySystem {
         try {
             CharacterFixtures.ellipse(body, feet, false);
             CharacterFixtures.ellipse(body, hurtbox, true).setUserData(Hurtbox.INSTANCE);
+            float unit = GameConsts.UNIT_SCALE;
+            var actor = new Actor(role, (feet.x1() + feet.x2()) * .5f * unit,
+                (feet.y1() + feet.y2()) * .5f * unit);
+            if (role != Actor.Role.PLAYER) {
+                var circle = new CircleShape();
+                try {
+                    circle.setPosition(new Vector2(actor.feetX(), actor.feetY()));
+                    float radius = awarenessRadiusPixels * unit;
+                    if (!Float.isFinite(radius) || radius <= 0f) {
+                        throw new IllegalArgumentException("Awareness radius is not representable in world units");
+                    }
+                    circle.setRadius(radius);
+                    var fixture = new FixtureDef();
+                    fixture.shape = circle;
+                    fixture.isSensor = true;
+                    fixture.filter.maskBits = 0; // Query-only: no contacts with gameplay fixtures.
+                    body.createFixture(fixture).setUserData(AwarenessSystem.SENSOR_TAG);
+                } finally {
+                    circle.dispose();
+                }
+            }
+            entity.add(actor);
             return new Physic(body, position.cpy());
         } catch (RuntimeException | Error failure) {
             world.destroyBody(body);

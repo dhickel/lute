@@ -14,7 +14,18 @@ public class DataLoader {
         var player = parsePlayerData();
         var weapons = parseWeaponData();
         player.loadout().weaponCycle().forEach(weapons::requireWeapon);
-        return new GameData(player, weapons, parseProjectileData());
+        return new GameData(player, weapons, parseProjectileData(), parseActorsData());
+    }
+
+    public static ActorsData parseActorsData() {
+        var path = Gdx.files.internal(GameConsts.DATA_PATH + "actors.json");
+        try (var file = path.read()) {
+            var actors = mapper.readValue(file, ActorsData.class);
+            if (actors == null) { throw new IllegalArgumentException("actors.json requires an object"); }
+            return actors;
+        } catch (IOException e) {
+            throw new GdxRuntimeException("Failed to read file at path: " + path, e);
+        }
     }
 
     public static PlayerData parsePlayerData() {

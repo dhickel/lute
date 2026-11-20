@@ -1,0 +1,124 @@
+package io.mindspice.lute.engine.systems;
+
+import com.badlogic.ashley.core.Engine;
+import com.badlogic.ashley.core.Entity;
+import com.badlogic.gdx.math.Vector2;
+import com.badlogic.gdx.physics.box2d.*;
+import com.badlogic.gdx.utils.GdxNativesLoader;
+import io.mindspice.lute.engine.components.Actor;
+import io.mindspice.lute.engine.components.Facing;
+import io.mindspice.lute.engine.components.Physic;
+
+import java.util.List;
+
+public final class AwarenessSystemTest {
+    public static void main(String[] args) {
+        GdxNativesLoader.load();
+        Box2D.init();
+        var world = new World(Vector2.Zero, true);
+        try {
+            run(world);
+        } finally {
+            world.dispose();
+        }
+        System.out.println("AwarenessSystemTest: passed (native Box2D)");
+    }
+
+    private static void run(World world) {
+        var engine = new Engine();
+        var awareness = new AwarenessSystem(world);
+        engine.addSystem(awareness);
+        var enemy = actor(engine, world, Actor.Role.ENEMY, 0, 0);
+        var npc = actor(engine, world, Actor.Role.NPC, 2, 0);
+        var player = actor(engine, world, Actor.Role.PLAYER, 4, 4);
+        var facing = Facing.MAPPER.get(enemy);
+        check(awareness.inRange(enemy, Actor.Role.NPC).equals(List.of(npc)), "Static NPC is detectable");
+        check(awareness.inRange(npc, Actor.Role.ENEMY).equals(List.of(enemy)), "Static enemy is detectable");
+        check(awareness.inRange(enemy, Actor.Role.ENEMY).isEmpty(), "Exclude self");
+        check(awareness.inRange(player, Actor.Role.NPC).isEmpty(), "Player owns no sensor");
+        engine.update(0);
+        check(facing.getDirection() == Facing.Direction.DOWN, "AABB corner is outside the circle");
+        body(player).setTransform(4, 0, 0);
+        check(awareness.inRange(enemy, Actor.Role.PLAYER).equals(List.of(player)), "Boundary is inclusive");
+        engine.update(0);
+        check(facing.getDirection() == Facing.Direction.RIGHT, "Graph sees through other actor bodies");
+        check(Facing.MAPPER.get(npc).getDirection() == Facing.Direction.DOWN, "NPC has no graph behavior");
+        body(player).setTransform(0, 3, 0);
+        var scenery = world.createBody(new BodyDef());
+        scenery.setUserData(new Entity()); // Tiled tile-object scenery is entity-backed.
+        var wall = box(scenery, 0, 1, 1, false);
+        engine.update(0);
+        check(facing.getDirection() == Facing.Direction.RIGHT, "Embedded origin is blocked");
+        scenery.setTransform(0, 1, 0);
+        engine.update(0);
+        check(facing.getDirection() == Facing.Direction.RIGHT, "Solid scenery blocks ray");
+        wall.setSensor(true);
+        engine.update(0);
+        check(facing.getDirection() == Facing.Direction.UP, "World sensors do not block ray");
+        wall.setSensor(false);
+        scenery.setTransform(0, -1, 0);
+        body(player).setTransform(0, -1, 0);
+        engine.update(0);
+        check(facing.getDirection() == Facing.Direction.UP, "Embedded target is blocked");
+        body(player).setTransform(20, 20, 0);
+        body(enemy).setTransform(21, 20, 0);
+        engine.update(0);
+        check(facing.getDirection() == Facing.Direction.LEFT, "Moving the body moves the attached circle");
+        engine.removeEntity(player);
+        check(awareness.inRange(enemy, Actor.Role.PLAYER).isEmpty(), "Removed entity isn't returned even before body cleanup");
+        world.destroyBody(body(player));
+        check(awareness.inRange(enemy, Actor.Role.PLAYER).isEmpty(), "Destroyed target body isn't returned");
+        body(npc).setTransform(22, 20, 0);
+        check(awareness.inRange(enemy, Actor.Role.NPC).equals(List.of(npc)), "Moved NPC is detected immediately");
+        var sensor = body(enemy).getFixtureList().peek();
+        body(enemy).destroyFixture(sensor);
+        check(awareness.inRange(enemy, Actor.Role.NPC).isEmpty(), "Removed fixture can't query");
+        world.destroyBody(body(enemy));
+        engine.update(0);
+        check(awareness.inRange(enemy, Actor.Role.NPC).isEmpty(), "Destroyed owner body can't query");
+    }
+
+    private static Entity actor(Engine engine, World world, Actor.Role role, float x, float y) {
+        var entity = engine.createEntity();
+        var def = new BodyDef();
+        def.position.set(x, y);
+        var body = world.createBody(def);
+        body.setUserData(entity);
+        box(body, 0, 0, .2f, false);
+        if (role != Actor.Role.PLAYER) {
+            var shape = new CircleShape();
+            try {
+                shape.setRadius(4);
+                var fixture = new FixtureDef();
+                fixture.shape = shape;
+                fixture.isSensor = true;
+                fixture.filter.maskBits = 0;
+                body.createFixture(fixture).setUserData(AwarenessSystem.SENSOR_TAG);
+            } finally {
+                shape.dispose();
+            }
+        }
+        entity.add(new Actor(role, 0, 0)).add(new Physic(body, def.position.cpy()))
+            .add(new Facing(Facing.Direction.DOWN));
+        engine.addEntity(entity);
+        return entity;
+    }
+
+    private static Fixture box(Body body, float x, float y, float halfSize, boolean sensor) {
+        var shape = new PolygonShape();
+        try {
+            shape.setAsBox(halfSize, halfSize, new Vector2(x, y), 0);
+            var fixture = body.createFixture(shape, 0);
+            fixture.setSensor(sensor);
+            return fixture;
+        } finally {
+            shape.dispose();
+        }
+    }
+
+    private static Body body(Entity entity) { return Physic.MAPPER.get(entity).getBody(); }
+
+    private static void check(boolean condition, String message) {
+        if (!condition) { throw new AssertionError(message); }
+    }
+}
