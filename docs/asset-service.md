@@ -34,7 +34,27 @@ For an in-place `Teleport`, set `targetMap` to `THIS` (case-insensitive) and `ta
 
 For map travel, set `targetMap` to the destination map's logical manifest ID and `targetSpawn` to a named `PLAYER` or `TELEPORT` point there. An explicit ID matching the current map still rebuilds its runtime; use `THIS` for the in-place behavior. The destination is synchronously loaded and prepared before the old runtime is replaced after the ECS and physics update. Invalid or missing destinations are logged and leave the current runtime intact. Arrival portals require exit before reentry, preventing a teleport loop. Named travel retains live health, loadout, and facing, but resets transient combat and input state. Hide/show remounts the current entry with the same session state; a new session uses player JSON defaults. No saves or disk hot reload are provided.
 
-Author a `SpawnPoint` as a zero-size point and a `SpawnArea` as an unrotated rectangle with positive dimensions, using a Tiled object name unique among spawn markers and a `spawnType` of `PLAYER`, `TELEPORT`, `NPC`, or `ITEM`. At most one `PLAYER` point is allowed; it creates the initial player. Areas and `NPC`/`ITEM` markers are data-only. The map owner cleans up sensor objects.
+Author a `SpawnPoint` as a zero-size point and a `SpawnArea` as an unrotated rectangle with positive dimensions, using a Tiled object name unique among spawn markers and a `spawnType` of `PLAYER`, `TELEPORT`, `NPC`, `ENEMY`, `OBJECT`, or `ITEM`. At most one `PLAYER` point is allowed; it creates the initial player. NPC and ENEMY points create map actors, preferring `spawnKey` and falling back to legacy `actorId` when no explicit key is authored. OBJECT and ITEM points create objects and require `spawnKey`. Define `OBJECT` in the Tiled project's spawn type enum and a string `spawnKey` property on the spawn class; its `NULL` default counts as unset. PLAYER, NPC, ENEMY, OBJECT, and ITEM points require the `facing` enum; the Tiled project supplies `DOWN`. A new player uses the marker facing, while travel preserves the live player's facing. SpawnAreas remain data-only. The map owner cleans up sensor objects.
+
+OBJECT and ITEM points use the required shared `objects.atlas`, generated from `raw_assets/sprites/objects/`, and required `raw_assets/data/objects.json`, keyed by `spawnKey`. Each definition requires `animation` and `collision_bounds`. `animation` is nullable: null selects the static atlas region named exactly by `spawnKey`; otherwise it uses the player `AnimationData` fields and `atlas_key` selects indexed frames. `sound_frame` is required but unused for objects. `collision_bounds` is nullable; null creates no physics body or fixture. Otherwise it describes an ellipse in bottom-left sprite-local pixels. The sprite is centered on the point, while the ellipse retains its offset from the sprite center; both rotate around the point: DOWN 0°, RIGHT 90°, UP 180°, LEFT -90°.
+
+To reproduce the local ignored asset update, add a `FireSpawn` OBJECT point to `test_tiled` at Tiled coordinates x=134, y=164, with `spawnKey` `campfire1` and facing `DOWN`. Split the old 128×64 campfire sheet into six 32×32 frames in row-major order, ignoring the last two blank cells, and save them as `raw_assets/sprites/objects/campfire1/campfire1_00.png` through `campfire1_05.png`. Remove the old sheet after splitting it so it is not packed alongside the frames. Add this entry to `raw_assets/data/objects.json`:
+
+```json
+{
+  "campfire1": {
+    "animation": {
+      "atlas_key": "campfire1/campfire1",
+      "speed": 1,
+      "frame_interval": 0.1,
+      "sound_frame": 0
+    },
+    "collision_bounds": { "x1": 4, "y1": 2, "x2": 28, "y2": 14 }
+  }
+}
+```
+
+Regenerate the ignored runtime assets with `./generate-runtime-assets.sh` after updating the raw Tiled project, map, sprites, and data.
 
 ## Weapon assets and animation timing
 

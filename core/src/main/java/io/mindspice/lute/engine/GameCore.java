@@ -14,6 +14,7 @@ import io.mindspice.lute.engine.assets.AssetService;
 import io.mindspice.lute.engine.assets.MapAssets;
 import io.mindspice.lute.engine.assets.WeaponAssets;
 import io.mindspice.lute.engine.assets.CharacterAssets;
+import io.mindspice.lute.engine.assets.ObjectAssets;
 import io.mindspice.lute.engine.data.json.DataLoader;
 import io.mindspice.lute.engine.data.json.GameData;
 import io.mindspice.lute.engine.tiled.ManifestLoader;
@@ -77,6 +78,7 @@ public class GameCore extends Game {
 
         MapAssets assets = ManifestLoader.parseMapManifest(GameConsts.STARTUP_MAP);
         var initialAssets = new ArrayList<>(CharacterAssets.all(gameData.weaponsData().atlas()));
+        initialAssets.add(ObjectAssets.OBJECTS);
         for (String id : gameData.weaponsData().weapons().keySet()) {
             initialAssets.addAll(WeaponAssets.of(id, gameData.weaponsData()).all());
         }

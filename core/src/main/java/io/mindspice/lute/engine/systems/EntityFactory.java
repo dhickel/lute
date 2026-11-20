@@ -19,6 +19,7 @@ import io.mindspice.lute.engine.assets.AssetService;
 import io.mindspice.lute.engine.assets.MapAssets;
 import io.mindspice.lute.engine.assets.WeaponAssets;
 import io.mindspice.lute.engine.assets.CharacterAssets;
+import io.mindspice.lute.engine.assets.ObjectAssets;
 import io.mindspice.lute.engine.data.json.CharacterBounds;
 import io.mindspice.lute.engine.data.json.MapActorData;
 import io.mindspice.lute.engine.data.json.WeaponsData;
@@ -230,6 +231,69 @@ public class EntityFactory extends EntitySystem {
                 }
             }
         }
+    }
+
+    public Entity getSpawnedObject(Vector2 pixelPosition, String spawnKey, Facing.Direction facing) {
+        var definition = GameCore.INSTANCE.getGameData().objectsData().get(spawnKey);
+        if (definition == null) { throw new IllegalArgumentException("Unknown object spawnKey: " + spawnKey); }
+        var atlas = ObjectAssets.OBJECTS;
+        var settings = definition.animation();
+        Animation2D animation = null;
+        TextureRegion region;
+        if (settings == null) {
+            region = assetService.get(TextureAtlas.class, atlas.id()).findRegion(spawnKey, -1);
+            if (region == null) { throw new IllegalArgumentException("No static object atlas region for " + spawnKey); }
+        } else {
+            animation = createAnimation(atlas, settings.atlasKey(), Animation2D.AnimationType.DEFAULT,
+                settings.speed(), settings.frameInterval(), facing);
+            var frames = animation.getAnimation().getKeyFrames();
+            region = frames[0];
+            for (var frame : frames) {
+                if (frame.getRegionWidth() != region.getRegionWidth() || frame.getRegionHeight() != region.getRegionHeight()) {
+                    throw new IllegalArgumentException("Object animation frame sizes differ for " + spawnKey);
+                }
+            }
+        }
+
+        float rotation = switch (facing) {
+            case DOWN -> 0f;
+            case RIGHT -> 90f;
+            case UP -> 180f;
+            case LEFT -> -90f;
+        };
+        float width = region.getRegionWidth();
+        float height = region.getRegionHeight();
+        float unit = GameConsts.UNIT_SCALE;
+        var size = new Vector2(width, height).scl(unit);
+        var center = pixelPosition.cpy().scl(unit);
+        var position = center.cpy().mulAdd(size, -.5f);
+        var entity = getEngine().createEntity();
+        entity.add(new Transform(position, 2, size, new Vector2(1, 1), rotation, 0f));
+        entity.add(new Graphic(region, Color.WHITE.cpy()));
+        if (animation != null) {
+            entity.add(new Facing(facing));
+            entity.add(animation);
+        }
+        var bounds = definition.collisionBounds();
+        if (bounds != null) {
+            if (bounds.x2() > width || bounds.y2() > height) {
+                throw new IllegalArgumentException("Object collision bounds exceed the sprite canvas for " + spawnKey);
+            }
+            var bodyDef = new BodyDef();
+            bodyDef.type = BodyDef.BodyType.StaticBody;
+            bodyDef.position.set(center);
+            bodyDef.angle = (float) Math.toRadians(rotation);
+            var body = world.createBody(bodyDef);
+            try {
+                CharacterFixtures.ellipseAt(body, bounds, false, width * .5f, height * .5f);
+                body.setUserData(entity);
+                entity.add(new Physic(body, position.cpy()));
+            } catch (RuntimeException | Error failure) {
+                world.destroyBody(body);
+                throw failure;
+            }
+        }
+        return entity;
     }
 
     public Entity getPhysicObjectEntity(PhysicObjectProps props, TiledMapTileMapObject object, MapAssets mapAssets) {

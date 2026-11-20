@@ -12,9 +12,13 @@ public final class CharacterFixtures {
     private CharacterFixtures() { }
 
     public static Fixture ellipse(Body body, CharacterBounds bounds, boolean sensor) {
+        return ellipseAt(body, bounds, sensor, 0f, 0f);
+    }
+
+    static Fixture ellipseAt(Body body, CharacterBounds bounds, boolean sensor, float originX, float originY) {
         float unit = GameConsts.UNIT_SCALE;
-        float cx = (bounds.x1() + bounds.x2()) * 0.5f * unit;
-        float cy = (bounds.y1() + bounds.y2()) * 0.5f * unit;
+        float cx = ((bounds.x1() + bounds.x2()) * 0.5f - originX) * unit;
+        float cy = ((bounds.y1() + bounds.y2()) * 0.5f - originY) * unit;
         float rx = (bounds.x2() - bounds.x1()) * 0.5f * unit;
         float ry = (bounds.y2() - bounds.y1()) * 0.5f * unit;
         var vertices = new Vector2[8];

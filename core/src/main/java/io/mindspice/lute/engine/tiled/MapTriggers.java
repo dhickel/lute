@@ -19,13 +19,13 @@ import java.util.List;
 
 public record MapTriggers(List<Sensor> sensors, List<SpawnPoint> points, List<SpawnArea> areas) {
     public enum SensorType { GENERAL }
-    public enum SpawnType { PLAYER, TELEPORT, NPC, ITEM, ENEMY }
+    public enum SpawnType { PLAYER, TELEPORT, NPC, ITEM, ENEMY, OBJECT }
 
     public record DetectorGeometry(Vector2 center, float radius, List<float[]> polygons) {
         public DetectorGeometry { polygons = List.copyOf(polygons); }
     }
     public record Sensor(String name, SensorType type, DetectorGeometry geometry, String targetMap, String targetSpawn) { }
-    public record SpawnPoint(String name, SpawnType type, Vector2 position, String actorId, Facing.Direction facing) { }
+    public record SpawnPoint(String name, SpawnType type, Vector2 position, String spawnKey, Facing.Direction facing) { }
     public record SpawnArea(String name, SpawnType type, Rectangle bounds) { }
 
     public MapTriggers {
@@ -138,15 +138,16 @@ public record MapTriggers(List<Sensor> sensors, List<SpawnPoint> points, List<Sp
                 finite(object, position.x, "x");
                 finite(object, position.y, "y");
                 var spawnType = enumValue(object, "spawnType", SpawnType.class);
-                String actorId = switch (spawnType) {
-                    case NPC, ENEMY -> text(object, "actorId");
+                String spawnKey = switch (spawnType) {
+                    case NPC, ENEMY -> requiredSpawnKey(object, true);
+                    case OBJECT, ITEM -> requiredSpawnKey(object, false);
                     default -> null;
                 };
                 var facing = switch (spawnType) {
-                    case PLAYER, NPC, ENEMY -> enumValue(object, "facing", Facing.Direction.class);
-                    default -> null;
+                    case PLAYER, NPC, ENEMY, OBJECT, ITEM -> enumValue(object, "facing", Facing.Direction.class);
+                    case TELEPORT -> null;
                 };
-                points.add(new SpawnPoint(name, spawnType, position, actorId, facing));
+                points.add(new SpawnPoint(name, spawnType, position, spawnKey, facing));
             }
             case "SpawnArea" -> areas.add(new SpawnArea(name, enumValue(object, "spawnType", SpawnType.class), bounds(object)));
             default -> throw invalid(object, "unsupported trigger class '" + type + "'");
@@ -175,6 +176,16 @@ public record MapTriggers(List<Sensor> sensors, List<SpawnPoint> points, List<Sp
         if (bounds.width <= 0 || bounds.height <= 0) {
             throw invalid(object, "rectangle dimensions must be positive");
         }
+    }
+
+    private static String requiredSpawnKey(MapObject object, boolean actor) {
+        var value = object.getProperties().get("spawnKey");
+        // Tiled supplies the class default "NULL" for markers without an authored key.
+        if (value == null || "NULL".equals(value)) {
+            if (actor) { return text(object, "actorId"); }
+            throw invalid(object, "spawnKey is required");
+        }
+        return text(object, "spawnKey");
     }
 
     private static String text(MapObject object, String key) {

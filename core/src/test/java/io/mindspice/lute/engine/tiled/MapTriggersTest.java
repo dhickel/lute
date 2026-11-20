@@ -71,8 +71,11 @@ public final class MapTriggersTest {
         TiledMap map = new PropertyLoader().sample();
         try {
             var triggers = MapTriggers.parse(map);
-            check(triggers.sensors().size() == 2 && triggers.points().size() == 4 && triggers.areas().isEmpty(),
-                "Sample must contain a test sensor, teleport, player point, destination point, and two actor points");
+            check(triggers.sensors().size() == 2 && triggers.points().size() == 5 && triggers.areas().isEmpty(),
+                "Sample retains sensors, travel destinations and actor points alongside the campfire marker");
+            var fire = triggers.points().stream().filter(p -> p.name().equals("FireSpawn")).findFirst().orElseThrow();
+            check(fire.type() == SpawnType.OBJECT && fire.spawnKey().equals("campfire1") && fire.facing().name().equals("DOWN"),
+                "FireSpawn resolves its authored key and the Tiled facing default");
             check(triggers.points().stream().anyMatch(p -> p.type() == SpawnType.NPC && p.name().equals("NpcSpawn"))
                 && triggers.points().stream().anyMatch(p -> p.type() == SpawnType.ENEMY && p.name().equals("EnemySpawn")),
                 "Sample keeps explicitly typed actor points");
@@ -123,6 +126,8 @@ public final class MapTriggersTest {
             check(triggers.areas().getFirst().type() == SpawnType.NPC, "SpawnArea inherits NPC default");
             rectangle(triggers.areas().getFirst().bounds(), 1, 17, 2, 1);
             check(triggers.sensors().get(1).targetMap().equals("THIS"), "Teleport inherits THIS default");
+            check(triggers.points().get(3).spawnKey().equals("campfire1")
+                && triggers.points().get(3).facing().name().equals("RIGHT"), "Item point binds object key and facing");
             check(triggers.points().get(2).type() == SpawnType.NPC && triggers.points().get(3).type() == SpawnType.ITEM,
                 "Non-player points remain parsed data");
             check(triggers.areas().get(1).type() == SpawnType.ITEM && triggers.areas().get(2).type() == SpawnType.PLAYER,
@@ -506,6 +511,7 @@ public final class MapTriggersTest {
         String coords = (attributes.contains("x=") ? "" : "x=\"96\" ") + (attributes.contains("y=") ? "" : "y=\"128\" ");
         String properties = type.isEmpty() ? "" : property("spawnType", type);
         if (type.equals("NPC")) { properties += property("actorId", "basic_npc"); }
+        if (type.equals("ITEM")) { properties += property("spawnKey", "campfire1") + property("facing", "RIGHT"); }
         return object(name, "SpawnPoint", coords + attributes, properties, "<point/>");
     }
 

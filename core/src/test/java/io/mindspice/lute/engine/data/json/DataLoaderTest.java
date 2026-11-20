@@ -22,7 +22,9 @@ public final class DataLoaderTest {
         try {
             useAssets();
             GameConsts.loadSettings();
-            check(GameConsts.VIEW_WIDTH == 21.3f && GameConsts.UNIT_SCALE == 1f / 32f, "settings constants");
+            var settings = DataLoader.mapper.readTree(Path.of("assets/game.settings.json").toFile());
+            check(GameConsts.VIEW_WIDTH == settings.required("viewWidth").floatValue()
+                && GameConsts.UNIT_SCALE == settings.required("unitScale").floatValue(), "settings constants match authored values");
             var player = DataLoader.parsePlayerData();
             var definitions = DataLoader.parseWeaponData();
             playerSchema(player, definitions);
@@ -31,6 +33,7 @@ public final class DataLoaderTest {
             projectileSchema();
             missingProjectileData();
             actorsSchema();
+            objectsSchema();
             invalidMetadata(player, definitions);
             assetIds(definitions);
             settingsAtomicity();
@@ -133,6 +136,32 @@ public final class DataLoaderTest {
             useAssets();
             Files.deleteIfExists(characters);
             Files.deleteIfExists(enemies);
+            Files.delete(directory);
+        }
+    }
+
+    private static void objectsSchema() throws Exception {
+        var campfire = DataLoader.loadGameData().objectsData().get("campfire1");
+        check(campfire.animation().atlasKey().equals("campfire1/campfire1")
+            && campfire.collisionBounds().equals(new CharacterBounds(4, 2, 28, 14)), "Campfire binds animation and collision");
+        check(Files.mismatch(Path.of("raw_assets/data/objects.json"), Path.of("assets/data/objects.json")) == -1,
+            "Generated objects catalogue matches source");
+        var directory = Files.createTempDirectory("object-data");
+        var objects = directory.resolve("objects.json");
+        try {
+            useResolver(path -> new FileHandle(path.equals("data/objects.json") ? objects.toFile() : Path.of("assets", path).toFile()));
+            rejects(DataLoader::loadGameData, "Missing objects catalogue");
+            Files.writeString(objects, "{\"sign\":{\"animation\":null,\"collision_bounds\":null}}");
+            check(DataLoader.loadGameData().objectsData().get("sign").equals(new ObjectData(null, null)),
+                "Object fields accept explicit null");
+            for (String invalid : new String[]{"{\"animation\":null}", "{\"collision_bounds\":null}",
+                    "{\"animation\":null,\"collision_bounds\":{\"x1\":0,\"x2\":0,\"y1\":0,\"y2\":4}}", "null"}) {
+                Files.writeString(objects, "{\"sign\":" + invalid + "}");
+                rejects(DataLoader::loadGameData, "Invalid object definition: " + invalid);
+            }
+        } finally {
+            useAssets();
+            Files.deleteIfExists(objects);
             Files.delete(directory);
         }
     }
@@ -419,7 +448,7 @@ public final class DataLoaderTest {
                 rejects(() -> GameConsts.parseSettings(invalid.toString()), "Invalid " + key + " path");
             }
             float width = GameConsts.VIEW_WIDTH;
-            Files.writeString(fixture, settings.replace("21.3", "0"));
+            Files.writeString(fixture, configured.deepCopy().put("viewWidth", 0).toString());
             rejects(GameConsts::loadSettings, "invalid settings");
             check(GameConsts.VIEW_WIDTH == width && GameConsts.SOUND_PATH.equals("effects/"), "invalid settings apply nothing");
         } finally {

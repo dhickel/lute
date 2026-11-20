@@ -18,18 +18,19 @@ public class DataLoader {
         var player = parsePlayerData();
         var weapons = parseWeaponData();
         player.loadout().weaponCycle().forEach(weapons::requireWeapon);
-        var characters = parseActorDefinitions("characters.json", MapActorData.Npc.class);
-        var enemies = parseActorDefinitions("enemies.json", MapActorData.Enemy.class);
+        var characters = parseDefinitions("characters.json", MapActorData.Npc.class);
+        var enemies = parseDefinitions("enemies.json", MapActorData.Enemy.class);
         characters.values().forEach(npc -> npc.loadout().weaponCycle().forEach(weapons::requireWeapon));
         for (var definitions : List.of(characters, enemies)) {
             for (var actor : definitions.values()) {
                 if (actor.weapon() != null) { weapons.requireWeapon(actor.weapon()); }
             }
         }
-        return new GameData(player, weapons, parseProjectileData(), characters, enemies);
+        var objects = parseDefinitions("objects.json", ObjectData.class);
+        return new GameData(player, weapons, parseProjectileData(), characters, enemies, objects);
     }
 
-    private static <T extends MapActorData> Map<String, T> parseActorDefinitions(String filename, Class<T> type) {
+    private static <T> Map<String, T> parseDefinitions(String filename, Class<T> type) {
         var path = Gdx.files.internal(GameConsts.DATA_PATH + filename);
         var mapType = mapper.getTypeFactory().constructMapType(Map.class, String.class, type);
         try (var file = path.read()) {
