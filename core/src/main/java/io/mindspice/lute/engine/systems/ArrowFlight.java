@@ -15,7 +15,7 @@ final class ArrowFlight {
     final Vector2 tip;
     final Vector2 direction;
     private final Vector2 start, aimPoint, aimDirection;
-    private final float damage, flightDistance, aimProgress, arcScale;
+    private final float damage, aimTime, lift, descentTime;
     private final boolean crossesAim;
     private final Vector2[] triangle;
     private final float collisionPad;
@@ -36,14 +36,15 @@ final class ArrowFlight {
             case RIGHT -> new Vector2(1, 0);
         } : aimPoint.cpy().sub(start).nor();
         direction = aimDirection.cpy();
-        flightDistance = type.speed() * type.lifetime();
-        aimProgress = distance == 0 ? 1f : distance / flightDistance;
-        crossesAim = distance > 0 && aimProgress <= 1f;
-        // The offset is zero at launch and at the crosshair. Bound its magnitude
-        // over the entire lifetime, including the descent past a nearby crosshair.
-        float peak = Math.min(aimProgress / 2f, 1f);
-        float maxOffset = Math.max(peak * (aimProgress - peak), Math.abs(aimProgress - 1f));
-        arcScale = Math.min(type.arcHeight(), flightDistance * 0.15f) / maxOffset;
+        aimTime = distance == 0 ? type.lifetime() : distance / type.speed();
+        crossesAim = distance > 0 && aimTime <= type.lifetime();
+        // A soft distance-based limit keeps close shots from getting too steep,
+        // without making authored height changes ineffective once they reach a hard cap.
+        float liftLimit = type.speed() * aimTime * .2f;
+        lift = type.arcHeight() / (1f + type.arcHeight() / liftLimit);
+        // Soften the continuation if needed: the descent slope can grow by at most 50%
+        // from the slope at aim, while still getting steeper all the way to expiry.
+        descentTime = Math.max(aimTime, 4f * (type.lifetime() - aimTime));
         float length = type.collisionBounds().length() * GameConsts.UNIT_SCALE;
         float halfWidth = type.collisionBounds().width() * GameConsts.UNIT_SCALE / 2;
         triangle = new Vector2[]{new Vector2(), new Vector2(-length, halfWidth), new Vector2(-length, -halfWidth)};
@@ -57,25 +58,35 @@ final class ArrowFlight {
     }
 
     boolean finished(World world, float dt) {
-        float progress = elapsed / type.lifetime();
+        float time = elapsed;
         elapsed = Math.min(elapsed + dt, type.lifetime());
-        float until = elapsed / type.lifetime();
-        // Sweep chords along the whole curve, using the exact crosshair as a waypoint.
-        while (progress < until) {
-            float nextProgress = Math.min(until, progress + 1f / 16f);
-            if (crossesAim && progress < aimProgress && aimProgress <= nextProgress) {
-                nextProgress = aimProgress;
-            }
-            var next = start.cpy().mulAdd(aimDirection, flightDistance * nextProgress);
-            if (crossesAim && nextProgress == aimProgress) {
+        // Subdivide the short pre-aim arc separately so a long update cannot skip its apex.
+        float flightStep = type.lifetime() / 16f;
+        float aimStep = Math.min(flightStep, aimTime / 16f);
+        while (time < elapsed) {
+            float nextTime = time < aimTime ? Math.min(aimTime, time + aimStep) : time + flightStep;
+            nextTime = Math.min(elapsed, nextTime);
+            var next = start.cpy().mulAdd(aimDirection, type.speed() * nextTime);
+            if (crossesAim && nextTime == aimTime) {
                 next.set(aimPoint);
             } else {
-                next.y += arcScale * nextProgress * (aimProgress - nextProgress);
+                next.y += arcOffset(nextTime);
             }
             if (advance(world, next)) { return true; }
-            progress = nextProgress;
+            time = nextTime;
         }
         return elapsed >= type.lifetime();
+    }
+
+    private float arcOffset(float time) {
+        if (time <= aimTime) {
+            float progress = time / aimTime;
+            return 4f * lift * progress * (1f - progress);
+        }
+        // Match the pre-aim tangent at the join, then keep bending down instead of
+        // extending the aim line or carrying the steep near-shot parabola indefinitely.
+        float pastAim = time - aimTime;
+        return -4f * lift * (pastAim / aimTime) * (1f + pastAim / descentTime);
     }
 
     private boolean advance(World world, Vector2 next) {

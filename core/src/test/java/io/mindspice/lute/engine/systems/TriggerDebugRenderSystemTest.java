@@ -199,7 +199,7 @@ public final class TriggerDebugRenderSystemTest {
             near(arrow.tip.y, 0, "Arrow arc passes through the crosshair");
             check(!arrow.finished(world, 0.25f), "Arrow is still active past the crosshair");
             near(arrow.tip.x, 2, "Arrow continues in the original aim direction");
-            near(arrow.tip.y, 0, "Arrow flies straight after the arc");
+            check(arrow.tip.y < 0, "Arrow descends below the original aim line");
             check(arrow.finished(world, 1), "Unobstructed arrow expires by lifetime");
             near(arrow.tip.x, 4, "Expiry clamps travel past the crosshair");
 
@@ -208,16 +208,16 @@ public final class TriggerDebugRenderSystemTest {
             near(centered.tip.x, -1, "Centered aim uses the owner's facing");
 
             var wallDef = new BodyDef();
-            wallDef.position.set(2, 0);
+            wallDef.position.set(2, -.52f);
             var wall = world.createBody(wallDef);
             var shape = new PolygonShape();
             try {
-                shape.setAsBox(0.05f, 0.25f);
+                shape.setAsBox(0.05f, 0.1f);
                 wall.createFixture(shape, 0);
             } finally { shape.dispose(); }
             var blocked = new ArrowFlight(owner, definition, start, aim, 1);
-            check(blocked.finished(world, 0.75f), "A long frame sweeps into a wall beyond the crosshair");
-            near(blocked.tip.x, 1, "Wall blocks the post-crosshair segment");
+            check(blocked.finished(world, 0.75f), "A long frame sweeps into a wall below the aim line");
+            check(blocked.tip.x > 1 && blocked.tip.x < 2, "Wall blocks the post-crosshair segment");
         } finally { world.dispose(); }
     }
 
