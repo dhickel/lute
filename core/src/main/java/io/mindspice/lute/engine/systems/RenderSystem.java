@@ -40,7 +40,7 @@ public class RenderSystem extends SortedIteratingSystem implements Disposable {
     private static final Family LIGHTS = Family.all(Emissive.class, Transform.class).get();
     private final Batch batch;
     private final CharacterCompositor compositor;
-    private final CompatibilityVertexArrays compatArrays = RenderState.compatibilityArrays();
+    private final CompatibilityVertexArrays desktop = RenderState.desktopBindings();
     private final ShaderProgram worldShader;
     private Texture crosshair;
     private final AssetService assets;
@@ -68,7 +68,7 @@ public class RenderSystem extends SortedIteratingSystem implements Disposable {
         this.batch = batch;
         this.assets = assets;
         this.compositor = new CharacterCompositor(assets);
-        var state = new RenderState();
+        var state = new RenderState(desktop);
         try { this.worldShader = SpriteBatch.createDefaultShader(); }
         finally { state.restore(); }
         this.viewport = viewport;
@@ -94,7 +94,7 @@ public class RenderSystem extends SortedIteratingSystem implements Disposable {
         if (batch.isDrawing()) { throw new IllegalStateException("Render system requires an idle batch"); }
         if (world != null && (viewport.getScreenWidth() <= 0 || viewport.getScreenHeight() <= 0)) { return; }
         AnimatedTiledMapTile.updateAnimationBaseTime();
-        var state = new RenderState();
+        var state = new RenderState(desktop);
         float packedColor = batch.getPackedColor();
         var color = batch.getColor().cpy();
         var projection = new Matrix4(batch.getProjectionMatrix());
@@ -105,11 +105,12 @@ public class RenderSystem extends SortedIteratingSystem implements Disposable {
         boolean blending = batch.isBlendingEnabled();
         try {
             this.viewport.apply();
-            state.prepare(compatArrays);
+            state.prepare();
             // Query the *applied* GL viewport: FitViewport's logical bounds have already been HiDPI-scaled.
             int[] pixels = world == null ? null : state.currentViewport();
             if (pixels != null) {
                 if (pixels[2] == 0 || pixels[3] == 0) { return; }
+                state.isolateOutputZero();
                 Gdx.gl.glEnable(GL20.GL_SCISSOR_TEST);
                 Gdx.gl.glScissor(pixels[0], pixels[1], pixels[2], pixels[3]);
                 Gdx.gl.glClearColor(0, 0, 0, 0);
@@ -295,7 +296,7 @@ public class RenderSystem extends SortedIteratingSystem implements Disposable {
     public void dispose() {
         if (disposed) { return; }
         disposed = true;
-        var state = new RenderState();
+        var state = new RenderState(desktop);
         try {
             if (lighting != null) { lighting.dispose(state); lighting = null; }
             world = null;
@@ -303,7 +304,7 @@ public class RenderSystem extends SortedIteratingSystem implements Disposable {
                 state.releasedTexture(crosshair.getTextureObjectHandle());
                 crosshair.dispose();
             }
-            if (compatArrays != null) { compatArrays.dispose(); }
+            if (desktop != null) { desktop.dispose(); }
             compositor.dispose();
             mapRenderer.dispose();
             state.releasedShader(worldShader.getHandle());

@@ -48,12 +48,18 @@ final class RenderState {
     private int vertexArray = Gdx.gl30 == null ? 0 : integer(GL30.GL_VERTEX_ARRAY_BINDING);
     private final int activeTexture = integer(GL20.GL_ACTIVE_TEXTURE);
     private int texture;
-    private CompatibilityVertexArrays compatArrays;
+    private final CompatibilityVertexArrays desktop;
+    private final Runnable restoreAdditionalDrawBuffers;
+    private IntBuffer callerDrawRoutes;
     private int savedCompatArray;
+    private boolean compatArrayBound;
+    private int sampler;
     private boolean unpackPrepared, unpackSubimage;
     private int unpackBuffer, rowLength, skipRows, skipPixels;
 
-    RenderState() {
+    RenderState(CompatibilityVertexArrays desktop) {
+        this.desktop = desktop;
+        restoreAdditionalDrawBuffers = desktop == null ? null : desktop.captureAdditionalDrawBuffers();
         Gdx.gl.glActiveTexture(GL20.GL_TEXTURE0);
         texture = integer(GL20.GL_TEXTURE_BINDING_2D);
         current = this;
@@ -91,24 +97,49 @@ final class RenderState {
         return new boolean[]{booleans.get(0) != 0, booleans.get(1) != 0, booleans.get(2) != 0, booleans.get(3) != 0};
     }
 
-    static CompatibilityVertexArrays compatibilityArrays() {
-        if (Gdx.gl30 != null || Gdx.graphics.getGLVersion().getType() != GLVersion.Type.OpenGL) { return null; }
+    static CompatibilityVertexArrays desktopBindings() {
+        if (Gdx.graphics.getGLVersion().getType() != GLVersion.Type.OpenGL) { return null; }
         return ServiceLoader.load(CompatibilityVertexArrays.class).findFirst().orElseThrow(
-            () -> new IllegalStateException("Desktop GL20 renderer needs its compatibility vertex-array adapter"));
+            () -> new IllegalStateException("Desktop renderer needs its GL state adapter"));
     }
 
-    void prepare(CompatibilityVertexArrays arrays) {
-        if (arrays != null) {
-            savedCompatArray = arrays.bind();
-            compatArrays = arrays;
+    void prepare() {
+        if (desktop != null && Gdx.gl30 == null) {
+            savedCompatArray = desktop.bind();
+            compatArrayBound = true;
         }
         Gdx.gl.glActiveTexture(GL20.GL_TEXTURE0);
+        // A caller sampler overrides even the lightmap texture's explicit, non-mipmapped filter.
+        if (desktop != null ? desktop.supportsSamplers() : Gdx.gl30 != null) {
+            sampler = integer(GL30.GL_SAMPLER_BINDING);
+            if (sampler != 0) { bindUnitZeroSampler(0); }
+        }
         Gdx.gl.glDisable(GL20.GL_SCISSOR_TEST);
         Gdx.gl.glDisable(GL20.GL_DEPTH_TEST);
         Gdx.gl.glDisable(GL20.GL_STENCIL_TEST);
         Gdx.gl.glDisable(GL20.GL_CULL_FACE);
         Gdx.gl.glColorMask(true, true, true, true);
         Gdx.gl.glBlendEquationSeparate(GL20.GL_FUNC_ADD, GL20.GL_FUNC_ADD);
+    }
+
+    /** glClear writes every routed output. Keep only the caller's slot-zero destination for gameplay. */
+    void isolateOutputZero() {
+        if (desktop == null && Gdx.gl30 == null) { return; } // Single output in baseline GLES2.
+        for (int last = integer(GL30.GL_MAX_DRAW_BUFFERS) - 1; last > 0; last--) {
+            if (integer(GL30.GL_DRAW_BUFFER0 + last) == GL20.GL_NONE) { continue; }
+            var routes = BufferUtils.newIntBuffer(last + 1);
+            for (int i = 0; i <= last; i++) { routes.put(integer(GL30.GL_DRAW_BUFFER0 + i)); }
+            callerDrawRoutes = routes.flip();
+            integers.clear();
+            integers.put(callerDrawRoutes.get(0)).flip();
+            setDrawBuffers(integers);
+            return;
+        }
+    }
+
+    private void setDrawBuffers(IntBuffer routes) {
+        if (Gdx.gl30 != null) { Gdx.gl30.glDrawBuffers(routes.remaining(), routes); }
+        else { desktop.setDrawBuffers(routes); }
     }
 
     /** TexImage2D uses client memory (including null for storage), never an offset into caller buffers. */
@@ -135,7 +166,7 @@ final class RenderState {
     }
 
     void releasedTarget(int framebuffer, int texture) {
-        if (this.framebuffer == framebuffer) { this.framebuffer = 0; }
+        if (this.framebuffer == framebuffer) { this.framebuffer = 0; callerDrawRoutes = null; }
         if (readFramebuffer == framebuffer) { readFramebuffer = 0; }
         if (this.texture == texture) { this.texture = 0; }
         if (enclosing != null) { enclosing.releasedTarget(framebuffer, texture); }
@@ -165,6 +196,8 @@ final class RenderState {
     void restore() {
         current = enclosing;
         restoreTargets();
+        // Routing belongs to the draw FBO. Rebind it first and only restore on final exit, not before modulation.
+        if (callerDrawRoutes != null) { setDrawBuffers(callerDrawRoutes); }
         Gdx.gl.glScissor(scissorBox[0], scissorBox[1], scissorBox[2], scissorBox[3]);
         if (unpackBuffer != 0) { Gdx.gl.glBindBuffer(GL30.GL_PIXEL_UNPACK_BUFFER, unpackBuffer); }
         if (unpackSubimage) {
@@ -181,18 +214,26 @@ final class RenderState {
         Gdx.gl.glBlendFuncSeparate(src, dst, srcAlpha, dstAlpha);
         Gdx.gl.glBlendEquationSeparate(equation, equationAlpha);
         enabled(GL20.GL_BLEND, blend);
+        // The non-indexed setters above apply slot zero's values to *all* draw buffers.
+        if (restoreAdditionalDrawBuffers != null) { restoreAdditionalDrawBuffers.run(); }
         enabled(GL20.GL_SCISSOR_TEST, scissor);
         enabled(GL20.GL_DEPTH_TEST, depth);
         enabled(GL20.GL_STENCIL_TEST, stencil);
         enabled(GL20.GL_CULL_FACE, cull);
         Gdx.gl.glUseProgram(program);
-        if (compatArrays != null) { compatArrays.restore(savedCompatArray); }
+        if (compatArrayBound) { desktop.restore(savedCompatArray); }
         if (Gdx.gl30 != null) { Gdx.gl30.glBindVertexArray(vertexArray); }
         Gdx.gl.glBindBuffer(GL20.GL_ARRAY_BUFFER, arrayBuffer);
         Gdx.gl.glBindBuffer(GL20.GL_ELEMENT_ARRAY_BUFFER, elementBuffer);
         Gdx.gl.glActiveTexture(GL20.GL_TEXTURE0);
         Gdx.gl.glBindTexture(GL20.GL_TEXTURE_2D, texture);
+        if (sampler != 0) { bindUnitZeroSampler(sampler); }
         Gdx.gl.glActiveTexture(activeTexture);
+    }
+
+    private void bindUnitZeroSampler(int name) {
+        if (desktop != null) { desktop.bindUnitZeroSampler(name); }
+        else { Gdx.gl30.glBindSampler(0, name); }
     }
 
     /** Only the night pass changes the stencil parameters; daylight never needs this snapshot. */

@@ -23,6 +23,15 @@ import io.mindspice.lute.engine.data.json.*;
 import io.mindspice.lute.engine.singletons.GameConsts;
 import io.mindspice.lute.engine.systems.*;
 
+import org.lwjgl.opengl.AMDDrawBuffersBlend;
+import org.lwjgl.opengl.ARBDrawBuffersBlend;
+import org.lwjgl.opengl.EXTDrawBuffers2;
+import org.lwjgl.opengl.GL;
+import org.lwjgl.opengl.GL11C;
+import org.lwjgl.opengl.GL20C;
+import org.lwjgl.opengl.GL30C;
+import org.lwjgl.opengl.GL40C;
+
 import java.lang.reflect.InvocationTargetException;
 import java.lang.reflect.Proxy;
 import java.util.*;
@@ -30,6 +39,11 @@ import java.util.*;
 import static com.badlogic.gdx.graphics.GL20.*;
 import static com.badlogic.gdx.graphics.GL30.*;
 import static com.badlogic.gdx.physics.box2d.BodyDef.BodyType.*;
+import static org.lwjgl.opengl.ARBSamplerObjects.glBindSampler;
+import static org.lwjgl.opengl.ARBSamplerObjects.glDeleteSamplers;
+import static org.lwjgl.opengl.ARBSamplerObjects.glGenSamplers;
+import static org.lwjgl.opengl.ARBSamplerObjects.glGetSamplerParameteri;
+import static org.lwjgl.opengl.ARBSamplerObjects.glSamplerParameteri;
 
 /** Real desktop GL and native Box2D, with no filesystem game assets or screen bootstrapping. */
 public final class LightingRenderTest extends ApplicationAdapter {
@@ -90,7 +104,9 @@ public final class LightingRenderTest extends ApplicationAdapter {
             }
             System.out.println("LightingRenderTest: " + Gdx.gl.glGetString(GL_RENDERER) + ", " + Gdx.gl.glGetString(GL_VERSION)
                 + ", Gdx GL30=" + (Gdx.gl30 != null) + ", native VAOs="
-                + (org.lwjgl.opengl.GL.getCapabilities().OpenGL30 || org.lwjgl.opengl.GL.getCapabilities().GL_ARB_vertex_array_object));
+                + (GL.getCapabilities().OpenGL30 || GL.getCapabilities().GL_ARB_vertex_array_object)
+                + ", samplers=" + hasSamplers() + ", MRT=" + dualOutputs() + ", dual indexed outputs=" + dualIndexedOutputs()
+                + ", independent blend funcs/equations=" + independentBlend());
             Box2D.init();
             world = new World(new Vector2(), true);
             batch = new SpriteBatch();
@@ -104,7 +120,7 @@ public final class LightingRenderTest extends ApplicationAdapter {
             engine.addSystem(renderer);
             target.begin();
             clear(BAR);
-            integrationAndOrder();
+            integrationAndOrder(assets);
             vertexInputs();
             clear(BAR);
             shadowsAndComposition();
@@ -128,7 +144,7 @@ public final class LightingRenderTest extends ApplicationAdapter {
         }
     }
 
-    private void integrationAndOrder() throws Exception {
+    private void integrationAndOrder(AssetService assets) throws Exception {
         // 8px strips overlap at different depths. Adjacent probes independently expose each pass.
         final int ground = 0x96b4d2ff, arrow = 0xd09010ff, character = 0x3050d0ff;
         final int object = 0x40c058ff, front = 0xc060b0ff;
@@ -223,6 +239,7 @@ public final class LightingRenderTest extends ApplicationAdapter {
         near(pixel(53, 117), modulate(dayAlpha, DIM), 2, "translucent art modulation");
         near(pixel(106, 84), WHITE, 0, "crosshair follows modulation");
         near(pixel(110, 84), modulate(ground, DIM), 2, "crosshair hole exposes dark world");
+        if (hasSamplers()) { hostileSampler(assets, actor, character, ground); }
         // A real debug system following RenderSystem, as in GameScreen. Use a sensor so making
         // the debug overlay visible cannot itself add a shadow. Don't depend on GL line tie rules.
         var sensor = box(78, 81, 5, 3, StaticBody, true);
@@ -256,6 +273,65 @@ public final class LightingRenderTest extends ApplicationAdapter {
         near(pixel(106, 84), ground, 0, "day has no stale night/overlay");
         near(pixel(53, 117), empty, 0, "return to day clears uncovered pixels");
         bars(); engine.removeAllEntities(); engine.removeSystem(combat); renderer.setMap(null);
+    }
+
+    private static boolean hasSamplers() {
+        return GL.getCapabilities().OpenGL33 || GL.getCapabilities().GL_ARB_sampler_objects;
+    }
+
+    /** A sampler (not a texture parameter) requiring absent mip levels makes a level-zero-only texture incomplete. */
+    private void hostileSampler(AssetService assets, Entity actor, int character, int ground) {
+        var gl = Gdx.gl;
+        var cells = new CharacterCompositor(assets);
+        int active = integer(GL_ACTIVE_TEXTURE);
+        gl.glActiveTexture(GL_TEXTURE0); int old0 = integer(GL_SAMPLER_BINDING);
+        gl.glActiveTexture(GL_TEXTURE1); int old1 = integer(GL_SAMPLER_BINDING);
+        int mip = glGenSamplers(), other = glGenSamplers();
+        try {
+            glSamplerParameteri(mip, GL_TEXTURE_MIN_FILTER, GL_LINEAR_MIPMAP_LINEAR);
+            glBindSampler(0, mip); glBindSampler(1, other); // enter on unit 1; the renderer samples unit 0
+            draw(true, 0);
+            near(pixel(16, 44), modulate(ground, DIM), 2, "mipmapped caller sampler: world and night modulation");
+            near(pixel(38, 44), modulate(character, DIM), 2, "mipmapped caller sampler: composed character at night");
+            checkSamplers(mip, other, "night draw");
+
+            // Exercise direct composition too: it must not rely on the outer renderer having unbound the sampler.
+            cells.compose(List.of(actor), camera);
+            checkSamplers(mip, other, "standalone character draw");
+            var cell = cells.region(actor);
+            int inspect = gl.glGenFramebuffer();
+            try {
+                gl.glBindFramebuffer(GL_FRAMEBUFFER, inspect);
+                gl.glFramebufferTexture2D(GL_FRAMEBUFFER, GL_COLOR_ATTACHMENT0, GL_TEXTURE_2D, cell.getTexture().getTextureObjectHandle(), 0);
+                require(gl.glCheckFramebufferStatus(GL_FRAMEBUFFER) == GL_FRAMEBUFFER_COMPLETE, "read completed character cell");
+                int x = (int)((cell.getU() + cell.getU2()) * .5f * cell.getTexture().getWidth());
+                int y = (int)((cell.getV() + cell.getV2()) * .5f * cell.getTexture().getHeight());
+                near(read(x, y), character, 0, "mipmapped caller sampler: standalone character cell");
+            } finally {
+                gl.glBindFramebuffer(GL_FRAMEBUFFER, target.getFramebufferHandle()); gl.glDeleteFramebuffer(inspect);
+            }
+            try (var probe = new TargetProbe()) {
+                probe.interrupt = Draw.QUAD; // ambient only: the real draw that sampled the lightmap
+                try { draw(true, 0); throw new AssertionError("night modulation wasn't interrupted"); }
+                catch (DrawFailure expected) { checkSamplers(mip, other, "interrupted night modulation"); }
+                probe.interrupt = Draw.SPRITE;
+                try { cells.compose(List.of(actor), camera); throw new AssertionError("character draw wasn't interrupted"); }
+                catch (DrawFailure expected) { checkSamplers(mip, other, "interrupted standalone character draw"); }
+            }
+        } finally {
+            glBindSampler(0, old0); glBindSampler(1, old1); gl.glActiveTexture(active);
+            glDeleteSamplers(mip); glDeleteSamplers(other); cells.dispose();
+        }
+    }
+
+    private static void checkSamplers(int mip, int other, String where) {
+        require(integer(GL_ACTIVE_TEXTURE) == GL_TEXTURE1 && integer(GL_SAMPLER_BINDING) == other,
+            where + ": active unit or unrelated unit-1 sampler changed");
+        Gdx.gl.glActiveTexture(GL_TEXTURE0);
+        require(integer(GL_SAMPLER_BINDING) == mip && glGetSamplerParameteri(mip, GL_TEXTURE_MIN_FILTER) == GL_LINEAR_MIPMAP_LINEAR,
+            where + ": lost or modified caller's mipmapped sampler");
+        Gdx.gl.glActiveTexture(GL_TEXTURE1);
+        require(Gdx.gl.glGetError() == GL_NO_ERROR, where + ": sampler driver error");
     }
 
     private void interruptFirstCharacterDraw() {
@@ -421,6 +497,14 @@ public final class LightingRenderTest extends ApplicationAdapter {
         var transform = new Matrix4().translate(6, 9, 0).rotate(0, 0, 1, 15);
         try {
             nested.begin();
+            boolean mrt = dualOutputs();
+            if (mrt) {
+                clear(BAR); // Attachment 0 is the sentinel; output zero deliberately points elsewhere.
+                var worldColor = texture(nested.getWidth(), nested.getHeight(), 0).getTexture();
+                gl.glFramebufferTexture2D(GL_FRAMEBUFFER, GL_COLOR_ATTACHMENT1, GL_TEXTURE_2D, worldColor.getTextureObjectHandle(), 0);
+                GL20C.glDrawBuffers(new int[]{GL_COLOR_ATTACHMENT1, GL_COLOR_ATTACHMENT0});
+                require(gl.glCheckFramebufferStatus(GL_FRAMEBUFFER) == GL_FRAMEBUFFER_COMPLETE, "two active caller draw attachments");
+            }
             if (splitFbos()) { gl.glBindFramebuffer(GL_READ_FRAMEBUFFER, target.getFramebufferHandle()); }
             if (Gdx.gl30 != null) {
                 Gdx.gl30.glGenVertexArrays(1, vao, 0); Gdx.gl30.glBindVertexArray(vao[0]);
@@ -443,8 +527,18 @@ public final class LightingRenderTest extends ApplicationAdapter {
             gl.glBlendFuncSeparate(GL_ZERO, GL_ONE, GL_DST_ALPHA, GL_SRC_ALPHA);
             gl.glBlendEquationSeparate(GL_FUNC_REVERSE_SUBTRACT, GL_FUNC_SUBTRACT);
             for (int cap : ENABLES) { gl.glEnable(cap); }
+            if (dualIndexedOutputs()) { setSecondOutput(); }
             require(gl.glGetError() == GL_NO_ERROR, "valid custom caller setup");
             var before = snapshot();
+            if (mrt) {
+                try (var probe = new TargetProbe()) {
+                    probe.mrtWorldTarget = nested.getFramebufferHandle();
+                    draw(false, 0);
+                }
+                near(callerPixel(nested, GL_COLOR_ATTACHMENT0), BAR, 0, "day preserved secondary output sentinel");
+                near(callerPixel(nested, GL_COLOR_ATTACHMENT1), WHITE, 0, "day rendered to caller's output zero");
+                checkState(before, "MRT day");
+            }
             // Force a resize of the existing lighting map. Fail *after* real driver allocation,
             // not by throwing before the pass; retain native handle evidence before any reuse.
             view.setScreenBounds(ox, oy, 123, 123);
@@ -463,6 +557,7 @@ public final class LightingRenderTest extends ApplicationAdapter {
             checkState(before, "exceptional resize");
             view.setScreenBounds(ox, oy, side, side);
             try (var probe = new TargetProbe()) {
+                if (mrt) { probe.mrtWorldTarget = nested.getFramebufferHandle(); }
                 // Resize successfully. Repeating the frame must reuse the lighting target.
                 view.setScreenBounds(ox, oy, 127, 127);
                 withSmallUnpackBuffer("successful lightmap resize", () -> draw(true, 0));
@@ -470,12 +565,18 @@ public final class LightingRenderTest extends ApplicationAdapter {
                 require(probe.statusChecks > 0, "new lighting target validated");
                 probe.interrupt = Draw.MASK;
                 try { draw(true, 0); throw new AssertionError("shadow mask wasn't rendered"); }
-                catch (DrawFailure expected) { checkState(before, "mask draw failure"); }
+                catch (DrawFailure expected) {
+                    require(expected.draw == Draw.MASK && probe.interruptedTarget == probe.handle("glGenFramebuffer"),
+                        "interrupted inside offscreen light mask");
+                    checkState(before, "mask draw failure");
+                    if (mrt) { near(callerPixel(nested, GL_COLOR_ATTACHMENT0), BAR, 0, "interrupted frame preserved secondary sentinel"); }
+                }
                 int allocations = probe.targets.size(); draw(true, 0);
                 require(allocations == probe.targets.size(), "same-size frames reuse lighting storage");
                 checkState(before, "repeated night");
-                gl.glBindFramebuffer(GL_FRAMEBUFFER, nested.getFramebufferHandle());
-                near(pixel(16, 44), 0x86dc3bff, 3, "composite returned to caller's draw FBO, not window or read FBO");
+                if (mrt) { near(callerPixel(nested, GL_COLOR_ATTACHMENT0), BAR, 0, "night preserved secondary output sentinel"); }
+                near(callerPixel(nested, mrt ? GL_COLOR_ATTACHMENT1 : GL_COLOR_ATTACHMENT0), 0x86dc3bff, 3,
+                    "composite returned to caller's output zero, not window or read FBO");
                 // A caller may still have a renderer-owned handle bound while it is retired.
                 // Never restore the deleted name (which can silently recreate a texture on GL20).
                 if (splitFbos()) { gl.glBindFramebuffer(GL_READ_FRAMEBUFFER, probe.handle("glGenFramebuffer")); }
@@ -514,9 +615,82 @@ public final class LightingRenderTest extends ApplicationAdapter {
         return caps.OpenGL30 || caps.GL_ARB_framebuffer_object || caps.GL_EXT_framebuffer_blit;
     }
 
+    private int callerPixel(FrameBuffer caller, int attachment) {
+        int target = splitFbos() ? GL_READ_FRAMEBUFFER : GL_FRAMEBUFFER;
+        int previous = integer(splitFbos() ? GL_READ_FRAMEBUFFER_BINDING : GL_FRAMEBUFFER_BINDING);
+        Gdx.gl.glBindFramebuffer(target, caller.getFramebufferHandle());
+        int readBuffer = integer(GL_READ_BUFFER);
+        try {
+            GL11C.glReadBuffer(attachment);
+            return pixel(16, 44);
+        } finally {
+            GL11C.glReadBuffer(readBuffer);
+            Gdx.gl.glBindFramebuffer(target, previous);
+        }
+    }
+
+    private static boolean dualOutputs() {
+        return integer(GL_MAX_DRAW_BUFFERS) >= 2 && integer(GL_MAX_COLOR_ATTACHMENTS) >= 2;
+    }
+
+    private static boolean dualIndexedOutputs() {
+        var caps = GL.getCapabilities();
+        return (caps.OpenGL30 || caps.GL_EXT_draw_buffers2) && dualOutputs();
+    }
+
+    private static boolean independentBlend() {
+        var caps = GL.getCapabilities();
+        return caps.OpenGL40 || caps.GL_ARB_draw_buffers_blend || caps.GL_AMD_draw_buffers_blend;
+    }
+
+    /** Set slot 1 *after* the broadcast calls in stateAndFailure; leave slot 0 deliberately different. */
+    private static void setSecondOutput() {
+        if (GL.getCapabilities().OpenGL30) {
+            GL30C.glColorMaski(1, true, false, true, false);
+            GL30C.glDisablei(GL_BLEND, 1);
+        } else {
+            EXTDrawBuffers2.glColorMaskIndexedEXT(1, true, false, true, false);
+            EXTDrawBuffers2.glDisableIndexedEXT(GL_BLEND, 1);
+        }
+        if (GL.getCapabilities().OpenGL40) {
+            GL40C.glBlendEquationSeparatei(1, GL_FUNC_ADD, GL_FUNC_REVERSE_SUBTRACT);
+            GL40C.glBlendFuncSeparatei(1, GL_ONE_MINUS_SRC_ALPHA, GL_DST_ALPHA, GL_ONE, GL_ONE_MINUS_DST_ALPHA);
+        } else if (GL.getCapabilities().GL_ARB_draw_buffers_blend) {
+            ARBDrawBuffersBlend.glBlendEquationSeparateiARB(1, GL_FUNC_ADD, GL_FUNC_REVERSE_SUBTRACT);
+            ARBDrawBuffersBlend.glBlendFuncSeparateiARB(1, GL_ONE_MINUS_SRC_ALPHA, GL_DST_ALPHA, GL_ONE, GL_ONE_MINUS_DST_ALPHA);
+        } else if (GL.getCapabilities().GL_AMD_draw_buffers_blend) {
+            AMDDrawBuffersBlend.glBlendEquationSeparateIndexedAMD(1, GL_FUNC_ADD, GL_FUNC_REVERSE_SUBTRACT);
+            AMDDrawBuffersBlend.glBlendFuncSeparateIndexedAMD(1, GL_ONE_MINUS_SRC_ALPHA, GL_DST_ALPHA, GL_ONE, GL_ONE_MINUS_DST_ALPHA);
+        }
+    }
+
+    private static void snapshotOutputs(Map<String, Object> result) {
+        if (!dualOutputs()) { return; }
+        boolean core = GL.getCapabilities().OpenGL30;
+        for (int i = 0; i < 2; i++) {
+            String slot = "draw buffer " + i;
+            result.put(slot + " routing", integer(GL_DRAW_BUFFER0 + i));
+            if (!dualIndexedOutputs()) { continue; }
+            var mask = BufferUtils.newByteBuffer(4);
+            if (core) { GL30C.glGetBooleani_v(GL_COLOR_WRITEMASK, i, mask); }
+            else { EXTDrawBuffers2.glGetBooleanIndexedvEXT(GL_COLOR_WRITEMASK, i, mask); }
+            result.put(slot + " mask", List.of(mask.get(0), mask.get(1), mask.get(2), mask.get(3)));
+            result.put(slot + " blend", core ? GL30C.glIsEnabledi(GL_BLEND, i) : EXTDrawBuffers2.glIsEnabledIndexedEXT(GL_BLEND, i));
+            if (independentBlend()) {
+                for (int key : new int[]{GL_BLEND_EQUATION_RGB, GL_BLEND_EQUATION_ALPHA, GL_BLEND_SRC_RGB, GL_BLEND_DST_RGB,
+                    GL_BLEND_SRC_ALPHA, GL_BLEND_DST_ALPHA}) {
+                    result.put(slot + " blend 0x" + Integer.toHexString(key), core ? GL30C.glGetIntegeri(key, i)
+                        : EXTDrawBuffers2.glGetIntegerIndexedEXT(key, i));
+                }
+            }
+        }
+        require(Gdx.gl.glGetError() == GL_NO_ERROR, "valid indexed state readback");
+    }
+
     private Map<String, Object> snapshot() {
         var gl = Gdx.gl;
         var result = new LinkedHashMap<String, Object>();
+        snapshotOutputs(result);
         for (int key : new int[]{GL_FRAMEBUFFER_BINDING, GL_RENDERBUFFER_BINDING, GL_ARRAY_BUFFER_BINDING,
             GL_ELEMENT_ARRAY_BUFFER_BINDING, GL_CURRENT_PROGRAM, GL_ACTIVE_TEXTURE, GL_DEPTH_WRITEMASK, GL_UNPACK_ALIGNMENT,
             GL_BLEND_SRC_RGB, GL_BLEND_DST_RGB, GL_BLEND_SRC_ALPHA, GL_BLEND_DST_ALPHA, GL_BLEND_EQUATION_RGB,
@@ -605,7 +779,7 @@ public final class LightingRenderTest extends ApplicationAdapter {
         final List<Map.Entry<String, Integer>> targets = new ArrayList<>();
         boolean incomplete, failLink;
         Draw interrupt;
-        int statusChecks, linkChecks, quadDraws, spriteDraws, interruptedTarget;
+        int statusChecks, linkChecks, quadDraws, spriteDraws, interruptedTarget, mrtWorldTarget;
 
         TargetProbe() {
             Class<?> api = real30 == null ? GL20.class : GL30.class;
@@ -629,6 +803,10 @@ public final class LightingRenderTest extends ApplicationAdapter {
         }
 
         private void after(Draw draw) {
+            if (mrtWorldTarget != 0 && integer(GL_FRAMEBUFFER_BINDING) == mrtWorldTarget) {
+                require(integer(GL_DRAW_BUFFER0) == GL_COLOR_ATTACHMENT1 && integer(GL_DRAW_BUFFER1) == GL_NONE,
+                    draw + " must draw only to caller's output zero");
+            }
             if (draw == interrupt) {
                 interruptedTarget = integer(GL_FRAMEBUFFER_BINDING);
                 interrupt = null; // One-shot: SpriteBatch may retry the flush while unwinding.

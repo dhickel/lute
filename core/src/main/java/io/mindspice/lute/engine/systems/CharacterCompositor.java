@@ -30,7 +30,7 @@ public final class CharacterCompositor implements Disposable {
     private static final int[] UP = {5, 0, 1, 2, 4, 3};
     private final AssetService assets;
     private final SpriteBatch batch;
-    private final CompatibilityVertexArrays compatArrays = RenderState.compatibilityArrays();
+    private final CompatibilityVertexArrays desktop = RenderState.desktopBindings();
     private final List<Target> targets = new ArrayList<>();
     private final Map<Entity, TextureRegion> completed = new IdentityHashMap<>();
     private final Map<LayerKey, Map<String, TextureRegion[]>> layers = new HashMap<>();
@@ -44,7 +44,7 @@ public final class CharacterCompositor implements Disposable {
 
     public CharacterCompositor(AssetService assets) {
         this.assets = assets;
-        var state = new RenderState();
+        var state = new RenderState(desktop);
         try { batch = new SpriteBatch(); }
         finally { state.restore(); }
     }
@@ -60,9 +60,9 @@ public final class CharacterCompositor implements Disposable {
                 visible.add(entity);
             }
         }
-        var state = new RenderState();
+        var state = new RenderState(desktop);
         try {
-            state.prepare(compatArrays);
+            state.prepare();
             if (!visible.isEmpty()) { refreshIdentities(visible); }
             int pitchX = 2, pitchY = 2;
             for (var entity : visible) {
@@ -311,7 +311,7 @@ public final class CharacterCompositor implements Disposable {
     @Override public void dispose() {
         if (disposed) { return; }
         disposed = true;
-        var state = new RenderState();
+        var state = new RenderState(desktop);
         try {
             for (var target : targets) {
                 state.releasedTarget(target.buffer.getFramebufferHandle(), target.buffer.getColorBufferTexture().getTextureObjectHandle());
@@ -321,7 +321,7 @@ public final class CharacterCompositor implements Disposable {
             completed.clear();
             layers.clear();
             Arrays.fill(identities, null);
-            if (compatArrays != null) { compatArrays.dispose(); }
+            if (desktop != null) { desktop.dispose(); }
             state.releasedShader(batch.getShader().getHandle());
             batch.dispose();
         } finally { state.restore(); }
