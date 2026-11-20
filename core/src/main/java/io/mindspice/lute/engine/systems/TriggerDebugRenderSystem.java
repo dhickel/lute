@@ -21,6 +21,10 @@ public class TriggerDebugRenderSystem extends EntitySystem implements Disposable
     private final Camera camera;
     private final ShapeRenderer renderer;
     private final Array<Body> bodies = new Array<>();
+    private final FixtureOutlines sensors = new FixtureOutlines() {
+        @Override void line(float x1, float y1, float x2, float y2) { renderer.line(x1, y1, x2, y2); }
+        @Override void circle(float x, float y, float radius) { renderer.circle(x, y, radius, 32); }
+    };
     private final Vector2 a = new Vector2();
     private final Vector2 b = new Vector2();
 
@@ -42,7 +46,7 @@ public class TriggerDebugRenderSystem extends EntitySystem implements Disposable
         world.getBodies(bodies);
         for (var body : bodies) {
             for (var fixture : body.getFixtureList()) {
-                if (fixture.isSensor()) { drawSensor(fixture); }
+                if (fixture.isSensor()) { sensors.drawFixture(fixture); }
             }
         }
         var combat = getEngine().getSystem(CombatSystem.class);
@@ -63,43 +67,6 @@ public class TriggerDebugRenderSystem extends EntitySystem implements Disposable
         var map = tiled == null ? null : tiled.getCurrentMap();
         if (map != null) { drawTriggerLayers(map.getLayers(), false); }
         renderer.end();
-    }
-
-    private void drawSensor(Fixture fixture) {
-        var body = fixture.getBody();
-        switch (fixture.getShape()) {
-            case CircleShape circle -> {
-                a.set(body.getWorldPoint(circle.getPosition()));
-                renderer.circle(a.x, a.y, circle.getRadius(), 32);
-            }
-            case PolygonShape polygon -> {
-                for (int i = 0; i < polygon.getVertexCount(); i++) {
-                    polygon.getVertex(i, a);
-                    polygon.getVertex((i + 1) % polygon.getVertexCount(), b);
-                    drawBodyLine(body);
-                }
-            }
-            case ChainShape chain -> {
-                for (int i = 1; i < chain.getVertexCount(); i++) {
-                    chain.getVertex(i - 1, a);
-                    chain.getVertex(i, b);
-                    drawBodyLine(body);
-                }
-            }
-            case EdgeShape edge -> {
-                edge.getVertex1(a);
-                edge.getVertex2(b);
-                drawBodyLine(body);
-            }
-            default -> { }
-        }
-    }
-
-    private void drawBodyLine(Body body) {
-        // Box2D reuses the returned vector, so copy each endpoint before requesting the next.
-        a.set(body.getWorldPoint(a));
-        b.set(body.getWorldPoint(b));
-        renderer.line(a, b);
     }
 
     private void drawTriggerLayers(MapLayers layers, boolean inTriggers) {

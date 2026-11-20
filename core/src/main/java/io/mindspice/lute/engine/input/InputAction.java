@@ -11,6 +11,7 @@ public enum InputAction {
     ATTACK_PRIMARY,
     ATTACK_SECONDARY,
     CYCLE_WEAPON,
+    TOGGLE_NIGHT,
     SCROLL_UP,
     SCROLL_DOWN,
     GUI_UP,

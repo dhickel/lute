@@ -1,0 +1,25 @@
+{
+  "red-lamp": {
+    "animation": null,
+    "collision": { "shape": "ELLIPSE", "bounds": { "x1": 4, "y1": 2, "x2": 28, "y2": 14 }, "rotation": 0 },
+    "emissive": { "color": "#FF0000", "radius_pixels": 12, "intensity": 0.6,
+      "pulse": { "period_seconds": 0.5, "radius_strength": 0, "intensity_strength": 0.5 } }
+  },
+  "blue-lamp": {
+    "animation": null,
+    "collision": null,
+    "emissive": { "color": "#0080FF", "radius_pixels": 32, "intensity": 0.5, "pulse": null }
+  },
+  "wisp": {
+    "animation": { "speed": 1, "atlas_key": "campfire1/campfire1", "sound_frame": 0, "frame_interval": 0.1 },
+    "collision": null,
+    "emissive": { "color": "#00FF00", "radius_pixels": 24, "intensity": 0.75,
+      "pulse": { "period_seconds": 1.0, "radius_strength": 0.25, "intensity_strength": 0.5 } }
+  },
+  "panel": { "animation": null, "collision": null, "emissive": null },
+  "underflow-panel": {
+    "animation": null,
+    "collision": { "shape": "ELLIPSE", "bounds": { "x1": 4, "y1": 2, "x2": 28, "y2": 14 }, "rotation": 0 },
+    "emissive": { "color": "#FFFFFF", "radius_pixels": 1.4e-45, "intensity": 1, "pulse": null }
+  }
+}

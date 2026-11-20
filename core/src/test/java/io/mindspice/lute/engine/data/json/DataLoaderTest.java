@@ -25,6 +25,15 @@ public final class DataLoaderTest {
             var settings = DataLoader.mapper.readTree(Path.of("assets/game.settings.json").toFile());
             check(GameConsts.VIEW_WIDTH == settings.required("viewWidth").floatValue()
                 && GameConsts.UNIT_SCALE == settings.required("unitScale").floatValue(), "settings constants match authored values");
+            check(GameConsts.NIGHT_AMBIENT.tint().equals(settings.at("/nightAmbient/tint").stringValue())
+                && GameConsts.NIGHT_AMBIENT.brightness() == settings.at("/nightAmbient/brightness").floatValue(),
+                "ambient settings match authored values");
+            var debug = settings.required("debugLayers");
+            check(GameConsts.DEBUG_LAYERS.equals(new GameConsts.DebugLayers(debug.required("physics").booleanValue(),
+                debug.required("triggers").booleanValue(), debug.required("rawLightMap").booleanValue(),
+                debug.required("lightingOutlines").booleanValue())), "debug layers match authored values");
+            check(Files.mismatch(Path.of("raw_assets/game.settings.json"), Path.of("assets/game.settings.json")) == -1,
+                "generated settings match source");
             var player = DataLoader.parsePlayerData();
             var definitions = DataLoader.parseWeaponData();
             playerSchema(player, definitions);
@@ -160,8 +169,10 @@ public final class DataLoaderTest {
 
     private static void objectsSchema() throws Exception {
         var campfire = DataLoader.loadGameData().objectsData().get("campfire1");
-        check(campfire.animation().atlasKey().equals("campfire1/campfire1")
-            && campfire.collision().equals(CollisionData.ellipse(new CharacterBounds(4, 2, 28, 14))), "Campfire binds animation and collision");
+        check(campfire.animation().orElseThrow().atlasKey().equals("campfire1/campfire1")
+            && campfire.collision().orElseThrow().equals(CollisionData.ellipse(new CharacterBounds(4, 2, 28, 14))),
+            "Campfire binds animation and collision");
+        check(campfire.emissive().orElseThrow().pulse().isPresent(), "Campfire binds pulsing emission");
         check(Files.mismatch(Path.of("raw_assets/data/objects.json"), Path.of("assets/data/objects.json")) == -1,
             "Generated objects catalogue matches source");
         var directory = Files.createTempDirectory("object-data");
@@ -169,11 +180,12 @@ public final class DataLoaderTest {
         try {
             useResolver(path -> new FileHandle(path.equals("data/objects.json") ? objects.toFile() : Path.of("assets", path).toFile()));
             rejects(DataLoader::loadGameData, "Missing objects catalogue");
-            Files.writeString(objects, "{\"sign\":{\"animation\":null,\"collision\":null}}");
-            check(DataLoader.loadGameData().objectsData().get("sign").equals(new ObjectData(null, null)),
+            Files.writeString(objects, "{\"sign\":{\"animation\":null,\"collision\":null,\"emissive\":null}}");
+            var sign = DataLoader.loadGameData().objectsData().get("sign");
+            check(sign.animation().isEmpty() && sign.collision().isEmpty() && sign.emissive().isEmpty(),
                 "Object fields accept explicit null");
-            for (String invalid : new String[]{"{\"animation\":null}", "{\"collision\":null}",
-                    "{\"animation\":null,\"collision_bounds\":null}", "null"}) {
+            for (String invalid : new String[]{"{\"animation\":null,\"emissive\":null}", "{\"collision\":null,\"emissive\":null}",
+                    "{\"animation\":null,\"collision\":null}", "{\"animation\":null,\"collision_bounds\":null,\"emissive\":null}", "null"}) {
                 Files.writeString(objects, "{\"sign\":" + invalid + "}");
                 rejects(DataLoader::loadGameData, "Invalid object definition: " + invalid);
             }
@@ -477,6 +489,18 @@ public final class DataLoaderTest {
             Files.writeString(fixture, configured.deepCopy().put("viewWidth", 0).toString());
             rejects(GameConsts::loadSettings, "invalid settings");
             check(GameConsts.VIEW_WIDTH == width && GameConsts.SOUND_PATH.equals("effects/"), "invalid settings apply nothing");
+            var ambient = GameConsts.NIGHT_AMBIENT;
+            var debug = GameConsts.DEBUG_LAYERS;
+            String changed = configured.deepCopy().put("viewWidth", width + 1).toString();
+            for (var duplicate : new String[]{changed.replace("\"nightAmbient\":", "\"nightAmbient\":null,\"nightAmbient\":"),
+                changed.replace("\"brightness\":", "\"brightness\":0,\"brightness\":"),
+                changed.replace("\"debugLayers\":", "\"debugLayers\":null,\"debugLayers\":"),
+                changed.replace("\"triggers\":", "\"triggers\":false,\"triggers\":")}) {
+                Files.writeString(fixture, duplicate);
+                rejects(GameConsts::loadSettings, "duplicate setting at startup");
+                check(GameConsts.VIEW_WIDTH == width && GameConsts.NIGHT_AMBIENT == ambient && GameConsts.DEBUG_LAYERS == debug,
+                    "invalid settings publish nothing");
+            }
         } finally {
             Files.deleteIfExists(fixture);
             useAssets();

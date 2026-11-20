@@ -238,13 +238,13 @@ public class EntityFactory extends EntitySystem {
         var definition = GameCore.INSTANCE.getGameData().objectsData().get(spawnKey);
         if (definition == null) { throw new IllegalArgumentException("Unknown object spawnKey: " + spawnKey); }
         var atlas = ObjectAssets.OBJECTS;
-        var settings = definition.animation();
         Animation2D animation = null;
         TextureRegion region;
-        if (settings == null) {
+        if (definition.animation().isEmpty()) {
             region = assetService.get(TextureAtlas.class, atlas.id()).findRegion(spawnKey, -1);
             if (region == null) { throw new IllegalArgumentException("No static object atlas region for " + spawnKey); }
         } else {
+            var settings = definition.animation().orElseThrow();
             animation = createAnimation(atlas, settings.atlasKey(), Animation2D.AnimationType.DEFAULT,
                 settings.speed(), settings.frameInterval(), facing);
             var frames = animation.getAnimation().getKeyFrames();
@@ -275,8 +275,10 @@ public class EntityFactory extends EntitySystem {
             entity.add(new Facing(facing));
             entity.add(animation);
         }
-        var collision = definition.collision();
-        if (collision != null) {
+        // Convert and validate the light's world radius before allocating a staged native body.
+        definition.emissive().ifPresent(light -> entity.add(new Emissive(light, unit)));
+        if (definition.collision().isPresent()) {
+            var collision = definition.collision().orElseThrow();
             var bounds = collision.bounds();
             if (bounds.x2() > width || bounds.y2() > height) {
                 throw new IllegalArgumentException("Object collision bounds exceed the sprite canvas for " + spawnKey);

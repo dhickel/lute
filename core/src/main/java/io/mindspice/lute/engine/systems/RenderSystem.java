@@ -7,14 +7,17 @@ import com.badlogic.gdx.Gdx;
 import com.badlogic.gdx.graphics.Color;
 import com.badlogic.gdx.graphics.GL20;
 import com.badlogic.gdx.graphics.Pixmap;
+import com.badlogic.gdx.physics.box2d.World;
 import com.badlogic.gdx.graphics.Texture;
 import com.badlogic.gdx.graphics.g2d.SpriteBatch;
 import com.badlogic.gdx.graphics.g2d.TextureAtlas;
+import com.badlogic.gdx.graphics.g2d.TextureRegion;
 import io.mindspice.lute.engine.assets.CharacterAssets;
 import com.badlogic.gdx.graphics.glutils.ShaderProgram;
 import com.badlogic.gdx.math.Matrix4;
 import io.mindspice.lute.engine.assets.AssetService;
 import io.mindspice.lute.engine.components.BowAim;
+import io.mindspice.lute.engine.components.Emissive;
 import io.mindspice.lute.engine.components.CompositeCharacter;
 import com.badlogic.gdx.graphics.OrthographicCamera;
 import com.badlogic.gdx.graphics.g2d.Batch;
@@ -35,8 +38,10 @@ import java.util.List;
 
 public class RenderSystem extends SortedIteratingSystem implements Disposable {
     private static final Family AIMERS = Family.all(BowAim.class).get();
+    private static final Family LIGHTS = Family.all(Emissive.class, Transform.class).get();
     private final Batch batch;
     private final CharacterCompositor compositor;
+    private final CompatibilityVertexArrays desktop = RenderState.desktopBindings();
     private final ShaderProgram worldShader;
     private Texture crosshair;
     private final AssetService assets;
@@ -50,16 +55,25 @@ public class RenderSystem extends SortedIteratingSystem implements Disposable {
 
     private final OrthogonalTiledMapRenderer mapRenderer;
     private boolean disposed;
+    private World world;
+    private GameConsts.NightAmbient ambient;
+    private boolean night;
+    private double sessionSeconds;
+    private NightLighting lighting;
+    private final GameConsts.DebugLayers debugLayers;
+    private LightingOutlines outlines;
 
-    public RenderSystem(Batch batch, Viewport viewport, OrthographicCamera camera, AssetService assets) {
+    public RenderSystem(Batch batch, Viewport viewport, OrthographicCamera camera, AssetService assets,
+                        GameConsts.DebugLayers debugLayers) {
         super(
             Family.all(Transform.class, Graphic.class).get(),
             Comparator.comparing(Transform.MAPPER::get)
         );
+        this.debugLayers = debugLayers;
         this.batch = batch;
         this.assets = assets;
         this.compositor = new CharacterCompositor(assets);
-        var state = new RenderState();
+        var state = new RenderState(desktop);
         try { this.worldShader = SpriteBatch.createDefaultShader(); }
         finally { state.restore(); }
         this.viewport = viewport;
@@ -71,12 +85,21 @@ public class RenderSystem extends SortedIteratingSystem implements Disposable {
         this.mapRenderer = new OrthogonalTiledMapRenderer(null, GameConsts.UNIT_SCALE, this.batch);
     }
 
+    /** Opt gameplay into viewport clearing and pass the session snapshot. Standalone draws keep their target background. */
+    public void gameplayFrame(World world, GameConsts.NightAmbient ambient, boolean night, double sessionSeconds) {
+        this.world = world;
+        this.ambient = ambient;
+        this.night = night;
+        this.sessionSeconds = sessionSeconds;
+    }
+
     @Override
     public void update(float deltaTime) {
         if (disposed) { throw new IllegalStateException("Render system is disposed"); }
         if (batch.isDrawing()) { throw new IllegalStateException("Render system requires an idle batch"); }
+        if (world != null && (viewport.getScreenWidth() <= 0 || viewport.getScreenHeight() <= 0)) { return; }
         AnimatedTiledMapTile.updateAnimationBaseTime();
-        var state = new RenderState();
+        var state = new RenderState(desktop);
         float packedColor = batch.getPackedColor();
         var color = batch.getColor().cpy();
         var projection = new Matrix4(batch.getProjectionMatrix());
@@ -87,7 +110,18 @@ public class RenderSystem extends SortedIteratingSystem implements Disposable {
         boolean blending = batch.isBlendingEnabled();
         try {
             this.viewport.apply();
-            RenderState.prepare();
+            state.prepare();
+            // Query the *applied* GL viewport: FitViewport's logical bounds have already been HiDPI-scaled.
+            int[] pixels = world == null ? null : state.currentViewport();
+            if (pixels != null) {
+                if (pixels[2] == 0 || pixels[3] == 0) { return; }
+                state.isolateOutputZero();
+                Gdx.gl.glEnable(GL20.GL_SCISSOR_TEST);
+                Gdx.gl.glScissor(pixels[0], pixels[1], pixels[2], pixels[3]);
+                Gdx.gl.glClearColor(0, 0, 0, 0);
+                Gdx.gl.glClear(GL20.GL_COLOR_BUFFER_BIT);
+                Gdx.gl.glDisable(GL20.GL_SCISSOR_TEST);
+            }
             compositor.compose(getEntities(), camera);
             batch.setTransformMatrix(new Matrix4());
             batch.setShader(worldShader);
@@ -105,22 +139,38 @@ public class RenderSystem extends SortedIteratingSystem implements Disposable {
             super.update(deltaTime);
             straightBlend();
             fgLayers.forEach(mapRenderer::renderMapLayer);
+            if (night) {
+                batch.end();
+                if (lighting == null) { lighting = new NightLighting(pixels[2], pixels[3], state); }
+                lighting.render(world, getEngine().getEntitiesFor(LIGHTS), ambient, sessionSeconds, camera, pixels, state,
+                    debugLayers.rawLightMap());
+                batch.begin();
+            }
+            if (world != null && debugLayers.lightingOutlines()) {
+                if (outlines == null) {
+                    // Borrow an opaque white texel from the overlay we already own; no second texture or shader.
+                    outlines = new LightingOutlines(batch, new TextureRegion(crosshair(state), 2, 7, 1, 1));
+                }
+                outlines.draw(world, getEngine().getEntitiesFor(LIGHTS), sessionSeconds, camera, pixels[3]);
+            }
             batch.setColor(Color.WHITE);
             for (Entity entity : getEngine().getEntitiesFor(AIMERS)) {
                 var aim = BowAim.MAPPER.get(entity);
-                if (aim.isAiming()) { drawCrosshair(aim.getTargetX(), aim.getTargetY()); }
+                if (aim.isAiming()) { drawCrosshair(aim.getTargetX(), aim.getTargetY(), state); }
             }
+            batch.end();
         } finally {
-            if (batch.isDrawing()) { batch.end(); }
-            batch.setPackedColor(packedColor);
-            batch.getColor().set(color);
-            batch.setProjectionMatrix(projection);
-            batch.setTransformMatrix(transform);
-            batch.setShader(shader);
-            batch.setBlendFunctionSeparate(src, dst, srcA, dstA);
-            if (blending) { batch.enableBlending(); }
-            else { batch.disableBlending(); }
-            state.restore();
+            try {
+                if (batch.isDrawing()) { batch.end(); }
+                batch.setPackedColor(packedColor);
+                batch.getColor().set(color);
+                batch.setProjectionMatrix(projection);
+                batch.setTransformMatrix(transform);
+                batch.setShader(shader);
+                batch.setBlendFunctionSeparate(src, dst, srcA, dstA);
+                if (blending) { batch.enableBlending(); }
+                else { batch.disableBlending(); }
+            } finally { state.restore(); }
         }
     }
 
@@ -133,7 +183,6 @@ public class RenderSystem extends SortedIteratingSystem implements Disposable {
         var region = composite ? compositor.region(entity) : graphic.getRegion();
         if (region == null) { return; }
 
-        var pos = transform.getPosition();
         var scale = transform.getScaling();
         var size = transform.getSize();
 
@@ -150,8 +199,8 @@ public class RenderSystem extends SortedIteratingSystem implements Disposable {
         float height = composite ? region.getRegionHeight() * GameConsts.UNIT_SCALE : size.y;
         this.batch.draw(
             region,
-            pos.x + size.x * scale.x * 0.5f - width * 0.5f,
-            pos.y + size.y * scale.y * 0.5f - height * 0.5f,
+            transform.centerX() - width * 0.5f,
+            transform.centerY() - height * 0.5f,
             width * 0.5f, height * 0.5f,
             width, height,
             scale.x, scale.y,
@@ -183,7 +232,7 @@ public class RenderSystem extends SortedIteratingSystem implements Disposable {
             arrow.direction.angleDeg() - arrow.type.artDegrees());
     }
 
-    private void drawCrosshair(float x, float y) {
+    private Texture crosshair(RenderState state) {
         if (crosshair == null) {
             // A dark outline keeps the open center legible on both light and dark tiles.
             var pixels = new Pixmap(15, 15, Pixmap.Format.RGBA8888);
@@ -198,11 +247,17 @@ public class RenderSystem extends SortedIteratingSystem implements Disposable {
                 pixels.drawLine(10, 7, 13, 7);
                 pixels.drawLine(7, 1, 7, 4);
                 pixels.drawLine(7, 10, 7, 13);
+                state.prepareTextureUpload();
                 crosshair = new Texture(pixels);
             } finally { pixels.dispose(); }
         }
-        float size = crosshair.getWidth() * GameConsts.UNIT_SCALE;
-        batch.draw(crosshair, x - size / 2, y - size / 2, size, size);
+        return crosshair;
+    }
+
+    private void drawCrosshair(float x, float y, RenderState state) {
+        var texture = crosshair(state);
+        float size = texture.getWidth() * GameConsts.UNIT_SCALE;
+        batch.draw(texture, x - size / 2, y - size / 2, size, size);
     }
 
     private void straightBlend() {
@@ -252,9 +307,15 @@ public class RenderSystem extends SortedIteratingSystem implements Disposable {
     public void dispose() {
         if (disposed) { return; }
         disposed = true;
-        var state = new RenderState();
+        var state = new RenderState(desktop);
         try {
-            if (crosshair != null) { crosshair.dispose(); }
+            if (lighting != null) { lighting.dispose(state); lighting = null; }
+            world = null;
+            if (crosshair != null) {
+                state.releasedTexture(crosshair.getTextureObjectHandle());
+                crosshair.dispose();
+            }
+            if (desktop != null) { desktop.dispose(); }
             compositor.dispose();
             mapRenderer.dispose();
             state.releasedShader(worldShader.getHandle());

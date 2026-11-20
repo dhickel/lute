@@ -63,6 +63,9 @@ public class Transform implements Component, Comparable<Transform> {
         return scaling;
     }
 
+    public float centerX() { return position.x + size.x * scaling.x * .5f; }
+    public float centerY() { return position.y + size.y * scaling.y * .5f; }
+
     public float getRotationDeg() {
         return rotationDeg;
     }

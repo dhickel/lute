@@ -536,7 +536,8 @@ public final class CompositeGameTest {
         private final OrthographicCamera worldCamera = new OrthographicCamera();
         private final FitViewport worldViewport = new FitViewport(128 * GameConsts.UNIT_SCALE, 128 * GameConsts.UNIT_SCALE, worldCamera);
         private final SpriteBatch worldBatch = new SpriteBatch();
-        private final RenderSystem worldRenderer = new RenderSystem(worldBatch, worldViewport, worldCamera, GAME.getAssetService());
+        private final RenderSystem worldRenderer = new RenderSystem(worldBatch, worldViewport, worldCamera,
+            GAME.getAssetService(), GameConsts.DEBUG_LAYERS);
         private int overhangPixels;
         private final Set<String> helmetOcclusionActions = new HashSet<>();
         private final Pixmap showcase = new Pixmap(576, 1728, Pixmap.Format.RGBA8888);

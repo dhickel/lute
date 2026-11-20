@@ -552,6 +552,7 @@ public final class TexturePackerToolTest {
         Files.createDirectories(raw.resolve("audio"));
         Files.writeString(raw.resolve("game.settings.json"), """
             {"mapsPath":"maps/", "atlasPath":"atlases/", "startupMap":"alpha", "projectPath":"world.tiled-project",
+             "debugLayers":{"physics":true,"triggers":true,"rawLightMap":false,"lightingOutlines":false},
              "dataPath":"data/", "soundPath":"audio/", "musicPath":"audio/"}
             """);
         Files.writeString(raw.resolve("world.tiled-project"), "{}");
