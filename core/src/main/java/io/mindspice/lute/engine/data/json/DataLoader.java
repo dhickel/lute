@@ -19,7 +19,6 @@ public class DataLoader {
 
     public static ActorsData parseActorsData() {
         var path = Gdx.files.internal(GameConsts.DATA_PATH + "actors.json");
-        if (!path.exists()) { return ActorsData.DEFAULTS; }
         try (var file = path.read()) {
             var actors = mapper.readValue(file, ActorsData.class);
             if (actors == null) { throw new IllegalArgumentException("actors.json requires an object"); }

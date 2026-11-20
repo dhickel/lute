@@ -82,9 +82,7 @@ public final class DataLoaderTest {
         try {
             useResolver(path -> new FileHandle(path.equals(GameConsts.DATA_PATH + "actors.json")
                 ? fixture.toFile() : Path.of("assets", path).toFile()));
-            var defaults = DataLoader.loadGameData().actorsData();
-            check(defaults.npc().awarenessRadius() == 96 && defaults.enemy().awarenessRadius() == 160,
-                "Legacy asset packs receive per-role defaults");
+            rejects(DataLoader::loadGameData, "missing actor data without a bundled fallback");
             Files.writeString(fixture, """
                 {"npc":{"awareness_radius":72},"enemy":{"awareness_radius":192.5}}
                 """);
@@ -98,6 +96,8 @@ public final class DataLoaderTest {
             }
             Files.writeString(fixture, "{\"npc\":{\"awareness_radius\":96}}");
             rejects(DataLoader::parseActorsData, "Missing enemy definition");
+            Files.writeString(fixture, "{\"npc\":{\"awareness_radius\":96},\"enemy\":{}}");
+            rejects(DataLoader::parseActorsData, "Missing enemy awareness radius");
         } finally {
             useAssets();
             Files.deleteIfExists(fixture);
