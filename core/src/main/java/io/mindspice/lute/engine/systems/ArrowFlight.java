@@ -15,10 +15,11 @@ final class ArrowFlight {
     final Vector2 tip;
     final Vector2 direction;
     private final Vector2 start, aimPoint, aimDirection;
-    private final float damage, duration, lift;
+    private final float damage, flightDistance, aimProgress, arcScale;
+    private final boolean crossesAim;
     private final Vector2[] triangle;
     private final float collisionPad;
-    private float arcTime, remaining;
+    private float elapsed;
 
     ArrowFlight(Entity owner, Projectile type, Vector2 start, Vector2 aimPoint, float damage) {
         this.owner = owner;
@@ -35,9 +36,14 @@ final class ArrowFlight {
             case RIGHT -> new Vector2(1, 0);
         } : aimPoint.cpy().sub(start).nor();
         direction = aimDirection.cpy();
-        duration = distance / type.speed();
-        lift = Math.min(type.arcHeight(), distance * 0.15f);
-        remaining = type.lifetime();
+        flightDistance = type.speed() * type.lifetime();
+        aimProgress = distance == 0 ? 1f : distance / flightDistance;
+        crossesAim = distance > 0 && aimProgress <= 1f;
+        // The offset is zero at launch and at the crosshair. Bound its magnitude
+        // over the entire lifetime, including the descent past a nearby crosshair.
+        float peak = Math.min(aimProgress / 2f, 1f);
+        float maxOffset = Math.max(peak * (aimProgress - peak), Math.abs(aimProgress - 1f));
+        arcScale = Math.min(type.arcHeight(), flightDistance * 0.15f) / maxOffset;
         float length = type.collisionBounds().length() * GameConsts.UNIT_SCALE;
         float halfWidth = type.collisionBounds().width() * GameConsts.UNIT_SCALE / 2;
         triangle = new Vector2[]{new Vector2(), new Vector2(-length, halfWidth), new Vector2(-length, -halfWidth)};
@@ -51,27 +57,25 @@ final class ArrowFlight {
     }
 
     boolean finished(World world, float dt) {
-        float step = Math.min(dt, remaining);
-        remaining -= step;
-        float arcRemaining = duration - arcTime;
-        float arcStep = Math.min(step, arcRemaining);
-        if (arcStep > 0) {
-            float progress = arcTime / duration;
-            arcTime = arcStep == arcRemaining ? duration : arcTime + arcStep;
-            float until = arcTime / duration;
-            // Subdivide the curve even on long frames. Each chord sweeps the same triangle we draw.
-            while (progress < until) {
-                progress = Math.min(until, progress + 1f / 16f);
-                var next = start.cpy().lerp(aimPoint, progress);
-                next.y += 4 * lift * progress * (1 - progress);
-                if (advance(world, next)) { return true; }
+        float progress = elapsed / type.lifetime();
+        elapsed = Math.min(elapsed + dt, type.lifetime());
+        float until = elapsed / type.lifetime();
+        // Sweep chords along the whole curve, using the exact crosshair as a waypoint.
+        while (progress < until) {
+            float nextProgress = Math.min(until, progress + 1f / 16f);
+            if (crossesAim && progress < aimProgress && aimProgress <= nextProgress) {
+                nextProgress = aimProgress;
             }
+            var next = start.cpy().mulAdd(aimDirection, flightDistance * nextProgress);
+            if (crossesAim && nextProgress == aimProgress) {
+                next.set(aimPoint);
+            } else {
+                next.y += arcScale * nextProgress * (aimProgress - nextProgress);
+            }
+            if (advance(world, next)) { return true; }
+            progress = nextProgress;
         }
-        float straightTime = step - arcStep;
-        if (straightTime > 0 && advance(world, tip.cpy().mulAdd(aimDirection, type.speed() * straightTime))) {
-            return true;
-        }
-        return remaining <= 0;
+        return elapsed >= type.lifetime();
     }
 
     private boolean advance(World world, Vector2 next) {

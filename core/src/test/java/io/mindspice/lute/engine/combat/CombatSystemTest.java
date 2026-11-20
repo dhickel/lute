@@ -61,6 +61,7 @@ public final class CombatSystemTest {
         testWeaponCycle();
         heldBow();
         cardinalBowShots();
+        ArrowFlightTest.run();
         cooldownBetweenBowAndMelee();
         bowDamageByDrawFrame();
         independentAttacksAndGeometry();
