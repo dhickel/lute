@@ -21,6 +21,7 @@ import io.mindspice.lute.engine.singletons.GameConsts;
 import io.mindspice.lute.engine.systems.AwarenessSystem;
 import io.mindspice.lute.engine.systems.EventSystem;
 import io.mindspice.lute.engine.systems.PhysicSystem;
+import io.mindspice.lute.engine.systems.RenderSystem.LightingView;
 import io.mindspice.lute.engine.systems.TiledSystem;
 import io.mindspice.lute.engine.systems.WorldTimeSystem;
 import io.mindspice.lute.engine.tiled.ManifestLoader;
@@ -87,10 +88,23 @@ public final class GameScreenLifecycleTest extends ApplicationAdapter {
         near(seconds(original), initialSeconds + 1 / 30f, "Pulse time uses the clamped simulation delta in day");
         near(time.getTotalInGameSeconds(), beforeVisibleUpdate + clampedWorldSeconds,
             "Visible game rendering advances world time with the clamped simulation delta");
+        require(view(original) == LightingView.OFF, "New session has no lighting debug view");
+        input.keyDown(Input.Keys.F3);
+        original.render(0f);
+        require(view(original) == LightingView.RAW_MAP && !night(original), "Select raw map without turning on night");
+        input.keyDown(Input.Keys.F3);
+        GAME.getInputManager().getKeyManager().broadcast(Input.Keys.F3, 2);
+        input.keyUp(Input.Keys.F3);
+        original.render(0f);
+        require(view(original) == LightingView.RAW_MAP, "F3 repeat and release do not cycle");
         double beforeNight = time.getTotalInGameSeconds();
         input.keyDown(Input.Keys.N);
         original.render(1f);
-        require(night(original), "A fresh press toggles on the next gameplay frame");
+        require(night(original) && view(original) == LightingView.RAW_MAP, "N enables night without resetting raw selection");
+        input.keyDown(Input.Keys.F3); input.keyUp(Input.Keys.F3); original.render(0f);
+        require(view(original) == LightingView.COLLISION && night(original), "Second F3 selects collision without toggling night");
+        input.keyDown(Input.Keys.F3); input.keyUp(Input.Keys.F3); original.render(0f);
+        require(view(original) == LightingView.OFF && night(original), "Third F3 returns to Off");
         near(time.getTotalInGameSeconds() - beforeNight, beforeNight - beforeVisibleUpdate,
             "Equal simulation deltas advance world time identically in both modes");
         input.keyDown(Input.Keys.N);
@@ -107,6 +121,7 @@ public final class GameScreenLifecycleTest extends ApplicationAdapter {
         original.render(0f);
         require(!night(original), "Two distinct queued presses toggle twice");
         input.keyDown(Input.Keys.N); original.render(0f);
+        input.keyDown(Input.Keys.F3); original.render(0f);
         GAME.pause(); // Held across a context change after its toggling edge was consumed.
         var pausedAt = time.getTotalInGameSeconds();
         double pausedSeconds = seconds(original);
@@ -117,6 +132,9 @@ public final class GameScreenLifecycleTest extends ApplicationAdapter {
         input.keyDown(Input.Keys.N);
         original.render(1f);
         near(seconds(original), pausedSeconds + 1 / 30f, "Resume advances the existing pulse time once");
+        input.keyDown(Input.Keys.F3); original.render(0f);
+        require(view(original) == LightingView.RAW_MAP, "Held F3 cannot retrigger on resume");
+        input.keyUp(Input.Keys.F3);
         require(night(original), "A consumed press held across pause cannot retrigger on resume");
         input.keyUp(Input.Keys.N);
         tapNight(); // Never rendered; this tap belongs to the context about to end.
@@ -154,6 +172,7 @@ public final class GameScreenLifecycleTest extends ApplicationAdapter {
         var beforeHide = time.getTotalInGameSeconds();
         var beforeHideSeconds = seconds(original);
         input.keyDown(Input.Keys.N); // Queued in the old visible context and held into the next.
+        input.keyDown(Input.Keys.F3);
         screens.loadScreen("away", new ScreenAdapter());
         screens.switchScreens("away");
         original.render(1f);
@@ -165,6 +184,8 @@ public final class GameScreenLifecycleTest extends ApplicationAdapter {
         input.keyDown(Input.Keys.N);
         original.render(1f);
         require(night(original), "Hidden stale press and still-held down cannot retrigger on show");
+        require(view(original) == LightingView.RAW_MAP, "Unconsumed F3 before hide does not advance the retained view");
+        input.keyUp(Input.Keys.F3);
         near(seconds(original), beforeHideSeconds + 1 / 30f, "Show resumes the same pulse clock");
         input.keyUp(Input.Keys.N);
         near(time.getTotalInGameSeconds(), beforeHide + clampedWorldSeconds, "Shown game rendering resumes world time");
@@ -213,6 +234,7 @@ public final class GameScreenLifecycleTest extends ApplicationAdapter {
             input.keyDown(Input.Keys.N);
             replacement.render(0f);
             require(!night(replacement) && seconds(replacement) == 0d, "New session starts day at zero, ignoring held N");
+            require(view(replacement) == LightingView.OFF, "New session resets the debug selection");
             require(!lights.contains(oldFire, true) && lights.size() > 0, "Only freshly mounted lights exist on first frame");
             input.keyUp(Input.Keys.N);
             input.keyDown(Input.Keys.N);
@@ -301,6 +323,10 @@ public final class GameScreenLifecycleTest extends ApplicationAdapter {
 
     static boolean night(GameScreen screen) throws ReflectiveOperationException {
         return field(GameScreen.class, "night").getBoolean(screen);
+    }
+
+    private static LightingView view(GameScreen screen) throws ReflectiveOperationException {
+        return (LightingView) field(GameScreen.class, "lightingView").get(screen);
     }
 
     static double seconds(GameScreen screen) throws ReflectiveOperationException {

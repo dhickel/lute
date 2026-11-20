@@ -22,6 +22,7 @@ import io.mindspice.lute.engine.components.Transform;
 import io.mindspice.lute.engine.data.json.*;
 import io.mindspice.lute.engine.singletons.GameConsts;
 import io.mindspice.lute.engine.systems.*;
+import io.mindspice.lute.engine.systems.RenderSystem.LightingView;
 
 import org.lwjgl.opengl.AMDDrawBuffersBlend;
 import org.lwjgl.opengl.ARBDrawBuffersBlend;
@@ -50,6 +51,7 @@ public final class LightingRenderTest extends ApplicationAdapter {
     private static final int WHITE = 0xffffffff, BAR = 0xde279ba7;
     private static final GameConsts.NightAmbient AMBIENT = new GameConsts.NightAmbient("#804020", .25f);
     private static final int DIM = 0x201008ff; // ambient × white
+    private static final int SOLID = 0xff5f1fff, RADIUS = 0x7fff1fff;
     private static final float LX = 36.5f, LY = 44.5f;
     private static int checks;
     private static Throwable failure;
@@ -124,6 +126,8 @@ public final class LightingRenderTest extends ApplicationAdapter {
             vertexInputs();
             clear(BAR);
             shadowsAndComposition();
+            collisionView();
+            largeCollisionRings();
             pulseAndProjection();
             stateAndFailure();
             require(Gdx.gl.glGetError() == GL_NO_ERROR, "driver error at teardown");
@@ -206,7 +210,8 @@ public final class LightingRenderTest extends ApplicationAdapter {
         clear(BAR);
         try (var probe = new TargetProbe()) {
             draw(false, 0);
-            require(probe.targets.isEmpty() && probe.quadDraws == 0 && field(renderer, "lighting") == null && query.get(world) == marker,
+            require(probe.targets.isEmpty() && probe.quadDraws == 0 && field(renderer, "lighting") == null
+                && field(renderer, "outlines") == null && query.get(world) == marker,
                 "first day: no lighting allocation, pass or fixture query");
         }
         for (int i = 0; i < xs.length; i++) { near(pixel(xs[i], 44), colors[i], 0, "gameplay daylight vs unlit order " + i); }
@@ -216,6 +221,18 @@ public final class LightingRenderTest extends ApplicationAdapter {
         near(pixel(106, 84), WHITE, 0, "day crosshair arm");
         bars(); save("day");
 
+        try (var probe = new TargetProbe()) {
+            draw(false, 0, LightingView.RAW_MAP);
+            near(pixel(51, 44), front, 0, "raw selected during day does not replace world");
+            require(probe.targets.isEmpty() && probe.quadDraws == 0 && field(renderer, "lighting") == null
+                && field(renderer, "outlines") == null && query.get(world) == marker, "raw day still bypasses lighting");
+            draw(false, 0, LightingView.COLLISION);
+            require(probe.quadDraws == 0 && probe.targets.isEmpty() && query.get(world) == marker && field(renderer, "lighting") == null,
+                "day collision view uses existing batch/overlay texture, not the night pass");
+            near(pixel(100, 44), RADIUS, 1, "daytime emitter radius");
+            near(pixel(53, 117), dayAlpha, 0, "day collision view leaves world unchanged away from lines");
+            bars();
+        }
         view.setScreenBounds(ox, oy, 0, side);
         draw(true, 0);
         require(field(renderer, "lighting") == null && query.get(world) == marker, "zero area skips night allocation and query");
@@ -241,17 +258,24 @@ public final class LightingRenderTest extends ApplicationAdapter {
         near(pixel(106, 84), WHITE, 0, "crosshair follows modulation");
         near(pixel(110, 84), modulate(ground, DIM), 2, "crosshair hole exposes dark world");
         if (hasSamplers()) { hostileSampler(assets, actor, character, ground); }
-        // A real debug system following RenderSystem, as in GameScreen. Use a sensor so making
-        // the debug overlay visible cannot itself add a shadow. Don't depend on GL line tie rules.
+        // Real trigger overlay following RenderSystem, as in GameScreen. Don't depend on GL line tie rules.
         var sensor = box(78, 81, 5, 3, StaticBody, true);
         debug = new TriggerDebugRenderSystem(world, camera); engine.addSystem(debug);
         view.apply(); // debug systems draw to the caller's applied viewport
-        draw(true, 0);
-        int cyan = 0;
-        for (int y = 76; y <= 86; y++) { for (int x = 71; x <= 85; x++) { if (pixel(x, y) == 0x00ffffff) { cyan++; } } }
-        require(cyan >= 16, "actual trigger debug outline stays cyan: " + cyan);
+        var edge = new EdgeShape(); edge.set(-38, 0, 20, 0);
+        var underAim = body(108, 84.5f, 0, StaticBody, edge, false);
+        for (var mode : LightingView.values()) {
+            draw(true, 0, mode);
+            int cyan = 0;
+            for (int y = 76; y <= 86; y++) { for (int x = 71; x <= 85; x++) { if (pixel(x, y) == 0x00ffffff) { cyan++; } } }
+            require(cyan >= 16, mode + ": actual trigger debug outline stays cyan: " + cyan);
+            near(pixel(106, 84), WHITE, 0, mode + ": aim covers world and debug lines");
+            if (mode == LightingView.COLLISION) {
+                near(pixel(110, 84), SOLID, 1, "open aim center exposes the solid edge underneath");
+            }
+        }
         engine.removeSystem(debug);
-        world.destroyBody(sensor);
+        world.destroyBody(underAim); world.destroyBody(sensor);
         engine.addEntity(lamp);
         draw(true, 0);
         require(query.get(world) != marker, "visible night emitter queries live Box2D world");
@@ -259,6 +283,17 @@ public final class LightingRenderTest extends ApplicationAdapter {
             require(red(pixel(xs[i], 44)) > red(modulate(colors[i], DIM)) + 8, "emitter illuminates world layer " + i);
         }
         save("night"); bars();
+        var solid = box(64, LY, 4, 8, DynamicBody, false);
+        draw(true, 0, LightingView.RAW_MAP);
+        near(pixel(36, 44), 0xc66332ff, 3, "raw RGB sum at emitter, not modulated character art");
+        near(pixel(64, 44), DIM, 1, "raw map shows shadow without leaking zero mask alpha");
+        near(pixel(118, 119), DIM, 1, "raw ambient even without underlying art");
+        var second = lamp(LX, LY, "#0040ff", 10, .5f, null);
+        draw(true, 0, LightingView.RAW_MAP);
+        near(pixel(36, 44), 0xc683b2ff, 3, "raw view includes both emitters plus ambient");
+        engine.removeEntity(second);
+        save("debug-raw"); bars();
+        world.destroyBody(solid);
         aim.cancel(); engine.removeEntity(translucent);
         draw(true, 0);
         int once = pixel(44, 44);
@@ -523,6 +558,68 @@ public final class LightingRenderTest extends ApplicationAdapter {
         }
     }
 
+    private void collisionView() {
+        var light = lamp(60.5f, 54.5f, "#808080", 12, .75f, new EmissiveData.Pulse(4, .5f, 0));
+        Transform.MAPPER.get(light).getScaling().x = 2; // actual center now 68.5,54.5
+        var poly = box(48, 44, 6, 2, DynamicBody, false);
+        poly.setTransform(48, 44, (float)Math.PI / 2);
+        var circle = new CircleShape(); circle.setPosition(new Vector2(6, 0)); circle.setRadius(4);
+        var disk = body(35, 40, (float)Math.PI / 2, KinematicBody, circle, false);
+        var chain = new ChainShape(); chain.createChain(new float[]{0,0, 8,0, 8,8});
+        var open = body(42, 59, 0, StaticBody, chain, false);
+        var sensor = box(68, 44, 3, 3, StaticBody, true);
+        var inactive = box(76, 44, 3, 3, StaticBody, false); inactive.setActive(false);
+        camera.position.set(60, 50, 0); camera.zoom = .5f; // 2px/unit, world origin of viewport = 28,18
+        draw(false, 1, LightingView.COLLISION);
+        near(pixel(36, 52), SOLID, 1, "rotated polygon edge at world 46,44");
+        near(pixel(40, 52), WHITE, 0, "polygon is outlined, not filled");
+        near(pixel(22, 56), SOLID, 1, "rotated offset circle right edge at world 39,46");
+        near(pixel(36, 82), SOLID, 1, "open chain bottom segment");
+        near(pixel(36, 90), WHITE, 0, "no fabricated closing edge on open chain");
+        near(pixel(74, 52), WHITE, 0, "sensor not outlined");
+        near(pixel(90, 52), WHITE, 0, "inactive body not outlined");
+        near(pixel(117, 73), RADIUS, 1, "ring at peak (scaled sprite center + 18 world units)");
+        save("debug-collision");
+        draw(true, 3, LightingView.COLLISION);
+        near(pixel(93, 73), RADIUS, 1, "ring moves to pulsed trough, plus 6 world units");
+        near(pixel(117, 73), DIM, 1, "no stale peak outline on lit world");
+        near(pixel(36, 52), SOLID, 1, "night does not dim solid outline");
+        draw(false, 3);
+        near(pixel(93, 73), WHITE, 0, "Off removes the ring");
+        near(pixel(36, 52), WHITE, 0, "Off removes solid outlines");
+        world.destroyBody(poly); world.destroyBody(disk); world.destroyBody(open);
+        world.destroyBody(sensor); world.destroyBody(inactive); engine.removeEntity(light);
+        camera.zoom = 1; camera.position.set(64, 64, 0);
+    }
+
+    private void largeCollisionRings() {
+        float radius = 1_000_000;
+        double angle = 31.5 * (2 * Math.PI / 256); // halfway between vertices of the former capped polygon
+        camera.position.set((float)(radius * Math.cos(angle)), (float)(radius * Math.sin(angle)), 0);
+        var light = lamp(0, 0, "#ffffff", radius, 1, null);
+        var circle = new CircleShape(); circle.setRadius(radius);
+        var solid = body(20, 0, 0, StaticBody, circle, false);
+        batch.maxSpritesInBatch = 0;
+        draw(false, 0, LightingView.COLLISION);
+        for (int x : new int[]{32, 64, 96}) {
+            double worldX = camera.position.x - 64 + x + .5;
+            int y = (int)Math.floor(Math.sqrt(radius * (double)radius - worldX * worldX) - camera.position.y + 64);
+            near(pixel(x, y), RADIUS, 1, "million-unit light's true off-center arc");
+            near(pixel(x + 20, y), SOLID, 1, "translated million-unit fixture's true arc");
+            near(pixel(x, y - 6), 0, 0, "huge outlines do not fill the interior");
+        }
+        require(batch.maxSpritesInBatch < 32, "only the local arcs are batched");
+        world.destroyBody(solid); engine.removeEntity(light);
+
+        camera.position.set(32, 64, 0);
+        var extreme = lamp(-Float.MAX_VALUE, 0, "#ffffff", Float.MAX_VALUE, 1, null);
+        draw(false, 0, LightingView.COLLISION);
+        near(pixel(32, 110), RADIUS, 1, "extreme radius tangent at world x=0, not the camera center");
+        near(pixel(64, 110), WHITE, 0, "no displaced extreme tangent");
+        engine.removeEntity(extreme);
+        camera.position.set(64, 64, 0);
+    }
+
     private void pulseAndProjection() {
         var lamp = lamp(LX, LY, "#80ff40", 40, .8f, new EmissiveData.Pulse(4, .5f, .5f));
         int[] center = new int[4], rim = new int[4];
@@ -625,6 +722,17 @@ public final class LightingRenderTest extends ApplicationAdapter {
                 near(callerPixel(nested, GL_COLOR_ATTACHMENT0, 16), BAR, 0, "day preserved secondary output sentinel");
                 near(callerPixel(nested, GL_COLOR_ATTACHMENT1, 16), WHITE, 0, "day rendered to caller's output zero");
                 checkState(before, "MRT day");
+            }
+            for (var mode : List.of(LightingView.RAW_MAP, LightingView.COLLISION)) {
+                try (var probe = new TargetProbe()) {
+                    if (mrt) { probe.mrtWorldTarget = nested.getFramebufferHandle(); }
+                    draw(true, 0, mode);
+                }
+                checkState(before, "debug " + mode);
+                int output = mrt ? GL_COLOR_ATTACHMENT1 : GL_COLOR_ATTACHMENT0;
+                near(callerPixel(nested, output, 28), mode == LightingView.COLLISION ? SOLID : DIM, 1,
+                    mode + " draws to isolated output zero of caller");
+                if (mrt) { near(callerPixel(nested, GL_COLOR_ATTACHMENT0, 28), BAR, 0, mode + " preserved secondary sentinel"); }
             }
             int oldMap, oldColor;
             try (var probe = new TargetProbe()) {
@@ -1007,7 +1115,10 @@ public final class LightingRenderTest extends ApplicationAdapter {
     }
 
     private void draw(boolean night, double seconds) {
-        renderer.gameplayFrame(world, AMBIENT, night, seconds); engine.update(0);
+        draw(night, seconds, LightingView.OFF);
+    }
+    private void draw(boolean night, double seconds, LightingView mode) {
+        renderer.gameplayFrame(world, AMBIENT, night, seconds, mode); engine.update(0);
     }
     private static void clear(int color) {
         var c = new Color(color); Gdx.gl.glClearColor(c.r, c.g, c.b, c.a); Gdx.gl.glClear(GL_COLOR_BUFFER_BIT);

@@ -36,7 +36,7 @@ final class NightLighting {
     }
 
     void render(World world, Iterable<Entity> emitters, NightAmbient settings, double seconds,
-                OrthographicCamera camera, int[] viewport, RenderState state) {
+                OrthographicCamera camera, int[] viewport, RenderState state, boolean rawMap) {
         var gl = Gdx.gl;
         if (map.width != viewport[2] || map.height != viewport[3]) {
             var replacement = new NightLightMap(viewport[2], viewport[3], state);
@@ -62,10 +62,7 @@ final class NightLighting {
             for (Entity entity : emitters) {
                 var light = Emissive.MAPPER.get(entity);
                 var transform = Transform.MAPPER.get(entity);
-                var position = transform.getPosition();
-                var size = transform.getSize();
-                var scale = transform.getScaling();
-                float x = position.x + size.x * scale.x * .5f, y = position.y + size.y * scale.y * .5f;
+                float x = transform.centerX(), y = transform.centerY();
                 double wave = light.wave(seconds);
                 float radius = light.radius(wave);
                 if (!camera.frustum.sphereInFrustum(x, y, 0f, radius)) { continue; }
@@ -82,9 +79,13 @@ final class NightLighting {
 
             state.restoreTargets(); // The caller can be another FBO, not necessarily the window.
             gl.glViewport(viewport[0], viewport[1], viewport[2], viewport[3]);
-            gl.glColorMask(true, true, true, false);
-            gl.glEnable(GL20.GL_BLEND);
-            gl.glBlendFuncSeparate(GL20.GL_DST_COLOR, GL20.GL_ZERO, GL20.GL_ZERO, GL20.GL_ONE);
+            gl.glColorMask(true, true, true, rawMap);
+            if (rawMap) {
+                gl.glDisable(GL20.GL_BLEND);
+            } else {
+                gl.glEnable(GL20.GL_BLEND);
+                gl.glBlendFuncSeparate(GL20.GL_DST_COLOR, GL20.GL_ZERO, GL20.GL_ZERO, GL20.GL_ONE);
+            }
             map.bindColor();
             mesh.composite();
             gl.glColorMask(true, true, true, true);

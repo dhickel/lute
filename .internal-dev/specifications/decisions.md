@@ -1,5 +1,14 @@
 # Durable Decisions
 
+## Lighting debug views
+
+- **Decision:** The tracked F3 binding cycles `CYCLE_LIGHTING_VIEW` through Off, Raw Map, and Collision independently of the N night toggle. A new gameplay screen starts Off; selection survives travel and hide/show. Only fresh active-context presses cycle, and held or stale input cannot retrigger across pause or hide.
+- **Rendering and tradeoff:** At night Raw Map replaces world art with the ambient-plus-emitter lightmap; by day it leaves the ordinary world view unchanged. Collision draws orange outlines for active non-sensor Box2D fixtures and green rings at the current pulsed emitter radii in day or night. Existing overlays remain above these diagnostics. Fixture tracing is shared with sensor debug rendering; these views neither alter physics nor toggle night. Collision geometry may differ from visible art.
+- **Justification:** Exposing the computed lightmap and actual collision outlines makes lighting and shadow behavior inspectable without changing authored data or simulation.
+- **Affected specifications:** Session night lighting and input settings below; `docs/input-system.md` describes the binding and lifecycle.
+- **Source:** Current lighting debug implementation and its input, lifecycle, and real-GL regressions.
+- **Review timing:** Revisit if debug controls or lighting diagnostics change.
+
 ## Session night lighting
 
 - **Decision:** A new `GameScreen` starts in day. The tracked N binding toggles night on fresh active-context presses, independently of the player and world clock. Mode and pulse phase survive travel and hide/show; phase freezes while hidden or paused. Ambient is captured from required `nightAmbient` settings at startup, so changes require regeneration and restart.

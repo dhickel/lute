@@ -39,7 +39,7 @@ final class NightLightMesh {
         varying float v_visibility;
         void main() {
             if (u_pass == 2) {
-                gl_FragColor = texture2D(u_lightmap, v_xy);
+                gl_FragColor = vec4(texture2D(u_lightmap, v_xy).rgb, 1.0); // alpha is mask scratch
             } else if (u_pass == 1) {
                 float distanceRatio = length((v_xy - u_disk.xy) / u_disk.z);
                 gl_FragColor = vec4(u_color * (1.0 - smoothstep(0.0, 1.0, distanceRatio)), 1.0);

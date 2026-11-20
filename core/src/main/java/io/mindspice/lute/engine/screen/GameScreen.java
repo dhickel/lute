@@ -26,7 +26,8 @@ public class GameScreen extends ScreenAdapter {
     private final TiledSystem tiled;
     private final RenderSystem renderer;
     private final GameConsts.NightAmbient ambient = GameConsts.NIGHT_AMBIENT;
-    private final KeyListener nightInput = new KeyListener(32, List.of(InputAction.TOGGLE_NIGHT));
+    private final KeyListener lightingInput = new KeyListener(32, List.of(InputAction.TOGGLE_NIGHT, InputAction.CYCLE_LIGHTING_VIEW));
+    private RenderSystem.LightingView lightingView = RenderSystem.LightingView.OFF;
     private boolean night;
     private double sessionSeconds;
     private final List<EntitySystem> ownedSystems = new ArrayList<>();
@@ -87,14 +88,14 @@ public class GameScreen extends ScreenAdapter {
         inputManager.releaseHeldInputs();
         tiled.showMap(mapAssets);
         game.setInputProcessors(inputManager);
-        inputManager.regKeyListener(nightInput);
+        inputManager.regKeyListener(lightingInput);
         visible = true;
     }
 
     @Override
     public void hide() {
         if (!visible) { return; }
-        inputManager.unRegKeyListener(nightInput);
+        inputManager.unRegKeyListener(lightingInput);
         visible = false;
         paused = false;
         tiled.hideMap();
@@ -103,7 +104,7 @@ public class GameScreen extends ScreenAdapter {
     @Override
     public void pause() {
         if (!visible || paused) { return; }
-        inputManager.unRegKeyListener(nightInput);
+        inputManager.unRegKeyListener(lightingInput);
         paused = true;
         inputManager.releaseHeldInputs();
         engine.getSystem(ControllerSystem.class).update(0f);
@@ -115,7 +116,7 @@ public class GameScreen extends ScreenAdapter {
         inputManager.releaseHeldInputs();
         engine.getSystem(ControllerSystem.class).update(0f);
         paused = false;
-        inputManager.regKeyListener(nightInput);
+        inputManager.regKeyListener(lightingInput);
     }
 
     @Override
@@ -123,11 +124,17 @@ public class GameScreen extends ScreenAdapter {
         if (!visible || paused) { return; }
         inputManager.updateGamepad();
         // Detach and map replacement mark old transitions; only presses from this context count.
-        nightInput.getQueue().consumePreviousContext((action, state) -> { });
-        nightInput.consume((action, state) -> { if (state == 1) { night = !night; } });
+        lightingInput.getQueue().consumePreviousContext((action, state) -> { });
+        lightingInput.consume((action, state) -> {
+            if (state != 1) { return; }
+            switch (action) {
+                case TOGGLE_NIGHT -> night = !night;
+                case CYCLE_LIGHTING_VIEW -> lightingView = lightingView.next();
+            }
+        });
         float step = delta > 0f ? Math.min(delta, 1 / 30f) : 0f;
         sessionSeconds += step;
-        renderer.gameplayFrame(physicWorld, ambient, night, sessionSeconds);
+        renderer.gameplayFrame(physicWorld, ambient, night, sessionSeconds, lightingView);
         engine.update(step);
         tiled.applyPendingTravel();
     }

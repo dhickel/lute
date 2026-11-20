@@ -11,6 +11,7 @@ import com.badlogic.gdx.physics.box2d.World;
 import com.badlogic.gdx.graphics.Texture;
 import com.badlogic.gdx.graphics.g2d.SpriteBatch;
 import com.badlogic.gdx.graphics.g2d.TextureAtlas;
+import com.badlogic.gdx.graphics.g2d.TextureRegion;
 import io.mindspice.lute.engine.assets.CharacterAssets;
 import com.badlogic.gdx.graphics.glutils.ShaderProgram;
 import com.badlogic.gdx.math.Matrix4;
@@ -36,6 +37,18 @@ import java.util.Comparator;
 import java.util.List;
 
 public class RenderSystem extends SortedIteratingSystem implements Disposable {
+    public enum LightingView {
+        OFF, RAW_MAP, COLLISION;
+
+        public LightingView next() {
+            return switch (this) {
+                case OFF -> RAW_MAP;
+                case RAW_MAP -> COLLISION;
+                case COLLISION -> OFF;
+            };
+        }
+    }
+
     private static final Family AIMERS = Family.all(BowAim.class).get();
     private static final Family LIGHTS = Family.all(Emissive.class, Transform.class).get();
     private final Batch batch;
@@ -59,6 +72,8 @@ public class RenderSystem extends SortedIteratingSystem implements Disposable {
     private boolean night;
     private double sessionSeconds;
     private NightLighting lighting;
+    private LightingView lightingView = LightingView.OFF;
+    private LightingOutlines outlines;
 
     public RenderSystem(Batch batch, Viewport viewport, OrthographicCamera camera, AssetService assets) {
         super(
@@ -81,7 +96,8 @@ public class RenderSystem extends SortedIteratingSystem implements Disposable {
     }
 
     /** Opt gameplay into viewport clearing and pass the session snapshot. Standalone draws keep their target background. */
-    public void gameplayFrame(World world, GameConsts.NightAmbient ambient, boolean night, double sessionSeconds) {
+    public void gameplayFrame(World world, GameConsts.NightAmbient ambient, boolean night, double sessionSeconds, LightingView lightingView) {
+        this.lightingView = lightingView;
         this.world = world;
         this.ambient = ambient;
         this.night = night;
@@ -137,8 +153,16 @@ public class RenderSystem extends SortedIteratingSystem implements Disposable {
             if (night) {
                 batch.end();
                 if (lighting == null) { lighting = new NightLighting(pixels[2], pixels[3], state); }
-                lighting.render(world, getEngine().getEntitiesFor(LIGHTS), ambient, sessionSeconds, camera, pixels, state);
+                lighting.render(world, getEngine().getEntitiesFor(LIGHTS), ambient, sessionSeconds, camera, pixels, state,
+                    lightingView == LightingView.RAW_MAP);
                 batch.begin();
+            }
+            if (lightingView == LightingView.COLLISION) {
+                if (outlines == null) {
+                    // Borrow an opaque white texel from the overlay we already own; no second texture or shader.
+                    outlines = new LightingOutlines(batch, new TextureRegion(crosshair(state), 2, 7, 1, 1));
+                }
+                outlines.draw(world, getEngine().getEntitiesFor(LIGHTS), sessionSeconds, camera, pixels[3]);
             }
             batch.setColor(Color.WHITE);
             for (Entity entity : getEngine().getEntitiesFor(AIMERS)) {
@@ -170,7 +194,6 @@ public class RenderSystem extends SortedIteratingSystem implements Disposable {
         var region = composite ? compositor.region(entity) : graphic.getRegion();
         if (region == null) { return; }
 
-        var pos = transform.getPosition();
         var scale = transform.getScaling();
         var size = transform.getSize();
 
@@ -187,8 +210,8 @@ public class RenderSystem extends SortedIteratingSystem implements Disposable {
         float height = composite ? region.getRegionHeight() * GameConsts.UNIT_SCALE : size.y;
         this.batch.draw(
             region,
-            pos.x + size.x * scale.x * 0.5f - width * 0.5f,
-            pos.y + size.y * scale.y * 0.5f - height * 0.5f,
+            transform.centerX() - width * 0.5f,
+            transform.centerY() - height * 0.5f,
             width * 0.5f, height * 0.5f,
             width, height,
             scale.x, scale.y,
@@ -220,7 +243,7 @@ public class RenderSystem extends SortedIteratingSystem implements Disposable {
             arrow.direction.angleDeg() - arrow.type.artDegrees());
     }
 
-    private void drawCrosshair(float x, float y, RenderState state) {
+    private Texture crosshair(RenderState state) {
         if (crosshair == null) {
             // A dark outline keeps the open center legible on both light and dark tiles.
             var pixels = new Pixmap(15, 15, Pixmap.Format.RGBA8888);
@@ -239,8 +262,13 @@ public class RenderSystem extends SortedIteratingSystem implements Disposable {
                 crosshair = new Texture(pixels);
             } finally { pixels.dispose(); }
         }
-        float size = crosshair.getWidth() * GameConsts.UNIT_SCALE;
-        batch.draw(crosshair, x - size / 2, y - size / 2, size, size);
+        return crosshair;
+    }
+
+    private void drawCrosshair(float x, float y, RenderState state) {
+        var texture = crosshair(state);
+        float size = texture.getWidth() * GameConsts.UNIT_SCALE;
+        batch.draw(texture, x - size / 2, y - size / 2, size, size);
     }
 
     private void straightBlend() {

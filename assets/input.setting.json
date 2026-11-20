@@ -20,7 +20,8 @@
     "SHIFT_LEFT": "ATTACK_SECONDARY",
     "SHIFT_RIGHT": "ATTACK_SECONDARY",
     "R": "CYCLE_WEAPON",
-    "N": "TOGGLE_NIGHT"
+    "N": "TOGGLE_NIGHT",
+    "F3": "CYCLE_LIGHTING_VIEW"
   },
   "mouse": {}
 }
