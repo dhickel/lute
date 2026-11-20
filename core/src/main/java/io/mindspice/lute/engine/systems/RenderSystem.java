@@ -136,14 +136,8 @@ public class RenderSystem extends SortedIteratingSystem implements Disposable {
             fgLayers.forEach(mapRenderer::renderMapLayer);
             if (night) {
                 batch.end();
-                var stencil = state.new Stencil();
-                try {
-                    if (lighting == null) { lighting = new NightLighting(pixels[2], pixels[3], state); }
-                    lighting.render(world, getEngine().getEntitiesFor(LIGHTS), ambient, sessionSeconds, camera, pixels, state);
-                } finally {
-                    state.restoreTargets();
-                    stencil.restore();
-                }
+                if (lighting == null) { lighting = new NightLighting(pixels[2], pixels[3], state); }
+                lighting.render(world, getEngine().getEntitiesFor(LIGHTS), ambient, sessionSeconds, camera, pixels, state);
                 batch.begin();
             }
             batch.setColor(Color.WHITE);

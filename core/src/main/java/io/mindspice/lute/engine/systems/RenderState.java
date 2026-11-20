@@ -27,7 +27,7 @@ final class RenderState {
             || Gdx.graphics.supportsExtension("GL_ARB_framebuffer_object")
             || Gdx.graphics.supportsExtension("GL_EXT_framebuffer_blit")));
     private int readFramebuffer = splitTargets ? integer(GL30.GL_READ_FRAMEBUFFER_BINDING) : framebuffer;
-    private int renderbuffer = integer(GL20.GL_RENDERBUFFER_BINDING);
+    private final int renderbuffer = integer(GL20.GL_RENDERBUFFER_BINDING);
     private final int[] viewport = currentViewport();
     private final int[] scissorBox = vector(GL20.GL_SCISSOR_BOX);
     private final int unpackAlignment = integer(GL20.GL_UNPACK_ALIGNMENT);
@@ -182,7 +182,6 @@ final class RenderState {
         if (enclosing != null) { enclosing.releasedShader(program); }
     }
 
-    void releasedRenderbuffer(int handle) { if (renderbuffer == handle) { renderbuffer = 0; } }
     void releasedArrayBuffer(int handle) { if (arrayBuffer == handle) { arrayBuffer = 0; } }
     void releasedVertexArray(int handle) { if (vertexArray == handle) { vertexArray = 0; } }
 
@@ -234,36 +233,6 @@ final class RenderState {
     private void bindUnitZeroSampler(int name) {
         if (desktop != null) { desktop.bindUnitZeroSampler(name); }
         else { Gdx.gl30.glBindSampler(0, name); }
-    }
-
-    /** Only the night pass changes the stencil parameters; daylight never needs this snapshot. */
-    final class Stencil {
-        private final int clear = integer(GL20.GL_STENCIL_CLEAR_VALUE);
-        private final Face front = face(false), back = face(true);
-
-        void restore() {
-            Gdx.gl.glClearStencil(clear);
-            front.restore(GL20.GL_FRONT);
-            back.restore(GL20.GL_BACK);
-        }
-
-        private record Face(int func, int ref, int valueMask, int writeMask, int fail, int zFail, int zPass) {
-            void restore(int face) {
-                Gdx.gl.glStencilFuncSeparate(face, func, ref, valueMask);
-                Gdx.gl.glStencilMaskSeparate(face, writeMask);
-                Gdx.gl.glStencilOpSeparate(face, fail, zFail, zPass);
-            }
-        }
-
-        private Face face(boolean back) {
-            return new Face(integer(back ? GL20.GL_STENCIL_BACK_FUNC : GL20.GL_STENCIL_FUNC),
-                integer(back ? GL20.GL_STENCIL_BACK_REF : GL20.GL_STENCIL_REF),
-                integer(back ? GL20.GL_STENCIL_BACK_VALUE_MASK : GL20.GL_STENCIL_VALUE_MASK),
-                integer(back ? GL20.GL_STENCIL_BACK_WRITEMASK : GL20.GL_STENCIL_WRITEMASK),
-                integer(back ? GL20.GL_STENCIL_BACK_FAIL : GL20.GL_STENCIL_FAIL),
-                integer(back ? GL20.GL_STENCIL_BACK_PASS_DEPTH_FAIL : GL20.GL_STENCIL_PASS_DEPTH_FAIL),
-                integer(back ? GL20.GL_STENCIL_BACK_PASS_DEPTH_PASS : GL20.GL_STENCIL_PASS_DEPTH_PASS));
-        }
     }
 
     private static void enabled(int capability, boolean enabled) {

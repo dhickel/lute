@@ -3,14 +3,17 @@ package io.mindspice.lute.engine.systems;
 import com.badlogic.ashley.core.Entity;
 import com.badlogic.gdx.Gdx;
 import com.badlogic.gdx.graphics.GL20;
+import com.badlogic.gdx.graphics.GL30;
 import com.badlogic.gdx.graphics.OrthographicCamera;
+import com.badlogic.gdx.graphics.glutils.GLVersion;
 import com.badlogic.gdx.physics.box2d.World;
 import io.mindspice.lute.engine.components.Emissive;
 import io.mindspice.lute.engine.components.Physic;
 import io.mindspice.lute.engine.components.Transform;
+import io.mindspice.lute.engine.singletons.GameConsts;
 import io.mindspice.lute.engine.singletons.GameConsts.NightAmbient;
 
-/** Renderer-owned scratch. Each disk adds to the same light map, but never shares a stencil mask. */
+/** Renderer-owned scratch. Each disk adds to the same RGB map with its own visibility mask. */
 final class NightLighting {
     private final NightOcclusion occlusion = new NightOcclusion();
     private final NightLightMesh mesh;
@@ -19,6 +22,11 @@ final class NightLighting {
     private float red, green, blue;
 
     NightLighting(int width, int height, RenderState state) {
+        var version = Gdx.graphics.getGLVersion();
+        if (version.getType() == GLVersion.Type.GLES && !version.isVersionEqualToOrHigher(3, 0)
+            && !Gdx.graphics.supportsExtension("GL_EXT_blend_minmax")) {
+            throw new IllegalStateException("Night shadows need GL_EXT_blend_minmax on GLES2");
+        }
         map = new NightLightMap(width, height, state);
         try { mesh = new NightLightMesh(state); }
         catch (RuntimeException | Error failure) {
@@ -65,15 +73,15 @@ final class NightLighting {
                 // This also keeps a very large authored radius from exhausting float raster precision in a tiny view.
                 double toCamera = Math.hypot((double) x - camera.position.x, (double) y - camera.position.y);
                 float maskRadius = Math.min(radius, Math.nextUp((float) (toCamera + viewHalfDiagonal)));
+                double maxTail = Math.min(24d * GameConsts.UNIT_SCALE, .25d * radius);
                 var physic = Physic.MAPPER.get(entity);
-                if (occlusion.collect(world, physic == null ? null : physic.getBody(), x, y, maskRadius, pixelSize)) {
+                if (occlusion.collect(world, physic == null ? null : physic.getBody(), x, y, maskRadius, pixelSize, maxTail)) {
                     addLight(camera, light, x, y, radius, wave);
                 }
             }
 
             state.restoreTargets(); // The caller can be another FBO, not necessarily the window.
             gl.glViewport(viewport[0], viewport[1], viewport[2], viewport[3]);
-            gl.glDisable(GL20.GL_STENCIL_TEST);
             gl.glColorMask(true, true, true, false);
             gl.glEnable(GL20.GL_BLEND);
             gl.glBlendFuncSeparate(GL20.GL_DST_COLOR, GL20.GL_ZERO, GL20.GL_ZERO, GL20.GL_ONE);
@@ -85,25 +93,19 @@ final class NightLighting {
 
     private void addLight(OrthographicCamera camera, Emissive light, float x, float y, float radius, double wave) {
         var gl = Gdx.gl;
-        if (occlusion.triangles.size == 0) {
-            gl.glDisable(GL20.GL_STENCIL_TEST);
-        } else {
-            gl.glEnable(GL20.GL_STENCIL_TEST);
-            gl.glStencilMask(0xff);
-            gl.glClearStencil(0);
-            gl.glClear(GL20.GL_STENCIL_BUFFER_BIT);
-            gl.glStencilFunc(GL20.GL_ALWAYS, 1, 0xff);
-            gl.glStencilOp(GL20.GL_KEEP, GL20.GL_KEEP, GL20.GL_REPLACE);
-            gl.glColorMask(false, false, false, false);
+        gl.glEnable(GL20.GL_BLEND);
+        boolean masked = occlusion.triangles.size != 0;
+        if (masked) {
+            // Clear just visibility to one, leaving ambient and all earlier lights intact.
+            gl.glColorMask(false, false, false, true);
+            gl.glClear(GL20.GL_COLOR_BUFFER_BIT);
+            gl.glBlendEquation(GL30.GL_MIN); // overlapping pieces keep the darkest, never accumulate
             mesh.mask(camera.combined, occlusion.triangles);
-            gl.glStencilMask(0);
-            gl.glStencilFunc(GL20.GL_EQUAL, 0, 0xff);
-            gl.glStencilOp(GL20.GL_KEEP, GL20.GL_KEEP, GL20.GL_KEEP);
+            gl.glBlendEquation(GL20.GL_FUNC_ADD);
         }
         gl.glColorMask(true, true, true, false);
-        gl.glEnable(GL20.GL_BLEND);
-        gl.glBlendFunc(GL20.GL_ONE, GL20.GL_ONE);
-        mesh.light(camera.invProjectionView, x, y, radius, light, wave);
+        gl.glBlendFunc(masked ? GL20.GL_DST_ALPHA : GL20.GL_ONE, GL20.GL_ONE);
+        mesh.light(camera.invProjectionView, x, y, radius, light, wave, masked);
     }
 
     void dispose(RenderState state) {

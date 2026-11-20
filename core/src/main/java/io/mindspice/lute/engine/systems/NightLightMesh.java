@@ -13,16 +13,18 @@ import java.nio.IntBuffer;
 /** A clip-space quad and a bounded streaming region for world-space shadow triangles. */
 final class NightLightMesh {
     private static final int MASK = 0, LIGHT = 1, COMPOSITE = 2;
-    private static final float[] QUAD = {-1, -1, 1, -1, -1, 1, 1, 1};
+    private static final float[] QUAD = {-1, -1, 1, 1, -1, 1, -1, 1, 1, 1, 1, 1};
     private static final String VERTEX = """
-        attribute vec2 a_xy;
+        attribute vec3 a_vertex;
         uniform int u_pass;
         uniform mat4 u_camera;
         varying vec2 v_xy;
+        varying float v_visibility;
         void main() {
-            vec4 p = vec4(a_xy, 0.0, 1.0);
+            vec4 p = vec4(a_vertex.xy, 0.0, 1.0);
+            v_visibility = a_vertex.z;
             gl_Position = u_pass == 0 ? u_camera * p : p;
-            v_xy = u_pass == 1 ? (u_camera * p).xy : (a_xy + 1.0) * 0.5;
+            v_xy = u_pass == 1 ? (u_camera * p).xy : (a_vertex.xy + 1.0) * 0.5;
         }
         """;
     private static final String FRAGMENT = """
@@ -34,6 +36,7 @@ final class NightLightMesh {
         uniform vec3 u_color;
         uniform sampler2D u_lightmap;
         varying vec2 v_xy;
+        varying float v_visibility;
         void main() {
             if (u_pass == 2) {
                 gl_FragColor = texture2D(u_lightmap, v_xy);
@@ -41,12 +44,12 @@ final class NightLightMesh {
                 float distanceRatio = length((v_xy - u_disk.xy) / u_disk.z);
                 gl_FragColor = vec4(u_color * (1.0 - smoothstep(0.0, 1.0, distanceRatio)), 1.0);
             } else {
-                gl_FragColor = vec4(0.0);
+                gl_FragColor = vec4(0.0, 0.0, 0.0, smoothstep(0.0, 1.0, v_visibility));
             }
         }
         """;
 
-    private final FloatBuffer stream = BufferUtils.newFloatBuffer(6 * 512);
+    private final FloatBuffer stream = BufferUtils.newFloatBuffer(9 * 512);
     private final IntBuffer status = BufferUtils.newIntBuffer(16);
     private final int[] vao = {0};
     private int program, vbo;
@@ -63,7 +66,7 @@ final class NightLightMesh {
             if (program == 0) { throw new IllegalStateException("Cannot create night light program"); }
             gl.glAttachShader(program, vertex);
             gl.glAttachShader(program, fragment);
-            gl.glBindAttribLocation(program, 0, "a_xy");
+            gl.glBindAttribLocation(program, 0, "a_vertex");
             gl.glLinkProgram(program);
             gl.glGetProgramiv(program, GL20.GL_LINK_STATUS, status);
             if (status.get(0) == 0) { throw new IllegalStateException("Night light link: " + gl.glGetProgramInfoLog(program)); }
@@ -120,7 +123,7 @@ final class NightLightMesh {
         // On desktop GL20 the enclosing render scope isolates the layout as well as the enable bit.
         gl.glGetVertexAttribiv(0, GL20.GL_VERTEX_ATTRIB_ARRAY_ENABLED, status);
         positionWasEnabled = status.get(0) != 0;
-        gl.glVertexAttribPointer(0, 2, GL20.GL_FLOAT, false, 2 * Float.BYTES, 0);
+        gl.glVertexAttribPointer(0, 3, GL20.GL_FLOAT, false, 3 * Float.BYTES, 0);
         gl.glEnableVertexAttribArray(0);
     }
 
@@ -138,18 +141,23 @@ final class NightLightMesh {
             int count = Math.min(stream.capacity(), triangles.size - offset);
             stream.clear().put(triangles.items, offset, count).flip();
             gl.glBufferSubData(GL20.GL_ARRAY_BUFFER, QUAD.length * Float.BYTES, count * Float.BYTES, stream);
-            gl.glDrawArrays(GL20.GL_TRIANGLES, 4, count / 2);
+            gl.glDrawArrays(GL20.GL_TRIANGLES, 4, count / 3);
         }
     }
 
-    void light(Matrix4 inverseProjection, float x, float y, float radius, Emissive light, double wave) {
+    void light(Matrix4 inverseProjection, float x, float y, float radius, Emissive light, double wave, boolean masked) {
         var gl = Gdx.gl;
         gl.glUniform1i(pass, LIGHT);
         gl.glUniformMatrix4fv(camera, 1, false, inverseProjection.val, 0);
         gl.glUniform3f(disk, x, y, radius);
         float intensity = light.intensity(wave);
+        // RGBA8 clamps source RGB before multiplying by destination visibility. Split a
+        // bright masked pulse into two representable halves; validated peak intensity is <= 2.
+        boolean split = masked && intensity * Math.max(light.red(), Math.max(light.green(), light.blue())) > 1f;
+        if (split) { intensity *= .5f; }
         gl.glUniform3f(color, light.red() * intensity, light.green() * intensity, light.blue() * intensity);
         gl.glDrawArrays(GL20.GL_TRIANGLE_STRIP, 0, 4);
+        if (split) { gl.glDrawArrays(GL20.GL_TRIANGLE_STRIP, 0, 4); }
     }
 
     void composite() {

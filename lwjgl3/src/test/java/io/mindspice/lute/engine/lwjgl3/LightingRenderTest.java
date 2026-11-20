@@ -231,6 +231,7 @@ public final class LightingRenderTest extends ApplicationAdapter {
                 require(probe.linkChecks > 0 && expected.getMessage() != null && !expected.getMessage().isBlank(), "actionable program link failure");
             }
             require(field(renderer, "lighting") == null, "failed lazy setup not published");
+            probe.requireColorTargetAllocation();
             probe.requireReleased();
         }
         withSmallUnpackBuffer("first night lightmap", () -> draw(true, 0));
@@ -386,7 +387,7 @@ public final class LightingRenderTest extends ApplicationAdapter {
         // Body origin deliberately does not equal sprite center; its solid overlaps the source.
         var self = box(LX + 2, LY, 4, 4, StaticBody, false);
         self.setUserData(lamp); lamp.add(new Physic(self, new Vector2()));
-        var blocker = box(LX + 12, LY, 1.5f, 4, DynamicBody, false);
+        var blocker = box(LX + 12, LY, 4.5f, 6, DynamicBody, false);
         var filter = blocker.getFixtureList().first().getFilterData();
         filter.maskBits = 0; filter.categoryBits = 0; blocker.getFixtureList().first().setFilterData(filter);
         blocker.setActive(false);
@@ -396,42 +397,98 @@ public final class LightingRenderTest extends ApplicationAdapter {
         require(198 > inner && inner > mid + 8 && mid > outer + 8 && outer >= red(DIM), "radial falloff on unblocked side");
         near(pixel(100, 44), DIM, 2, "at light radius"); near(pixel(105, 44), DIM, 1, "outside radius");
         near(pixel(36, 76), pixel(68, 44), 2, "world-space circular light");
-        int lit = pixel(66, 44);
-        blocker.setActive(true); blocker.setTransform(LX + 12, LY, .35f);
-        draw(true, 0); near(pixel(66, 44), DIM, 1, "rotated moving actor solid with zero filter bits");
-        near(pixel(36, 74), lit, 2, "unoccluded flank"); save("shadow");
+        int[] lit = centerRow(); // Same-pixel, unoccluded radial light plus ambient, not a constant bright reference.
+        finiteShapeShadows(blocker, lit);
+        independentLightMasks(lamp, self, lit);
+        scaledTailCap();
+    }
+
+    private void finiteShapeShadows(Body blocker, int[] lit) {
+        double angle = Math.PI / 6;
+        blocker.setActive(true); blocker.setTransform(LX + 12, LY, (float)angle);
+        draw(true, 0);
+        // Rotated 9x12 rectangle: maximum vertex chord 15, not an edge or the world AABB diagonal.
+        double exit = LX + 12 + 4.5 / Math.cos(angle), length = .75 * 15;
+        near(pixel(40, 44), lit[40], 1, "ahead of rotated polygon");
+        near(pixel(52, 44), DIM, 1, "deep in rotated zero-filter solid, no fade from entry face");
+        fade(54, lit[54], (54.5 - exit) / length, "contact behind polygon");
+        fade(56, lit[56], (56.5 - exit) / length, "early smoothstep, not linear");
+        fade(59, lit[59], (59.5 - exit) / length, "polygon chord controls midfade");
+        near(pixel(68, 44), lit[68], 1, "full radial baseline regained well before rim");
+        near(pixel(36, 74), lit[66], 2, "unoccluded flank"); save("shadow");
+        int single = pixel(60, 44);
+        blocker.createFixture(blocker.getFixtureList().first().getShape(), 1); // coincident parts of the same body
+        draw(true, 0); near(pixel(60, 44), single, 1, "duplicate parts do not compound partial darkness");
         blocker.setTransform(LX + 12, LY + 20, .35f);
-        draw(true, 0); near(pixel(66, 44), lit, 1, "moving body vacates its shadow immediately");
+        draw(true, 0); near(pixel(60, 44), lit[60], 1, "moving body vacates its shadow immediately");
         world.destroyBody(blocker);
-        var circle = new CircleShape(); circle.setPosition(new Vector2(0, 6)); circle.setRadius(3);
-        var offset = body(LX + 20, LY, -(float)Math.PI / 2, KinematicBody, circle, false);
-        draw(true, 0); near(pixel(66, 44), DIM, 1, "transformed offset circle casts at world center");
+
+        int offAxis = pixel(60, 50);
+        var circle = new CircleShape(); circle.setPosition(new Vector2(0, 6)); circle.setRadius(6);
+        var offset = body(LX + 10, LY, -(float)Math.PI / 2, KinematicBody, circle, false);
+        // World center LX+16, exit LX+22, tail length 0.75 * diameter = 9.
+        draw(true, 0); near(pixel(57, 44), DIM, 1, "transformed offset circle interior");
+        fade(61, lit[61], 3.0 / 9, "circle fade measured from curved exit");
+        // Intersect the ray (24,6) with the rear arc, rather than the far side of a bounding box.
+        double distance = Math.hypot(24, 6), perpendicular = 16 * 6 / distance;
+        double arcExit = 16 * 24 / distance + Math.sqrt(36 - perpendicular * perpendicular);
+        near(pixel(60, 50), faded(offAxis, (distance - arcExit) / 9), 8, "off-axis circular tail (subpixel arc approximation)");
+        near(pixel(69, 44), lit[69], 1, "circle shadow ends inside light disk");
         offset.getFixtureList().first().setSensor(true);
-        draw(true, 0); near(pixel(66, 44), lit, 1, "sensor-only circle does not shadow");
+        draw(true, 0); near(pixel(57, 44), lit[57], 1, "sensor-only circle does not shadow");
         world.destroyBody(offset);
 
-        var chain = new ChainShape(); chain.createChain(new float[]{-5, 7, 5, 7, 5, -7, -5, -7});
-        var open = body(LX, LY, 0, StaticBody, chain, false);
-        draw(true, 0); near(pixel(66, 44), DIM, 1, "open chain segment casts");
-        near(pixel(6, 44), lit, 2, "open chain has no synthetic closing segment");
+        // After rotation the central child is vertical at LX+5, length 8. The other two are 23 long.
+        var chain = new ChainShape(); chain.createChain(new float[]{4, 18, 4, -5, -4, -5, -4, 18});
+        var open = body(LX, LY, (float)Math.PI / 2, StaticBody, chain, false);
+        draw(true, 0); fade(42, lit[42], 1. / 6, "chain contact");
+        fade(44, lit[44], .5, "chain fade uses this child's length");
+        near(pixel(49, 44), lit[49], 1, "past short chain child shadow");
+        near(pixel(17, 44), lit[17], 1, "open chain has no synthetic closing segment");
         world.destroyBody(open);
         var loop = new ChainShape(); loop.createLoop(new float[]{-5,-7, 5,-7, 5,7, -5,7});
         var closed = body(LX, LY, 0, StaticBody, loop, false);
-        draw(true, 0); near(pixel(36, 44), 0xc66332ff, 3, "closed chain is hollow"); near(pixel(6, 44), DIM, 1, "loop closing edge casts");
+        draw(true, 0); near(pixel(36, 44), lit[36], 1, "closed chain is hollow");
+        fade(27, lit[27], 4. / 10.5, "loop closing edge casts to the left");
         world.destroyBody(closed);
-        var edge = new EdgeShape(); edge.set(0, -200, 0, 200);
-        var wall = body(LX + .25f, LY, 0, StaticBody, edge, false);
-        draw(true, 0); near(pixel(84, 44), DIM, 1, "far cap of near-origin long edge reaches disk edge");
-        near(pixel(6, 44), lit, 2, "near edge doesn't suppress source");
+    }
 
-        var blue = lamp(69.5f, LY, "#4080ff", 64, .8f, null);
-        draw(true, 0); int overlap = pixel(66, 44);
-        require(blue(overlap) > 198 && red(overlap) < 95, "east: only cool light survives warm light's mask");
-        near(pixel(6, 44), lit, 2, "west: warm light survives cool light's mask");
+    private void independentLightMasks(Entity lamp, Body self, int[] lit) {
+        var edge = new EdgeShape(); edge.set(-200, 0, 200, 0);
+        var wall = body(LX + .25f, LY, (float)Math.PI / 2, StaticBody, edge, false);
+        draw(true, 0);
+        fade(37, lit[37], .75 / 16, "near-source long edge contact");
+        fade(40, lit[40], 3.75 / 16, "long edge limited by quarter radius");
+        fade(44, lit[44], 7.75 / 16, "long edge midfade");
+        near(pixel(54, 44), lit[54], 1, "long edge no longer shadows rest of disk");
+        near(pixel(6, 44), lit[6], 1, "near edge doesn't suppress source");
+        int warmEast = pixel(44, 44), warmInsideSelf = pixel(40, 44);
+        // Overlapping, unequal tails: the darkest caster changes along the same ray.
+        var shortEdge = new EdgeShape(); shortEdge.set(0, -4, 0, 4);
+        var shortWall = body(LX + 4, LY, 0, StaticBody, shortEdge, false);
+        wall.setActive(false); draw(true, 0);
+        fade(41, lit[41], 1. / 6, "standalone edge length sets its fade");
+        fade(44, lit[44], 4. / 6, "short edge midfade");
+        int darkerAt41 = pixel(41, 44);
+        wall.setActive(true); draw(true, 0);
+        near(pixel(41, 44), darkerAt41, 1, "short edge dominates near contact");
+        near(pixel(44, 44), warmEast, 1, "long edge dominates farther from contact");
+        world.destroyBody(shortWall);
+
+        var blue = lamp(56.5f, LY, "#4080ff", 64, .8f, null);
+        draw(true, 0); int both = pixel(44, 44);
+        near(pixel(40, 44), warmInsideSelf, 2, "warm self exclusion is not inherited by cool light");
+        engine.removeEntity(lamp); draw(true, 0);
+        int coolEast = pixel(44, 44);
+        require(blue(coolEast) > 170, "cool light is unoccluded east of wall");
+        int expectedBoth = addLights(warmEast, coolEast);
+        near(both, expectedBoth, 2, "warm midfade modulates only warm contribution, not cool light or ambient");
+        engine.addEntity(lamp); draw(true, 0);
+        near(pixel(44, 44), expectedBoth, 2, "same sum with cool then warm light");
         world.destroyBody(wall);
-        draw(true, 0); require(red(pixel(66, 44)) > red(overlap) + 30, "unblocked lights add at overlap");
+        draw(true, 0); near(pixel(44, 44), addLights(lit[44], coolEast), 2, "unblocked lights add at overlap");
         var lid = box(LX, LY, 3, 4, StaticBody, false);
-        draw(true, 0); near(pixel(66, 44), overlap, 2, "filled solid covers one origin, not other emitter");
+        draw(true, 0); near(pixel(44, 44), coolEast, 2, "filled solid covers one origin, not other emitter");
         engine.removeEntity(blue);
         lid.setTransform(LX + 3, LY, 0);
         draw(true, 0); near(pixel(6, 44), DIM, 1, "another filled boundary touching exact source fully blocks it");
@@ -440,13 +497,30 @@ public final class LightingRenderTest extends ApplicationAdapter {
         draw(true, 0); near(pixel(36, 44), 0xffe3ffff, 2, "clamped ambient plus both unoccluded RGB contributions");
         engine.removeEntity(extra); engine.removeEntity(lamp);
         draw(true, 0); near(pixel(36, 44), DIM, 1, "retired emitters/fixtures leave no ghost");
+    }
 
-        var huge = lamp(LX, LY, "#FFFFFF", Float.MAX_VALUE, .5f, null);
-        var nearWall = box(LX + 3, LY, 1, 6, StaticBody, false);
-        draw(true, 0);
-        near(pixel(120, 44), DIM, 1, "finite but enormous disk: long shadow reaches the far viewport edge");
-        require(red(pixel(10, 44)) >= red(DIM) + 125, "enormous disk remains lit on the near side");
-        world.destroyBody(nearWall); engine.removeEntity(huge);
+    private void scaledTailCap() {
+        float previousScale = GameConsts.UNIT_SCALE;
+        try {
+            GameConsts.UNIT_SCALE = .5f;
+            var huge = lamp(LX, LY, "#FFFFFF", Float.MAX_VALUE, .5f, null);
+            draw(true, 0); int[] clearDisk = centerRow();
+            var nearWall = box(LX + 3, LY, 1, 60, StaticBody, false);
+            draw(true, 0);
+            require(red(pixel(10, 44)) >= red(DIM) + 125, "enormous disk remains lit on the near side");
+            near(pixel(39, 44), DIM, 1, "contact on enormous disk");
+            fade(46, clearDisk[46], .5, "six world units past exit: halfway to 24 * UNIT_SCALE");
+            near(pixel(54, 44), clearDisk[54], 1, "scaled absolute cap ends shadow");
+            near(pixel(120, 44), clearDisk[120], 1, "enormous disk recovered through far viewport edge");
+            // The visible half-diagonal is now only ~22.6. Clipping the fixture query to it
+            // must not substitute .25 * 22.6 for the cap based on the actual disk radius.
+            camera.position.set(LX, LY, 0); camera.zoom = .25f;
+            draw(true, 0);
+            near(pixel(104, 64), faded(clearDisk[46], 6.125 / 12), 4, "zoomed view does not shorten the tail");
+            world.destroyBody(nearWall); engine.removeEntity(huge);
+        } finally {
+            camera.zoom = 1; camera.position.set(64, 64, 0); GameConsts.UNIT_SCALE = previousScale;
+        }
     }
 
     private void pulseAndProjection() {
@@ -455,6 +529,19 @@ public final class LightingRenderTest extends ApplicationAdapter {
         for (int t = 0; t < 4; t++) {
             draw(true, t); center[t] = pixel(36, 44); rim[t] = pixel(75, 44);
         }
+        int clearTrough = pixel(42, 44);
+        draw(true, 1); int clearPeak = pixel(64, 44); // Unsaturated reference even at peak intensity.
+        var edge = new EdgeShape(); edge.set(0, -40, 0, 40);
+        var wall = body(LX + 24, LY, 0, StaticBody, edge, false);
+        draw(true, 1); fade(64, clearPeak, 4. / 15, "peak radius 60 gives a 15-unit shadow");
+        wall.setTransform(LX + 2, LY, 0);
+        draw(true, 3); fade(42, clearTrough, 4. / 5, "trough radius 20 gives a 5-unit shadow");
+        draw(true, 1);
+        // At x=46.5 the unclamped green is 1.2 * (1-smoothstep(10/60)) = 10/9.
+        // It must be attenuated before the RGB target saturates, not capped to 1 first.
+        double t = 8. / 15, expectedGreen = 16 + 255 * (10. / 9) * t * t * (3 - 2 * t);
+        require(Math.abs((pixel(46, 44) >>> 16 & 255) - expectedGreen) < 3, "masked pulse preserves above-one intensity");
+        world.destroyBody(wall);
         near(center[0], 0x86dc3bff, 3, "phase zero"); near(center[2], center[0], 1, "half period");
         near(center[1], 0xbaff55ff, 3, "peak: unclamped 1.2 intensity, clamp channels after addition");
         near(center[3], 0x537622ff, 3, "trough intensity");
@@ -486,7 +573,7 @@ public final class LightingRenderTest extends ApplicationAdapter {
 
     private void stateAndFailure() {
         var gl = Gdx.gl;
-        box(28, LY, 1, 5, StaticBody, false); // nonempty mask: exercise the actual stencil ops, not just their snapshots
+        box(28, LY, 1, 5, StaticBody, false); // Exercise an actual alpha-mask draw under hostile caller state.
         var nested = new FrameBuffer(Pixmap.Format.RGBA8888, 180, 180, false, true);
         var shader = SpriteBatch.createDefaultShader();
         var texture0 = texture(1, 1, WHITE).getTexture();
@@ -535,10 +622,17 @@ public final class LightingRenderTest extends ApplicationAdapter {
                     probe.mrtWorldTarget = nested.getFramebufferHandle();
                     draw(false, 0);
                 }
-                near(callerPixel(nested, GL_COLOR_ATTACHMENT0), BAR, 0, "day preserved secondary output sentinel");
-                near(callerPixel(nested, GL_COLOR_ATTACHMENT1), WHITE, 0, "day rendered to caller's output zero");
+                near(callerPixel(nested, GL_COLOR_ATTACHMENT0, 16), BAR, 0, "day preserved secondary output sentinel");
+                near(callerPixel(nested, GL_COLOR_ATTACHMENT1, 16), WHITE, 0, "day rendered to caller's output zero");
                 checkState(before, "MRT day");
             }
+            int oldMap, oldColor;
+            try (var probe = new TargetProbe()) {
+                draw(true, 0);
+                oldMap = probe.maskTarget; oldColor = probe.maskColor;
+                require(gl.glIsFramebuffer(oldMap) && gl.glIsTexture(oldColor), "live color target before resize");
+            }
+            checkState(before, "masked night before resize");
             // Force a resize of the existing lighting map. Fail *after* real driver allocation,
             // not by throwing before the pass; retain native handle evidence before any reuse.
             view.setScreenBounds(ox, oy, 123, 123);
@@ -552,7 +646,9 @@ public final class LightingRenderTest extends ApplicationAdapter {
                         System.out.println("Expected lighting allocation failure: " + error.getMessage());
                     }
                 });
+                probe.requireColorTargetAllocation();
                 probe.requireReleased();
+                require(gl.glIsFramebuffer(oldMap) && gl.glIsTexture(oldColor), "failed resize retained previous lightmap");
             }
             checkState(before, "exceptional resize");
             view.setScreenBounds(ox, oy, side, side);
@@ -562,25 +658,31 @@ public final class LightingRenderTest extends ApplicationAdapter {
                 view.setScreenBounds(ox, oy, 127, 127);
                 withSmallUnpackBuffer("successful lightmap resize", () -> draw(true, 0));
                 checkState(before, "successful resize");
-                require(probe.statusChecks > 0, "new lighting target validated");
-                probe.interrupt = Draw.MASK;
-                try { draw(true, 0); throw new AssertionError("shadow mask wasn't rendered"); }
-                catch (DrawFailure expected) {
-                    require(expected.draw == Draw.MASK && probe.interruptedTarget == probe.handle("glGenFramebuffer"),
-                        "interrupted inside offscreen light mask");
-                    checkState(before, "mask draw failure");
-                    if (mrt) { near(callerPixel(nested, GL_COLOR_ATTACHMENT0), BAR, 0, "interrupted frame preserved secondary sentinel"); }
+                probe.requireColorTargetAllocation();
+                require(probe.statusChecks > 0 && probe.maskColor == probe.handle("glGenTexture"), "validated replacement texture used by mask");
+                require(!gl.glIsFramebuffer(oldMap) && !gl.glIsTexture(oldColor), "successful resize retired previous lightmap");
+                int allocations = probe.targets.size();
+                // Interrupt both the GL_MIN union and the subsequent visibility-weighted light addition.
+                for (Draw pass : List.of(Draw.MASK, Draw.QUAD)) {
+                    probe.interrupt = pass;
+                    try { draw(true, 0); throw new AssertionError("missing offscreen draw: " + pass); }
+                    catch (DrawFailure expected) {
+                        require(expected.draw == pass && probe.interruptedTarget == probe.handle("glGenFramebuffer"),
+                            "interrupted inside offscreen " + pass);
+                        checkState(before, pass + " draw failure");
+                        if (mrt) { near(callerPixel(nested, GL_COLOR_ATTACHMENT0, 16), BAR, 0, "interrupted frame preserved secondary sentinel"); }
+                    }
                 }
-                int allocations = probe.targets.size(); draw(true, 0);
+                draw(true, 0);
                 require(allocations == probe.targets.size(), "same-size frames reuse lighting storage");
                 checkState(before, "repeated night");
-                if (mrt) { near(callerPixel(nested, GL_COLOR_ATTACHMENT0), BAR, 0, "night preserved secondary output sentinel"); }
-                near(callerPixel(nested, mrt ? GL_COLOR_ATTACHMENT1 : GL_COLOR_ATTACHMENT0), 0x86dc3bff, 3,
-                    "composite returned to caller's output zero, not window or read FBO");
+                if (mrt) { near(callerPixel(nested, GL_COLOR_ATTACHMENT0, 16), BAR, 0, "night preserved secondary output sentinel"); }
+                int outputZero = mrt ? GL_COLOR_ATTACHMENT1 : GL_COLOR_ATTACHMENT0;
+                near(callerPixel(nested, outputZero, 16), 0x86dc3bff, 3, "composite returned to caller's output zero, not window or read FBO");
+                near(callerPixel(nested, outputZero, 28), DIM, 1, "masked night recovered after interrupted GL_MIN draw");
                 // A caller may still have a renderer-owned handle bound while it is retired.
                 // Never restore the deleted name (which can silently recreate a texture on GL20).
                 if (splitFbos()) { gl.glBindFramebuffer(GL_READ_FRAMEBUFFER, probe.handle("glGenFramebuffer")); }
-                gl.glBindRenderbuffer(GL_RENDERBUFFER, probe.handle("glGenRenderbuffer"));
                 gl.glActiveTexture(GL_TEXTURE0); gl.glBindTexture(GL_TEXTURE_2D, probe.handle("glGenTexture"));
                 gl.glActiveTexture(GL_TEXTURE1);
                 renderer.dispose(); renderer.dispose();
@@ -588,8 +690,8 @@ public final class LightingRenderTest extends ApplicationAdapter {
                     require(integer(GL_READ_FRAMEBUFFER_BINDING) == 0, "no deleted read FBO restored");
                     gl.glBindFramebuffer(GL_READ_FRAMEBUFFER, target.getFramebufferHandle());
                 }
-                require(integer(GL_RENDERBUFFER_BINDING) == 0, "no deleted stencil storage restored");
-                gl.glBindRenderbuffer(GL_RENDERBUFFER, rb);
+                require(integer(GL_RENDERBUFFER_BINDING) == rb && gl.glIsRenderbuffer(rb), "disposal retained caller-owned renderbuffer");
+                require(!gl.glIsProgram(probe.maskProgram) && !gl.glIsBuffer(probe.maskBuffer), "released mask program and mesh storage");
                 require(integer(GL_ACTIVE_TEXTURE) == GL_TEXTURE1, "disposal preserved active unit");
                 gl.glActiveTexture(GL_TEXTURE0); require(integer(GL_TEXTURE_BINDING_2D) == 0, "no deleted lightmap texture restored");
                 texture0.bind(0); gl.glActiveTexture(GL_TEXTURE1);
@@ -615,14 +717,14 @@ public final class LightingRenderTest extends ApplicationAdapter {
         return caps.OpenGL30 || caps.GL_ARB_framebuffer_object || caps.GL_EXT_framebuffer_blit;
     }
 
-    private int callerPixel(FrameBuffer caller, int attachment) {
+    private int callerPixel(FrameBuffer caller, int attachment, int x) {
         int target = splitFbos() ? GL_READ_FRAMEBUFFER : GL_FRAMEBUFFER;
         int previous = integer(splitFbos() ? GL_READ_FRAMEBUFFER_BINDING : GL_FRAMEBUFFER_BINDING);
         Gdx.gl.glBindFramebuffer(target, caller.getFramebufferHandle());
         int readBuffer = integer(GL_READ_BUFFER);
         try {
             GL11C.glReadBuffer(attachment);
-            return pixel(16, 44);
+            return pixel(x, 44);
         } finally {
             GL11C.glReadBuffer(readBuffer);
             Gdx.gl.glBindFramebuffer(target, previous);
@@ -780,6 +882,7 @@ public final class LightingRenderTest extends ApplicationAdapter {
         boolean incomplete, failLink;
         Draw interrupt;
         int statusChecks, linkChecks, quadDraws, spriteDraws, interruptedTarget, mrtWorldTarget;
+        int maskTarget, maskColor, maskProgram, maskBuffer;
 
         TargetProbe() {
             Class<?> api = real30 == null ? GL20.class : GL30.class;
@@ -802,7 +905,26 @@ public final class LightingRenderTest extends ApplicationAdapter {
             Gdx.gl = probe; Gdx.gl20 = probe; if (real30 != null) { Gdx.gl30 = (GL30)probe; }
         }
 
+        private int attachment(int point, int key) {
+            var result = BufferUtils.newIntBuffer(1);
+            real.glGetFramebufferAttachmentParameteriv(GL_FRAMEBUFFER, point, key, result);
+            return result.get(0);
+        }
+
         private void after(Draw draw) {
+            if (draw == Draw.MASK) {
+                maskTarget = integer(GL_FRAMEBUFFER_BINDING);
+                require(maskTarget != 0 && attachment(GL_COLOR_ATTACHMENT0, GL_FRAMEBUFFER_ATTACHMENT_OBJECT_TYPE) == GL_TEXTURE,
+                    "mask triangles render to the lightmap texture");
+                maskColor = attachment(GL_COLOR_ATTACHMENT0, GL_FRAMEBUFFER_ATTACHMENT_OBJECT_NAME);
+                maskProgram = integer(GL_CURRENT_PROGRAM); maskBuffer = integer(GL_ARRAY_BUFFER_BINDING);
+                require(real.glIsProgram(maskProgram) && real.glIsBuffer(maskBuffer), "real mask shader and vertex storage");
+                require(attachment(GL_DEPTH_ATTACHMENT, GL_FRAMEBUFFER_ATTACHMENT_OBJECT_TYPE) == GL_NONE
+                    && attachment(GL_STENCIL_ATTACHMENT, GL_FRAMEBUFFER_ATTACHMENT_OBJECT_TYPE) == GL_NONE,
+                    "lightmap has no depth or stencil attachment");
+                require(real.glIsEnabled(GL_BLEND) && integer(GL_BLEND_EQUATION_ALPHA) == GL_MIN && !real.glIsEnabled(GL_STENCIL_TEST),
+                    "mask draw unions visibility in alpha with GL_MIN and no stencil");
+            }
             if (mrtWorldTarget != 0 && integer(GL_FRAMEBUFFER_BINDING) == mrtWorldTarget) {
                 require(integer(GL_DRAW_BUFFER0) == GL_COLOR_ATTACHMENT1 && integer(GL_DRAW_BUFFER1) == GL_NONE,
                     draw + " must draw only to caller's output zero");
@@ -816,6 +938,12 @@ public final class LightingRenderTest extends ApplicationAdapter {
 
         int handle(String allocation) {
             return targets.stream().filter(t -> t.getKey().equals(allocation)).findFirst().orElseThrow().getValue();
+        }
+
+        void requireColorTargetAllocation() {
+            var names = targets.stream().map(Map.Entry::getKey).toList();
+            require(Collections.frequency(names, "glGenFramebuffer") == 1 && Collections.frequency(names, "glGenTexture") == 1
+                && !names.contains("glGenRenderbuffer"), "one color lightmap, no renderbuffer: " + names);
         }
 
         void requireReleased() {
@@ -889,6 +1017,37 @@ public final class LightingRenderTest extends ApplicationAdapter {
         return (buf.get(0) & 255) << 24 | (buf.get(1) & 255) << 16 | (buf.get(2) & 255) << 8 | (buf.get(3) & 255);
     }
     private int pixel(int x, int y) { return read(x + ox, y + oy); }
+
+    private int[] centerRow() {
+        var rgba = BufferUtils.newByteBuffer(4 * side);
+        Gdx.gl.glReadPixels(ox, oy + 44, side, 1, GL_RGBA, GL_UNSIGNED_BYTE, rgba);
+        var row = new int[side];
+        rgba.order(java.nio.ByteOrder.BIG_ENDIAN).asIntBuffer().get(row);
+        return row;
+    }
+
+    private void fade(int x, int unoccluded, double fraction, String why) {
+        near(pixel(x, 44), faded(unoccluded, fraction), 4, why);
+    }
+
+    /** Interpolate only the emitter's contribution, using its actual unoccluded same-pixel value. */
+    private static int faded(int unoccluded, double fraction) {
+        double visibility = fraction * fraction * (3 - 2 * fraction);
+        int expected = alpha(unoccluded);
+        for (int shift : new int[]{8, 16, 24}) {
+            int ambient = DIM >>> shift & 255, full = unoccluded >>> shift & 255;
+            expected |= (int)Math.round(ambient + visibility * (full - ambient)) << shift;
+        }
+        return expected;
+    }
+
+    private static int addLights(int a, int b) {
+        int sum = 255;
+        for (int shift : new int[]{8, 16, 24}) {
+            sum |= Math.min(255, (a >>> shift & 255) + (b >>> shift & 255) - (DIM >>> shift & 255)) << shift;
+        }
+        return sum;
+    }
     private void bars() {
         for (int d = 0; d < side; d++) {
             near(pixel(-1, d), BAR, 0, "left bar"); near(pixel(side, d), BAR, 0, "right bar");
