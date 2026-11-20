@@ -28,6 +28,10 @@ public final class DataLoaderTest {
             check(GameConsts.NIGHT_AMBIENT.tint().equals(settings.at("/nightAmbient/tint").stringValue())
                 && GameConsts.NIGHT_AMBIENT.brightness() == settings.at("/nightAmbient/brightness").floatValue(),
                 "ambient settings match authored values");
+            var debug = settings.required("debugLayers");
+            check(GameConsts.DEBUG_LAYERS.equals(new GameConsts.DebugLayers(debug.required("physics").booleanValue(),
+                debug.required("triggers").booleanValue(), debug.required("rawLightMap").booleanValue(),
+                debug.required("lightingOutlines").booleanValue())), "debug layers match authored values");
             check(Files.mismatch(Path.of("raw_assets/game.settings.json"), Path.of("assets/game.settings.json")) == -1,
                 "generated settings match source");
             var player = DataLoader.parsePlayerData();
@@ -486,13 +490,16 @@ public final class DataLoaderTest {
             rejects(GameConsts::loadSettings, "invalid settings");
             check(GameConsts.VIEW_WIDTH == width && GameConsts.SOUND_PATH.equals("effects/"), "invalid settings apply nothing");
             var ambient = GameConsts.NIGHT_AMBIENT;
+            var debug = GameConsts.DEBUG_LAYERS;
             String changed = configured.deepCopy().put("viewWidth", width + 1).toString();
             for (var duplicate : new String[]{changed.replace("\"nightAmbient\":", "\"nightAmbient\":null,\"nightAmbient\":"),
-                changed.replace("\"brightness\":", "\"brightness\":0,\"brightness\":")}) {
+                changed.replace("\"brightness\":", "\"brightness\":0,\"brightness\":"),
+                changed.replace("\"debugLayers\":", "\"debugLayers\":null,\"debugLayers\":"),
+                changed.replace("\"triggers\":", "\"triggers\":false,\"triggers\":")}) {
                 Files.writeString(fixture, duplicate);
-                rejects(GameConsts::loadSettings, "duplicate ambient setting at startup");
-                check(GameConsts.VIEW_WIDTH == width && GameConsts.NIGHT_AMBIENT == ambient,
-                    "invalid ambient settings publish nothing");
+                rejects(GameConsts::loadSettings, "duplicate setting at startup");
+                check(GameConsts.VIEW_WIDTH == width && GameConsts.NIGHT_AMBIENT == ambient && GameConsts.DEBUG_LAYERS == debug,
+                    "invalid settings publish nothing");
             }
         } finally {
             Files.deleteIfExists(fixture);

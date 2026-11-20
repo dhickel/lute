@@ -2,10 +2,10 @@
 
 ## Lighting debug views
 
-- **Decision:** The tracked F3 binding cycles `CYCLE_LIGHTING_VIEW` through Off, Raw Map, and Collision independently of the N night toggle. A new gameplay screen starts Off; selection survives travel and hide/show. Only fresh active-context presses cycle, and held or stale input cannot retrigger across pause or hide.
-- **Rendering and tradeoff:** At night Raw Map replaces world art with the ambient-plus-emitter lightmap; by day it leaves the ordinary world view unchanged. Collision draws orange outlines for active non-sensor Box2D fixtures and green rings at the current pulsed emitter radii in day or night. Existing overlays remain above these diagnostics. Fixture tracing is shared with sensor debug rendering; these views neither alter physics nor toggle night. Collision geometry may differ from visible art.
-- **Justification:** Exposing the computed lightmap and actual collision outlines makes lighting and shadow behavior inspectable without changing authored data or simulation.
-- **Affected specifications:** Session night lighting and input settings below; `docs/input-system.md` describes the binding and lifecycle.
+- **Decision:** Remove the F3 debug-cycle binding and action. Required `debugLayers` settings independently select four JSON booleans: `physics`, `triggers`, `rawLightMap`, and `lightingOutlines`. The local sample sets the first two true and the latter two false; these are authored values, not fallback defaults. Missing, extra, or invalid members fail settings loading. Edit `raw_assets/game.settings.json`, regenerate runtime assets, and restart to apply changes. N's night toggle is unchanged.
+- **Rendering and tradeoff:** Layers can run concurrently. At night `rawLightMap` replaces world art with the ambient-plus-emitter lightmap; by day it leaves the ordinary world view unchanged. `lightingOutlines` draws orange outlines for active non-sensor Box2D fixtures and green rings at current pulsed emitter radii by day or night. Physics, trigger, lighting, and aim overlays can appear over the raw lightmap. Fixture tracing is shared with sensor debug rendering; diagnostics neither alter physics nor toggle night. Collision geometry may differ from visible art.
+- **Justification:** Independent authored layers permit simultaneous inspection of computed lighting and collision geometry without changing the simulation, at the cost of regenerating and restarting to change selections.
+- **Affected specifications:** Session night lighting and input settings below; `docs/input-system.md` describes settings and lifecycle.
 - **Source:** Current lighting debug implementation and its input, lifecycle, and real-GL regressions.
 - **Review timing:** Revisit if debug controls or lighting diagnostics change.
 

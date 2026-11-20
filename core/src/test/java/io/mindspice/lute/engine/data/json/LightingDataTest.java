@@ -15,18 +15,21 @@ public final class LightingDataTest {
     private static final String ANIMATION = "{\"speed\":2,\"atlas_key\":\"fire/fire\",\"sound_frame\":1,\"frame_interval\":0.125}";
     private static final String COLLISION = "{\"shape\":\"RECT\",\"rotation\":30,\"bounds\":{\"x1\":1,\"y1\":2,\"x2\":4,\"y2\":5}}";
     private static final String AMBIENT = "{\"tint\":\"#7fbeeF\",\"brightness\":0.375}";
-    private static final String SETTINGS_FIELDS = """
+    private static final String DEBUG_LAYERS = "{\"physics\":true,\"triggers\":false,\"rawLightMap\":true,\"lightingOutlines\":false}";
+    private static final String LEGACY_FIELDS = """
         "unitScale":0.03125,"viewHeight":18,"viewWidth":32,"physicInterval":0.016,
         "physicScaling":{"x":1,"y":1},"cameraSmoothFactor":4,"projectPath":"game.tiled-project",
         "startupMap":"map","mapsPath":"maps/","dataPath":"data/","soundPath":"audio/",
         "musicPath":"audio/","objectPath":"objects/","atlasPath":"atlases/"
         """;
+    private static final String SETTINGS_FIELDS = LEGACY_FIELDS + ",\"debugLayers\":" + DEBUG_LAYERS;
     private static int checks;
 
     public static void main(String[] args) {
         catalogueSchema();
         lightSchema();
         ambientSchema();
+        debugLayersSchema();
         System.out.println("LightingDataTest: " + checks + " checks passed");
     }
 
@@ -102,6 +105,29 @@ public final class LightingDataTest {
             .replace("\"x\":1", "\"x\":0,\"x\":1");
         var result = GameConsts.parseSettings("{\"nightAmbient\":" + AMBIENT + "," + legacy + ",\"extra\":{\"nightAmbient\":null}}");
         check(result.viewWidth() == 32 && result.physicScaling().x() == 1, "Legacy settings retain unknown-field and duplicate behavior");
+    }
+
+    private static void debugLayersSchema() {
+        String prefix = "{" + LEGACY_FIELDS + ",\"nightAmbient\":" + AMBIENT;
+        rejects(() -> GameConsts.parseSettings(prefix + "}"), "Missing debugLayers");
+        rejects(() -> GameConsts.parseSettings(prefix + ",\"debugLayers\":null,\"debugLayers\":" + DEBUG_LAYERS + "}"),
+            "Duplicate debugLayers");
+        Consumer<String> parse = value -> GameConsts.parseSettings(prefix + ",\"debugLayers\":" + value + "}");
+        for (String bad : List.of("null", "true", "[]", "\"debug\"", "1")) {
+            rejects(() -> parse.accept(bad), "Invalid debugLayers: " + bad);
+        }
+        requiredMembers(parse, "\"physics\":true", "\"triggers\":false", "\"rawLightMap\":true", "\"lightingOutlines\":false");
+        var keys = List.of("physics", "triggers", "rawLightMap", "lightingOutlines");
+        for (String key : keys) {
+            var flags = DataLoader.mapper.createObjectNode();
+            for (String field : keys) {
+                flags.put(field, field.equals(key));
+            }
+            var layers = GameConsts.parseSettings(prefix + ",\"debugLayers\":" + flags + "}").debugLayers();
+            check(layers.equals(new GameConsts.DebugLayers(key.equals("physics"), key.equals("triggers"),
+                key.equals("rawLightMap"), key.equals("lightingOutlines"))), "Binds " + key + " independently");
+            invalidValues(parse, flags.toString(), "true", "null", "\"true\"", "1", "0", "[]", "{}");
+        }
     }
 
     private static void requiredMembers(Consumer<String> parse, String... fields) {

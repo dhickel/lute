@@ -26,8 +26,7 @@ public class GameScreen extends ScreenAdapter {
     private final TiledSystem tiled;
     private final RenderSystem renderer;
     private final GameConsts.NightAmbient ambient = GameConsts.NIGHT_AMBIENT;
-    private final KeyListener lightingInput = new KeyListener(32, List.of(InputAction.TOGGLE_NIGHT, InputAction.CYCLE_LIGHTING_VIEW));
-    private RenderSystem.LightingView lightingView = RenderSystem.LightingView.OFF;
+    private final KeyListener lightingInput = new KeyListener(32, List.of(InputAction.TOGGLE_NIGHT));
     private boolean night;
     private double sessionSeconds;
     private final List<EntitySystem> ownedSystems = new ArrayList<>();
@@ -62,13 +61,14 @@ public class GameScreen extends ScreenAdapter {
             addSystem(new PhysicSystem(physicWorld, GameConsts.PHYSIC_INTERVAL));
             addSystem(new AudioSystem(game.getAssetService()));
             addSystem(new CameraSystem(game.getCamera()));
-            renderer = new RenderSystem(game.getBatch(), game.getViewport(), game.getCamera(), game.getAssetService());
+            var debugLayers = GameConsts.DEBUG_LAYERS;
+            renderer = new RenderSystem(game.getBatch(), game.getViewport(), game.getCamera(), game.getAssetService(), debugLayers);
             addSystem(renderer);
             addSystem(new EntityFactory(physicWorld, game.getAssetService()));
             tiled = new TiledSystem(game.getAssetService(), physicWorld, inputManager);
             addSystem(tiled);
-            addSystem(new PhysicDebugRenderSystem(physicWorld, game.getCamera()));
-            addSystem(new TriggerDebugRenderSystem(physicWorld, game.getCamera()));
+            if (debugLayers.physics()) { addSystem(new PhysicDebugRenderSystem(physicWorld, game.getCamera())); }
+            if (debugLayers.triggers()) { addSystem(new TriggerDebugRenderSystem(physicWorld, game.getCamera())); }
         } catch (RuntimeException | Error failure) {
             try { dispose(); }
             catch (RuntimeException | Error cleanupFailure) { failure.addSuppressed(cleanupFailure); }
@@ -126,15 +126,11 @@ public class GameScreen extends ScreenAdapter {
         // Detach and map replacement mark old transitions; only presses from this context count.
         lightingInput.getQueue().consumePreviousContext((action, state) -> { });
         lightingInput.consume((action, state) -> {
-            if (state != 1) { return; }
-            switch (action) {
-                case TOGGLE_NIGHT -> night = !night;
-                case CYCLE_LIGHTING_VIEW -> lightingView = lightingView.next();
-            }
+            if (action == InputAction.TOGGLE_NIGHT && state == 1) { night = !night; }
         });
         float step = delta > 0f ? Math.min(delta, 1 / 30f) : 0f;
         sessionSeconds += step;
-        renderer.gameplayFrame(physicWorld, ambient, night, sessionSeconds, lightingView);
+        renderer.gameplayFrame(physicWorld, ambient, night, sessionSeconds);
         engine.update(step);
         tiled.applyPendingTravel();
     }

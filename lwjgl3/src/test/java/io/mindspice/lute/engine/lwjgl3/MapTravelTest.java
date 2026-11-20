@@ -199,13 +199,18 @@ public final class MapTravelTest extends ApplicationAdapter {
         installLightFixtures();
         var entry = ManifestLoader.parseMapManifest(A);
         var startupAmbient = GameConsts.NIGHT_AMBIENT;
+        var startupLayers = GameConsts.DEBUG_LAYERS;
         try {
             GameConsts.NIGHT_AMBIENT = new GameConsts.NightAmbient("#0000FF", .25f);
+            // Inspect world pixels without diagnostic overlays on the synthetic travel maps.
+            GameConsts.DEBUG_LAYERS = new GameConsts.DebugLayers(false, false, false, false);
             bind(new GameScreen(entry));
-        } finally { GameConsts.NIGHT_AMBIENT = startupAmbient; }
-        // Read world pixels, not the debug crosses drawn over every spawn marker.
-        GAME.getEngine().getSystem(PhysicDebugRenderSystem.class).setProcessing(false);
-        GAME.getEngine().getSystem(TriggerDebugRenderSystem.class).setProcessing(false);
+        } finally {
+            GameConsts.NIGHT_AMBIENT = startupAmbient;
+            GameConsts.DEBUG_LAYERS = startupLayers;
+        }
+        require(GAME.getEngine().getSystem(PhysicDebugRenderSystem.class) == null
+            && GAME.getEngine().getSystem(TriggerDebugRenderSystem.class) == null, "Disabled debug systems are not installed");
         screens.loadScreen("travel", screen);
         screens.switchScreens("travel");
         time = GAME.getEngine().getSystem(WorldTimeSystem.class);

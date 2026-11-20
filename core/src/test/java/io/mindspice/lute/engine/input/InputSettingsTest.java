@@ -23,7 +23,7 @@ final class InputSettingsTest {
         equal(InputAction.ATTACK_SECONDARY, defaults.getKey(Input.Keys.SHIFT_RIGHT), "right Shift default");
         equal(InputAction.CYCLE_WEAPON, defaults.getKey(Input.Keys.R), "R cycles test weapons");
         equal(InputAction.TOGGLE_NIGHT, defaults.getKey(Input.Keys.N), "N toggles gameplay night");
-        equal(InputAction.CYCLE_LIGHTING_VIEW, defaults.getKey(Input.Keys.F3), "F3 cycles the lighting debug view");
+        equal(null, defaults.getKey(Input.Keys.F3), "F3 is unbound");
         for (var control : GamepadControl.values()) {
             InputSystemTest.check(defaults.getGamepad(control) != InputAction.TOGGLE_NIGHT, "No shipped night button: " + control);
         }

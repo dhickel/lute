@@ -137,9 +137,22 @@ In `raw_assets/data/objects.json`, every OBJECT/ITEM definition must contain `an
   "pulse": { "period_seconds": 1.2, "radius_strength": 0.12, "intensity_strength": 0.18 } }
 ```
 
-Add `"nightAmbient": { "tint": "#8299CC", "brightness": 0.35 }` to `raw_assets/game.settings.json`. These are local authored values, not defaults. Regenerate and restart after changing ambient settings. See [asset authoring](docs/asset-service.md) for validation and the complete object example.
+Add `"nightAmbient": { "tint": "#8299CC", "brightness": 0.35 }` and the required `debugLayers` object to `raw_assets/game.settings.json`:
+
+```json
+"debugLayers": {
+  "physics": true,
+  "triggers": true,
+  "rawLightMap": false,
+  "lightingOutlines": false
+}
+```
+
+All four fields must be JSON booleans; missing or invalid fields fail startup. These are local authored sample values, not code defaults. Edit the raw settings, run `./generate-runtime-assets.sh`, and restart to apply changes. See [asset authoring](docs/asset-service.md) for validation and the complete object example.
 
 Press N in gameplay to toggle day and night. Each new screen starts in day; mode and pulse phase survive travel and hide/show, and pause freezes the pulse. The toggle does not change world time. At night solid Box2D fixtures cast shadows, except the emitter's own fixtures; sensors and arrows without solids do not. Lighting follows collision geometry rather than art silhouettes. Crosshair and debug overlays remain unlit.
+
+F3 no longer cycles diagnostics. The four debug layers are independent and can appear together: `physics` shows physics geometry, `triggers` shows sensor diagnostics, and `lightingOutlines` shows solid fixture outlines and pulsed emitter rings by day or night. At night `rawLightMap` replaces world art with the combined ambient and emitter lightmap; by day it leaves the ordinary world view unchanged. Other enabled overlays can still appear over the raw lightmap.
 
 After provisioning or changing source assets, run:
 

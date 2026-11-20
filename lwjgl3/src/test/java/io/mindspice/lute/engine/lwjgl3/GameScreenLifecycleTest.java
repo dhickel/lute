@@ -18,10 +18,13 @@ import io.mindspice.lute.engine.components.Player;
 import io.mindspice.lute.engine.screen.GameScreen;
 import io.mindspice.lute.engine.screen.ScreenManager;
 import io.mindspice.lute.engine.singletons.GameConsts;
+import io.mindspice.lute.engine.singletons.GameConsts.DebugLayers;
 import io.mindspice.lute.engine.systems.AwarenessSystem;
 import io.mindspice.lute.engine.systems.EventSystem;
+import io.mindspice.lute.engine.systems.PhysicDebugRenderSystem;
 import io.mindspice.lute.engine.systems.PhysicSystem;
-import io.mindspice.lute.engine.systems.RenderSystem.LightingView;
+import io.mindspice.lute.engine.systems.RenderSystem;
+import io.mindspice.lute.engine.systems.TriggerDebugRenderSystem;
 import io.mindspice.lute.engine.systems.TiledSystem;
 import io.mindspice.lute.engine.systems.WorldTimeSystem;
 import io.mindspice.lute.engine.tiled.ManifestLoader;
@@ -88,23 +91,11 @@ public final class GameScreenLifecycleTest extends ApplicationAdapter {
         near(seconds(original), initialSeconds + 1 / 30f, "Pulse time uses the clamped simulation delta in day");
         near(time.getTotalInGameSeconds(), beforeVisibleUpdate + clampedWorldSeconds,
             "Visible game rendering advances world time with the clamped simulation delta");
-        require(view(original) == LightingView.OFF, "New session has no lighting debug view");
-        input.keyDown(Input.Keys.F3);
-        original.render(0f);
-        require(view(original) == LightingView.RAW_MAP && !night(original), "Select raw map without turning on night");
-        input.keyDown(Input.Keys.F3);
-        GAME.getInputManager().getKeyManager().broadcast(Input.Keys.F3, 2);
-        input.keyUp(Input.Keys.F3);
-        original.render(0f);
-        require(view(original) == LightingView.RAW_MAP, "F3 repeat and release do not cycle");
+        verifyDebugLayers(engine, GameConsts.DEBUG_LAYERS);
         double beforeNight = time.getTotalInGameSeconds();
         input.keyDown(Input.Keys.N);
         original.render(1f);
-        require(night(original) && view(original) == LightingView.RAW_MAP, "N enables night without resetting raw selection");
-        input.keyDown(Input.Keys.F3); input.keyUp(Input.Keys.F3); original.render(0f);
-        require(view(original) == LightingView.COLLISION && night(original), "Second F3 selects collision without toggling night");
-        input.keyDown(Input.Keys.F3); input.keyUp(Input.Keys.F3); original.render(0f);
-        require(view(original) == LightingView.OFF && night(original), "Third F3 returns to Off");
+        require(night(original), "N enables night");
         near(time.getTotalInGameSeconds() - beforeNight, beforeNight - beforeVisibleUpdate,
             "Equal simulation deltas advance world time identically in both modes");
         input.keyDown(Input.Keys.N);
@@ -121,7 +112,6 @@ public final class GameScreenLifecycleTest extends ApplicationAdapter {
         original.render(0f);
         require(!night(original), "Two distinct queued presses toggle twice");
         input.keyDown(Input.Keys.N); original.render(0f);
-        input.keyDown(Input.Keys.F3); original.render(0f);
         GAME.pause(); // Held across a context change after its toggling edge was consumed.
         var pausedAt = time.getTotalInGameSeconds();
         double pausedSeconds = seconds(original);
@@ -132,9 +122,6 @@ public final class GameScreenLifecycleTest extends ApplicationAdapter {
         input.keyDown(Input.Keys.N);
         original.render(1f);
         near(seconds(original), pausedSeconds + 1 / 30f, "Resume advances the existing pulse time once");
-        input.keyDown(Input.Keys.F3); original.render(0f);
-        require(view(original) == LightingView.RAW_MAP, "Held F3 cannot retrigger on resume");
-        input.keyUp(Input.Keys.F3);
         require(night(original), "A consumed press held across pause cannot retrigger on resume");
         input.keyUp(Input.Keys.N);
         tapNight(); // Never rendered; this tap belongs to the context about to end.
@@ -172,7 +159,6 @@ public final class GameScreenLifecycleTest extends ApplicationAdapter {
         var beforeHide = time.getTotalInGameSeconds();
         var beforeHideSeconds = seconds(original);
         input.keyDown(Input.Keys.N); // Queued in the old visible context and held into the next.
-        input.keyDown(Input.Keys.F3);
         screens.loadScreen("away", new ScreenAdapter());
         screens.switchScreens("away");
         original.render(1f);
@@ -184,8 +170,7 @@ public final class GameScreenLifecycleTest extends ApplicationAdapter {
         input.keyDown(Input.Keys.N);
         original.render(1f);
         require(night(original), "Hidden stale press and still-held down cannot retrigger on show");
-        require(view(original) == LightingView.RAW_MAP, "Unconsumed F3 before hide does not advance the retained view");
-        input.keyUp(Input.Keys.F3);
+        verifyDebugLayers(engine, GameConsts.DEBUG_LAYERS);
         near(seconds(original), beforeHideSeconds + 1 / 30f, "Show resumes the same pulse clock");
         input.keyUp(Input.Keys.N);
         near(time.getTotalInGameSeconds(), beforeHide + clampedWorldSeconds, "Shown game rendering resumes world time");
@@ -226,22 +211,33 @@ public final class GameScreenLifecycleTest extends ApplicationAdapter {
             require(true, "Disposed screen cannot enqueue a map load into a later screen");
         }
 
-        for (int i = 0; i < 2; i++) {
-            var replacement = new GameScreen(assets);
+        for (var layers : List.of(
+            new DebugLayers(false, false, false, false),
+            new DebugLayers(true, false, false, false),
+            new DebugLayers(false, true, false, false),
+            new DebugLayers(false, false, true, false),
+            new DebugLayers(false, false, false, true),
+            new DebugLayers(true, true, true, true))) {
+            var authored = GameConsts.DEBUG_LAYERS;
+            GameScreen replacement;
+            try {
+                GameConsts.DEBUG_LAYERS = layers;
+                replacement = new GameScreen(assets);
+            } finally { GameConsts.DEBUG_LAYERS = authored; }
             screens.loadScreen("GameScreen", replacement);
             screens.switchScreens("GameScreen");
             var lights = engine.getEntitiesFor(com.badlogic.ashley.core.Family.all(Emissive.class).get());
             input.keyDown(Input.Keys.N);
             replacement.render(0f);
             require(!night(replacement) && seconds(replacement) == 0d, "New session starts day at zero, ignoring held N");
-            require(view(replacement) == LightingView.OFF, "New session resets the debug selection");
+            verifyDebugLayers(engine, layers);
             require(!lights.contains(oldFire, true) && lights.size() > 0, "Only freshly mounted lights exist on first frame");
             input.keyUp(Input.Keys.N);
             input.keyDown(Input.Keys.N);
             replacement.render(.02f);
             require(night(replacement), "Fresh press after real key-up toggles the replacement screen");
             oldFire = lights.first();
-            require(playerCount(engine) == 1, "Recreation installs exactly one live player: " + i);
+            require(playerCount(engine) == 1, "Recreation installs exactly one live player: " + layers);
             require(engine.getSystem(PhysicSystem.class) != physics, "Recreation uses fresh physics");
             require(engine.getSystem(EventSystem.class) != owned.getFirst(), "Recreation uses a fresh event bus");
             var replacements = snapshot(engine, foreign);
@@ -325,8 +321,15 @@ public final class GameScreenLifecycleTest extends ApplicationAdapter {
         return field(GameScreen.class, "night").getBoolean(screen);
     }
 
-    private static LightingView view(GameScreen screen) throws ReflectiveOperationException {
-        return (LightingView) field(GameScreen.class, "lightingView").get(screen);
+    private static void verifyDebugLayers(Engine engine, DebugLayers expected) throws ReflectiveOperationException {
+        var physics = engine.getSystem(PhysicDebugRenderSystem.class);
+        var triggers = engine.getSystem(TriggerDebugRenderSystem.class);
+        require(expected.physics() ? physics != null && physics.checkProcessing() : physics == null,
+            "Physics debug system installed and processing only when configured");
+        require(expected.triggers() ? triggers != null && triggers.checkProcessing() : triggers == null,
+            "Trigger debug system installed and processing only when configured");
+        var renderer = engine.getSystem(RenderSystem.class);
+        require(expected.equals(field(RenderSystem.class, "debugLayers").get(renderer)), "Renderer retains the startup snapshot");
     }
 
     static double seconds(GameScreen screen) throws ReflectiveOperationException {

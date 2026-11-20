@@ -37,18 +37,6 @@ import java.util.Comparator;
 import java.util.List;
 
 public class RenderSystem extends SortedIteratingSystem implements Disposable {
-    public enum LightingView {
-        OFF, RAW_MAP, COLLISION;
-
-        public LightingView next() {
-            return switch (this) {
-                case OFF -> RAW_MAP;
-                case RAW_MAP -> COLLISION;
-                case COLLISION -> OFF;
-            };
-        }
-    }
-
     private static final Family AIMERS = Family.all(BowAim.class).get();
     private static final Family LIGHTS = Family.all(Emissive.class, Transform.class).get();
     private final Batch batch;
@@ -72,14 +60,16 @@ public class RenderSystem extends SortedIteratingSystem implements Disposable {
     private boolean night;
     private double sessionSeconds;
     private NightLighting lighting;
-    private LightingView lightingView = LightingView.OFF;
+    private final GameConsts.DebugLayers debugLayers;
     private LightingOutlines outlines;
 
-    public RenderSystem(Batch batch, Viewport viewport, OrthographicCamera camera, AssetService assets) {
+    public RenderSystem(Batch batch, Viewport viewport, OrthographicCamera camera, AssetService assets,
+                        GameConsts.DebugLayers debugLayers) {
         super(
             Family.all(Transform.class, Graphic.class).get(),
             Comparator.comparing(Transform.MAPPER::get)
         );
+        this.debugLayers = debugLayers;
         this.batch = batch;
         this.assets = assets;
         this.compositor = new CharacterCompositor(assets);
@@ -96,8 +86,7 @@ public class RenderSystem extends SortedIteratingSystem implements Disposable {
     }
 
     /** Opt gameplay into viewport clearing and pass the session snapshot. Standalone draws keep their target background. */
-    public void gameplayFrame(World world, GameConsts.NightAmbient ambient, boolean night, double sessionSeconds, LightingView lightingView) {
-        this.lightingView = lightingView;
+    public void gameplayFrame(World world, GameConsts.NightAmbient ambient, boolean night, double sessionSeconds) {
         this.world = world;
         this.ambient = ambient;
         this.night = night;
@@ -154,10 +143,10 @@ public class RenderSystem extends SortedIteratingSystem implements Disposable {
                 batch.end();
                 if (lighting == null) { lighting = new NightLighting(pixels[2], pixels[3], state); }
                 lighting.render(world, getEngine().getEntitiesFor(LIGHTS), ambient, sessionSeconds, camera, pixels, state,
-                    lightingView == LightingView.RAW_MAP);
+                    debugLayers.rawLightMap());
                 batch.begin();
             }
-            if (lightingView == LightingView.COLLISION) {
+            if (world != null && debugLayers.lightingOutlines()) {
                 if (outlines == null) {
                     // Borrow an opaque white texel from the overlay we already own; no second texture or shader.
                     outlines = new LightingOutlines(batch, new TextureRegion(crosshair(state), 2, 7, 1, 1));

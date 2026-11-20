@@ -25,6 +25,7 @@ public final class GameConsts {
     private static final double DEFAULT_DAY_LENGTH_MINUTES = 24.0;
     public static double DAY_LENGTH_MINUTES = DEFAULT_DAY_LENGTH_MINUTES;
     public static NightAmbient NIGHT_AMBIENT;
+    public static DebugLayers DEBUG_LAYERS;
     public static final Vector2 PHYSIC_SCALING = new Vector2(1f, 1f);
     public static float CAMERA_SMOOTH_FACTOR = 4f;
     public static String PROJECT_PATH;
@@ -46,6 +47,7 @@ public final class GameConsts {
             PHYSIC_INTERVAL = settings.physicInterval();
             DAY_LENGTH_MINUTES = settings.dayLengthMinutes();
             NIGHT_AMBIENT = settings.nightAmbient();
+            DEBUG_LAYERS = settings.debugLayers();
             PHYSIC_SCALING.set(settings.physicScaling().x(), settings.physicScaling().y());
             CAMERA_SMOOTH_FACTOR = settings.cameraSmoothFactor();
             PROJECT_PATH = settings.projectPath();
@@ -84,6 +86,23 @@ public final class GameConsts {
         }
     }
 
+    public record DebugLayers(boolean physics, boolean triggers, boolean rawLightMap, boolean lightingOutlines) {
+        @JsonCreator(mode = JsonCreator.Mode.DELEGATING)
+        private static DebugLayers parse(JsonNode node) {
+            if (!node.isObject() || node.size() != 4) {
+                throw new IllegalArgumentException("debugLayers requires exactly physics, triggers, rawLightMap and lightingOutlines");
+            }
+            return new DebugLayers(flag(node, "physics"), flag(node, "triggers"),
+                flag(node, "rawLightMap"), flag(node, "lightingOutlines"));
+        }
+
+        private static boolean flag(JsonNode node, String key) {
+            var value = node.path(key);
+            if (!value.isBoolean()) { throw new IllegalArgumentException("debugLayers." + key + " must be a JSON boolean"); }
+            return value.booleanValue();
+        }
+    }
+
     public record Scaling(float x, float y) {
         public Scaling {
             positive(x, "physicScaling.x");
@@ -94,7 +113,8 @@ public final class GameConsts {
     public record Settings(float unitScale, float viewHeight, float viewWidth, float physicInterval,
                            Scaling physicScaling, float cameraSmoothFactor, String projectPath, String startupMap,
                            String mapsPath, String dataPath, String soundPath, String musicPath,
-                           String objectPath, String atlasPath, Double dayLengthMinutes, NightAmbient nightAmbient) {
+                           String objectPath, String atlasPath, Double dayLengthMinutes, NightAmbient nightAmbient,
+                           DebugLayers debugLayers) {
         public Settings {
             dayLengthMinutes = dayLengthMinutes == null ? DEFAULT_DAY_LENGTH_MINUTES : dayLengthMinutes;
             positive(unitScale, "unitScale");
@@ -106,6 +126,7 @@ public final class GameConsts {
             positive(cameraSmoothFactor, "cameraSmoothFactor");
             Objects.requireNonNull(physicScaling, "physicScaling");
             Objects.requireNonNull(nightAmbient, "nightAmbient");
+            Objects.requireNonNull(debugLayers, "debugLayers");
             if (projectPath == null || !projectPath.matches("[^/\\\\\\s:]+\\.tiled-project")) {
                 throw new IllegalArgumentException("projectPath must name a .tiled-project file at the asset root");
             }
@@ -131,17 +152,16 @@ public final class GameConsts {
         if (parser.nextToken() != JsonToken.START_OBJECT) {
             throw new IllegalArgumentException("Game settings must be a JSON object");
         }
-        // Keep ordinary tree binding for legacy settings. Only nightAmbient needs exact
-        // decimals and duplicate evidence, which would be lost after reading the whole tree.
+        // Preserve duplicate evidence for the strict subtrees without changing legacy settings.
         var subtree = DataLoader.mapper.reader().without(DeserializationFeature.FAIL_ON_TRAILING_TOKENS);
-        var ambient = subtree.with(DeserializationFeature.FAIL_ON_READING_DUP_TREE_KEY)
-            .with(JsonNodeFeature.USE_BIG_DECIMAL_FOR_FLOATS);
+        var strict = subtree.with(DeserializationFeature.FAIL_ON_READING_DUP_TREE_KEY)
+            .with(JsonNodeFeature.USE_BIG_DECIMAL_FOR_FLOATS); // Preserve exact ambient brightness for validation.
         var root = DataLoader.mapper.createObjectNode();
         for (String key; (key = parser.nextName()) != null;) {
-            boolean isAmbient = key.equals("nightAmbient");
-            if (isAmbient && root.has(key)) { throw new IllegalArgumentException("Duplicate nightAmbient setting"); }
+            boolean strictSetting = key.equals("nightAmbient") || key.equals("debugLayers");
+            if (strictSetting && root.has(key)) { throw new IllegalArgumentException("Duplicate " + key + " setting"); }
             parser.nextToken();
-            root.set(key, (isAmbient ? ambient : subtree).readTree(parser));
+            root.set(key, (strictSetting ? strict : subtree).readTree(parser));
         }
         if (parser.currentToken() != JsonToken.END_OBJECT || parser.nextToken() != null) {
             throw new IllegalArgumentException("Expected a single game settings object");
