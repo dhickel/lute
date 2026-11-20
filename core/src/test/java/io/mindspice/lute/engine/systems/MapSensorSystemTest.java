@@ -988,7 +988,14 @@ public final class MapSensorSystemTest {
         object.setName(name);
         object.getProperties().put("type", "SpawnPoint");
         object.getProperties().put("spawnType", type);
-        if (type.equals("NPC") || type.equals("ENEMY")) { object.getProperties().put("actorId", name); }
+        switch (type) {
+            case "PLAYER" -> object.getProperties().put("facing", "UP");
+            case "NPC", "ENEMY" -> {
+                object.getProperties().put("actorId", name);
+                object.getProperties().put("facing", "LEFT");
+            }
+            default -> { }
+        }
         return object;
     }
 
@@ -1057,13 +1064,13 @@ public final class MapSensorSystemTest {
             this.game = game;
         }
 
-        @Override public Entity getMapActor(Vector2 pixelPosition, Actor.Role role, String actorId) {
+        @Override public Entity getMapActor(Vector2 pixelPosition, Actor.Role role, String actorId, Facing.Direction facing) {
             actorTypes.add(role);
             actorIds.add(actorId);
             return game.engine.createEntity();
         }
 
-        @Override public Entity getPlayerEntity(Vector2 pixelPosition, io.mindspice.lute.engine.components.PlayerState state) {
+        @Override public Entity getPlayerEntity(Vector2 pixelPosition, io.mindspice.lute.engine.components.PlayerState state, Facing.Direction facing) {
             calls++;
             lastPixels = pixelPosition.cpy();
             var origin = pixelPosition.cpy().scl(GameConsts.UNIT_SCALE).sub(1, 1.5f);

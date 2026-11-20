@@ -402,11 +402,22 @@ public final class DataLoaderTest {
         var fixture = Files.createTempFile("weapon-settings", ".json");
         try {
             var settings = Files.readString(Path.of("assets/game.settings.json"));
-            Files.writeString(fixture, settings.replace("\"soundPath\": \"audio/\"", "\"soundPath\": \"effects/\""));
+            var configured = (tools.jackson.databind.node.ObjectNode) DataLoader.mapper.readTree(settings);
+            configured.put("soundPath", "effects/").put("startupMap", "first_village").put("projectPath", "world.tiled-project");
+            Files.writeString(fixture, configured.toString());
             useFile(fixture);
             GameConsts.loadSettings();
             check(Asset.Sound.of("test", "swing.wav").path().equals("effects/swing.wav"), "configured sound prefix");
             check(Asset.Music.of("test", "town.ogg").path().equals("audio/town.ogg"), "independent music prefix");
+            check(GameConsts.STARTUP_MAP.equals("first_village") && GameConsts.PROJECT_PATH.equals("world.tiled-project"),
+                "Settings publish authored startup map and project");
+            for (var key : new String[]{"startupMap", "projectPath"}) {
+                var missing = configured.deepCopy();
+                missing.remove(key);
+                rejects(() -> GameConsts.parseSettings(missing.toString()), "Missing " + key);
+                var invalid = configured.deepCopy().put(key, "../outside.tiled-project");
+                rejects(() -> GameConsts.parseSettings(invalid.toString()), "Invalid " + key + " path");
+            }
             float width = GameConsts.VIEW_WIDTH;
             Files.writeString(fixture, settings.replace("21.3", "0"));
             rejects(GameConsts::loadSettings, "invalid settings");

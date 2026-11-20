@@ -2,7 +2,7 @@
 <map version="1.10" orientation="orthogonal" width="32" height="24" tilewidth="32" tileheight="32" infinite="0">
  <objectgroup id="1" name="Triggers">
   <object id="1" name="PlayerSpawn" type="SpawnPoint" x="128" y="512">
-   <properties><property name="spawnType" value="PLAYER"/></properties><point/>
+   <properties><property name="spawnType" value="PLAYER"/><property name="facing" value="UP"/></properties><point/>
   </object>
   <object id="2" name="self" type="Teleport" x="96" y="512" width="64" height="64">
    <properties><property name="targetMap" value="travel_test_a"/><property name="targetSpawn" value="PlayerSpawn"/></properties>

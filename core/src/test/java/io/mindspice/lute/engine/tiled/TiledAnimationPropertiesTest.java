@@ -10,7 +10,6 @@ import com.badlogic.gdx.maps.tiled.objects.TiledMapTileMapObject;
 import com.badlogic.gdx.utils.JsonReader;
 import com.badlogic.gdx.utils.XmlReader.Element;
 import io.mindspice.lute.engine.assets.Asset;
-import io.mindspice.lute.engine.singletons.GameConsts;
 import io.mindspice.lute.engine.tiled.properties.AnimatedPhysicObjectProps;
 
 import javax.imageio.ImageIO;
@@ -44,7 +43,7 @@ public final class TiledAnimationPropertiesTest {
         check(nested && members.equals(Set.of("speed", "atlasKey", "soundFrame", "frameInterval")),
             "AnimatedPhysicObject must use the shared camelCase Animation class");
         var parameters = new BaseTiledMapLoader.Parameters();
-        parameters.projectFilePath = GameConsts.PROJECT_PATH;
+        parameters.projectFilePath = "game.tiled-project";
         TiledMap map = new PropertyLoader().loadProperties(Asset.Map.of("TEST", "test_tiled.tmx").path(), parameters);
         try {
             int trees = 0;

@@ -519,10 +519,10 @@ public final class TexturePackerToolTest {
         Files.createDirectories(raw.resolve("data"));
         Files.createDirectories(raw.resolve("audio"));
         Files.writeString(raw.resolve("game.settings.json"), """
-            {"mapsPath":"maps/", "atlasPath":"atlases/", "projectPath":"game.tiled-project",
+            {"mapsPath":"maps/", "atlasPath":"atlases/", "startupMap":"alpha", "projectPath":"world.tiled-project",
              "dataPath":"data/", "soundPath":"audio/", "musicPath":"audio/"}
             """);
-        Files.writeString(raw.resolve("game.tiled-project"), "{}");
+        Files.writeString(raw.resolve("world.tiled-project"), "{}");
         for (String input : REQUIRED_SPRITE_INPUTS) {
             Path folder = raw.resolve("sprites").resolve(input);
             Files.createDirectories(folder);

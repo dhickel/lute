@@ -97,6 +97,10 @@ public final class MapTravelTest extends ApplicationAdapter {
         require(actualActors.size() == 2, "Actual startup map owns both actors");
         var oldNpc = actualActors.first();
         var oldEnemy = actualActors.get(1);
+        require(Facing.MAPPER.get(player).getDirection() == Facing.Direction.DOWN
+            && Facing.MAPPER.get(oldNpc).getDirection() == Facing.Direction.LEFT
+            && Animation2D.MAPPER.get(oldNpc).getFdirection() == Facing.Direction.LEFT,
+            "Player inherits the Tiled facing and the NPC override initializes both facing and animation");
         var awareness = GAME.getEngine().getSystem(AwarenessSystem.class);
         var gameData = GAME.getGameData();
         var npc = gameData.charactersData().get("basic_npc");
@@ -291,7 +295,7 @@ public final class MapTravelTest extends ApplicationAdapter {
         var fresh = player();
         require(Health.MAPPER.get(fresh) != health && Health.MAPPER.get(fresh).getCurrent() == GAME.getGameData().playerData().maxHealth()
             && Loadout.MAPPER.get(fresh).getWeaponId().equals(GAME.getGameData().playerData().loadout().weapon())
-            && Facing.MAPPER.get(fresh).getDirection() == Facing.Direction.RIGHT, "A fresh session seeds the JSON defaults");
+            && Facing.MAPPER.get(fresh).getDirection() == Facing.Direction.UP, "A fresh session uses JSON defaults and the starting marker's facing");
         var freshTime = GAME.getEngine().getSystem(WorldTimeSystem.class);
         require(freshTime != time && freshTime.getTotalInGameSeconds() == 21_600,
             "A fresh GameScreen starts a fresh world-time session");

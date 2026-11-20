@@ -18,7 +18,8 @@ public final class GameConsts {
     public static double DAY_LENGTH_MINUTES = DEFAULT_DAY_LENGTH_MINUTES;
     public static final Vector2 PHYSIC_SCALING = new Vector2(1f, 1f);
     public static float CAMERA_SMOOTH_FACTOR = 4f;
-    public static String PROJECT_PATH = "game.tiled-project";
+    public static String PROJECT_PATH;
+    public static String STARTUP_MAP;
     public static String MAPS_PATH = "maps/";
     public static String DATA_PATH = "data/";
     public static String SOUND_PATH = "audio/";
@@ -37,6 +38,7 @@ public final class GameConsts {
             PHYSIC_SCALING.set(settings.physicScaling().x(), settings.physicScaling().y());
             CAMERA_SMOOTH_FACTOR = settings.cameraSmoothFactor();
             PROJECT_PATH = settings.projectPath();
+            STARTUP_MAP = settings.startupMap();
             MAPS_PATH = settings.mapsPath();
             DATA_PATH = settings.dataPath();
             SOUND_PATH = settings.soundPath();
@@ -56,7 +58,7 @@ public final class GameConsts {
     }
 
     public record Settings(float unitScale, float viewHeight, float viewWidth, float physicInterval,
-                           Scaling physicScaling, float cameraSmoothFactor, String projectPath,
+                           Scaling physicScaling, float cameraSmoothFactor, String projectPath, String startupMap,
                            String mapsPath, String dataPath, String soundPath, String musicPath,
                            String objectPath, String atlasPath, Double dayLengthMinutes) {
         public Settings {
@@ -69,8 +71,12 @@ public final class GameConsts {
             positive(24 * 60 / dayLengthMinutes, "inGameSecondsPerSimulationSecond");
             positive(cameraSmoothFactor, "cameraSmoothFactor");
             java.util.Objects.requireNonNull(physicScaling, "physicScaling");
-            if (projectPath == null || projectPath.isBlank()) {
-                throw new IllegalArgumentException("projectPath is required");
+            if (projectPath == null || !projectPath.matches("[^/\\\\\\s:]+\\.tiled-project")) {
+                throw new IllegalArgumentException("projectPath must name a .tiled-project file at the asset root");
+            }
+            if (startupMap == null || startupMap.isBlank() || startupMap.contains("/") || startupMap.contains("\\")
+                || startupMap.equals(".") || startupMap.equals("..")) {
+                throw new IllegalArgumentException("startupMap must be a map directory name, not a path");
             }
             for (var path : new String[]{mapsPath, dataPath, soundPath, musicPath, objectPath, atlasPath}) {
                 if (path == null || path.isBlank() || !path.endsWith("/")) {
@@ -91,6 +97,9 @@ public final class GameConsts {
     private static Settings parseSettings(tools.jackson.databind.JsonNode root) throws IOException {
         if (root == null || !root.isObject()) {
             throw new IllegalArgumentException("Game settings must be a JSON object");
+        }
+        for (var key : new String[]{"projectPath", "startupMap"}) {
+            if (!root.path(key).isString()) { throw new IllegalArgumentException(key + " must be a JSON string"); }
         }
         var dayLength = root.get("dayLengthMinutes");
         if (dayLength != null && (!dayLength.isNumber() || dayLength.isNull())) {

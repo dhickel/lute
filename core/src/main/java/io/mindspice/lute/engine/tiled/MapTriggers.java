@@ -10,6 +10,7 @@ import com.badlogic.gdx.maps.tiled.TiledMap;
 import com.badlogic.gdx.maps.tiled.TiledMapTileLayer;
 import com.badlogic.gdx.math.Rectangle;
 import com.badlogic.gdx.math.Vector2;
+import io.mindspice.lute.engine.components.Facing;
 import io.mindspice.lute.engine.singletons.GameConsts;
 
 import java.util.ArrayList;
@@ -24,7 +25,7 @@ public record MapTriggers(List<Sensor> sensors, List<SpawnPoint> points, List<Sp
         public DetectorGeometry { polygons = List.copyOf(polygons); }
     }
     public record Sensor(String name, SensorType type, DetectorGeometry geometry, String targetMap, String targetSpawn) { }
-    public record SpawnPoint(String name, SpawnType type, Vector2 position, String actorId) { }
+    public record SpawnPoint(String name, SpawnType type, Vector2 position, String actorId, Facing.Direction facing) { }
     public record SpawnArea(String name, SpawnType type, Rectangle bounds) { }
 
     public MapTriggers {
@@ -141,7 +142,11 @@ public record MapTriggers(List<Sensor> sensors, List<SpawnPoint> points, List<Sp
                     case NPC, ENEMY -> text(object, "actorId");
                     default -> null;
                 };
-                points.add(new SpawnPoint(name, spawnType, position, actorId));
+                var facing = switch (spawnType) {
+                    case PLAYER, NPC, ENEMY -> enumValue(object, "facing", Facing.Direction.class);
+                    default -> null;
+                };
+                points.add(new SpawnPoint(name, spawnType, position, actorId, facing));
             }
             case "SpawnArea" -> areas.add(new SpawnArea(name, enumValue(object, "spawnType", SpawnType.class), bounds(object)));
             default -> throw invalid(object, "unsupported trigger class '" + type + "'");

@@ -60,15 +60,18 @@ public final class TexturePackerTool {
         Path backup = transaction.resolve("previous");
         try {
             Files.createDirectory(stage);
-            for (String file : List.of("game.settings.json", "game.tiled-project")) {
+            var settings = new JsonReader().parse(new FileHandle(raw.resolve("game.settings.json").toFile()));
+            var project = settings.get("projectPath");
+            if (project == null || !project.isString() || !project.asString().matches("[^/\\\\\\s:]+\\.tiled-project")) {
+                throw new IllegalArgumentException("projectPath must name a .tiled-project file at the asset root");
+            }
+            for (String file : List.of("game.settings.json", project.asString())) {
                 copy(raw.resolve(file), stage.resolve(file));
             }
             for (String folder : List.of("data", "audio")) {
                 copyTree(raw.resolve(folder), stage.resolve(folder));
             }
-            var settings = new JsonReader().parse(new FileHandle(raw.resolve("game.settings.json").toFile()));
             if (!"maps/".equals(settings.getString("mapsPath")) || !"atlases/".equals(settings.getString("atlasPath"))
-                    || !"game.tiled-project".equals(settings.getString("projectPath"))
                     || !"data/".equals(settings.getString("dataPath"))
                     || !"audio/".equals(settings.getString("soundPath"))
                     || !"audio/".equals(settings.getString("musicPath"))) {

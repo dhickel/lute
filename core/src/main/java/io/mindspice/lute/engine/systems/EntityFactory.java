@@ -47,8 +47,8 @@ public class EntityFactory extends EntitySystem {
         this.assetService = assetService;
     }
 
-    public Entity getPlayerEntity(Vector2 pixelPosition, PlayerState state) {
-        var facing = state == null ? Facing.Direction.RIGHT : state.facing().getDirection();
+    public Entity getPlayerEntity(Vector2 pixelPosition, PlayerState state, Facing.Direction spawnFacing) {
+        var facing = state == null ? spawnFacing : state.facing().getDirection();
         var data = GameCore.INSTANCE.getGameData();
         var playerAnimation = data.playerData().animation();
         var atlas = CharacterAssets.CHARACTER;
@@ -90,7 +90,7 @@ public class EntityFactory extends EntitySystem {
         return entity;
     }
 
-    public Entity getMapActor(Vector2 pixelPosition, Actor.Role role, String actorId) {
+    public Entity getMapActor(Vector2 pixelPosition, Actor.Role role, String actorId, Facing.Direction facing) {
         var data = GameCore.INSTANCE.getGameData();
         MapActorData definition = switch (role) {
             case NPC -> data.charactersData().get(actorId);
@@ -102,7 +102,6 @@ public class EntityFactory extends EntitySystem {
         var atlas = enemy ? CharacterAssets.ENEMIES : CharacterAssets.CHARACTER;
         var settings = definition.animation();
         var prefix = settings.atlasKey();
-        var facing = Facing.Direction.DOWN;
         var animation = createAnimation(atlas, prefix, Animation2D.AnimationType.IDLE, settings.speed(), settings.frameInterval(), facing);
         var logical = definition.logicalSize();
         var region = animation.getAnimation().getKeyFrame(0f);
