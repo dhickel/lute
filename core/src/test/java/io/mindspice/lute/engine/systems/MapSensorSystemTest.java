@@ -441,7 +441,8 @@ public final class MapSensorSystemTest {
                 point("npc-point", "NPC", 25, 25), point("enemy-point", "ENEMY", 27, 27),
                 point("item-point", "ITEM", 28, 28), area, playerArea,
                 sensor("spawn-room", 4, 4, 4, 4)));
-            check(factory.calls == 1 && factory.actorTypes.equals(List.of(Actor.Role.NPC, Actor.Role.ENEMY)) && game.engine.getEntities().size() == 3,
+            check(factory.calls == 1 && factory.actorTypes.equals(List.of(Actor.Role.NPC, Actor.Role.ENEMY))
+                    && factory.actorIds.equals(List.of("npc-point", "enemy-point")) && game.engine.getEntities().size() == 3,
                 "PLAYER, NPC and ENEMY points spawn entities; other points and all areas stay data-only");
             near(pixels(6), factory.lastPixels.x, "TiledSystem passes unscaled point X pixels to factory");
             near(pixels(7), factory.lastPixels.y, "TiledSystem passes unflipped point Y pixels to factory");
@@ -987,6 +988,14 @@ public final class MapSensorSystemTest {
         object.setName(name);
         object.getProperties().put("type", "SpawnPoint");
         object.getProperties().put("spawnType", type);
+        switch (type) {
+            case "PLAYER" -> object.getProperties().put("facing", "UP");
+            case "NPC", "ENEMY" -> {
+                object.getProperties().put("actorId", name);
+                object.getProperties().put("facing", "LEFT");
+            }
+            default -> { }
+        }
         return object;
     }
 
@@ -1046,6 +1055,7 @@ public final class MapSensorSystemTest {
         private final Harness game;
         int calls;
         final java.util.List<Actor.Role> actorTypes = new java.util.ArrayList<>();
+        final java.util.List<String> actorIds = new java.util.ArrayList<>();
         Vector2 lastPixels;
         Entity lastPlayer;
 
@@ -1054,12 +1064,13 @@ public final class MapSensorSystemTest {
             this.game = game;
         }
 
-        @Override public Entity getMapActor(Vector2 pixelPosition, Actor.Role role) {
+        @Override public Entity getMapActor(Vector2 pixelPosition, Actor.Role role, String actorId, Facing.Direction facing) {
             actorTypes.add(role);
+            actorIds.add(actorId);
             return game.engine.createEntity();
         }
 
-        @Override public Entity getPlayerEntity(Vector2 pixelPosition, io.mindspice.lute.engine.components.PlayerState state) {
+        @Override public Entity getPlayerEntity(Vector2 pixelPosition, io.mindspice.lute.engine.components.PlayerState state, Facing.Direction facing) {
             calls++;
             lastPixels = pixelPosition.cpy();
             var origin = pixelPosition.cpy().scl(GameConsts.UNIT_SCALE).sub(1, 1.5f);

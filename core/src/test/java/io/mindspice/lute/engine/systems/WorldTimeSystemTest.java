@@ -66,7 +66,7 @@ public final class WorldTimeSystemTest {
         return "{"
             + "\"unitScale\":0.03125,\"viewHeight\":18,\"viewWidth\":32,"
             + "\"physicInterval\":0.016666668,\"physicScaling\":{\"x\":1,\"y\":1},"
-            + "\"cameraSmoothFactor\":4,\"projectPath\":\"game.tiled-project\","
+            + "\"cameraSmoothFactor\":4,\"startupMap\":\"test_tiled\",\"projectPath\":\"game.tiled-project\","
             + "\"mapsPath\":\"maps/\",\"dataPath\":\"data/\",\"soundPath\":\"audio/\","
             + "\"musicPath\":\"audio/\",\"objectPath\":\"objects/\",\"atlasPath\":\"atlases/\""
             + (dayLengthMinutes == null ? "" : ",\"dayLengthMinutes\":" + dayLengthMinutes) + "}";

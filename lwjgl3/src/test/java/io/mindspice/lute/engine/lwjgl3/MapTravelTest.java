@@ -97,10 +97,18 @@ public final class MapTravelTest extends ApplicationAdapter {
         require(actualActors.size() == 2, "Actual startup map owns both actors");
         var oldNpc = actualActors.first();
         var oldEnemy = actualActors.get(1);
+        require(Facing.MAPPER.get(player).getDirection() == Facing.Direction.DOWN
+            && Facing.MAPPER.get(oldNpc).getDirection() == Facing.Direction.LEFT
+            && Animation2D.MAPPER.get(oldNpc).getFdirection() == Facing.Direction.LEFT,
+            "Player inherits the Tiled facing and the NPC override initializes both facing and animation");
         var awareness = GAME.getEngine().getSystem(AwarenessSystem.class);
-        var actorData = GAME.getGameData().actorsData();
-        checkSensor(oldNpc, Actor.Role.NPC, actorData.npc().awarenessRadius());
-        checkSensor(oldEnemy, Actor.Role.ENEMY, actorData.enemy().awarenessRadius());
+        var gameData = GAME.getGameData();
+        var npc = gameData.charactersData().get("basic_npc");
+        var enemy = gameData.enemiesData().get("brainless_undead");
+        checkSensor(oldNpc, Actor.Role.NPC, npc.detectionBounds().radius());
+        checkSensor(oldEnemy, Actor.Role.ENEMY, enemy.detectionBounds().radius());
+        require(Health.MAPPER.get(oldNpc).getMaximum() == npc.maxHealth()
+            && Health.MAPPER.get(oldEnemy).getMaximum() == enemy.maxHealth(), "Map actors use authored health");
         require(Actor.MAPPER.get(player).role() == Actor.Role.PLAYER && body(player).getFixtureList().size == 2,
             "Player is detectable without owning a third fixture");
         var enemyPosition = body(oldEnemy).getPosition().cpy();
@@ -151,8 +159,8 @@ public final class MapTravelTest extends ApplicationAdapter {
                 && Health.MAPPER.get(newEnemy) != oldEnemyHealth && Health.MAPPER.get(newEnemy).getCurrent() == 100f,
                 "Map replacement recreates the enemy body, fixtures and health");
             require(awareness.inRange(oldEnemy, Actor.Role.PLAYER).isEmpty(), "Retired enemy cannot query after travel");
-            checkSensor(newNpc, Actor.Role.NPC, actorData.npc().awarenessRadius());
-            checkSensor(newEnemy, Actor.Role.ENEMY, actorData.enemy().awarenessRadius());
+            checkSensor(newNpc, Actor.Role.NPC, npc.detectionBounds().radius());
+            checkSensor(newEnemy, Actor.Role.ENEMY, enemy.detectionBounds().radius());
             atPoint(player(), actual.targetSpawn());
             System.out.println("MapTravelTest: actual test_tiled/" + actual.targetSpawn() + " rebuilt");
         } else {
@@ -287,7 +295,7 @@ public final class MapTravelTest extends ApplicationAdapter {
         var fresh = player();
         require(Health.MAPPER.get(fresh) != health && Health.MAPPER.get(fresh).getCurrent() == GAME.getGameData().playerData().maxHealth()
             && Loadout.MAPPER.get(fresh).getWeaponId().equals(GAME.getGameData().playerData().loadout().weapon())
-            && Facing.MAPPER.get(fresh).getDirection() == Facing.Direction.RIGHT, "A fresh session seeds the JSON defaults");
+            && Facing.MAPPER.get(fresh).getDirection() == Facing.Direction.UP, "A fresh session uses JSON defaults and the starting marker's facing");
         var freshTime = GAME.getEngine().getSystem(WorldTimeSystem.class);
         require(freshTime != time && freshTime.getTotalInGameSeconds() == 21_600,
             "A fresh GameScreen starts a fresh world-time session");

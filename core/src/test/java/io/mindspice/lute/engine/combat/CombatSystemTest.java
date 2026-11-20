@@ -825,14 +825,14 @@ public final class CombatSystemTest {
                         for (int invalid : new int[]{8, Integer.MAX_VALUE}) {
                             var bad = withCues(original, hit ? invalid : 0, hit ? 0 : invalid);
                             field.set(GameCore.INSTANCE, replaceAttack(data, id, primary, bad));
-                            rejects(() -> factory.getPlayerEntity(new Vector2(320, 640), null),
+                            rejects(() -> factory.getPlayerEntity(new Vector2(320, 640), null, Facing.Direction.RIGHT),
                                 "Out of range cue in complete catalog: " + id + "/" + primary + "/" + hit);
                         }
                     }
                     var badBounds = new WeaponData.Bounds(BoundsType.RECT, 0, 0, .001f, .001f, ZERO, ZERO, ZERO, ZERO);
                     var badGeometry = new AttackData(original.animation(), badBounds, original.stats(), original.sounds(), original.collisionType());
                     field.set(GameCore.INSTANCE, replaceAttack(data, id, primary, badGeometry));
-                    rejects(() -> factory.getPlayerEntity(new Vector2(320, 640), null), "Unsafe catalog Box2D geometry");
+                    rejects(() -> factory.getPlayerEntity(new Vector2(320, 640), null, Facing.Direction.RIGHT), "Unsafe catalog Box2D geometry");
                 }
             }
             field.set(GameCore.INSTANCE, data);
@@ -845,7 +845,7 @@ public final class CombatSystemTest {
                 int width = frame.getRegionWidth();
                 try {
                     frame.setRegionWidth(32);
-                    rejects(() -> factory.getPlayerEntity(new Vector2(320, 640), null),
+                    rejects(() -> factory.getPlayerEntity(new Vector2(320, 640), null, Facing.Direction.RIGHT),
                         "Invalid loaded frame geometry: " + asset.id());
                 } finally { frame.setRegionWidth(width); }
             }
@@ -856,7 +856,7 @@ public final class CombatSystemTest {
                 var frame = sourceFrame(candidate, key);
                 candidate.getRegions().removeValue(frame, true);
                 try {
-                    rejects(() -> factory.getPlayerEntity(new Vector2(320, 640), null),
+                    rejects(() -> factory.getPlayerEntity(new Vector2(320, 640), null, Facing.Direction.RIGHT),
                         "Missing directional layer frame: " + asset.id());
                 } finally { candidate.getRegions().add(frame); }
             }
@@ -871,8 +871,8 @@ public final class CombatSystemTest {
                 var original = data.playerData();
                 var invalid = new PlayerData(original.name(), original.moveSpeed(), original.maxHealth(), original.loadout(),
                     original.animation(), original.sounds(), logical, original.collisionBounds(), original.hitboxBounds());
-                field.set(GameCore.INSTANCE, new GameData(invalid, data.weaponsData(), data.projectilesData(), data.actorsData()));
-                rejects(() -> factory.getPlayerEntity(new Vector2(320, 640), null), "Logical dimensions must fit the loaded canvas");
+                field.set(GameCore.INSTANCE, new GameData(invalid, data.weaponsData(), data.projectilesData(), data.charactersData(), data.enemiesData()));
+                rejects(() -> factory.getPlayerEntity(new Vector2(320, 640), null, Facing.Direction.RIGHT), "Logical dimensions must fit the loaded canvas");
             }
             for (boolean collision : new boolean[]{false, true}) {
                 var original = data.playerData();
@@ -880,21 +880,21 @@ public final class CombatSystemTest {
                 var invalid = new PlayerData(original.name(), original.moveSpeed(), original.maxHealth(), original.loadout(),
                     original.animation(), original.sounds(), original.logicalSize(),
                     collision ? tiny : original.collisionBounds(), collision ? original.hitboxBounds() : tiny);
-                field.set(GameCore.INSTANCE, new GameData(invalid, data.weaponsData(), data.projectilesData(), data.actorsData()));
+                field.set(GameCore.INSTANCE, new GameData(invalid, data.weaponsData(), data.projectilesData(), data.charactersData(), data.enemiesData()));
                 int bodyCount = world.getBodyCount();
-                rejects(() -> factory.getPlayerEntity(new Vector2(320, 640), null), "Native-unsafe configured ellipse is rejected in Java");
+                rejects(() -> factory.getPlayerEntity(new Vector2(320, 640), null, Facing.Direction.RIGHT), "Native-unsafe configured ellipse is rejected in Java");
                 check(world.getBodyCount() == bodyCount, "Invalid character fixture construction cannot leak a partial body");
             }
             var original = data.playerData();
             var different = new PlayerData(original.name(), original.moveSpeed(), original.maxHealth(), original.loadout(),
                 original.animation(), original.sounds(), new PlayerData.LogicalSize(80, 72), original.collisionBounds(), original.hitboxBounds());
-            field.set(GameCore.INSTANCE, new GameData(different, data.weaponsData(), data.projectilesData(), data.actorsData()));
-            var differentPlayer = factory.getPlayerEntity(new Vector2(320, 640), null);
+            field.set(GameCore.INSTANCE, new GameData(different, data.weaponsData(), data.projectilesData(), data.charactersData(), data.enemiesData()));
+            var differentPlayer = factory.getPlayerEntity(new Vector2(320, 640), null, Facing.Direction.RIGHT);
             near(80 * GameConsts.UNIT_SCALE, Transform.MAPPER.get(differentPlayer).getSize().x, "Factory accepts configured future logical width");
             near(72 * GameConsts.UNIT_SCALE, Transform.MAPPER.get(differentPlayer).getSize().y, "Factory accepts configured future logical height");
             world.destroyBody(Physic.MAPPER.get(differentPlayer).getBody());
             field.set(GameCore.INSTANCE, cues);
-            var player = factory.getPlayerEntity(new Vector2(320, 640), null);
+            var player = factory.getPlayerEntity(new Vector2(320, 640), null, Facing.Direction.RIGHT);
             check(player.getComponent(Player.class) != null, "Real player factory declares map-sensor participation");
             var transform = Transform.MAPPER.get(player);
             near(64 * GameConsts.UNIT_SCALE, transform.getSize().x, "Factory uses logical width rather than source canvas");
@@ -1015,7 +1015,7 @@ public final class CombatSystemTest {
         var changed = new AttackStats(primary ? replacement : attacks.primary(), primary ? attacks.secondary() : replacement);
         weapons.put(id, new WeaponData(changed, original.atlasKey()));
         return new GameData(data.playerData(), new WeaponsData(data.weaponsData().atlas(), weapons),
-            data.projectilesData(), data.actorsData());
+            data.projectilesData(), data.charactersData(), data.enemiesData());
     }
 
     private static TextureAtlas.AtlasRegion sourceFrame(TextureAtlas atlas, String key) {

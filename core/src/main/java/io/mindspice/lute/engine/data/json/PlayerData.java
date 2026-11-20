@@ -26,8 +26,12 @@ public record PlayerData(
             throw new IllegalArgumentException("Player animation atlas_key must be empty for the flat character atlas");
         }
         if (sounds == null) { throw new IllegalArgumentException("Player sounds are required"); }
+        validateBounds(logicalSize, collisionBounds, hitboxBounds);
+    }
+
+    static void validateBounds(LogicalSize logicalSize, CharacterBounds collisionBounds, CharacterBounds hitboxBounds) {
         if (logicalSize == null || collisionBounds == null || hitboxBounds == null) {
-            throw new IllegalArgumentException("Player logical size, collision bounds and hitbox bounds are required");
+            throw new IllegalArgumentException("Character logical size, collision bounds and hitbox bounds are required");
         }
         for (var bounds : new CharacterBounds[]{collisionBounds, hitboxBounds}) {
             if (bounds.x2() > logicalSize.width() || bounds.y2() > logicalSize.height()) {

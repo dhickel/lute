@@ -116,7 +116,8 @@ public final class MapTriggersTest {
                 "Generic sensor inherits GENERAL and has no teleport target");
             geometryRectangle(sensor.geometry(), 1, 17, 2, 1);
             var player = triggers.points().getFirst();
-            check(player.type() == SpawnType.PLAYER, "SpawnPoint inherits PLAYER default");
+            check(player.type() == SpawnType.PLAYER && player.facing().name().equals("DOWN"),
+                "SpawnPoint inherits PLAYER and DOWN defaults from the Tiled project");
             near(player.position().x, 96, "Point remains in pixels");
             near(player.position().y, 512, "Point is not flipped twice");
             check(triggers.areas().getFirst().type() == SpawnType.NPC, "SpawnArea inherits NPC default");
@@ -462,6 +463,10 @@ public final class MapTriggersTest {
         invalid("missing class", layer("Triggers", "", "<object name=\"bad\" width=\"32\" height=\"32\"/>"), "type");
         invalid("duplicate sensors", layer("Triggers", "", rectangle("same", "Sensor", "")
             + teleport("same", "elsewhere", "unused")), "Duplicate sensor");
+        invalid("invalid spawn facing", layer("Triggers", "", object("player", "SpawnPoint", "x=\"96\" y=\"128\"",
+            property("facing", "NORTH"), "<point/>")), "facing");
+        invalid("missing actor ID", layer("Triggers", "", object("npc", "SpawnPoint", "x=\"96\" y=\"128\"",
+            property("spawnType", "NPC"), "<point/>")), "actorId");
         invalid("duplicate points", layer("Triggers", "", point("same", "NPC", "") + point("same", "TELEPORT", "")), "Duplicate spawn marker");
         invalid("duplicate areas", layer("Triggers", "", rectangle("same", "SpawnArea", "")
             + rectangle("same", "SpawnArea", "")), "Duplicate spawn marker");
@@ -499,7 +504,9 @@ public final class MapTriggersTest {
 
     private static String point(String name, String type, String attributes) {
         String coords = (attributes.contains("x=") ? "" : "x=\"96\" ") + (attributes.contains("y=") ? "" : "y=\"128\" ");
-        return object(name, "SpawnPoint", coords + attributes, type.isEmpty() ? "" : property("spawnType", type), "<point/>");
+        String properties = type.isEmpty() ? "" : property("spawnType", type);
+        if (type.equals("NPC")) { properties += property("actorId", "basic_npc"); }
+        return object(name, "SpawnPoint", coords + attributes, properties, "<point/>");
     }
 
     private static String teleport(String name, String map, String destination) {

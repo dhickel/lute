@@ -13,7 +13,99 @@ This project was generated with a template including simple application launcher
 
 Both `raw_assets/` and `assets/` are local and ignored by Git; their contents are not included in the current tracked tree or new checkouts. Existing Git history retains old asset objects; it has not been purged. In a new checkout, provide the complete current `raw_assets/` tree externally, including settings, data, audio, maps, tilesets, sprites, and the Tiled project. Edit source assets in `raw_assets/`, not the generated files in `assets/`. Shared settings and the Tiled project live at the source root; `data/` and `audio/` contain shared game data and sounds. Each map directory, such as `raw_assets/maps/test_tiled/`, contains a matching TMX and manifest and an `objects/` directory with source images and `pack.json`. Shared terrain tilesets live under `raw_assets/tilesets/` and can be referenced by multiple maps. The manifest must name `<map>.atlas` and `<map>/<map>.tmx`, and include `music_assets` and `sound_assets` objects, even when empty.
 
-Authored gameplay JSON follows the same source-to-runtime path: provision `raw_assets/data/player.json`, `weapons.json`, and `projectiles.json`, then generate `assets/data/`. At startup, `DataLoader` loads them through `GameConsts.DATA_PATH`, and `GameData` supplies the resolved data to gameplay. There is no bundled-resource or classpath fallback. If the externally provisioned tree lacks `raw_assets/data/projectiles.json`, create it with this starter data:
+`raw_assets/game.settings.json` requires `startupMap`, a map name rather than a path, and `projectPath`, the filename of the root Tiled `.tiled-project` file. The local values are `test_tiled` and `game.tiled-project`, respectively. The asset generator also allows its Tiled project filename to be configured; keep it aligned with `projectPath`.
+
+Authored gameplay JSON follows the same source-to-runtime path: provision `raw_assets/data/player.json`, `characters.json`, `enemies.json`, `weapons.json`, and `projectiles.json`, then generate `assets/data/`. The mandatory `characters.json` and `enemies.json` files replace `actors.json`; each is a top-level map keyed by actor ID. NPC definitions mirror player fields except `name`, with `detection_bounds: { "radius": ... }` in pixels. Enemy definitions use the same actor fields but require a nullable top-level `weapon` instead of a loadout. Animation `atlas_key` selects the actor's sprite prefix. Move speed and sounds are authored, but map actors remain static and do not attack.
+
+These examples reproduce the local raw files, which are ignored and not shipped. If needed, copy them into the corresponding files before generating runtime assets:
+
+`raw_assets/data/characters.json`:
+
+```json
+{
+  "basic_npc": {
+    "max_health": 100,
+    "move_speed": 4.0,
+    "logical_size": {
+      "width": 64,
+      "height": 64
+    },
+    "collision_bounds": {
+      "x1": 20,
+      "y1": 4,
+      "x2": 44,
+      "y2": 14
+    },
+    "hitbox_bounds": {
+      "x1": 16,
+      "y1": 6,
+      "x2": 48,
+      "y2": 56
+    },
+    "sounds": {
+      "move": "sword_hit.wav",
+      "damage": "sword_hit.wav"
+    },
+    "animation": {
+      "speed": 1,
+      "atlas_key": "basic_npc",
+      "sound_frame": 0,
+      "frame_interval": 0.12
+    },
+    "detection_bounds": {
+      "radius": 96
+    },
+    "loadout": {
+      "body": "basic",
+      "hands": "basic",
+      "feet": "basic"
+    }
+  }
+}
+```
+
+`raw_assets/data/enemies.json`:
+
+```json
+{
+  "brainless_undead": {
+    "max_health": 100,
+    "move_speed": 4.0,
+    "logical_size": {
+      "width": 64,
+      "height": 64
+    },
+    "collision_bounds": {
+      "x1": 20,
+      "y1": 4,
+      "x2": 44,
+      "y2": 14
+    },
+    "hitbox_bounds": {
+      "x1": 16,
+      "y1": 6,
+      "x2": 48,
+      "y2": 56
+    },
+    "sounds": {
+      "move": "sword_hit.wav",
+      "damage": "sword_hit.wav"
+    },
+    "animation": {
+      "speed": 1,
+      "atlas_key": "brainless_undead",
+      "sound_frame": 0,
+      "frame_interval": 0.12
+    },
+    "detection_bounds": {
+      "radius": 160
+    },
+    "weapon": "basic_sword"
+  }
+}
+```
+
+At startup, `DataLoader` loads them through `GameConsts.DATA_PATH`, and `GameData` supplies the resolved data to gameplay. There is no bundled-resource or classpath fallback. If the externally provisioned tree lacks `raw_assets/data/projectiles.json`, create it with this starter data:
 
 ```json
 {
@@ -44,11 +136,13 @@ After provisioning or changing source assets, run:
 
 The root script works from any current directory, reports a missing `raw_assets/` directory, and creates `assets/` before invoking `:util:generateRuntimeAssets`; generation is not automatic when running or building the game. It copies shared files, generates a per-map object atlas under `assets/atlases/`, and publishes map directories under `assets/maps/` and referenced shared tilesets under `assets/tilesets/`. Object image collections resolve through the atlas at runtime; terrain sheets remain separate. Object packing must preserve paths, indexes, dimensions, and orientation: do not enable rotation, whitespace stripping, path flattening, or nested pack settings.
 
-Character sprites come from `raw_assets/sprites/`: base frames live in `character/player/` and `character/basic_npc/` and are packed into a shared `character.atlas` with actor-prefixed regions. Enemy body sprites with baked equipment live under `enemies/` (currently `brainless_undead/`) and are packed into a separate `enemies.atlas`, also with actor-prefixed regions. Equipment frames live in `equipment/<set>/<slot>/` (with `head`, `body`, `hands`, and `feet` slots), and selectable weapons use the shared weapons atlas, including `weapons/melee/basic_sword/` and `weapons/ranged/basic_bow/`. The basic set requires all four slots. Generation gathers equipment sets by slot into four atlases; an optional `equipment/pack.json` supplies shared settings for them, while nested packing overrides and unknown slots are rejected, except that `accessories` export folders are reported and skipped for now. Their source files are preserved; accessories are not packed or equipable. Sprite packing defaults to a maximum page size of 2048×2048; optional `pack.json` settings retain these defaults for omitted dimensions and may explicitly override them. Sprite pages never mix source asset folders; `combineSubdirectories=true` overrides are rejected. A folder that outgrows a page can still span pages, so animation sequences are not guaranteed to remain together in that case. Equipment regions include the item prefix, such as `basic/shot_up`; weapon regions retain category and item prefixes, such as `melee/basic_sword` and `ranged/basic_bow`. These generated atlases are runtime outputs, not source assets. Composite source frames are 128×128 canvases around a centered 64×64 logical character. The rendering contract retains the full canvas at pixel scale, including padding and overhang; it does not shrink or crop it. The player's logical size and separate feet and hurtbox bounds are authored in player data; map actors use their own shared defaults. Earlier focused validation passed for the canvas correction; live review of the initial bounds remains pending. See the [composite character specification](.internal-dev/specifications/composite-characters.md) for composition and loadout behavior.
+Character sprites come from `raw_assets/sprites/`: base frames live in `character/player/` and `character/basic_npc/` and are packed into a shared `character.atlas` with actor-prefixed regions. Enemy body sprites with baked equipment live under `enemies/` (currently `brainless_undead/`) and are packed into a separate `enemies.atlas`, also with actor-prefixed regions. Equipment frames live in `equipment/<set>/<slot>/` (with `head`, `body`, `hands`, and `feet` slots), and selectable weapons use the shared weapons atlas, including `weapons/melee/basic_sword/` and `weapons/ranged/basic_bow/`. The basic set requires all four slots. Generation gathers equipment sets by slot into four atlases; an optional `equipment/pack.json` supplies shared settings for them, while nested packing overrides and unknown slots are rejected, except that `accessories` export folders are reported and skipped for now. Their source files are preserved; accessories are not packed or equipable. Sprite packing defaults to a maximum page size of 2048×2048; optional `pack.json` settings retain these defaults for omitted dimensions and may explicitly override them. Sprite pages never mix source asset folders; `combineSubdirectories=true` overrides are rejected. A folder that outgrows a page can still span pages, so animation sequences are not guaranteed to remain together in that case. Equipment regions include the item prefix, such as `basic/shot_up`; weapon regions retain category and item prefixes, such as `melee/basic_sword` and `ranged/basic_bow`. These generated atlases are runtime outputs, not source assets. Composite source frames are 128×128 canvases around a centered 64×64 logical character. The rendering contract retains the full canvas at pixel scale, including padding and overhang; it does not shrink or crop it. The player's and map actors' logical sizes and separate feet and hurtbox bounds are authored in their respective data. Earlier focused validation passed for the canvas correction; live review of the initial bounds remains pending. See the [composite character specification](.internal-dev/specifications/composite-characters.md) for composition and loadout behavior.
 
 ### Map actor demo
 
-The existing `NPC` and `ENEMY` points on `test_tiled` spawn map-owned actors. The NPC starts with basic body, hands, and feet equipment, without a head item or weapon; it can equip compatible head armor. All four armor slots are independently optional for both the player and basic NPC. The player's authored defaults remain the basic set and sword: its loadout object is required, but each slot, including the weapon, may be omitted or null; non-null IDs must not be blank. Equipped frames must still match the actor's base animation. The demo enemy uses its baked body art and starts with a sword and no separate armor; its weapon can be changed through the existing `LoadoutSystem`. Both actors have a stationary solid feet ellipse, a separate sensor hurtbox, and 100 health. They share map-actor bounds independent of player JSON and can take damage, but have no AI or attacks. They have no dialogue, player control, or camera ownership. Named travel rebuilds them with the map. The local raw Tiled project already contains the `ENEMY` point; provision the raw assets and run the root generation script before launching `./gradlew lwjgl3:run`. Visit the marked NPC and ENEMY locations on `test_tiled` to inspect their appearance and placement, then travel away and back to check that they are rebuilt.
+Tiled `PLAYER`, `NPC`, and `ENEMY` spawn points require a `facing` enum value: `UP`, `DOWN`, `LEFT`, or `RIGHT`. The Tiled class supplies the `DOWN` default; Java does not supply a fallback. The sample NPC faces `LEFT`. A new player uses the player marker's facing, while named travel and in-place travel retain the live player's existing facing. `TELEPORT` and `ITEM` points do not use facing.
+
+The existing `NPC` and `ENEMY` points on `test_tiled` spawn map-owned actors. The NPC starts with basic body, hands, and feet equipment, without a head item or weapon; it can equip compatible head armor. All four armor slots are independently optional for both the player and basic NPC. The player's authored defaults remain the basic set and sword: its loadout object is required, but each slot, including the weapon, may be omitted or null; non-null IDs must not be blank. Equipped frames must still match the actor's base animation. The demo enemy uses its baked body art and starts with a sword and no separate armor; its weapon can be changed through the existing `LoadoutSystem`. Both actors have a stationary solid feet ellipse, a separate sensor hurtbox, and 100 health. Their bounds and health are authored independently of player JSON. They can take damage; NPCs have no reactive behavior, and enemies can face a visible player but do not move or attack. Both have static query-only detection circles centered at their feet, with radii authored in pixels. They have no dialogue, player control, or camera ownership. Named travel rebuilds them with the map. In Tiled, set the required string property `actorId` on `NpcSpawn` to `basic_npc` and on `EnemySpawn` to `brainless_undead`. Provision the raw assets and run the root generation script before launching `./gradlew lwjgl3:run`. Visit the marked NPC and ENEMY locations on `test_tiled` to inspect their appearance and placement, then travel away and back to check that they are rebuilt.
 
 ### Per-map generation
 

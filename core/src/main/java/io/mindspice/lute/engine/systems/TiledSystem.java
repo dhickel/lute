@@ -139,12 +139,12 @@ public class TiledSystem extends EntitySystem implements EventEmitter {
         try {
             initMapBoundary(next);
             loadMapObjects(next);
-            if (point != null) { spawnPlayerEntity(next, point.position()); }
+            if (point != null) { spawnPlayerEntity(next, point); }
             var factory = getEngine().getSystem(EntityFactory.class);
             for (var marker : triggers.points()) {
                 switch (marker.type()) {
-                    case NPC -> next.entities.add(factory.getMapActor(marker.position(), Actor.Role.NPC));
-                    case ENEMY -> next.entities.add(factory.getMapActor(marker.position(), Actor.Role.ENEMY));
+                    case NPC -> next.entities.add(factory.getMapActor(marker.position(), Actor.Role.NPC, marker.actorId(), marker.facing()));
+                    case ENEMY -> next.entities.add(factory.getMapActor(marker.position(), Actor.Role.ENEMY, marker.actorId(), marker.facing()));
                     default -> { }
                 }
             }
@@ -234,8 +234,8 @@ public class TiledSystem extends EntitySystem implements EventEmitter {
         }
     }
 
-    private void spawnPlayerEntity(RuntimeMap next, Vector2 pixelPosition) {
-        next.player = getEngine().getSystem(EntityFactory.class).getPlayerEntity(pixelPosition, playerState);
+    private void spawnPlayerEntity(RuntimeMap next, MapTriggers.SpawnPoint point) {
+        next.player = getEngine().getSystem(EntityFactory.class).getPlayerEntity(point.position(), playerState, point.facing());
         next.entities.add(next.player);
         var properties = next.map.getProperties();
         next.player.add(new BowAim(properties.get("tilewidth", Integer.class) * GameConsts.UNIT_SCALE,

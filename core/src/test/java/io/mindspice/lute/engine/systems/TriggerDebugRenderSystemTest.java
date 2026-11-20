@@ -494,7 +494,7 @@ public final class TriggerDebugRenderSystemTest {
             var file = resolve(asset.path());
             root = xml.parse(file);
             var parameters = new BaseTiledMapLoader.Parameters();
-            parameters.projectFilePath = GameConsts.PROJECT_PATH;
+            parameters.projectFilePath = "game.tiled-project";
             return loadTiledMap(file, parameters, imagePath -> {
                 try {
                     var image = javax.imageio.ImageIO.read(new java.io.File(imagePath));

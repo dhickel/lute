@@ -21,6 +21,7 @@ import com.badlogic.gdx.utils.GdxNativesLoader;
 import io.mindspice.lute.engine.GameCore;
 import io.mindspice.lute.engine.components.Animation2D;
 import io.mindspice.lute.engine.components.Facing;
+import io.mindspice.lute.engine.singletons.GameConsts;
 import io.mindspice.lute.engine.components.Graphic;
 import io.mindspice.lute.engine.events.Event;
 import io.mindspice.lute.engine.screen.LoadingScreen;
@@ -69,6 +70,7 @@ public final class AssetServiceTest {
             GdxNativesLoader.load();
             var backend = new Backend();
             backend.install();
+            GameConsts.loadSettings();
             assetValues();
             storageWiring(backend.resolver());
             for (boolean candidate : new boolean[]{false, true}) {

@@ -20,6 +20,7 @@ import io.mindspice.lute.engine.assets.MapAssets;
 import io.mindspice.lute.engine.assets.WeaponAssets;
 import io.mindspice.lute.engine.assets.CharacterAssets;
 import io.mindspice.lute.engine.data.json.CharacterBounds;
+import io.mindspice.lute.engine.data.json.MapActorData;
 import io.mindspice.lute.engine.data.json.WeaponsData;
 import io.mindspice.lute.engine.GameCore;
 import io.mindspice.lute.engine.components.CombatWeapon;
@@ -38,11 +39,6 @@ import java.util.Set;
 public class EntityFactory extends EntitySystem {
     private static final Set<String> CHARACTER_ACTIONS = Set.of("idle", "walk", "death", "slash", "jab", "shot");
     private static final String PLAYER_PREFIX = "player";
-    private static final String NPC_PREFIX = "basic_npc";
-    private static final String ENEMY_PREFIX = "brainless_undead";
-    private static final CharacterBounds MAP_ACTOR_FEET = new CharacterBounds(20, 4, 44, 14);
-    private static final CharacterBounds MAP_ACTOR_HURTBOX = new CharacterBounds(16, 6, 48, 56);
-    private static final float MAP_ACTOR_MAX_HEALTH = 100f;
     private final World world;
     private final AssetService assetService;
 
@@ -51,8 +47,8 @@ public class EntityFactory extends EntitySystem {
         this.assetService = assetService;
     }
 
-    public Entity getPlayerEntity(Vector2 pixelPosition, PlayerState state) {
-        var facing = state == null ? Facing.Direction.RIGHT : state.facing().getDirection();
+    public Entity getPlayerEntity(Vector2 pixelPosition, PlayerState state, Facing.Direction spawnFacing) {
+        var facing = state == null ? spawnFacing : state.facing().getDirection();
         var data = GameCore.INSTANCE.getGameData();
         var playerAnimation = data.playerData().animation();
         var atlas = CharacterAssets.CHARACTER;
@@ -94,14 +90,25 @@ public class EntityFactory extends EntitySystem {
         return entity;
     }
 
-    public Entity getMapActor(Vector2 pixelPosition, Actor.Role role) {
-        if (role == Actor.Role.PLAYER) { throw new IllegalArgumentException("Expected an NPC or enemy"); }
+    public Entity getMapActor(Vector2 pixelPosition, Actor.Role role, String actorId, Facing.Direction facing) {
+        var data = GameCore.INSTANCE.getGameData();
+        MapActorData definition = switch (role) {
+            case NPC -> data.charactersData().get(actorId);
+            case ENEMY -> data.enemiesData().get(actorId);
+            case PLAYER -> throw new IllegalArgumentException("Expected an NPC or enemy");
+        };
+        if (definition == null) { throw new IllegalArgumentException("Unknown " + role + " actorId '" + actorId + "'"); }
         boolean enemy = role == Actor.Role.ENEMY;
         var atlas = enemy ? CharacterAssets.ENEMIES : CharacterAssets.CHARACTER;
-        var prefix = enemy ? ENEMY_PREFIX : NPC_PREFIX;
-        var facing = Facing.Direction.DOWN;
-        var animation = createAnimation(atlas, prefix, Animation2D.AnimationType.IDLE, 1f, .12f, facing);
-        var transform = characterTransform(pixelPosition, 64, 64);
+        var settings = definition.animation();
+        var prefix = settings.atlasKey();
+        var animation = createAnimation(atlas, prefix, Animation2D.AnimationType.IDLE, settings.speed(), settings.frameInterval(), facing);
+        var logical = definition.logicalSize();
+        var region = animation.getAnimation().getKeyFrame(0f);
+        if (logical.width() > region.getRegionWidth() || logical.height() > region.getRegionHeight()) {
+            throw new IllegalArgumentException("Logical character frame must fit its source canvas: " + actorId);
+        }
+        var transform = characterTransform(pixelPosition, logical.width(), logical.height());
         var base = assetService.get(TextureAtlas.class, atlas.id());
         for (String action : CHARACTER_ACTIONS) {
             for (var direction : Facing.Direction.values()) {
@@ -115,12 +122,15 @@ public class EntityFactory extends EntitySystem {
                 }
             }
         }
-        var data = GameCore.INSTANCE.getGameData();
         var weapons = createWeapons(data.weaponsData(), animation, transform.getSize().cpy().scl(.5f));
-        var definition = enemy ? data.actorsData().enemy() : data.actorsData().npc();
-        var equipment = enemy ? new Loadout.Equipment(null, null, null, null)
-            : new Loadout.Equipment(null, "basic", "basic", "basic");
-        var loadout = new Loadout(equipment, enemy ? "basic_sword" : null, weapons, selection -> {
+        var equipment = switch (definition) {
+            case MapActorData.Npc npc -> {
+                var items = npc.loadout();
+                yield new Loadout.Equipment(items.head(), items.body(), items.hands(), items.feet());
+            }
+            case MapActorData.Enemy ignored -> new Loadout.Equipment(null, null, null, null);
+        };
+        var loadout = new Loadout(equipment, definition.weapon(), weapons, selection -> {
             if (enemy) {
                 if (!equipment.equals(selection)) { throw new IllegalArgumentException("Baked enemies cannot equip armor layers"); }
             } else {
@@ -129,11 +139,11 @@ public class EntityFactory extends EntitySystem {
         });
         Entity entity = getEngine().createEntity();
         entity.add(transform).add(new Facing(facing)).add(animation).add(loadout)
-            .add(new Graphic(animation.getAnimation().getKeyFrame(0f), Color.WHITE.cpy()))
-            .add(new CompositeCharacter(128, 128));
-        entity.add(new Health(MAP_ACTOR_MAX_HEALTH));
+            .add(new Graphic(region, Color.WHITE.cpy()))
+            .add(new CompositeCharacter(region.getRegionWidth(), region.getRegionHeight()));
+        entity.add(new Health(definition.maxHealth()));
         entity.add(createCharacterPhysics(transform.getPosition(), entity, BodyDef.BodyType.StaticBody,
-            MAP_ACTOR_FEET, MAP_ACTOR_HURTBOX, role, definition.awarenessRadius()));
+            definition.collisionBounds(), definition.hitboxBounds(), role, definition.detectionBounds().radius()));
         return entity;
     }
 
