@@ -462,6 +462,8 @@ public final class MapTriggersTest {
         invalid("missing class", layer("Triggers", "", "<object name=\"bad\" width=\"32\" height=\"32\"/>"), "type");
         invalid("duplicate sensors", layer("Triggers", "", rectangle("same", "Sensor", "")
             + teleport("same", "elsewhere", "unused")), "Duplicate sensor");
+        invalid("missing actor ID", layer("Triggers", "", object("npc", "SpawnPoint", "x=\"96\" y=\"128\"",
+            property("spawnType", "NPC"), "<point/>")), "actorId");
         invalid("duplicate points", layer("Triggers", "", point("same", "NPC", "") + point("same", "TELEPORT", "")), "Duplicate spawn marker");
         invalid("duplicate areas", layer("Triggers", "", rectangle("same", "SpawnArea", "")
             + rectangle("same", "SpawnArea", "")), "Duplicate spawn marker");
@@ -499,7 +501,9 @@ public final class MapTriggersTest {
 
     private static String point(String name, String type, String attributes) {
         String coords = (attributes.contains("x=") ? "" : "x=\"96\" ") + (attributes.contains("y=") ? "" : "y=\"128\" ");
-        return object(name, "SpawnPoint", coords + attributes, type.isEmpty() ? "" : property("spawnType", type), "<point/>");
+        String properties = type.isEmpty() ? "" : property("spawnType", type);
+        if (type.equals("NPC")) { properties += property("actorId", "basic_npc"); }
+        return object(name, "SpawnPoint", coords + attributes, properties, "<point/>");
     }
 
     private static String teleport(String name, String map, String destination) {

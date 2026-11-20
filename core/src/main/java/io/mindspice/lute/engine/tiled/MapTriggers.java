@@ -24,7 +24,7 @@ public record MapTriggers(List<Sensor> sensors, List<SpawnPoint> points, List<Sp
         public DetectorGeometry { polygons = List.copyOf(polygons); }
     }
     public record Sensor(String name, SensorType type, DetectorGeometry geometry, String targetMap, String targetSpawn) { }
-    public record SpawnPoint(String name, SpawnType type, Vector2 position) { }
+    public record SpawnPoint(String name, SpawnType type, Vector2 position, String actorId) { }
     public record SpawnArea(String name, SpawnType type, Rectangle bounds) { }
 
     public MapTriggers {
@@ -136,7 +136,12 @@ public record MapTriggers(List<Sensor> sensors, List<SpawnPoint> points, List<Sp
                 var position = new Vector2(point.getPoint());
                 finite(object, position.x, "x");
                 finite(object, position.y, "y");
-                points.add(new SpawnPoint(name, enumValue(object, "spawnType", SpawnType.class), position));
+                var spawnType = enumValue(object, "spawnType", SpawnType.class);
+                String actorId = switch (spawnType) {
+                    case NPC, ENEMY -> text(object, "actorId");
+                    default -> null;
+                };
+                points.add(new SpawnPoint(name, spawnType, position, actorId));
             }
             case "SpawnArea" -> areas.add(new SpawnArea(name, enumValue(object, "spawnType", SpawnType.class), bounds(object)));
             default -> throw invalid(object, "unsupported trigger class '" + type + "'");

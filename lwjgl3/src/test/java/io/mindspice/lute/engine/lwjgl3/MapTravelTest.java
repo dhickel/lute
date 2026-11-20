@@ -98,9 +98,13 @@ public final class MapTravelTest extends ApplicationAdapter {
         var oldNpc = actualActors.first();
         var oldEnemy = actualActors.get(1);
         var awareness = GAME.getEngine().getSystem(AwarenessSystem.class);
-        var actorData = GAME.getGameData().actorsData();
-        checkSensor(oldNpc, Actor.Role.NPC, actorData.npc().awarenessRadius());
-        checkSensor(oldEnemy, Actor.Role.ENEMY, actorData.enemy().awarenessRadius());
+        var gameData = GAME.getGameData();
+        var npc = gameData.charactersData().get("basic_npc");
+        var enemy = gameData.enemiesData().get("brainless_undead");
+        checkSensor(oldNpc, Actor.Role.NPC, npc.detectionBounds().radius());
+        checkSensor(oldEnemy, Actor.Role.ENEMY, enemy.detectionBounds().radius());
+        require(Health.MAPPER.get(oldNpc).getMaximum() == npc.maxHealth()
+            && Health.MAPPER.get(oldEnemy).getMaximum() == enemy.maxHealth(), "Map actors use authored health");
         require(Actor.MAPPER.get(player).role() == Actor.Role.PLAYER && body(player).getFixtureList().size == 2,
             "Player is detectable without owning a third fixture");
         var enemyPosition = body(oldEnemy).getPosition().cpy();
@@ -151,8 +155,8 @@ public final class MapTravelTest extends ApplicationAdapter {
                 && Health.MAPPER.get(newEnemy) != oldEnemyHealth && Health.MAPPER.get(newEnemy).getCurrent() == 100f,
                 "Map replacement recreates the enemy body, fixtures and health");
             require(awareness.inRange(oldEnemy, Actor.Role.PLAYER).isEmpty(), "Retired enemy cannot query after travel");
-            checkSensor(newNpc, Actor.Role.NPC, actorData.npc().awarenessRadius());
-            checkSensor(newEnemy, Actor.Role.ENEMY, actorData.enemy().awarenessRadius());
+            checkSensor(newNpc, Actor.Role.NPC, npc.detectionBounds().radius());
+            checkSensor(newEnemy, Actor.Role.ENEMY, enemy.detectionBounds().radius());
             atPoint(player(), actual.targetSpawn());
             System.out.println("MapTravelTest: actual test_tiled/" + actual.targetSpawn() + " rebuilt");
         } else {

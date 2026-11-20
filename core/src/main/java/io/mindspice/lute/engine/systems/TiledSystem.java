@@ -143,8 +143,8 @@ public class TiledSystem extends EntitySystem implements EventEmitter {
             var factory = getEngine().getSystem(EntityFactory.class);
             for (var marker : triggers.points()) {
                 switch (marker.type()) {
-                    case NPC -> next.entities.add(factory.getMapActor(marker.position(), Actor.Role.NPC));
-                    case ENEMY -> next.entities.add(factory.getMapActor(marker.position(), Actor.Role.ENEMY));
+                    case NPC -> next.entities.add(factory.getMapActor(marker.position(), Actor.Role.NPC, marker.actorId()));
+                    case ENEMY -> next.entities.add(factory.getMapActor(marker.position(), Actor.Role.ENEMY, marker.actorId()));
                     default -> { }
                 }
             }

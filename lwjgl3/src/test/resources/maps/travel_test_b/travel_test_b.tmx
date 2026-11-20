@@ -20,7 +20,7 @@
    <properties><property name="spawnType" value="TELEPORT"/></properties>
   </object>
   <object id="7" name="npc" type="SpawnPoint" x="224" y="320">
-   <properties><property name="spawnType" value="NPC"/></properties><point/>
+   <properties><property name="spawnType" value="NPC"/><property name="actorId" value="basic_npc"/></properties><point/>
   </object>
   <object id="8" name="item" type="SpawnPoint" x="256" y="320">
    <properties><property name="spawnType" value="ITEM"/></properties><point/>
