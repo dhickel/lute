@@ -430,23 +430,27 @@ public final class MapTravelTest extends ApplicationAdapter {
             && !body(enemy).getPosition().epsilonEquals(-100, -100, .01f)
             && combat.getAttackId() == 0, "Both actors physically wander without attacking out of range");
         body(enemy).setTransform(-100, -100, 0);
-        body(player).setTransform(-100 + 28f * GameConsts.UNIT_SCALE, -100, 0);
+        body(player).setTransform(-100 + 80f * GameConsts.UNIT_SCALE, -100, 0);
         var originalHealth = Health.MAPPER.get(player);
         var testHealth = new Health(originalHealth.getMaximum());
         player.add(testHealth);
         try {
             screen.render(1f / 60f);
             require(awareness.inRange(enemy, Actor.Role.PLAYER).equals(List.of(player))
-                && Facing.MAPPER.get(enemy).getDirection() == Facing.Direction.RIGHT && combat.isAttacking(),
-                "Live graph faces the player and starts combat in range");
+                && Facing.MAPPER.get(enemy).getDirection() == Facing.Direction.RIGHT && !combat.isAttacking()
+                && body(enemy).getLinearVelocity().x > 0, "Enemy faces and pursues a detected player outside melee range");
+            for (int i = 0; i < 120 && !combat.isAttacking(); i++) { screen.render(1f / 60f); }
+            require(combat.isAttacking(), "Enemy closes the gap and starts the attack without repositioning the player");
             for (int i = 0; i < 5; i++) { screen.render(1f / 60f); }
             require(testHealth.getCurrent() == testHealth.getMaximum() - Loadout.MAPPER.get(enemy).getWeapon().primary().damage()
                 && body(enemy).getLinearVelocity().isZero(), "Enemy deals one weapon hit while standing still");
-            body(player).setTransform(-90, -100, 0);
+            var retreat = body(enemy).getPosition().cpy().add(-2.5f, .5f);
+            body(player).setTransform(retreat, 0);
             for (int i = 0; i < 90 && combat.isAttacking(); i++) { screen.render(1f / 60f); }
             screen.render(1f / 60f);
-            require(!combat.isAttacking() && !body(enemy).getLinearVelocity().isZero(),
-                "Enemy resumes wandering when the player leaves range");
+            require(!combat.isAttacking() && body(enemy).getLinearVelocity().y > 0f
+                && body(enemy).getLinearVelocity().x < 0f && Facing.MAPPER.get(enemy).getDirection() == Facing.Direction.LEFT,
+                "Enemy resumes pursuit and faces the retreating player once the swing finishes");
         } finally {
             player.add(originalHealth);
             body(npc).setTransform(npcPosition, 0);

@@ -42,11 +42,14 @@ public interface Action {
     static Action faceTarget() {
         return (entity, state) -> {
             var offset = state.targetOffset();
-            if (offset == null || offset.isZero()) { return; }
-            var direction = Math.abs(offset.x) > Math.abs(offset.y)
-                ? (offset.x > 0f ? Facing.Direction.RIGHT : Facing.Direction.LEFT)
-                : (offset.y > 0f ? Facing.Direction.UP : Facing.Direction.DOWN);
-            Facing.MAPPER.get(entity).setDirection(direction);
+            if (offset != null) { Facing.MAPPER.get(entity).faceAlong(offset); }
+        };
+    }
+
+    static Action followTarget() {
+        return (entity, state) -> {
+            Move.MAPPER.get(entity).getDirection().set(state.targetOffset());
+            ActorAi.MAPPER.get(entity).resetWander(0f);
         };
     }
 

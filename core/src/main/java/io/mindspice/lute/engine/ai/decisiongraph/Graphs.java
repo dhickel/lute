@@ -34,14 +34,17 @@ public final class Graphs {
 
     private static RootNode wanderingAttacker(Decision seesPlayer) {
         var root = new RootNode();
-        var inRange = DecisionNode.of("Visible player in melee range", List.of(
-            Decision.hasPrimaryMelee(), seesPlayer, Decision.targetWithinPixels(32f)));
+        var visible = DecisionNode.of("Visible player", List.of(seesPlayer));
+        var inRange = DecisionNode.of("Player in melee range", List.of(
+            Decision.hasPrimaryMelee(), Decision.targetWithinPixels(32f)));
         var stopAndFace = Action.stop().andThen(Action.faceTarget());
         var ready = DecisionNode.of("Primary attack ready", List.of(Decision.attackReady(AttackSlot.PRIMARY)));
         ready.addEdgeNode(ActionNode.of("Attack", stopAndFace.andThen(Action.attack(AttackSlot.PRIMARY))));
         inRange.addEdgeNode(ready);
         inRange.addEdgeNode(ActionNode.of("Wait for cooldown", stopAndFace));
-        root.addEdgeNode(inRange);
+        visible.addEdgeNode(inRange);
+        visible.addEdgeNode(ActionNode.of("Follow player", Action.followTarget()));
+        root.addEdgeNode(visible);
         root.addEdgeNode(ActionNode.of("Wander", Action.wander()));
         return root;
     }

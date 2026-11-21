@@ -53,6 +53,7 @@ public final class AwarenessSystemTest {
             "AABB corner does not trigger an attack");
         check(!Move.MAPPER.get(npc).getDirection().isZero() && !Move.MAPPER.get(enemy).getDirection().isZero(),
             "Both graphs wander without a target");
+        checkPursuit(world, engine, enemy, player);
         body(player).setTransform(4, 0, 0);
         check(awareness.inRange(enemy, Actor.Role.PLAYER).equals(List.of(player)), "Boundary is inclusive");
         engine.update(0);
@@ -102,6 +103,37 @@ public final class AwarenessSystemTest {
         world.destroyBody(body(enemy));
         engine.update(0);
         check(awareness.inRange(enemy, Actor.Role.NPC).isEmpty(), "Destroyed owner body can't query");
+    }
+
+    private static void checkPursuit(World world, Engine engine, Entity enemy, Entity player) {
+        var combat = Combat.MAPPER.get(enemy);
+        var direction = Move.MAPPER.get(enemy).getDirection();
+        float scale = GameConsts.UNIT_SCALE;
+        try {
+            // Keep the four-world-unit sensor, but shrink the melee threshold to two world units.
+            GameConsts.UNIT_SCALE = .0625f;
+            body(player).setTransform(3, 1, 0);
+            var wallDef = new BodyDef();
+            wallDef.position.set(1.5f, .5f);
+            var wall = world.createBody(wallDef);
+            box(wall, 0, 0, .25f, false);
+            engine.update(0);
+            check(!combat.hasAttackRequest() && (direction.x == 0 || direction.y == 0),
+                "A player behind a wall doesn't trigger pursuit");
+            world.destroyBody(wall);
+            engine.update(0);
+            check(direction.equals(new Vector2(3, 1)) && !combat.hasAttackRequest(),
+                "Visible player outside melee range triggers pursuit without swinging");
+            body(player).setTransform(-1, 3, 0);
+            engine.update(0);
+            check(direction.equals(new Vector2(-1, 3)), "Pursuit updates to the player's new position");
+            body(player).setTransform(-2, 4, 0);
+            engine.update(0);
+            check((direction.x == 0 || direction.y == 0) && !combat.hasAttackRequest(),
+                "The enemy stops pursuing outside the detection circle");
+        } finally {
+            GameConsts.UNIT_SCALE = scale;
+        }
     }
 
     private static Entity actor(Engine engine, World world, Actor.Role role, float x, float y) {

@@ -5,6 +5,7 @@ import com.badlogic.ashley.core.Family;
 import com.badlogic.ashley.systems.IteratingSystem;
 import com.badlogic.gdx.Gdx;
 import com.badlogic.gdx.math.Vector2;
+import io.mindspice.lute.engine.components.ActorAi;
 import io.mindspice.lute.engine.components.Combat;
 import io.mindspice.lute.engine.components.Facing;
 import io.mindspice.lute.engine.components.Move;
@@ -23,6 +24,10 @@ public class FacingSystem extends IteratingSystem {
         if (moveDir.isZero()) { return; }
 
         Facing facing = Facing.MAPPER.get(entity);
+        if (ActorAi.MAPPER.has(entity)) {
+            facing.faceAlong(moveDir);
+            return;
+        }
         switch(moveDir) {
             case Vector2 v when v.y > 0f -> facing.setDirection(Facing.Direction.UP);
             case Vector2 v when v.y < 0f -> facing.setDirection(Facing.Direction.DOWN);

@@ -16,7 +16,7 @@ Integrating persistent actor modes with the Java Decision Graph and gdx-ai state
 - **Graph selects a persistent mode.** Evaluate graph conditions at defined decision points and transition only when the selected mode changes. The mode owns its lifecycle until a meaningful transition; do not reassert it every tick.
 - **FSM selects a graph for its current mode.** The state's update traverses its graph for immediate actions. The FSM owns explicit mode transitions while the graph makes choices within a mode. Keep timers and other per-actor data on the entity, not shared enum states.
 
-Wandering only needs a per-actor timer. Combat already owns attack timing, cooldown, and damage, and the existing animation FSM reacts to movement and combat. A second machine is not needed for these behaviors.
+Wandering only needs a per-actor timer. Detectable-player pursuit uses the current query result and does not retain a target after detection is lost. Combat already owns attack timing, cooldown, and damage, and the existing animation FSM reacts to movement and combat. A second machine is not needed for these behaviors.
 
 ## Project Relevance
 
@@ -24,4 +24,4 @@ Wandering only needs a per-actor timer. Combat already owns attack timing, coold
 
 ## Open Questions
 
-Would future behaviors such as pursuing or returning home need to persist after the triggering condition disappears? If so, decide which layer owns transitions and add one machine only if its lifecycle callbacks simplify the implementation.
+Would a future behavior such as returning home need to persist after its triggering condition disappears? If so, decide which layer owns transitions and add one machine only if its lifecycle callbacks simplify the implementation.
