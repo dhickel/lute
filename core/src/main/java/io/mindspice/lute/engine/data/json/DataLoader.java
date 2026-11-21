@@ -21,10 +21,9 @@ public class DataLoader {
         var player = parsePlayerData();
         var weapons = parseWeaponData();
         player.loadout().weaponCycle().forEach(weapons::requireWeapon);
-        var characters = parseDefinitions("characters.json", MapActorData.Npc.class);
-        var enemies = parseDefinitions("enemies.json", MapActorData.Enemy.class);
-        characters.values().forEach(npc -> npc.loadout().weaponCycle().forEach(weapons::requireWeapon));
-        for (var definitions : List.of(characters, enemies)) {
+        var actors = parseActorsData();
+        actors.npc().values().forEach(npc -> npc.loadout().weaponCycle().forEach(weapons::requireWeapon));
+        for (var definitions : List.of(actors.npc(), actors.enemies())) {
             for (var actor : definitions.values()) {
                 if (actor.weapon() != null) { weapons.requireWeapon(actor.weapon()); }
             }
@@ -32,16 +31,21 @@ public class DataLoader {
         var path = Gdx.files.internal(GameConsts.DATA_PATH + "objects.json");
         try (var file = path.read()) {
             var objects = parseObjectDefinitions(file);
-            return new GameData(player, weapons, parseProjectileData(), characters, enemies, objects);
+            return new GameData(player, weapons, parseProjectileData(), actors, objects);
         } catch (IOException e) {
             throw new GdxRuntimeException("Failed to read file at path: " + path, e);
         }
     }
 
-    private static <T> Map<String, T> parseDefinitions(String filename, Class<T> type) {
-        var path = Gdx.files.internal(GameConsts.DATA_PATH + filename);
+    private static ActorsData parseActorsData() {
+        var path = Gdx.files.internal(GameConsts.DATA_PATH + "actors.json");
         try (var file = path.read()) {
-            return readDefinitions(file, filename, definitionsReader(type));
+            ActorsData actors = mapper.readerFor(ActorsData.class)
+                .with(DeserializationFeature.FAIL_ON_UNKNOWN_PROPERTIES, DeserializationFeature.FAIL_ON_TRAILING_TOKENS)
+                .with(StreamReadFeature.STRICT_DUPLICATE_DETECTION)
+                .readValue(file);
+            if (actors == null) { throw new IllegalArgumentException("actors.json requires an actor catalogue"); }
+            return actors;
         } catch (IOException e) {
             throw new GdxRuntimeException("Failed to read file at path: " + path, e);
         }

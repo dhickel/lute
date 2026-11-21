@@ -22,6 +22,7 @@ import io.mindspice.lute.engine.assets.CharacterAssets;
 import io.mindspice.lute.engine.assets.ObjectAssets;
 import io.mindspice.lute.engine.data.json.CharacterBounds;
 import io.mindspice.lute.engine.data.json.CollisionData;
+import io.mindspice.lute.engine.components.ActorAi;
 import io.mindspice.lute.engine.data.json.MapActorData;
 import io.mindspice.lute.engine.data.json.WeaponsData;
 import io.mindspice.lute.engine.GameCore;
@@ -92,14 +93,14 @@ public class EntityFactory extends EntitySystem {
         return entity;
     }
 
-    public Entity getMapActor(Vector2 pixelPosition, Actor.Role role, String actorId, Facing.Direction facing) {
+    public Entity getMapActor(Vector2 pixelPosition, Actor.Role role, String spawnKey, Facing.Direction facing) {
         var data = GameCore.INSTANCE.getGameData();
         MapActorData definition = switch (role) {
-            case NPC -> data.charactersData().get(actorId);
-            case ENEMY -> data.enemiesData().get(actorId);
+            case NPC -> data.actorsData().npc().get(spawnKey);
+            case ENEMY -> data.actorsData().enemies().get(spawnKey);
             case PLAYER -> throw new IllegalArgumentException("Expected an NPC or enemy");
         };
-        if (definition == null) { throw new IllegalArgumentException("Unknown " + role + " actorId '" + actorId + "'"); }
+        if (definition == null) { throw new IllegalArgumentException("Unknown " + role + " spawnKey '" + spawnKey + "'"); }
         boolean enemy = role == Actor.Role.ENEMY;
         var atlas = enemy ? CharacterAssets.ENEMIES : CharacterAssets.CHARACTER;
         var settings = definition.animation();
@@ -108,7 +109,7 @@ public class EntityFactory extends EntitySystem {
         var logical = definition.logicalSize();
         var region = animation.getAnimation().getKeyFrame(0f);
         if (logical.width() > region.getRegionWidth() || logical.height() > region.getRegionHeight()) {
-            throw new IllegalArgumentException("Logical character frame must fit its source canvas: " + actorId);
+            throw new IllegalArgumentException("Logical character frame must fit its source canvas: " + spawnKey);
         }
         var transform = characterTransform(pixelPosition, logical.width(), logical.height());
         var base = assetService.get(TextureAtlas.class, atlas.id());
@@ -144,7 +145,11 @@ public class EntityFactory extends EntitySystem {
             .add(new Graphic(region, Color.WHITE.cpy()))
             .add(new CompositeCharacter(region.getRegionWidth(), region.getRegionHeight()));
         entity.add(new Health(definition.maxHealth()));
-        entity.add(createCharacterPhysics(transform.getPosition(), entity, BodyDef.BodyType.StaticBody,
+        entity.add(new ActorAi(definition.decisionGraph()));
+        entity.add(new Move(definition.moveSpeed()));
+        entity.add(new Combat());
+        entity.add(new AnimationPlayer(entity));
+        entity.add(createCharacterPhysics(transform.getPosition(), entity, BodyDef.BodyType.DynamicBody,
             definition.collision(), definition.hitboxBounds(), role, definition.detectionBounds().radius()));
         return entity;
     }
