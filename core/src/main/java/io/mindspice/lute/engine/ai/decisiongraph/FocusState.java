@@ -1,12 +1,15 @@
 package io.mindspice.lute.engine.ai.decisiongraph;
 
-import io.mindspice.lute.engine.components.Facing;
+import com.badlogic.gdx.math.Vector2;
 
 /** Scratch data for one traversal; no target entity is retained. */
 public final class FocusState {
-    private Facing.Direction seenDirection;
+    private final float deltaTime;
+    private Vector2 targetOffset;
 
-    public Facing.Direction getSeenDirection() { return seenDirection; }
+    public FocusState(float deltaTime) { this.deltaTime = deltaTime; }
 
-    public void setSeenDirection(Facing.Direction direction) { seenDirection = direction; }
+    public float deltaTime() { return deltaTime; }
+    public Vector2 targetOffset() { return targetOffset; }
+    public void setTargetOffset(Vector2 targetOffset) { this.targetOffset = targetOffset; }
 }

@@ -96,6 +96,8 @@ public final class CompositeGameTest {
         }
         try (var layers = new LayerCheck()) {
             verifyOptionalArmor(player, layers);
+            // Keep targets at their markers for deterministic weapon and pixel comparisons.
+            engine.getSystem(io.mindspice.lute.engine.systems.AwarenessSystem.class).setProcessing(false);
             verifyMapActors(engine, layers);
             verifyMapActorDamage(player);
             for (String weapon : List.of("basic_sword", "basic_bow", "unarmed")) {
@@ -159,8 +161,8 @@ public final class CompositeGameTest {
             require(center.epsilonEquals(marker.position().cpy().scl(GameConsts.UNIT_SCALE), .0001f)
                 && transform.getSize().epsilonEquals(64 * GameConsts.UNIT_SCALE, 64 * GameConsts.UNIT_SCALE, .0001f),
                 "Actor logical bounds centered on actual map marker");
-            require(!Controller.MAPPER.has(actor) && actor.getComponent(CameraFollow.class) == null && !Combat.MAPPER.has(actor),
-                "Map actor has no player control or attack behavior");
+            require(!Controller.MAPPER.has(actor) && actor.getComponent(CameraFollow.class) == null && Combat.MAPPER.has(actor),
+                "Map actor can use combat without player control or camera ownership");
             verifyActorFixtures(actor, transform, marker.name());
             var loadout = Loadout.MAPPER.get(actor);
             require(loadout.getEquipment().equals(enemy ? new Loadout.Equipment(null, null, null, null)
@@ -168,7 +170,7 @@ public final class CompositeGameTest {
             require(java.util.Objects.equals(loadout.getWeaponId(), enemy ? "basic_sword" : null), "Actor demo weapon default");
             var swordOrNpc = layers.check(actor);
             if (enemy) {
-                require(loadouts().equipWeapon(actor, "basic_bow"), "Enemy can equip bow without Combat");
+                require(loadouts().equipWeapon(actor, "basic_bow"), "Enemy can equip bow while idle");
                 require(layers.check(actor) != swordOrNpc, "Enemy bow and sword produce distinct rendered pixels");
                 require(loadouts().equipWeapon(actor, "basic_sword"), "Restore enemy demo weapon");
             } else {
@@ -201,9 +203,9 @@ public final class CompositeGameTest {
     private static void verifyActorFixtures(Entity actor, Transform transform, String spawn) {
         require(Physic.MAPPER.has(actor), spawn + " has a physics body");
         var body = Physic.MAPPER.get(actor).getBody();
-        require(body.getType() == BodyDef.BodyType.StaticBody && body.getUserData() == actor
+        require(body.getType() == BodyDef.BodyType.DynamicBody && body.getUserData() == actor
             && body.getPosition().epsilonEquals(transform.getPosition(), .0001f),
-            spawn + " is stationary and its body is aligned with the logical frame");
+            spawn + " has a movable body aligned with the logical frame");
         var fixtures = body.getFixtureList();
         require(fixtures.size == 3, spawn + " has solid feet, hurtbox and awareness fixtures");
         Fixture feet = null;

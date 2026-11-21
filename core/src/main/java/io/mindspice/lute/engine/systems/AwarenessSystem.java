@@ -7,40 +7,42 @@ import com.badlogic.gdx.math.Vector2;
 import com.badlogic.gdx.physics.box2d.CircleShape;
 import com.badlogic.gdx.physics.box2d.Fixture;
 import com.badlogic.gdx.physics.box2d.World;
-import io.mindspice.lute.engine.ai.decisiongraph.ActionNode;
-import io.mindspice.lute.engine.ai.decisiongraph.Decision;
-import io.mindspice.lute.engine.ai.decisiongraph.DecisionNode;
+import io.mindspice.lute.engine.ai.decisiongraph.Action;
 import io.mindspice.lute.engine.ai.decisiongraph.FocusState;
+import io.mindspice.lute.engine.ai.decisiongraph.Graphs;
 import io.mindspice.lute.engine.ai.decisiongraph.RootNode;
 import io.mindspice.lute.engine.components.Actor;
-import io.mindspice.lute.engine.components.Facing;
+import io.mindspice.lute.engine.components.ActorAi;
+import io.mindspice.lute.engine.components.Combat;
+import io.mindspice.lute.engine.components.Health;
 import io.mindspice.lute.engine.components.Physic;
 
 import java.util.ArrayList;
 import java.util.List;
+import java.util.Map;
 
 public final class AwarenessSystem extends IteratingSystem {
     static final Object SENSOR_TAG = new Object();
     private static final Family ACTORS = Family.all(Actor.class, Physic.class).get();
     private final World world;
-    private final RootNode enemy = new RootNode();
+    private final Map<String, RootNode> graphs = Graphs.build(this::seesPlayer);
+    private final Action stop = Action.stop();
 
     public AwarenessSystem(World world) {
         super(ACTORS);
         this.world = world;
-        var seesPlayer = DecisionNode.of("Player in sight", List.of(new SeesPlayer()));
-        seesPlayer.addEdgeNode(ActionNode.of("Face player", (actor, state) -> {
-            var direction = state.getSeenDirection();
-            if (direction != null) { Facing.MAPPER.get(actor).setDirection(direction); }
-        }));
-        enemy.addEdgeNode(seesPlayer);
     }
 
     @Override
     protected void processEntity(Entity actor, float deltaTime) {
-        if (Actor.MAPPER.get(actor).role() == Actor.Role.ENEMY) {
-            enemy.travel(actor, new FocusState());
+        var ai = ActorAi.MAPPER.get(actor);
+        if (ai == null) { return; }
+        var state = new FocusState(deltaTime);
+        if (!Health.MAPPER.get(actor).isAlive() || Combat.MAPPER.get(actor).isAttacking()) {
+            stop.perform(actor, state);
+            return;
         }
+        graphs.get(ai.graphKey()).travel(actor, state);
     }
 
     /** Snapshot of matching actors whose physical feet centers lie in the owner's circle, including its edge. */
@@ -99,23 +101,15 @@ public final class AwarenessSystem extends IteratingSystem {
         return !blocked[0];
     }
 
-    private final class SeesPlayer implements Decision {
-        @Override
-        public boolean eval(Entity enemy, FocusState state) {
-            for (var player : inRange(enemy, Actor.Role.PLAYER)) {
-                var from = feet(enemy);
-                var to = feet(player);
-                if (!clearSight(from, to)) { continue; }
-                float dx = to.x - from.x;
-                float dy = to.y - from.y;
-                if (dx != 0f || dy != 0f) {
-                    state.setSeenDirection(Math.abs(dx) > Math.abs(dy)
-                        ? (dx > 0f ? Facing.Direction.RIGHT : Facing.Direction.LEFT)
-                        : (dy > 0f ? Facing.Direction.UP : Facing.Direction.DOWN));
-                }
-                return true;
-            }
-            return false;
+    private boolean seesPlayer(Entity owner, FocusState state) {
+        for (var player : inRange(owner, Actor.Role.PLAYER)) {
+            if (!Health.MAPPER.get(player).isAlive()) { continue; }
+            var from = feet(owner);
+            var to = feet(player);
+            if (!clearSight(from, to)) { continue; }
+            state.setTargetOffset(to.sub(from));
+            return true;
         }
+        return false;
     }
 }

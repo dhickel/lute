@@ -15,92 +15,99 @@ Both `raw_assets/` and `assets/` are local and ignored by Git; their contents ar
 
 `raw_assets/game.settings.json` requires `startupMap`, a map name rather than a path, and `projectPath`, the filename of the root Tiled `.tiled-project` file. The local values are `test_tiled` and `game.tiled-project`, respectively. The asset generator also allows its Tiled project filename to be configured; keep it aligned with `projectPath`.
 
-Authored gameplay JSON follows the same source-to-runtime path: provision `raw_assets/data/player.json`, `characters.json`, `enemies.json`, `weapons.json`, and `projectiles.json`, then generate `assets/data/`. The mandatory `characters.json` and `enemies.json` files replace `actors.json`; each is a top-level map keyed by actor ID. NPC definitions mirror player fields except `name`, with `detection_bounds: { "radius": ... }` in pixels. Enemy definitions use the same actor fields but require a nullable top-level `weapon` instead of a loadout. Animation `atlas_key` selects the actor's sprite prefix. Move speed and sounds are authored, but map actors remain static and do not attack.
+Authored gameplay JSON follows the same source-to-runtime path: provision `raw_assets/data/player.json`, `actors.json`, `weapons.json`, and `projectiles.json`, then generate `assets/data/`. The mandatory `actors.json` has top-level `npc` and `enemies` maps keyed by spawn key; both maps must be present, even if empty. The spawn role selects the map. NPC definitions mirror player fields except `name`; enemies require a nullable top-level `weapon` instead of a loadout. Both require `detection_bounds: { "radius": ... }` in pixels and a `decision_graph` key. Graph keys such as `wander` and `wander_attack` are reusable across definitions. Animation `atlas_key` selects the sprite prefix. Missing or invalid required data fails loading without a fallback.
 
-These examples reproduce the local raw files, which are ignored and not shipped. If needed, copy them into the corresponding files before generating runtime assets:
+This example shows the actor data shape; author it in the ignored raw tree before generating runtime assets:
 
-`raw_assets/data/characters.json`:
+`raw_assets/data/actors.json`:
 
 ```json
 {
-  "basic_npc": {
-    "max_health": 100,
-    "move_speed": 4.0,
-    "logical_size": {
-      "width": 64,
-      "height": 64
-    },
-    "collision_bounds": {
-      "x1": 20,
-      "y1": 4,
-      "x2": 44,
-      "y2": 14
-    },
-    "hitbox_bounds": {
-      "x1": 16,
-      "y1": 6,
-      "x2": 48,
-      "y2": 56
-    },
-    "sounds": {
-      "move": "sword_hit.wav",
-      "damage": "sword_hit.wav"
-    },
-    "animation": {
-      "speed": 1,
-      "atlas_key": "basic_npc",
-      "sound_frame": 0,
-      "frame_interval": 0.12
-    },
-    "detection_bounds": {
-      "radius": 96
-    },
-    "loadout": {
-      "body": "basic",
-      "hands": "basic",
-      "feet": "basic"
+  "npc": {
+    "basic_npc": {
+      "max_health": 100,
+      "move_speed": 4.0,
+      "logical_size": {
+        "width": 64,
+        "height": 64
+      },
+      "hitbox_bounds": {
+        "x1": 16,
+        "y1": 6,
+        "x2": 48,
+        "y2": 56
+      },
+      "sounds": {
+        "move": "sword_hit.wav",
+        "damage": "sword_hit.wav"
+      },
+      "animation": {
+        "speed": 1,
+        "atlas_key": "basic_npc",
+        "sound_frame": 0,
+        "frame_interval": 0.12
+      },
+      "detection_bounds": {
+        "radius": 96
+      },
+      "loadout": {
+        "body": "basic",
+        "hands": "basic",
+        "feet": "basic"
+      },
+      "collision": {
+        "shape": "ELLIPSE",
+        "bounds": {
+          "x1": 20,
+          "y1": 4,
+          "x2": 44,
+          "y2": 14
+        },
+        "rotation": 0
+      },
+      "decision_graph": "wander"
     }
-  }
-}
-```
-
-`raw_assets/data/enemies.json`:
-
-```json
-{
-  "brainless_undead": {
-    "max_health": 100,
-    "move_speed": 4.0,
-    "logical_size": {
-      "width": 64,
-      "height": 64
-    },
-    "collision_bounds": {
-      "x1": 20,
-      "y1": 4,
-      "x2": 44,
-      "y2": 14
-    },
-    "hitbox_bounds": {
-      "x1": 16,
-      "y1": 6,
-      "x2": 48,
-      "y2": 56
-    },
-    "sounds": {
-      "move": "sword_hit.wav",
-      "damage": "sword_hit.wav"
-    },
-    "animation": {
-      "speed": 1,
-      "atlas_key": "brainless_undead",
-      "sound_frame": 0,
-      "frame_interval": 0.12
-    },
-    "detection_bounds": {
-      "radius": 160
-    },
-    "weapon": "basic_sword"
+  },
+  "enemies": {
+    "brainless_undead": {
+      "max_health": 100,
+      "move_speed": 4.0,
+      "logical_size": {
+        "width": 64,
+        "height": 64
+      },
+      "hitbox_bounds": {
+        "x1": 16,
+        "y1": 6,
+        "x2": 48,
+        "y2": 56
+      },
+      "sounds": {
+        "move": "sword_hit.wav",
+        "damage": "sword_hit.wav"
+      },
+      "animation": {
+        "speed": 1,
+        "atlas_key": "brainless_undead",
+        "sound_frame": 0,
+        "frame_interval": 0.12
+      },
+      "detection_bounds": {
+        "radius": 160
+      },
+      "weapon": "basic_sword",
+      "collision": {
+        "shape": "ELLIPSE",
+        "bounds": {
+          "x1": 20,
+          "y1": 4,
+          "x2": 44,
+          "y2": 14
+        },
+        "rotation": 0
+      },
+      "decision_graph": "wander_attack"
+    }
   }
 }
 ```
@@ -179,7 +186,7 @@ Character sprites come from `raw_assets/sprites/`: base frames live in `characte
 
 Tiled `PLAYER`, `NPC`, and `ENEMY` spawn points require a `facing` enum value: `UP`, `DOWN`, `LEFT`, or `RIGHT`. The Tiled class supplies the `DOWN` default; Java does not supply a fallback. The sample NPC faces `LEFT`. A new player uses the player marker's facing, while named travel and in-place travel retain the live player's existing facing. `TELEPORT` and `ITEM` points do not use facing.
 
-The existing `NPC` and `ENEMY` points on `test_tiled` spawn map-owned actors. The NPC starts with basic body, hands, and feet equipment, without a head item or weapon; it can equip compatible head armor. All four armor slots are independently optional for both the player and basic NPC. The player's authored defaults remain the basic set and sword: its loadout object is required, but each slot, including the weapon, may be omitted or null; non-null IDs must not be blank. Equipped frames must still match the actor's base animation. The demo enemy uses its baked body art and starts with a sword and no separate armor; its weapon can be changed through the existing `LoadoutSystem`. Both actors have a stationary solid feet ellipse, a separate sensor hurtbox, and 100 health. Their bounds and health are authored independently of player JSON. They can take damage; NPCs have no reactive behavior, and enemies can face a visible player but do not move or attack. Both have static query-only detection circles centered at their feet, with radii authored in pixels. They have no dialogue, player control, or camera ownership. Named travel rebuilds them with the map. In Tiled, set the required string property `actorId` on `NpcSpawn` to `basic_npc` and on `EnemySpawn` to `brainless_undead`. Provision the raw assets and run the root generation script before launching `./gradlew lwjgl3:run`. Visit the marked NPC and ENEMY locations on `test_tiled` to inspect their appearance and placement, then travel away and back to check that they are rebuilt.
+The existing `NPC` and `ENEMY` points on `test_tiled` spawn map-owned actors. The NPC starts with basic body, hands, and feet equipment, without a head item or weapon; it can equip compatible head armor. All four armor slots are independently optional for both the player and basic NPC. The player's authored defaults remain the basic set and sword: its loadout object is required, but each slot, including the weapon, may be omitted or null; non-null IDs must not be blank. Equipped frames must still match the actor's base animation. The demo enemy uses its baked body art and starts with a sword and no separate armor; its weapon can be changed through the existing `LoadoutSystem`. Both actors have dynamic bodies with a solid feet ellipse, a separate sensor hurtbox, and 100 health. Their bounds and health are authored independently of player JSON. Authored move speed drives movement: both wander, while an enemy stops and faces a living visible player within 32 logical pixels and requests its primary melee attack. Outside that range or when sight is occluded, it wanders; chasing and pathfinding are not required. Existing combat handles attack animation, cooldown, and damage. Both have query-only detection circles centered at their feet, with radii authored in pixels. They have no dialogue, player control, or camera ownership. Named travel rebuilds them with the map. In Tiled, use `spawnKey` on `NpcSpawn` for `basic_npc` and on `EnemySpawn` for `brainless_undead`; when no explicit key is authored, the unchanged legacy `actorId` fallback applies. Provision the raw assets and run the root generation script before launching `./gradlew lwjgl3:run`. Visit the marked NPC and ENEMY locations on `test_tiled` to inspect their appearance and placement, then travel away and back to check that they are rebuilt.
 
 ### Per-map generation
 

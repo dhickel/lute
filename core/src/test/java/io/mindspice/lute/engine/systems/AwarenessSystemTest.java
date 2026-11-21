@@ -6,19 +6,31 @@ import com.badlogic.gdx.math.Vector2;
 import com.badlogic.gdx.physics.box2d.*;
 import com.badlogic.gdx.utils.GdxNativesLoader;
 import io.mindspice.lute.engine.components.Actor;
+import io.mindspice.lute.engine.components.ActorAi;
+import io.mindspice.lute.engine.components.Combat;
+import io.mindspice.lute.engine.components.CombatWeapon;
+import io.mindspice.lute.engine.components.Health;
+import io.mindspice.lute.engine.components.Loadout;
+import io.mindspice.lute.engine.components.Move;
+import io.mindspice.lute.engine.data.json.WeaponsData.WeaponData.CollisionType;
+import io.mindspice.lute.engine.singletons.GameConsts;
 import io.mindspice.lute.engine.components.Facing;
 import io.mindspice.lute.engine.components.Physic;
 
 import java.util.List;
+import java.util.Map;
 
 public final class AwarenessSystemTest {
     public static void main(String[] args) {
         GdxNativesLoader.load();
         Box2D.init();
         var world = new World(Vector2.Zero, true);
+        float originalScale = GameConsts.UNIT_SCALE;
         try {
+            GameConsts.UNIT_SCALE = .125f;
             run(world);
         } finally {
+            GameConsts.UNIT_SCALE = originalScale;
             world.dispose();
         }
         System.out.println("AwarenessSystemTest: passed (native Box2D)");
@@ -36,34 +48,48 @@ public final class AwarenessSystemTest {
         check(awareness.inRange(npc, Actor.Role.ENEMY).equals(List.of(enemy)), "Static enemy is detectable");
         check(awareness.inRange(enemy, Actor.Role.ENEMY).isEmpty(), "Exclude self");
         check(awareness.inRange(player, Actor.Role.NPC).isEmpty(), "Player owns no sensor");
-        engine.update(0);
-        check(facing.getDirection() == Facing.Direction.DOWN, "AABB corner is outside the circle");
+        engine.update(.25f);
+        check(facing.getDirection() == Facing.Direction.DOWN && !Combat.MAPPER.get(enemy).hasAttackRequest(),
+            "AABB corner does not trigger an attack");
+        check(!Move.MAPPER.get(npc).getDirection().isZero() && !Move.MAPPER.get(enemy).getDirection().isZero(),
+            "Both graphs wander without a target");
         body(player).setTransform(4, 0, 0);
         check(awareness.inRange(enemy, Actor.Role.PLAYER).equals(List.of(player)), "Boundary is inclusive");
         engine.update(0);
-        check(facing.getDirection() == Facing.Direction.RIGHT, "Graph sees through other actor bodies");
-        check(Facing.MAPPER.get(npc).getDirection() == Facing.Direction.DOWN, "NPC has no graph behavior");
+        var combat = Combat.MAPPER.get(enemy);
+        check(facing.getDirection() == Facing.Direction.RIGHT && combat.consumeAttackRequest() == Combat.AttackSlot.PRIMARY
+            && Move.MAPPER.get(enemy).getDirection().isZero(), "Enemy stops and attacks at the inclusive limit through other actor bodies");
+        check(!Combat.MAPPER.get(npc).hasAttackRequest(), "Wander-only graph does not attack a nearby player");
         body(player).setTransform(0, 3, 0);
         var scenery = world.createBody(new BodyDef());
         scenery.setUserData(new Entity()); // Tiled tile-object scenery is entity-backed.
         var wall = box(scenery, 0, 1, 1, false);
         engine.update(0);
-        check(facing.getDirection() == Facing.Direction.RIGHT, "Embedded origin is blocked");
+        check(!combat.hasAttackRequest(), "Embedded origin is blocked");
         scenery.setTransform(0, 1, 0);
         engine.update(0);
-        check(facing.getDirection() == Facing.Direction.RIGHT, "Solid scenery blocks ray");
+        check(!combat.hasAttackRequest(), "Solid scenery blocks ray");
         wall.setSensor(true);
         engine.update(0);
-        check(facing.getDirection() == Facing.Direction.UP, "World sensors do not block ray");
+        check(facing.getDirection() == Facing.Direction.UP && combat.consumeAttackRequest() == Combat.AttackSlot.PRIMARY,
+            "World sensors do not block ray");
         wall.setSensor(false);
         scenery.setTransform(0, -1, 0);
         body(player).setTransform(0, -1, 0);
         engine.update(0);
-        check(facing.getDirection() == Facing.Direction.UP, "Embedded target is blocked");
+        check(!combat.hasAttackRequest(), "Embedded target is blocked");
         body(player).setTransform(20, 20, 0);
         body(enemy).setTransform(21, 20, 0);
         engine.update(0);
-        check(facing.getDirection() == Facing.Direction.LEFT, "Moving the body moves the attached circle");
+        check(facing.getDirection() == Facing.Direction.LEFT && combat.consumeAttackRequest() == Combat.AttackSlot.PRIMARY,
+            "Moving the body moves the attached circle");
+        Health.MAPPER.get(player).damage(100f);
+        engine.update(0);
+        check(!combat.hasAttackRequest() && !Move.MAPPER.get(enemy).getDirection().isZero(),
+            "Enemy resumes wandering when the player dies");
+        Health.MAPPER.get(enemy).damage(100f);
+        engine.update(0);
+        check(Move.MAPPER.get(enemy).getDirection().isZero(), "Dead enemy stops wandering");
         engine.removeEntity(player);
         check(awareness.inRange(enemy, Actor.Role.PLAYER).isEmpty(), "Removed entity isn't returned even before body cleanup");
         world.destroyBody(body(player));
@@ -99,7 +125,14 @@ public final class AwarenessSystemTest {
             }
         }
         entity.add(new Actor(role, 0, 0)).add(new Physic(body, def.position.cpy()))
-            .add(new Facing(Facing.Direction.DOWN));
+            .add(new Facing(Facing.Direction.DOWN)).add(new Health(100));
+        if (role != Actor.Role.PLAYER) {
+            var attack = new CombatWeapon.Attack("test", 10, 0, .3f, null, null, null, null, CollisionType.MELEE);
+            var weapon = new CombatWeapon.Weapon("test", "", attack, attack);
+            entity.add(new ActorAi(role == Actor.Role.ENEMY ? "wander_attack" : "wander"))
+                .add(new Combat()).add(new Move(1f))
+                .add(new Loadout(new Loadout.Equipment(null, null, null, null), "test", Map.of("test", weapon), _ -> { }));
+        }
         engine.addEntity(entity);
         return entity;
     }
