@@ -165,3 +165,12 @@
 - **Affected specifications:** This decision establishes the asset identity, loading, and ownership contract; `docs/asset-service.md` describes usage and migration.
 - **Source:** User-directed replacement of AssetManager-backed asset handling; `.internal-dev/reviews/asset-storage-benchmark-comparison.md`.
 - **Review timing:** Revisit if asset identity, loading, or ownership contracts change, or relevant measurement evidence changes.
+
+## Generated terrain tilesheet extrusion
+
+- **Decision:** Keep terrain authoring in `raw_assets/` unchanged. `generate-runtime-assets.sh` extrudes a one-pixel repeated RGBA border per tile into generated PNGs for grid-based, single-image terrain tilesets in external TSX and inline TMX definitions. Generated metadata uses margin 1 and spacing 2 and reflects the generated image reference and dimensions and actual grid columns and tilecount. Missing source margin or spacing means zero; valid nondefault source values are read as authored. Actual source image dimensions determine the grid; invalid geometry and conflicting explicit columns fail generation, while stale tilecount is normalized. Never write raw assets.
+- **Preservation and ownership:** Preserve tile order and IDs, authored properties, animation, and collision. Image collections and image-layer images remain unchanged. Generated files follow existing ownership and transaction rules.
+- **Justification and tradeoff:** Generated padding reduces texture bleed without requiring manually padded source art, runtime loader changes, new settings, or per-frame work. It does not resolve every cause of tile seams.
+- **Affected specifications:** This decision establishes the terrain extrusion contract; `README.md` and `docs/asset-service.md` describe authoring and generation.
+- **Source:** User-directed automated terrain tilesheet extrusion contract.
+- **Review timing:** Revisit if terrain authoring, generation, or runtime sampling requirements change.

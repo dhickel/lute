@@ -5,16 +5,25 @@ import com.badlogic.gdx.graphics.g2d.TextureAtlas.TextureAtlasData;
 import com.badlogic.gdx.tools.texturepacker.TexturePacker;
 import com.badlogic.gdx.utils.Json;
 import com.badlogic.gdx.utils.JsonReader;
-import com.badlogic.gdx.utils.XmlReader;
-import com.badlogic.gdx.utils.XmlReader.Element;
+import org.w3c.dom.Document;
+import org.w3c.dom.Element;
+import org.xml.sax.SAXException;
 
 import javax.imageio.ImageIO;
+import javax.xml.XMLConstants;
+import javax.xml.parsers.DocumentBuilderFactory;
+import javax.xml.parsers.ParserConfigurationException;
+import javax.xml.transform.TransformerException;
+import javax.xml.transform.TransformerFactory;
+import javax.xml.transform.dom.DOMSource;
+import javax.xml.transform.stream.StreamResult;
 import java.io.IOException;
 import java.nio.file.Files;
 import java.nio.file.Path;
 import java.nio.file.StandardCopyOption;
 import java.security.MessageDigest;
 import java.security.NoSuchAlgorithmException;
+import java.util.ArrayList;
 import java.util.Comparator;
 import java.util.HashSet;
 import java.util.HexFormat;
@@ -78,10 +87,11 @@ public final class TexturePackerTool {
                 throw new IllegalArgumentException("Runtime generation requires the maps/, atlases/, data/, audio/ layout");
             }
             int maps = 0;
+            var extrusion = new TilesheetExtrusion(raw, stage);
             try (var directories = Files.list(raw.resolve("maps"))) {
                 for (Path directory : directories.filter(Files::isDirectory).sorted().toList()) {
                     if (!Files.isDirectory(directory.resolve("objects"))) { continue; }
-                    generateMap(raw, directory, stage);
+                    generateMap(raw, directory, stage, extrusion);
                     maps++;
                 }
             }
@@ -196,7 +206,7 @@ public final class TexturePackerTool {
         }
     }
 
-    private static void generateMap(Path raw, Path directory, Path stage) throws IOException {
+    private static void generateMap(Path raw, Path directory, Path stage, TilesheetExtrusion extrusion) throws IOException {
         String name = directory.getFileName().toString();
         Path objects = directory.resolve("objects");
         Path map = directory.resolve(name + ".tmx");
@@ -222,36 +232,76 @@ public final class TexturePackerTool {
         }
         var atlas = packAtlas(objects, stage, name, packSettings);
         Path runtimeMap = stage.resolve("maps").resolve(name);
-        var xml = new XmlReader();
-        Element root = xml.parse(new FileHandle(map.toFile()));
-        copy(map, runtimeMap.resolve(name + ".tmx"));
+        Document document = readTiledXml(map);
+        Element root = document.getDocumentElement();
         copy(manifest, runtimeMap.resolve(name + ".manifest.json"));
-        for (Element tileset : root.getChildrenByName("tileset")) {
-            String source = tileset.getAttribute("source", null);
-            Path definition = source == null ? map : mapDependency(raw, directory, map.getParent().resolve(source));
-            Element element = source == null ? tileset : xml.parse(new FileHandle(definition.toFile()));
-            if (source != null) { copy(definition, stage.resolve(raw.relativize(definition))); }
-            Element sheet = element.getChildByName("image");
-            if (sheet != null) {
-                copyImage(raw, directory, stage, definition, sheet);
+        boolean rewriteMap = false;
+        for (Element tileset : children(root, "tileset")) {
+            boolean external = tileset.hasAttribute("source");
+            Path definition = external ? mapDependency(raw, directory, map.getParent().resolve(tileset.getAttribute("source"))) : map;
+            Element element = external ? readTiledXml(definition).getDocumentElement() : tileset;
+            List<Element> sheets = children(element, "image");
+            if (!sheets.isEmpty()) {
+                Element image = sheets.getFirst();
+                Path sheet = mapDependency(raw, directory, definition.getParent().resolve(image.getAttribute("source")));
+                extrusion.apply(definition, element, image, sheet);
+                if (external) { writeTiledXml(element.getOwnerDocument(), stage.resolve(raw.relativize(definition))); }
+                else { rewriteMap = true; }
             } else {
-                for (Element tile : element.getChildrenByName("tile")) {
-                    Element image = tile.getChildByName("image");
-                    if (image == null) { continue; }
-                    Path input = inside(objects, definition.getParent().resolve(image.getAttribute("source")));
-                    if (!Files.isRegularFile(input)) { throw new IOException("Missing object input image: " + input); }
-                    String relative = objects.relativize(input).toString().replace('\\', '/');
-                    // Loader resolves keys relative to the collection TSX, which lives at the objects root.
-                    if (!definition.getParent().equals(objects)) {
-                        throw new IllegalArgumentException("Image collection TSX must live directly in " + objects);
+                for (Element tile : children(element, "tile")) {
+                    for (Element image : children(tile, "image")) {
+                        Path input = inside(objects, definition.getParent().resolve(image.getAttribute("source")));
+                        if (!Files.isRegularFile(input)) { throw new IOException("Missing object input image: " + input); }
+                        String relative = objects.relativize(input).toString().replace('\\', '/');
+                        // Loader resolves keys relative to the collection TSX, which lives at the objects root.
+                        if (!definition.getParent().equals(objects)) {
+                            throw new IllegalArgumentException("Image collection TSX must live directly in " + objects);
+                        }
+                        requireRegion(atlas, relative, Integer.parseInt(image.getAttribute("width")),
+                            Integer.parseInt(image.getAttribute("height")));
                     }
-                    requireRegion(atlas, relative, image);
                 }
+                if (external) { copy(definition, stage.resolve(raw.relativize(definition))); }
             }
         }
-        for (Element layer : root.getChildrenByNameRecursively("imagelayer")) {
-            Element image = layer.getChildByName("image");
-            if (image != null) { copyImage(raw, directory, stage, map, image); }
+        var layers = root.getElementsByTagName("imagelayer");
+        for (int i = 0; i < layers.getLength(); i++) {
+            for (Element image : children((Element) layers.item(i), "image")) {
+                Path source = mapDependency(raw, directory, map.getParent().resolve(image.getAttribute("source")));
+                copy(source, stage.resolve(raw.relativize(source)));
+            }
+        }
+        Path output = runtimeMap.resolve(name + ".tmx");
+        if (rewriteMap) { writeTiledXml(document, output); }
+        else { copy(map, output); }
+    }
+
+    private static List<Element> children(Element parent, String name) {
+        List<Element> elements = new ArrayList<>();
+        for (var node = parent.getFirstChild(); node != null; node = node.getNextSibling()) {
+            if (node instanceof Element element && element.getTagName().equals(name)) { elements.add(element); }
+        }
+        return elements;
+    }
+
+    private static Document readTiledXml(Path file) throws IOException {
+        try {
+            var factory = DocumentBuilderFactory.newInstance();
+            factory.setFeature("http://apache.org/xml/features/disallow-doctype-decl", true);
+            return factory.newDocumentBuilder().parse(file.toFile());
+        } catch (ParserConfigurationException | SAXException failure) {
+            throw new IOException("Cannot parse Tiled XML: " + file, failure);
+        }
+    }
+
+    private static void writeTiledXml(Document document, Path file) throws IOException {
+        Files.createDirectories(file.getParent());
+        try {
+            var factory = TransformerFactory.newInstance();
+            factory.setFeature(XMLConstants.FEATURE_SECURE_PROCESSING, true);
+            factory.newTransformer().transform(new DOMSource(document), new StreamResult(file.toFile()));
+        } catch (TransformerException failure) {
+            throw new IOException("Cannot write Tiled XML: " + file, failure);
         }
     }
 
@@ -384,10 +434,6 @@ public final class TexturePackerTool {
         }
     }
 
-    private static void requireRegion(TextureAtlasData atlas, String source, Element image) {
-        requireRegion(atlas, source, image.getIntAttribute("width"), image.getIntAttribute("height"));
-    }
-
     private static void requireRegion(TextureAtlasData atlas, String source, int width, int height) {
         int extension = source.lastIndexOf('.');
         if (extension < 0) { throw new IllegalArgumentException("Object image lacks extension: " + source); }
@@ -407,11 +453,6 @@ public final class TexturePackerTool {
             return;
         }
         throw new IllegalArgumentException("Missing packed region for " + source);
-    }
-
-    private static void copyImage(Path raw, Path mapDirectory, Path stage, Path definition, Element image) throws IOException {
-        Path source = mapDependency(raw, mapDirectory, definition.getParent().resolve(image.getAttribute("source")));
-        copy(source, stage.resolve(raw.relativize(source)));
     }
 
     private static Path mapDependency(Path raw, Path mapDirectory, Path candidate) {

@@ -2,6 +2,8 @@ package io.mindspice.lute.engine.util;
 
 import com.badlogic.gdx.files.FileHandle;
 import com.badlogic.gdx.graphics.g2d.TextureAtlas.TextureAtlasData;
+import com.badlogic.gdx.utils.XmlReader;
+import com.badlogic.gdx.utils.XmlReader.Element;
 
 import javax.imageio.ImageIO;
 import java.awt.image.BufferedImage;
@@ -44,7 +46,8 @@ public final class TexturePackerToolTest {
                 check(hasRegion(atlas, "house", -1), "Static region name must remain stable");
                 check(hasRegion(atlas, "tree/tree", 0), "Nested indexed region names must remain stable");
                 check(Files.exists(output.resolve("maps/" + name + "/objects/objects.tsx")), "Retain TSX definitions");
-                check(Files.exists(output.resolve("tilesets/shared/terrain.png")), "Retain shared terrain image");
+                check(Files.exists(output.resolve("tilesets/shared/terrain.png.tiles-8x8-m0-s0.png")), "Share extruded terrain image");
+                check(!Files.exists(output.resolve("tilesets/shared/terrain.png")), "Do not publish unused unpadded terrain image");
                 check(Files.exists(output.resolve("tilesets/shared/terrain.tsx")), "Retain shared terrain definition");
                 check(Files.exists(output.resolve("maps/" + name + "/" + name + ".manifest.json")), "Manifest remains with map");
                 check(!Files.exists(output.resolve("maps/" + name + "/objects/house.png")), "Never publish object source PNGs");
@@ -95,6 +98,7 @@ public final class TexturePackerToolTest {
                 check(paths.noneMatch(path -> path.getFileName().toString().startsWith(".runtime-assets-")),
                     "Temporary output must be cleaned after success and failure");
             }
+            terrainExtrusion(directory.resolve("terrain-extrusion"));
             ownershipAndStaleOutputs(directory.resolve("ownership"));
             atlasCollisions(directory.resolve("collisions"));
             publicationRollback(directory.resolve("publication"));
@@ -108,6 +112,94 @@ public final class TexturePackerToolTest {
                 for (Path path : paths.sorted(Comparator.reverseOrder()).toList()) { Files.delete(path); }
             }
         }
+    }
+
+    private static void terrainExtrusion(Path directory) throws IOException {
+        Path raw = directory.resolve("raw_assets");
+        Path output = directory.resolve("assets");
+        createInputs(raw);
+        createMap(raw, "alpha");
+        Path shared = raw.resolve("tilesets/shared");
+        var source = new BufferedImage(7, 7, BufferedImage.TYPE_INT_ARGB);
+        for (int y = 0; y < 7; y++) {
+            for (int x = 0; x < 7; x++) { source.setRGB(x, y, 0x80000000 | x << 16 | y << 8 | 0x44); }
+        }
+        ImageIO.write(source, "png", shared.resolve("terrain.png").toFile());
+        Path tsx = shared.resolve("terrain.tsx");
+        String external = """
+            <tileset name="terrain" tilewidth="2" tileheight="2" columns="2" tilecount="99" margin="1" spacing="1">
+              <image source="terrain.png" width="7" height="7"/>
+              <tile id="2"><animation><frame tileid="3" duration="90"/></animation></tile>
+            </tileset>
+            """;
+        Files.writeString(tsx, external);
+        Path map = raw.resolve("maps/alpha/alpha.tmx");
+        String authoredMap = """
+            <map><tileset firstgid="1" source="objects/objects.tsx"/>
+              <tileset firstgid="3" source="../../tilesets/shared/terrain.tsx"/>
+              <tileset firstgid="7" name="inline" tilewidth="7" tileheight="7">
+                <image source="../../tilesets/shared/terrain.png"/>
+              </tileset>
+              <group><imagelayer><image source="../../tilesets/shared/terrain.png"/></imagelayer></group>
+              <layer><data encoding="csv">3,7,6</data></layer>
+            </map>
+            """;
+        Files.writeString(map, authoredMap);
+        var authoredSheet = snapshot(shared);
+        TexturePackerTool.generate(raw, output);
+        Path generatedTsx = output.resolve(raw.relativize(tsx));
+        Path generatedTmx = output.resolve(raw.relativize(map));
+        var xml = new XmlReader();
+        var terrain = xml.parse(new FileHandle(generatedTsx.toFile()));
+        var padded = checkExtrudedSheet(generatedTsx, terrain, 2, 2, 8, 8);
+        for (int y = 0; y < 8; y++) {
+            for (int x = 0; x < 8; x++) {
+                int sourceX = 1 + 3 * (x / 4) + Math.clamp(x % 4 - 1, 0, 1);
+                int sourceY = 1 + 3 * (y / 4) + Math.clamp(y % 4 - 1, 0, 1);
+                check(padded.getRGB(x, y) == source.getRGB(sourceX, sourceY), "Preserve tile pixels and extrude RGBA edges/corners");
+            }
+        }
+        var tile = terrain.getChildByName("tile");
+        check(tile.getIntAttribute("id") == 2 && tile.getChildByName("animation").getChildByName("frame").getIntAttribute("tileid") == 3,
+            "Retain tile and animation IDs");
+        var generatedMap = xml.parse(new FileHandle(generatedTmx.toFile()));
+        var inline = generatedMap.getChildrenByName("tileset").get(2);
+        var inlineImage = checkExtrudedSheet(generatedTmx, inline, 1, 1, 9, 9);
+        check(inline.getIntAttribute("firstgid") == 7 && inlineImage.getRGB(8, 8) == source.getRGB(6, 6),
+            "Retain inline firstgid and use the separate layout for the same source image");
+        check(generatedMap.getChildByName("layer").getChildByName("data").getText().equals("3,7,6"), "Retain map tile data");
+        check(Files.mismatch(shared.resolve("terrain.png"), output.resolve("tilesets/shared/terrain.png")) == -1,
+            "Keep the original image unchanged when used by an image layer");
+        check(snapshot(shared).equals(authoredSheet) && Files.readString(map).equals(authoredMap), "Do not modify authored tilesets or maps");
+        var published = snapshot(output);
+        TexturePackerTool.generate(raw, output);
+        check(snapshot(output).equals(published), "Regeneration must not accumulate padding");
+        Files.writeString(tsx, external.replace("columns=\"2\"", "columns=\"3\""));
+        rejects(() -> TexturePackerTool.generate(raw, output));
+        Files.writeString(tsx, external.replace("margin=\"1\"", "margin=\"9\""));
+        rejects(() -> TexturePackerTool.generate(raw, output));
+        check(snapshot(output).equals(published), "Invalid authored grid must not replace previously generated assets");
+    }
+
+    private static BufferedImage checkExtrudedSheet(Path definition, Element tileset, int columns, int rows,
+            int width, int height) throws IOException {
+        int margin = tileset.getIntAttribute("margin");
+        int spacing = tileset.getIntAttribute("spacing");
+        check(margin == 1 && spacing == 2, "Generated Tiled layout must describe the one-pixel borders");
+        check(tileset.getIntAttribute("columns") == columns && tileset.getIntAttribute("tilecount") == columns * rows,
+            "Normalize column and tile count metadata to the actual grid");
+        var image = tileset.getChildByName("image");
+        var padded = ImageIO.read(definition.resolveSibling(image.getAttribute("source")).toFile());
+        check(image.getIntAttribute("width") == width && padded.getWidth() == width
+            && image.getIntAttribute("height") == height && padded.getHeight() == height,
+            "Image dimensions and relative path must match the generated PNG");
+        int tileWidth = tileset.getIntAttribute("tilewidth");
+        int tileHeight = tileset.getIntAttribute("tileheight");
+        // Match libGDX's sheet loop, which stops at the image edge rather than using tilecount.
+        check(1 + (width - tileWidth - margin) / (tileWidth + spacing) == columns
+            && 1 + (height - tileHeight - margin) / (tileHeight + spacing) == rows,
+            "Generated metadata must enumerate the same grid in libGDX");
+        return padded;
     }
 
     private static void singleFrameArrows(Path directory) throws IOException {
@@ -583,7 +675,9 @@ public final class TexturePackerToolTest {
         Path shared = raw.resolve("tilesets/shared");
         Files.createDirectories(shared);
         ImageIO.write(image, "png", shared.resolve("terrain.png").toFile());
-        Files.writeString(shared.resolve("terrain.tsx"), "<tileset name=\"terrain\"><image source=\"terrain.png\"/></tileset>");
+        Files.writeString(shared.resolve("terrain.tsx"), """
+            <tileset name="terrain" tilewidth="8" tileheight="8"><image source="terrain.png"/></tileset>
+            """);
         Files.writeString(map.resolve("objects/pack.json"), """
             {"rotation":false, "stripWhitespaceX":false, "stripWhitespaceY":false,
              "flattenPaths":false, "combineSubdirectories":true, "useIndexes":true, "alias":false}
