@@ -8,7 +8,6 @@ import io.mindspice.lute.engine.components.Move;
 
 import java.util.List;
 import java.util.Objects;
-import java.util.concurrent.ThreadLocalRandom;
 
 
 @FunctionalInterface
@@ -17,26 +16,12 @@ public interface Action {
     void perform(Entity entity, FocusState state);
 
     static Action stop() {
-        return (entity, _) -> {
-            Move.MAPPER.get(entity).getDirection().setZero();
-            ActorAi.MAPPER.get(entity).resetWander(0f);
-        };
+        return (entity, _) -> Move.MAPPER.get(entity).getDirection().setZero();
     }
 
     static Action wander() {
-        return (entity, state) -> {
-            var ai = ActorAi.MAPPER.get(entity);
-            if (!ai.advanceWander(state.deltaTime())) { return; }
-            var random = ThreadLocalRandom.current();
-            var direction = Move.MAPPER.get(entity).getDirection();
-            switch (random.nextInt(4)) {
-                case 0 -> direction.set(1, 0);
-                case 1 -> direction.set(-1, 0);
-                case 2 -> direction.set(0, 1);
-                case 3 -> direction.set(0, -1);
-            }
-            ai.resetWander(random.nextFloat(.35f, .8f));
-        };
+        return (entity, state) -> ActorAi.MAPPER.get(entity)
+            .steerWander(Move.MAPPER.get(entity).getDirection(), state.deltaTime());
     }
 
     static Action faceTarget() {
@@ -47,10 +32,7 @@ public interface Action {
     }
 
     static Action followTarget() {
-        return (entity, state) -> {
-            Move.MAPPER.get(entity).getDirection().set(state.targetOffset());
-            ActorAi.MAPPER.get(entity).resetWander(0f);
-        };
+        return (entity, state) -> Move.MAPPER.get(entity).getDirection().set(state.targetOffset());
     }
 
     static Action flee() {
@@ -58,7 +40,6 @@ public interface Action {
             var offset = state.targetOffset();
             if (offset == null || offset.isZero()) { return; }
             Move.MAPPER.get(entity).getDirection().set(offset).scl(-1f);
-            ActorAi.MAPPER.get(entity).resetWander(0f);
         };
     }
 

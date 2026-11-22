@@ -424,8 +424,12 @@ public final class MapTravelTest extends ApplicationAdapter {
         // Use empty space to verify actor steering and weapon damage independent of fixture placement on the demo map.
         body(npc).setTransform(-110, -100, 0);
         body(enemy).setTransform(-100, -100, 0);
-        body(player).setTransform(-90, -100, 0);
-        for (int i = 0; i < 24; i++) { screen.render(1f / 60f); }
+        body(player).setTransform(-70, -100, 0);
+        // Both actors start with a random pause of up to 1.2 seconds.
+        for (int i = 0; i < 90 && (body(npc).getPosition().epsilonEquals(-110, -100, .01f)
+            || body(enemy).getPosition().epsilonEquals(-100, -100, .01f)); i++) {
+            screen.render(1f / 60f);
+        }
         require(!body(npc).getPosition().epsilonEquals(-110, -100, .01f)
             && !body(enemy).getPosition().epsilonEquals(-100, -100, .01f)
             && combat.getAttackId() == 0, "Both actors physically wander without attacking out of range");

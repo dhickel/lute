@@ -29,6 +29,8 @@ public final class AwarenessSystemTest {
         float originalScale = GameConsts.UNIT_SCALE;
         try {
             GameConsts.UNIT_SCALE = .125f;
+            checkWandering(world, Actor.Role.NPC);
+            checkWandering(world, Actor.Role.ENEMY);
             run(world);
         } finally {
             GameConsts.UNIT_SCALE = originalScale;
@@ -49,9 +51,13 @@ public final class AwarenessSystemTest {
         check(awareness.inRange(npc, Actor.Role.ENEMY).equals(List.of(enemy)), "Static enemy is detectable");
         check(awareness.inRange(enemy, Actor.Role.ENEMY).isEmpty(), "Exclude self");
         check(awareness.inRange(player, Actor.Role.NPC).isEmpty(), "Player owns no sensor");
+        engine.update(0f);
         engine.update(.25f);
         check(facing.getDirection() == Facing.Direction.DOWN && !Combat.MAPPER.get(enemy).hasAttackRequest(),
             "AABB corner does not trigger an attack");
+        check(Move.MAPPER.get(npc).getDirection().isZero() && Move.MAPPER.get(enemy).getDirection().isZero(),
+            "Both graphs begin with a pause");
+        engine.update(1f);
         check(!Move.MAPPER.get(npc).getDirection().isZero() && !Move.MAPPER.get(enemy).getDirection().isZero(),
             "Both graphs wander without a target");
         checkPursuit(world, engine, enemy, player);
@@ -107,6 +113,43 @@ public final class AwarenessSystemTest {
         check(awareness.inRange(enemy, Actor.Role.NPC).isEmpty(), "Destroyed owner body can't query");
     }
 
+    private static void checkWandering(World world, Actor.Role role) {
+        var engine = new Engine();
+        engine.addSystem(new AwarenessSystem(world));
+        engine.addSystem(new FacingSystem());
+        var actor = actor(engine, world, role, 0, 0);
+        var direction = Move.MAPPER.get(actor).getDirection();
+        var facing = Facing.MAPPER.get(actor);
+        float step = .0625f;
+        engine.update(0f);
+        check(direction.isZero(), "Wandering starts with a pause");
+        for (int leg = 0; leg < 3; leg++) {
+            var idleFacing = facing.getDirection();
+            float waited = 0f;
+            while (direction.isZero() && waited < 1.2f) {
+                engine.update(step);
+                waited += step;
+                check(!direction.isZero() || facing.getDirection() == idleFacing, "Pausing retains facing");
+            }
+            check(!direction.isZero() && waited >= .35f && waited < 1.2f + step, "Pause is bounded");
+
+            var initialHeading = direction.cpy();
+            var previousHeading = direction.cpy();
+            float walked = 0f;
+            while (!direction.isZero() && walked < 2f) {
+                check(direction.isUnit(.001f), "Walk direction has unit length");
+                check(initialHeading.dot(direction) >= .865f, "Total turn is bounded to about 30 degrees");
+                check(previousHeading.dot(direction) >= .9986f, "Heading changes by at most 3 degrees per test step");
+                previousHeading.set(direction);
+                engine.update(step);
+                walked += step;
+            }
+            check(direction.isZero() && walked >= 1f, "Walk is bounded and followed by another pause");
+        }
+        engine.removeEntity(actor);
+        world.destroyBody(body(actor));
+    }
+
     private static void checkPursuit(World world, Engine engine, Entity enemy, Entity player) {
         var combat = Combat.MAPPER.get(enemy);
         var direction = Move.MAPPER.get(enemy).getDirection();
@@ -146,7 +189,8 @@ public final class AwarenessSystemTest {
             engine.update(1.75f);
             check(ai.mode() == Mode.INVESTIGATE, "Investigation survives a brief loss of sight");
             engine.update(.25f);
-            check(ai.mode() == Mode.WANDER, "Investigation times out when terrain prevents arrival");
+            check(ai.mode() == Mode.WANDER && direction.isZero(),
+                "Investigation timeout starts a fresh pause rather than retaining the pursuit direction");
             world.destroyBody(wall);
 
             body(player).setTransform(-1, 3, 0);
@@ -163,7 +207,7 @@ public final class AwarenessSystemTest {
             body(player).setTransform(20, 20, 0);
             body(enemy).setTransform(2.5f, 1, 0);
             engine.update(0);
-            check(ai.mode() == Mode.WANDER && !combat.hasAttackRequest(),
+            check(ai.mode() == Mode.WANDER && direction.isZero() && !combat.hasAttackRequest(),
                 "Arriving within eight pixels ends the investigation without a melee request");
             body(enemy).setTransform(0, 0, 0);
         } finally {
