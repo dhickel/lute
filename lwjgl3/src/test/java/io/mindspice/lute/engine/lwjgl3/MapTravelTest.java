@@ -35,6 +35,7 @@ import io.mindspice.lute.engine.screen.GameScreen;
 import io.mindspice.lute.engine.screen.ScreenManager;
 import io.mindspice.lute.engine.singletons.GameConsts;
 import io.mindspice.lute.engine.systems.AwarenessSystem;
+import io.mindspice.lute.engine.components.ActorAi;
 import io.mindspice.lute.engine.systems.CombatSystem;
 import io.mindspice.lute.engine.systems.EventSystem;
 import io.mindspice.lute.engine.systems.EntityFactory;
@@ -88,8 +89,8 @@ public final class MapTravelTest extends ApplicationAdapter {
     private static void checkSensor(Entity entity, Actor.Role role, float pixels) {
         var actor = Actor.MAPPER.get(entity);
         var body = body(entity);
-        require(actor.role() == role && body.getType() == BodyDef.BodyType.StaticBody,
-            "Map actor has its authored role and remains static");
+        require(actor.role() == role && body.getType() == BodyDef.BodyType.DynamicBody,
+            "Map actor has its authored role and a dynamic body");
         for (var fixture : body.getFixtureList()) {
             if (fixture.isSensor() && fixture.getShape() instanceof CircleShape circle) {
                 require(fixture.getFilterData().maskBits == 0 && circle.getRadius() == pixels * GameConsts.UNIT_SCALE
@@ -125,25 +126,17 @@ public final class MapTravelTest extends ApplicationAdapter {
             "Player inherits the Tiled facing and the NPC override initializes both facing and animation");
         var awareness = GAME.getEngine().getSystem(AwarenessSystem.class);
         var gameData = GAME.getGameData();
-        var npc = gameData.charactersData().get("basic_npc");
-        var enemy = gameData.enemiesData().get("brainless_undead");
+        var npc = gameData.actorsData().npc().get("basic_npc");
+        var enemy = gameData.actorsData().enemies().get("brainless_undead");
         checkSensor(oldNpc, Actor.Role.NPC, npc.detectionBounds().radius());
         checkSensor(oldEnemy, Actor.Role.ENEMY, enemy.detectionBounds().radius());
         require(Health.MAPPER.get(oldNpc).getMaximum() == npc.maxHealth()
             && Health.MAPPER.get(oldEnemy).getMaximum() == enemy.maxHealth(), "Map actors use authored health");
         require(Actor.MAPPER.get(player).role() == Actor.Role.PLAYER && body(player).getFixtureList().size == 2,
             "Player is detectable without owning a third fixture");
-        var enemyPosition = body(oldEnemy).getPosition().cpy();
-        var playerPosition = body(player).getPosition().cpy();
-        body(oldEnemy).setTransform(-100, -100, 0);
-        body(player).setTransform(-99, -100, 0);
-        screen.render(0);
-        require(awareness.inRange(oldEnemy, Actor.Role.PLAYER).equals(List.of(player))
-            && Facing.MAPPER.get(oldEnemy).getDirection() == Facing.Direction.RIGHT
-            && Animation2D.MAPPER.get(oldEnemy).getFdirection() == Facing.Direction.RIGHT,
-            "Live graph uses physical positions and updates idle animation before rendering");
-        body(oldEnemy).setTransform(enemyPosition, 0);
-        body(player).setTransform(playerPosition, 0);
+        require(ActorAi.MAPPER.get(oldNpc).graphKey().equals(npc.decisionGraph())
+            && ActorAi.MAPPER.get(oldEnemy).graphKey().equals(enemy.decisionGraph()), "Spawned actors use their authored graph keys");
+        verifyActorAi(oldNpc, oldEnemy, player, awareness);
         var oldNpcBody = body(oldNpc);
         var oldEnemyBody = body(oldEnemy);
         var oldNpcHealth = Health.MAPPER.get(oldNpc);
@@ -423,10 +416,53 @@ public final class MapTravelTest extends ApplicationAdapter {
         } finally { white.dispose(); }
     }
 
+    private void verifyActorAi(Entity npc, Entity enemy, Entity player, AwarenessSystem awareness) {
+        var npcPosition = body(npc).getPosition().cpy();
+        var enemyPosition = body(enemy).getPosition().cpy();
+        var playerPosition = body(player).getPosition().cpy();
+        var combat = Combat.MAPPER.get(enemy);
+        // Use empty space to verify actor steering and weapon damage independent of fixture placement on the demo map.
+        body(npc).setTransform(-110, -100, 0);
+        body(enemy).setTransform(-100, -100, 0);
+        body(player).setTransform(-90, -100, 0);
+        for (int i = 0; i < 24; i++) { screen.render(1f / 60f); }
+        require(!body(npc).getPosition().epsilonEquals(-110, -100, .01f)
+            && !body(enemy).getPosition().epsilonEquals(-100, -100, .01f)
+            && combat.getAttackId() == 0, "Both actors physically wander without attacking out of range");
+        body(enemy).setTransform(-100, -100, 0);
+        body(player).setTransform(-100 + 80f * GameConsts.UNIT_SCALE, -100, 0);
+        var originalHealth = Health.MAPPER.get(player);
+        var testHealth = new Health(originalHealth.getMaximum());
+        player.add(testHealth);
+        try {
+            screen.render(1f / 60f);
+            require(awareness.inRange(enemy, Actor.Role.PLAYER).equals(List.of(player))
+                && Facing.MAPPER.get(enemy).getDirection() == Facing.Direction.RIGHT && !combat.isAttacking()
+                && body(enemy).getLinearVelocity().x > 0, "Enemy faces and pursues a detected player outside melee range");
+            for (int i = 0; i < 120 && !combat.isAttacking(); i++) { screen.render(1f / 60f); }
+            require(combat.isAttacking(), "Enemy closes the gap and starts the attack without repositioning the player");
+            for (int i = 0; i < 5; i++) { screen.render(1f / 60f); }
+            require(testHealth.getCurrent() == testHealth.getMaximum() - Loadout.MAPPER.get(enemy).getWeapon().primary().damage()
+                && body(enemy).getLinearVelocity().isZero(), "Enemy deals one weapon hit while standing still");
+            var retreat = body(enemy).getPosition().cpy().add(-2.5f, .5f);
+            body(player).setTransform(retreat, 0);
+            for (int i = 0; i < 90 && combat.isAttacking(); i++) { screen.render(1f / 60f); }
+            screen.render(1f / 60f);
+            require(!combat.isAttacking() && body(enemy).getLinearVelocity().y > 0f
+                && body(enemy).getLinearVelocity().x < 0f && Facing.MAPPER.get(enemy).getDirection() == Facing.Direction.LEFT,
+                "Enemy resumes pursuit and faces the retreating player once the swing finishes");
+        } finally {
+            player.add(originalHealth);
+            body(npc).setTransform(npcPosition, 0);
+            body(enemy).setTransform(enemyPosition, 0);
+            body(player).setTransform(playerPosition, 0);
+        }
+    }
+
     private static void setObjects(Map<String, ObjectData> definitions) throws ReflectiveOperationException {
         var data = GAME.getGameData();
         field(GameCore.class, "gameData").set(GAME, new GameData(data.playerData(), data.weaponsData(),
-            data.projectilesData(), data.charactersData(), data.enemiesData(), definitions));
+            data.projectilesData(), data.actorsData(), definitions));
     }
 
     private Vector2 center(String marker) {
