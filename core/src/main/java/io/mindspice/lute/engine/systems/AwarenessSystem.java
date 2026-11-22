@@ -10,7 +10,6 @@ import com.badlogic.gdx.physics.box2d.World;
 import io.mindspice.lute.engine.ai.decisiongraph.Action;
 import io.mindspice.lute.engine.ai.decisiongraph.FocusState;
 import io.mindspice.lute.engine.ai.decisiongraph.Graphs;
-import io.mindspice.lute.engine.ai.decisiongraph.RootNode;
 import io.mindspice.lute.engine.components.Actor;
 import io.mindspice.lute.engine.components.ActorAi;
 import io.mindspice.lute.engine.components.Combat;
@@ -19,13 +18,11 @@ import io.mindspice.lute.engine.components.Physic;
 
 import java.util.ArrayList;
 import java.util.List;
-import java.util.Map;
 
 public final class AwarenessSystem extends IteratingSystem {
     static final Object SENSOR_TAG = new Object();
     private static final Family ACTORS = Family.all(Actor.class, Physic.class).get();
     private final World world;
-    private final Map<String, RootNode> graphs = Graphs.build(this::seesPlayer);
     private final Action stop = Action.stop();
 
     public AwarenessSystem(World world) {
@@ -38,11 +35,21 @@ public final class AwarenessSystem extends IteratingSystem {
         var ai = ActorAi.MAPPER.get(actor);
         if (ai == null) { return; }
         var state = new FocusState(deltaTime);
-        if (!Health.MAPPER.get(actor).isAlive() || Combat.MAPPER.get(actor).isAttacking()) {
+        if (!Health.MAPPER.get(actor).isAlive()) {
+            ai.forgetTarget();
             stop.perform(actor, state);
             return;
         }
-        graphs.get(ai.graphKey()).travel(actor, state);
+        var graphs = Graphs.forKey(ai.graphKey());
+        if (graphs.containsKey(ActorAi.Mode.ENGAGE)) {
+            var from = feet(actor);
+            state.setTargetOffset(ai.updateTarget(from, visiblePlayerFeet(actor, from), deltaTime));
+        }
+        if (Combat.MAPPER.get(actor).isAttacking()) {
+            stop.perform(actor, state);
+            return;
+        }
+        graphs.get(ai.mode()).travel(actor, state);
     }
 
     /** Snapshot of matching actors whose physical feet centers lie in the owner's circle, including its edge. */
@@ -101,15 +108,12 @@ public final class AwarenessSystem extends IteratingSystem {
         return !blocked[0];
     }
 
-    private boolean seesPlayer(Entity owner, FocusState state) {
+    private Vector2 visiblePlayerFeet(Entity owner, Vector2 from) {
         for (var player : inRange(owner, Actor.Role.PLAYER)) {
             if (!Health.MAPPER.get(player).isAlive()) { continue; }
-            var from = feet(owner);
             var to = feet(player);
-            if (!clearSight(from, to)) { continue; }
-            state.setTargetOffset(to.sub(from));
-            return true;
+            if (clearSight(from, to)) { return to; }
         }
-        return false;
+        return null;
     }
 }

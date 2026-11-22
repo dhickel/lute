@@ -7,6 +7,7 @@ import com.badlogic.gdx.physics.box2d.*;
 import com.badlogic.gdx.utils.GdxNativesLoader;
 import io.mindspice.lute.engine.components.Actor;
 import io.mindspice.lute.engine.components.ActorAi;
+import io.mindspice.lute.engine.components.ActorAi.Mode;
 import io.mindspice.lute.engine.components.Combat;
 import io.mindspice.lute.engine.components.CombatWeapon;
 import io.mindspice.lute.engine.components.Health;
@@ -80,17 +81,18 @@ public final class AwarenessSystemTest {
         engine.update(0);
         check(!combat.hasAttackRequest(), "Embedded target is blocked");
         body(player).setTransform(20, 20, 0);
-        body(enemy).setTransform(21, 20, 0);
+        body(enemy).setTransform(22, 20, 0);
         engine.update(0);
         check(facing.getDirection() == Facing.Direction.LEFT && combat.consumeAttackRequest() == Combat.AttackSlot.PRIMARY,
             "Moving the body moves the attached circle");
         Health.MAPPER.get(player).damage(100f);
         engine.update(0);
-        check(!combat.hasAttackRequest() && !Move.MAPPER.get(enemy).getDirection().isZero(),
-            "Enemy resumes wandering when the player dies");
+        check(!combat.hasAttackRequest() && ActorAi.MAPPER.get(enemy).mode() == Mode.INVESTIGATE,
+            "A dead player cannot be targeted for melee; the enemy can only investigate its remembered position");
         Health.MAPPER.get(enemy).damage(100f);
         engine.update(0);
-        check(Move.MAPPER.get(enemy).getDirection().isZero(), "Dead enemy stops wandering");
+        check(Move.MAPPER.get(enemy).getDirection().isZero() && ActorAi.MAPPER.get(enemy).mode() == Mode.WANDER,
+            "Dead enemy stops moving and clears its memory");
         engine.removeEntity(player);
         check(awareness.inRange(enemy, Actor.Role.PLAYER).isEmpty(), "Removed entity isn't returned even before body cleanup");
         world.destroyBody(body(player));
@@ -108,6 +110,7 @@ public final class AwarenessSystemTest {
     private static void checkPursuit(World world, Engine engine, Entity enemy, Entity player) {
         var combat = Combat.MAPPER.get(enemy);
         var direction = Move.MAPPER.get(enemy).getDirection();
+        var ai = ActorAi.MAPPER.get(enemy);
         float scale = GameConsts.UNIT_SCALE;
         try {
             // Keep the four-world-unit sensor, but shrink the melee threshold to two world units.
@@ -118,19 +121,51 @@ public final class AwarenessSystemTest {
             var wall = world.createBody(wallDef);
             box(wall, 0, 0, .25f, false);
             engine.update(0);
-            check(!combat.hasAttackRequest() && (direction.x == 0 || direction.y == 0),
-                "A player behind a wall doesn't trigger pursuit");
+            check(!combat.hasAttackRequest() && ai.mode() == Mode.WANDER,
+                "A player behind a wall doesn't trigger pursuit before being seen");
             world.destroyBody(wall);
             engine.update(0);
-            check(direction.equals(new Vector2(3, 1)) && !combat.hasAttackRequest(),
+            check(ai.mode() == Mode.ENGAGE && direction.equals(new Vector2(3, 1)) && !combat.hasAttackRequest(),
                 "Visible player outside melee range triggers pursuit without swinging");
+
+            wall = world.createBody(wallDef);
+            box(wall, 0, 0, .25f, false);
+            var attack = Loadout.MAPPER.get(enemy).getWeapon().primary();
+            combat.beginAttack(Combat.AttackSlot.PRIMARY, attack);
+            var facing = Facing.MAPPER.get(enemy).getDirection();
+            body(player).setTransform(3, .75f, 0);
+            engine.update(0);
+            check(ai.mode() == Mode.INVESTIGATE && direction.isZero() && combat.isAttacking()
+                && Facing.MAPPER.get(enemy).getDirection() == facing,
+                "Perception updates during an attack without overriding movement or facing");
+            combat.endAttack();
+            combat.tickCooldown(attack.cooldownSeconds());
+            engine.update(0);
+            check(ai.mode() == Mode.INVESTIGATE && direction.equals(new Vector2(3, 1)) && !combat.hasAttackRequest(),
+                "Occlusion steers toward the last visible point, not the player's new position");
+            engine.update(1.75f);
+            check(ai.mode() == Mode.INVESTIGATE, "Investigation survives a brief loss of sight");
+            engine.update(.25f);
+            check(ai.mode() == Mode.WANDER, "Investigation times out when terrain prevents arrival");
+            world.destroyBody(wall);
+
             body(player).setTransform(-1, 3, 0);
             engine.update(0);
-            check(direction.equals(new Vector2(-1, 3)), "Pursuit updates to the player's new position");
+            check(ai.mode() == Mode.ENGAGE && direction.equals(new Vector2(-1, 3)), "The enemy can acquire the player again");
             body(player).setTransform(-2, 4, 0);
             engine.update(0);
-            check((direction.x == 0 || direction.y == 0) && !combat.hasAttackRequest(),
-                "The enemy stops pursuing outside the detection circle");
+            check(ai.mode() == Mode.INVESTIGATE && direction.equals(new Vector2(-1, 3)),
+                "Leaving the sensor also starts an investigation of the remembered position");
+            body(player).setTransform(3, 1, 0);
+            engine.update(0);
+            check(ai.mode() == Mode.ENGAGE && direction.equals(new Vector2(3, 1)),
+                "A fresh sighting interrupts investigation and updates the goal");
+            body(player).setTransform(20, 20, 0);
+            body(enemy).setTransform(2.5f, 1, 0);
+            engine.update(0);
+            check(ai.mode() == Mode.WANDER && !combat.hasAttackRequest(),
+                "Arriving within eight pixels ends the investigation without a melee request");
+            body(enemy).setTransform(0, 0, 0);
         } finally {
             GameConsts.UNIT_SCALE = scale;
         }

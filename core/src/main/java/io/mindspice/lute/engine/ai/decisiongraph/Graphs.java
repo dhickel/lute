@@ -1,40 +1,37 @@
 package io.mindspice.lute.engine.ai.decisiongraph;
 
+import io.mindspice.lute.engine.components.ActorAi.Mode;
 import io.mindspice.lute.engine.components.Combat.AttackSlot;
 
 import java.util.List;
 import java.util.Map;
-import java.util.function.Function;
-import java.util.stream.Collectors;
 
 public final class Graphs {
-    private static final Map<String, Function<Decision, RootNode>> BUILDERS = Map.of(
-        "wander", _ -> wandering(),
-        "wander_attack", Graphs::wanderingAttacker
+    private static final RootNode WANDER = actionGraph("Wander", Action.wander());
+    private static final Map<String, Map<Mode, RootNode>> PROFILES = Map.of(
+        "wander", Map.of(Mode.WANDER, WANDER),
+        "wander_attack", Map.of(Mode.WANDER, WANDER, Mode.ENGAGE, engage(),
+            Mode.INVESTIGATE, actionGraph("Investigate last seen position", Action.followTarget()))
     );
 
     private Graphs() { }
 
     public static void requireKey(String key) {
-        if (key == null || !BUILDERS.containsKey(key)) {
+        if (key == null || !PROFILES.containsKey(key)) {
             throw new IllegalArgumentException("Missing or unknown decision_graph: " + key);
         }
     }
 
-    public static Map<String, RootNode> build(Decision seesPlayer) {
-        return BUILDERS.entrySet().stream().collect(Collectors.toUnmodifiableMap(
-            Map.Entry::getKey, entry -> entry.getValue().apply(seesPlayer)));
-    }
+    public static Map<Mode, RootNode> forKey(String key) { return PROFILES.get(key); }
 
-    private static RootNode wandering() {
+    private static RootNode actionGraph(String name, Action action) {
         var root = new RootNode();
-        root.addEdgeNode(ActionNode.of("Wander", Action.wander()));
+        root.addEdgeNode(ActionNode.of(name, action));
         return root;
     }
 
-    private static RootNode wanderingAttacker(Decision seesPlayer) {
+    private static RootNode engage() {
         var root = new RootNode();
-        var visible = DecisionNode.of("Visible player", List.of(seesPlayer));
         var inRange = DecisionNode.of("Player in melee range", List.of(
             Decision.hasPrimaryMelee(), Decision.targetWithinPixels(32f)));
         var stopAndFace = Action.stop().andThen(Action.faceTarget());
@@ -42,10 +39,8 @@ public final class Graphs {
         ready.addEdgeNode(ActionNode.of("Attack", stopAndFace.andThen(Action.attack(AttackSlot.PRIMARY))));
         inRange.addEdgeNode(ready);
         inRange.addEdgeNode(ActionNode.of("Wait for cooldown", stopAndFace));
-        visible.addEdgeNode(inRange);
-        visible.addEdgeNode(ActionNode.of("Follow player", Action.followTarget()));
-        root.addEdgeNode(visible);
-        root.addEdgeNode(ActionNode.of("Wander", Action.wander()));
+        root.addEdgeNode(inRange);
+        root.addEdgeNode(ActionNode.of("Follow player", Action.followTarget()));
         return root;
     }
 }
