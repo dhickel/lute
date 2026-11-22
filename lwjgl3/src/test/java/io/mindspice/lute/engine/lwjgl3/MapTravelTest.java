@@ -425,8 +425,8 @@ public final class MapTravelTest extends ApplicationAdapter {
         body(npc).setTransform(-110, -100, 0);
         body(enemy).setTransform(-100, -100, 0);
         body(player).setTransform(-70, -100, 0);
-        // Both actors start with a random pause of up to 1.2 seconds.
-        for (int i = 0; i < 90 && (body(npc).getPosition().epsilonEquals(-110, -100, .01f)
+        // Allow up to five seconds of idle time plus a few frames for physics to move both actors.
+        for (int i = 0; i < 330 && (body(npc).getPosition().epsilonEquals(-110, -100, .01f)
             || body(enemy).getPosition().epsilonEquals(-100, -100, .01f)); i++) {
             screen.render(1f / 60f);
         }

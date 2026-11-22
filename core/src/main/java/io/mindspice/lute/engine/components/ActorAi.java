@@ -64,12 +64,12 @@ public final class ActorAi implements Component {
         var random = ThreadLocalRandom.current();
         if (wanderTimeLeft == 0f || (walkDuration > 0f && deltaTime >= wanderTimeLeft)) {
             // Start a fresh pause on the first wander tick, including after investigation.
-            wanderTimeLeft = random.nextFloat(.35f, 1.2f);
+            wanderTimeLeft = random.nextFloat(.5f, 5f);
             walkDuration = 0f;
         } else {
             wanderTimeLeft -= deltaTime;
             if (wanderTimeLeft <= 0f) {
-                walkDuration = random.nextFloat(1f, 2f);
+                walkDuration = random.nextFloat(1f, 5f);
                 wanderTimeLeft = walkDuration;
                 walkHeading = random.nextFloat(0f, 360f);
                 walkTurn = random.nextFloat(-30f, 30f);

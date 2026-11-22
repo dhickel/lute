@@ -57,7 +57,7 @@ public final class AwarenessSystemTest {
             "AABB corner does not trigger an attack");
         check(Move.MAPPER.get(npc).getDirection().isZero() && Move.MAPPER.get(enemy).getDirection().isZero(),
             "Both graphs begin with a pause");
-        engine.update(1f);
+        engine.update(5f);
         check(!Move.MAPPER.get(npc).getDirection().isZero() && !Move.MAPPER.get(enemy).getDirection().isZero(),
             "Both graphs wander without a target");
         checkPursuit(world, engine, enemy, player);
@@ -126,17 +126,17 @@ public final class AwarenessSystemTest {
         for (int leg = 0; leg < 3; leg++) {
             var idleFacing = facing.getDirection();
             float waited = 0f;
-            while (direction.isZero() && waited < 1.2f) {
+            while (direction.isZero() && waited < 5f) {
                 engine.update(step);
                 waited += step;
                 check(!direction.isZero() || facing.getDirection() == idleFacing, "Pausing retains facing");
             }
-            check(!direction.isZero() && waited >= .35f && waited < 1.2f + step, "Pause is bounded");
+            check(!direction.isZero() && waited >= .5f && waited <= 5f, "Pause is bounded");
 
             var initialHeading = direction.cpy();
             var previousHeading = direction.cpy();
             float walked = 0f;
-            while (!direction.isZero() && walked < 2f) {
+            while (!direction.isZero() && walked < 5f) {
                 check(direction.isUnit(.001f), "Walk direction has unit length");
                 check(initialHeading.dot(direction) >= .865f, "Total turn is bounded to about 30 degrees");
                 check(previousHeading.dot(direction) >= .9986f, "Heading changes by at most 3 degrees per test step");
