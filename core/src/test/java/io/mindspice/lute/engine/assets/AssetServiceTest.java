@@ -374,7 +374,7 @@ public final class AssetServiceTest {
         try {
             var atlasAsset = Asset.Atlas.of("shared", "test_tiled.atlas");
             TextureAtlas first = service.load(atlasAsset);
-            var region = first.findRegion("player/idle_right");
+            var region = first.findRegion("house");
             check(region != null, "Direct atlas branch must parse the actual packed regions");
             Set<Integer> firstTextures = textureHandles(first);
             check(!firstTextures.isEmpty(), "Actual atlas load must create owned textures");
@@ -388,7 +388,7 @@ public final class AssetServiceTest {
             rejectsRuntime(() -> service.get(TextureAtlas.class, atlasAsset.id()), "Unloaded atlas get must fail");
             TextureAtlas reloaded = service.load(atlasAsset);
             check(reloaded != first, "Reload must return a new actual atlas");
-            check(reloaded.findRegion("player/idle_right") != region, "Reload must not reuse stale atlas regions");
+            check(reloaded.findRegion("house") != region, "Reload must not reuse stale atlas regions");
             Set<Integer> reloadedTextures = textureHandles(reloaded);
             check(java.util.Collections.disjoint(firstTextures, reloadedTextures), "Reload must create new texture ownership");
 
@@ -401,8 +401,7 @@ public final class AssetServiceTest {
                 check(failure.getCause().getMessage().contains("Missing object atlas region for 'house.png'"),
                     "Missing region error must identify the authored source image");
                 Set<Integer> failedTextures = backend.handlesSince(beforeFailure);
-                check(failedTextures.size() == 2, "Map must allocate only the two terrain textures before processing objects");
-                backend.checkDeletedOnce(failedTextures, "Failed map must clean up its terrain textures");
+                check(failedTextures.isEmpty(), "Generated sheets must not be allocated, even on a failed map load");
                 for (int handle : reloadedTextures) {
                     check(backend.textureDisposals.getOrDefault(handle, 0) == 0, "Failed map must not dispose borrowed atlas");
                 }
@@ -440,7 +439,8 @@ public final class AssetServiceTest {
             check(ownedMapTextures.size() == backend.nextTexture - beforeMap,
                 "Every texture allocated by the actual map loader must be represented in its tilesets");
             if (perType) {
-                check(mapTextures.containsAll(reloadedTextures), "Object tiles must borrow atlas textures");
+                check(mapTextures.equals(reloadedTextures) && ownedMapTextures.isEmpty(),
+                    "Both terrain and object tiles must borrow the same-ID atlas without uploading standalone sheets");
                 rejectsRuntime(() -> service.unload(TextureAtlas.class, "shared"), "A live map prevents atlas unload");
                 check(service.get(TextureAtlas.class, "shared") == reloaded, "Rejected unload must leave owner intact");
                 var tree = map.getTileSets().getTileSet("objects").getTile(2666);
@@ -450,9 +450,8 @@ public final class AssetServiceTest {
                 check(house.getTextureRegion() == reloaded.findRegion("house", -1),
                     "Static image must resolve the exact unindexed region, not the first region with that name");
                 check(tree.getObjects().getCount() == 1, "Object collision shapes must survive atlas loading");
-                check(map.getTileSets().getTileSet("old_tree1").getTile(2656)
-                        instanceof com.badlogic.gdx.maps.tiled.tiles.AnimatedTiledMapTile,
-                    "Terrain native Tiled animations must remain animated");
+                check(map.getTileSets().getTileSet("old_tree1").size() == 0,
+                    "An entirely unused terrain sheet must not require any regions");
             } else {
                 check(java.util.Collections.disjoint(mapTextures, reloadedTextures), "Legacy baseline owns standalone textures");
             }
@@ -531,7 +530,7 @@ public final class AssetServiceTest {
     }
 
     private static void partialLoadTextureFailure(Backend backend, FileHandle directory, boolean atlas, String phase) {
-        var source = new FileHandle("raw_assets/maps/test_tiled/objects/player/idle_up_02.png");
+        var source = new FileHandle("raw_assets/sprites/character/player/idle_up_02.png");
         source.copyTo(directory.child("first.png"));
         directory.child("second.png").delete();
         if (!"allocation".equals(phase)) { source.copyTo(directory.child("second.png")); }
@@ -691,7 +690,7 @@ public final class AssetServiceTest {
 
     private static void animationReload(Backend backend) {
         var service = new AssetService(backend.resolver());
-        var definition = Asset.Atlas.of("OBJECTS", "test_tiled.atlas");
+        var definition = Asset.Atlas.of("OBJECTS", "character.atlas");
         var engine = new Engine();
         engine.addSystem(new AnimationSystem(service));
         var animation = new Animation2D("OBJECTS", "player", Animation2D.AnimationType.IDLE,

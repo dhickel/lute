@@ -11,8 +11,8 @@ import java.util.HashMap;
 import java.util.Map;
 
 final class TilesheetExtrusion {
-    private static final int BORDER = 1;
-    private static final int SPACING = 2 * BORDER;
+    static final int BORDER = 1;
+    static final int SPACING = 2 * BORDER;
 
     private final Path raw;
     private final Path stage;
@@ -23,7 +23,7 @@ final class TilesheetExtrusion {
         this.stage = stage;
     }
 
-    void apply(Path definition, Element tileset, Element image, Path sheet) throws IOException {
+    Path apply(Path definition, Element tileset, Element image, Path sheet) throws IOException {
         int width = integer(tileset, "tilewidth", 0, definition);
         int height = integer(tileset, "tileheight", 0, definition);
         int margin = integer(tileset, "margin", 0, definition);
@@ -67,6 +67,7 @@ final class TilesheetExtrusion {
         image.setAttribute("width", Integer.toString(grid.width()));
         image.setAttribute("height", Integer.toString(grid.height()));
         image.setAttribute("source", definition.getParent().relativize(padded).toString().replace('\\', '/'));
+        return output;
     }
 
     private static int integer(Element element, String attribute, int fallback, Path definition) throws IOException {
