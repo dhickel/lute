@@ -115,7 +115,7 @@ public final class DataLoaderTest {
                 "Generated actor catalogue matches source: " + filename);
         }
         String common = """
-            "base_health": 80, "move_speed": 3.5,
+            "max_health": 80, "move_speed": 3.5,
             "logical_size": {"width": 72, "height": 64},
             "collision": {"shape": "ELLIPSE", "bounds": {"x1": 18, "y1": 4, "x2": 45, "y2": 15}, "rotation": 0},
             "hitbox_bounds": {"x1": 14, "y1": 6, "x2": 50, "y2": 55},
@@ -142,7 +142,7 @@ public final class DataLoaderTest {
             Files.writeString(enemies, entry.formatted(enemy));
             var data = DataLoader.loadGameData().actorsData();
             var merchant = data.npc().get("merchant");
-            check(merchant.baseHealth() == 60 && merchant.name().equals("Merchant"), "Multiple NPC IDs resolve independently");
+            check(merchant.maxHealth() == 60 && merchant.name().equals("Merchant"), "Multiple NPC IDs resolve independently");
             var guard = data.npc().get("guard");
             check(guard.moveSpeed() == 3.5f && guard.loadout().body().equals("basic") && guard.weapon().equals("basic_bow")
                 && guard.logicalSize().width() == 72 && guard.collision().bounds().x1() == 18 && guard.hitboxBounds().x1() == 14,
@@ -152,7 +152,7 @@ public final class DataLoaderTest {
                 && undead.detectionBounds().radius() == 192.5f && guard.decisionGraph().equals("wander")
                 && undead.decisionGraph().equals("wander_attack"), "Role-scoped IDs bind distinct radii and graph keys");
             check(guard.name().equals("Town Guard") && undead.name().equals("Undead Guard")
-                && guard.baseHealth() == 80 && undead.baseHealth() == 80, "Both catalogues bind name and base health");
+                && guard.maxHealth() == 80 && undead.maxHealth() == 80, "Both catalogues bind name and maximum health");
             Files.writeString(characters, "{}");
             Files.writeString(enemies, entry.formatted(enemy.replace("\"basic_sword\"", "null")));
             check(DataLoader.loadGameData().actorsData().enemies().get("guard").weapon() == null,
@@ -179,16 +179,16 @@ public final class DataLoaderTest {
             Files.writeString(characters, npcs);
             for (var target : Map.of(characters, npc, enemies, enemy).entrySet()) {
                 var definition = (tools.jackson.databind.node.ObjectNode) DataLoader.mapper.readTree(target.getValue());
-                for (String field : new String[]{"name", "base_health"}) {
+                for (String field : new String[]{"name", "max_health"}) {
                     var missing = definition.deepCopy();
                     missing.remove(field);
                     Files.writeString(target.getKey(), entry.formatted(missing));
                     rejects(DataLoader::loadGameData, "Missing " + field + " in " + target.getKey());
                 }
                 for (String invalid : new String[]{definition.deepCopy().put("name", "   ").toString(),
-                        target.getValue().replace("\"base_health\": 80", "\"base_health\": 0"),
-                        target.getValue().replace("\"base_health\": 80", "\"base_health\": 80.5"),
-                        target.getValue().replace("\"base_health\"", "\"max_health\"")}) {
+                        target.getValue().replace("\"max_health\": 80", "\"max_health\": 0"),
+                        target.getValue().replace("\"max_health\": 80", "\"max_health\": 80.5"),
+                        target.getValue().replace("\"max_health\"", "\"base_health\"")}) {
                     Files.writeString(target.getKey(), entry.formatted(invalid));
                     rejects(DataLoader::loadGameData, "Invalid name or health in " + target.getKey());
                 }

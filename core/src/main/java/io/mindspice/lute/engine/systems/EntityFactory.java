@@ -144,7 +144,7 @@ public class EntityFactory extends EntitySystem {
         entity.add(transform).add(new Facing(facing)).add(animation).add(loadout)
             .add(new Graphic(region, Color.WHITE.cpy()))
             .add(new CompositeCharacter(region.getRegionWidth(), region.getRegionHeight()));
-        entity.add(new Health(definition.baseHealth()));
+        entity.add(new Health(definition.maxHealth()));
         entity.add(new ActorAi(definition.decisionGraph()));
         entity.add(new Move(definition.moveSpeed()));
         entity.add(new Combat());
