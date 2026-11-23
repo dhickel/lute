@@ -17,17 +17,19 @@ Continue authoring terrain sheets and Tiled maps normally in `raw_assets/`. `./g
 
 `raw_assets/game.settings.json` requires `startupMap`, a map name rather than a path, and `projectPath`, the filename of the root Tiled `.tiled-project` file. The local values are `test_tiled` and `game.tiled-project`, respectively. The asset generator also allows its Tiled project filename to be configured; keep it aligned with `projectPath`.
 
-Authored gameplay JSON follows the same source-to-runtime path: provision `raw_assets/data/player.json`, `actors.json`, `weapons.json`, and `projectiles.json`, then generate `assets/data/`. The mandatory `actors.json` has top-level `npc` and `enemies` maps keyed by spawn key; both maps must be present, even if empty. The spawn role selects the map. NPC definitions mirror player fields except `name`; enemies require a nullable top-level `weapon` instead of a loadout. Both require `detection_bounds: { "radius": ... }` in pixels and a `decision_graph` key. Graph keys such as `wander` and `wander_attack` are reusable across definitions. Animation `atlas_key` selects the sprite prefix. Missing or invalid required data fails loading without a fallback.
+Authored gameplay JSON follows the same source-to-runtime path: provision `raw_assets/data/player.json`, `characters.json`, `enemies.json`, `weapons.json`, and `projectiles.json`, then generate `assets/data/`. Both actor files are required top-level maps keyed by spawn key and may be empty. NPC spawns select `characters.json`; enemy spawns select `enemies.json`. Each actor requires a nonblank `name` and positive integer `base_health`, used as its initial and maximum spawn health. NPCs retain their loadout; enemies require a nullable top-level `weapon` instead. Both require `detection_bounds: { "radius": ... }` in pixels and a `decision_graph` key. Graph keys such as `wander` and `wander_attack` are reusable across definitions. Animation `atlas_key` selects the sprite prefix. Missing or invalid required data fails loading without a fallback; player data retains its existing schema.
+
+The ignored raw and runtime copies in this checkout have been migrated locally. Other checkouts must migrate their own ignored data: move the former `actors.json` NPC and enemy entries into the respective files, preserve graph keys and detection radii, add names, and replace each map actor's `max_health` with `base_health`. Regenerate runtime assets afterward. There is no `actors.json` fallback.
 
 This example shows the actor data shape; author it in the ignored raw tree before generating runtime assets:
 
-`raw_assets/data/actors.json`:
+`raw_assets/data/characters.json`:
 
 ```json
 {
-  "npc": {
     "basic_npc": {
-      "max_health": 100,
+      "name": "Basic NPC",
+      "base_health": 100,
       "move_speed": 4.0,
       "logical_size": {
         "width": 64,
@@ -69,10 +71,16 @@ This example shows the actor data shape; author it in the ignored raw tree befor
       },
       "decision_graph": "wander"
     }
-  },
-  "enemies": {
+}
+```
+
+`raw_assets/data/enemies.json`:
+
+```json
+{
     "brainless_undead": {
-      "max_health": 100,
+      "name": "Brainless Undead",
+      "base_health": 100,
       "move_speed": 4.0,
       "logical_size": {
         "width": 64,
@@ -110,7 +118,6 @@ This example shows the actor data shape; author it in the ignored raw tree befor
       },
       "decision_graph": "wander_attack"
     }
-  }
 }
 ```
 

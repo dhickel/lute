@@ -130,8 +130,8 @@ public final class MapTravelTest extends ApplicationAdapter {
         var enemy = gameData.actorsData().enemies().get("brainless_undead");
         checkSensor(oldNpc, Actor.Role.NPC, npc.detectionBounds().radius());
         checkSensor(oldEnemy, Actor.Role.ENEMY, enemy.detectionBounds().radius());
-        require(Health.MAPPER.get(oldNpc).getMaximum() == npc.maxHealth()
-            && Health.MAPPER.get(oldEnemy).getMaximum() == enemy.maxHealth(), "Map actors use authored health");
+        require(Health.MAPPER.get(oldNpc).getMaximum() == npc.baseHealth()
+            && Health.MAPPER.get(oldEnemy).getMaximum() == enemy.baseHealth(), "Map actors use authored base health");
         require(Actor.MAPPER.get(player).role() == Actor.Role.PLAYER && body(player).getFixtureList().size == 2,
             "Player is detectable without owning a third fixture");
         require(ActorAi.MAPPER.get(oldNpc).graphKey().equals(npc.decisionGraph())
@@ -168,10 +168,10 @@ public final class MapTravelTest extends ApplicationAdapter {
             var newNpc = actualActors.first();
             var newEnemy = actualActors.get(1);
             require(body(newNpc) != oldNpcBody && body(newNpc).getFixtureList().size == 3
-                && Health.MAPPER.get(newNpc) != oldNpcHealth && Health.MAPPER.get(newNpc).getCurrent() == 100f,
+                && Health.MAPPER.get(newNpc) != oldNpcHealth && Health.MAPPER.get(newNpc).getCurrent() == npc.baseHealth(),
                 "Map replacement recreates the NPC body, fixtures and health");
             require(body(newEnemy) != oldEnemyBody && body(newEnemy).getFixtureList().size == 3
-                && Health.MAPPER.get(newEnemy) != oldEnemyHealth && Health.MAPPER.get(newEnemy).getCurrent() == 100f,
+                && Health.MAPPER.get(newEnemy) != oldEnemyHealth && Health.MAPPER.get(newEnemy).getCurrent() == enemy.baseHealth(),
                 "Map replacement recreates the enemy body, fixtures and health");
             require(awareness.inRange(oldEnemy, Actor.Role.PLAYER).isEmpty(), "Retired enemy cannot query after travel");
             checkSensor(newNpc, Actor.Role.NPC, npc.detectionBounds().radius());
