@@ -69,6 +69,11 @@ public class TiledSystem extends EntitySystem implements EventEmitter {
         install(prepare(entry == null ? new Entry(initialAssets, null) : entry));
     }
 
+    Health playerHealth() {
+        if (active != null && active.player != null) { return Health.MAPPER.get(active.player); }
+        return playerState == null ? null : playerState.health();
+    }
+
     public void hideMap() {
         hideMap(getEngine());
     }
@@ -199,6 +204,7 @@ public class TiledSystem extends EntitySystem implements EventEmitter {
             var controller = Controller.MAPPER.get(entity);
             if (controller != null) { inputManager.unRegKeyListener(controller.getInputListener()); }
             engine.removeEntity(entity);
+            entity.remove(DamageFeedback.class);
         }
         for (var body : active.bodies) { physicsWorld.destroyBody(body); }
         if (active.player != null) {

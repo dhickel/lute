@@ -34,6 +34,7 @@ import io.mindspice.lute.engine.singletons.GameConsts;
 import io.mindspice.lute.engine.systems.CharacterCompositor;
 import io.mindspice.lute.engine.systems.RenderSystem;
 import io.mindspice.lute.engine.systems.ControllerSystem;
+import io.mindspice.lute.engine.systems.DamageFeedbackProbe;
 import io.mindspice.lute.engine.systems.LoadoutSystem;
 import io.mindspice.lute.engine.systems.EventSystem;
 import io.mindspice.lute.engine.systems.TiledSystem;
@@ -230,7 +231,7 @@ public final class CompositeGameTest {
         var torsoPoint = body.getWorldPoint(new Vector2(32, 40).scl(unit)).cpy();
         require(feet.testPoint(feetPoint) && !feet.testPoint(torsoPoint) && hurtbox.testPoint(torsoPoint),
             spawn + " feet block while the torso is only part of the hurtbox");
-        require(Health.MAPPER.has(actor) && Health.MAPPER.get(actor).getCurrent() == 100f,
+        require(Health.MAPPER.has(actor) && Health.MAPPER.get(actor).getCurrent() == Health.MAPPER.get(actor).getMaximum(),
             spawn + " starts with full health");
     }
 
@@ -251,13 +252,15 @@ public final class CompositeGameTest {
                         boolean bow = weapon.equals("basic_bow");
                         require(loadouts().equipWeapon(player, weapon), "Equip " + weapon + " for " + name);
                         placePlayer(player, origin.cpy().sub((bow ? 64 : 48) * GameConsts.UNIT_SCALE, 0));
+                        health = new Health(health.getMaximum());
+                        actor.add(health);
                         float before = health.getCurrent();
-                        fireAtActor(player, bow, Facing.Direction.LEFT);
-                        require(health.getCurrent() == before, weapon + " miss leaves " + name + " unharmed");
+                        require(fireAtActor(player, bow, Facing.Direction.LEFT, actor) == 0 && health.getCurrent() == before,
+                            weapon + " miss leaves " + name + " unharmed and makes no damage number");
                         float damage = Loadout.MAPPER.get(player).getWeapon().primary().damage();
-                        fireAtActor(player, bow, Facing.Direction.RIGHT);
-                        require(before > damage && health.getCurrent() == before - damage,
-                            weapon + " deals exactly one full hit to " + name + ": " + before + " -> " + health.getCurrent());
+                        require(fireAtActor(player, bow, Facing.Direction.RIGHT, actor) == 1
+                                && oneHit(before, damage, health.getCurrent()),
+                            weapon + " deals one full hit and shows one number for " + name + ": " + before + " -> " + health.getCurrent());
                     }
                 } finally {
                     actor.add(new Health(health.getMaximum()));
@@ -282,7 +285,7 @@ public final class CompositeGameTest {
         Transform.MAPPER.get(player).getPosition().set(position);
     }
 
-    private static void fireAtActor(Entity player, boolean bow, Facing.Direction direction) {
+    private static int fireAtActor(Entity player, boolean bow, Facing.Direction direction, Entity target) {
         var engine = GAME.getEngine();
         var input = Gdx.input.getInputProcessor();
         var combat = Combat.MAPPER.get(player);
@@ -306,10 +309,15 @@ public final class CompositeGameTest {
         }
         input.keyUp(Input.Keys.SPACE);
         engine.update(0);
-        // Let both the attack animation and any in-flight arrow finish before reading health.
-        for (int frame = 0; frame < 120; frame++) { engine.update(1f / 60f); }
+        // Let combat finish, sampling feedback before its short lifetime ends.
+        int numbers = DamageFeedbackProbe.count(target);
+        for (int frame = 0; frame < 120; frame++) {
+            engine.update(1f / 60f);
+            numbers = Math.max(numbers, DamageFeedbackProbe.count(target));
+        }
         require(!combat.isAttacking() && combat.getAttackId() == previousAttack + 1,
             "One primary input completes exactly one attack");
+        return numbers;
     }
 
     private static void verifyLoop(Entity player, LayerCheck layers, Animation2D.AnimationType type) {
@@ -430,11 +438,11 @@ public final class CompositeGameTest {
             if (shot) {
                 float remaining = Health.MAPPER.get(target).getCurrent();
                 boolean clear = direction == Facing.Direction.LEFT || direction == Facing.Direction.RIGHT;
-                require(remaining == (clear ? 1000f - expected.damage() : 1000f),
+                require(clear ? oneHit(1000f, expected.damage(), remaining) : remaining == 1000f,
                     "Probe takes one hit on clear paths, none behind test-map walls: " + direction);
             } else {
                 require(sensorSeen, "Melee attack really creates a sensor, including bow jab");
-                require(Health.MAPPER.get(target).getCurrent() == 1000f - expected.damage(),
+                require(oneHit(1000f, expected.damage(), Health.MAPPER.get(target).getCurrent()),
                     "Real physics contact deals exactly one authored melee hit: " + weapon.id() + "/" + slot + "/" + direction);
             }
             require(fixtureCount(world) == fixtures, "Completed attack restores world fixture count");
@@ -521,6 +529,10 @@ public final class CompositeGameTest {
         if (!initialized) { return; }
         initialized = false;
         GAME.dispose();
+    }
+
+    private static boolean oneHit(float before, float base, float after) {
+        return after >= Math.max(0f, before - 1.1f * base) && after <= Math.max(0f, before - .9f * base);
     }
 
     private static void require(boolean condition, String message) {

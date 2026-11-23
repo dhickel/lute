@@ -152,7 +152,7 @@ public final class TriggerDebugRenderSystemTest {
         engine.addSystem(combat);
         try {
             float scale = GameConsts.UNIT_SCALE;
-            var arrow = new ArrowFlight(new Entity(), definition, new Vector2(), new Vector2(0, 8), 1);
+            var arrow = new ArrowFlight(new Entity().add(new Facing(Facing.Direction.UP)), definition, new Vector2(), new Vector2(0, 8), 1);
             combat.arrows().add(arrow);
             combat.update(0.25f);
             debug.update(0);

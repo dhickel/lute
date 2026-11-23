@@ -131,7 +131,7 @@ public final class AwarenessSystemTest {
             wall = world.createBody(wallDef);
             box(wall, 0, 0, .25f, false);
             var attack = Loadout.MAPPER.get(enemy).getWeapon().primary();
-            combat.beginAttack(Combat.AttackSlot.PRIMARY, attack);
+            combat.beginAttack(Combat.AttackSlot.PRIMARY, attack, Facing.MAPPER.get(enemy).getDirection());
             var facing = Facing.MAPPER.get(enemy).getDirection();
             body(player).setTransform(3, .75f, 0);
             engine.update(0);

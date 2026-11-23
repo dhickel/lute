@@ -9,6 +9,7 @@ import com.badlogic.gdx.physics.box2d.World;
 import io.mindspice.lute.engine.components.Facing;
 import io.mindspice.lute.engine.components.Health;
 import io.mindspice.lute.engine.components.Hurtbox;
+import io.mindspice.lute.engine.components.Transform;
 import io.mindspice.lute.engine.data.json.CharacterBounds;
 import io.mindspice.lute.engine.data.json.CollisionData;
 import io.mindspice.lute.engine.data.json.ProjectilesData.Projectile;
@@ -20,6 +21,7 @@ public final class ArrowFlightTest {
     private ArrowFlightTest() { }
 
     public static void run() {
+        rollsPerHit();
         collisionShapes();
         var aim = new Vector2(1, 0);
         var world = new World(Vector2.Zero, true);
@@ -32,20 +34,53 @@ public final class ArrowFlightTest {
                 "Centered aim uses facing and the configured speed");
 
             var target = hurtbox(world, aim);
-            require(launch(TYPE, aim).finished(world, 2f) && Health.MAPPER.get(target).getCurrent() == 90,
-                "One long update sweeps through the exact crosshair");
+            var arrow = launch(TYPE, aim);
+            Facing.MAPPER.get(arrow.owner).setDirection(Facing.Direction.DOWN);
+            require(arrow.finished(world, 2f) && oneHit(target), "One long update sweeps through the exact crosshair");
+            var feedback = DamageFeedback.MAPPER.get(target);
+            var hit = feedback.numbers.getFirst();
+            var health = Health.MAPPER.get(target);
+            require(hit.facing == Facing.Direction.RIGHT && hit.amount == 100 - health.getCurrent()
+                && hit.remaining == health.getCurrent() / 100, "Feedback snapshots release facing and effective hit");
+            feedback.advance(.25f);
+            DamageFeedback.land(target, health, 500, Facing.Direction.LEFT);
+            var kill = feedback.numbers.getLast();
+            require(kill.remaining == 0 && kill.amount == 100 - hit.amount, "Killing hit reports only remaining HP");
+            require(GameplayHud.label(health, 6 * 60 + 4).equals("HP 0/100    06:04"), "Dead player's clock and health");
+            require(GameplayHud.label(new Health(53), 23 * 60 + 59).equals("HP 53/53    23:59")
+                && GameplayHud.label(health, 0).equals("HP 0/100    00:00"), "24-hour format at the day boundary");
+            feedback.advance(.45f);
+            require(feedback.numbers.size() == 1 && feedback.numbers.getFirst() == kill, "Numbers expire independently");
+            feedback.advance(.25f);
+            require(feedback.numbers.isEmpty(), "Last number expires");
 
             var apexTarget = hurtbox(world, new Vector2(.5f, .15f));
-            require(launch(projectile(2f), aim).finished(world, 2f) && Health.MAPPER.get(apexTarget).getCurrent() == 90,
+            require(launch(projectile(2f), aim).finished(world, 2f) && oneHit(apexTarget),
                 "A long update follows the short pre-aim arc instead of sweeping straight to aim");
         } finally { world.dispose(); }
 
         world = new World(Vector2.Zero, true);
         try {
             var target = hurtbox(world, new Vector2(2f, -1.2f));
-            require(launch(TYPE, aim).finished(world, 6f) && Health.MAPPER.get(target).getCurrent() == 90,
+            require(launch(TYPE, aim).finished(world, 6f) && oneHit(target),
                 "A long update hits a small hurtbox below the old straight extension");
         } finally { world.dispose(); }
+    }
+
+    private static void rollsPerHit() {
+        var previous = com.badlogic.gdx.math.MathUtils.random;
+        try {
+            com.badlogic.gdx.math.MathUtils.random = new java.util.Random(17);
+            var expected = new java.util.Random(17);
+            var target = new Entity();
+            var health = new Health(500);
+            float remaining = 500;
+            for (int i = 0; i < 20; i++) {
+                DamageFeedback.land(target, health, 10, Facing.Direction.UP);
+                remaining -= 10 * (.9f + (1.1f - .9f) * expected.nextFloat());
+                require(Math.abs(remaining - health.getCurrent()) < .0001f, "Fresh uniform sample for each hit");
+            }
+        } finally { com.badlogic.gdx.math.MathUtils.random = previous; }
     }
 
     private static void collisionShapes() {
@@ -75,7 +110,7 @@ public final class ArrowFlightTest {
                 var type = new Projectile("test", 12, 5, collision, 0, 0, 0, 0);
                 var arrow = launch(type, new Vector2(3, 0));
                 var target = hurtbox(world, new Vector2(1.5f, 0));
-                require(arrow.finished(world, .25f) && Health.MAPPER.get(target).getCurrent() == 90,
+                require(arrow.finished(world, .25f) && oneHit(target),
                     shape + " sweeps across a small target when rotated");
                 var bodies = new com.badlogic.gdx.utils.Array<com.badlogic.gdx.physics.box2d.Body>();
                 world.getBodies(bodies);
@@ -144,8 +179,13 @@ public final class ArrowFlightTest {
         return new ArrowFlight(new Entity().add(new Facing(Facing.Direction.RIGHT)), type, new Vector2(), aim, 10);
     }
 
+    private static boolean oneHit(Entity target) {
+        float remaining = Health.MAPPER.get(target).getCurrent();
+        return remaining >= 89 && remaining <= 91;
+    }
+
     private static Entity hurtbox(World world, Vector2 position) {
-        var target = new Entity().add(new Health(100));
+        var target = new Entity().add(new Health(100)).add(new Transform(position, 0, new Vector2(1, 1), new Vector2(1, 1), 0, 0));
         var bodyDef = new BodyDef();
         bodyDef.position.set(position);
         var body = world.createBody(bodyDef);

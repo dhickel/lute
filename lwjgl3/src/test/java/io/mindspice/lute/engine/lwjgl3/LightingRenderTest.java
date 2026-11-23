@@ -139,6 +139,7 @@ public final class LightingRenderTest extends ApplicationAdapter {
             largeCollisionRings();
             pulseAndProjection();
             stateAndFailure();
+            gameplayOverlay(assets);
             require(Gdx.gl.glGetError() == GL_NO_ERROR, "driver error at teardown");
         } catch (Throwable ex) { failure = ex; }
         finally {
@@ -156,6 +157,112 @@ public final class LightingRenderTest extends ApplicationAdapter {
             Gdx.app.exit();
         }
     }
+
+    private void gameplayOverlay(AssetService assets) throws ReflectiveOperationException {
+        // Empty black world isolates the unlit font pixels; keep the existing nonzero viewport offset.
+        var overlay = new Engine();
+        var render = new RenderSystem(batch, view, camera, assets, OFF);
+        var combat = new CombatSystem(world, null);
+        var clock = new WorldTimeSystem(24);
+        overlay.addSystem(clock);
+        overlay.addSystem(combat);
+        overlay.addSystem(new TiledSystem(null, world, null));
+        overlay.addSystem(render);
+        render.gameplayFrame(world, AMBIENT, false, 0);
+        try {
+            var gl = Gdx.gl;
+            int active = integer(GL_ACTIVE_TEXTURE);
+            gl.glActiveTexture(GL_TEXTURE1);
+            try {
+                var before = snapshot();
+                withSmallUnpackBuffer("first day HUD font upload", () -> overlay.update(0));
+                checkState(before, "HUD draw and upload");
+                require(glyphs(0, 110, 60, 18, Color.WHITE).pixels() > 0, "Clock in the top viewport strip");
+                render.gameplayFrame(world, AMBIENT, true, 0);
+                overlay.update(0);
+                checkState(before, "Night HUD draw");
+            } finally { gl.glActiveTexture(active); }
+            require(glyphs(0, 110, 60, 18, Color.WHITE).pixels() > 0, "Unlit clock in the top viewport strip");
+
+            for (var direction : Facing.Direction.values()) {
+                var victim = new Entity().add(new Health(100)).add(transform(62, 48, 4, 4, 0));
+                overlay.addEntity(victim);
+                DamageFeedbackProbe.hit(victim, 10, direction);
+                overlay.update(0);
+                var fresh = glyphs(32, 52, 64, 54, Color.GREEN);
+                require(fresh.pixels() > 0 && Math.abs(fresh.x() - 64) <= 3 && fresh.y() > 52,
+                    direction + ": green number starts centered above the victim after night lighting");
+                // The victim can move before the next frame; the number stays anchored to the hit.
+                Transform.MAPPER.get(victim).getPosition().setZero();
+                combat.update(.325f);
+                overlay.update(0);
+                var faded = glyphs(32, 52, 64, 54, Color.GREEN);
+                float dx = faded.x() - fresh.x(), dy = faded.y() - fresh.y();
+                require(faded.pixels() > 0 && faded.brightness() < fresh.brightness() * .6f && dy > 7,
+                    direction + ": number rises and fades from the original hit position: " + fresh + " -> " + faded);
+                require(switch (direction) {
+                    case LEFT -> dx < -15;
+                    case RIGHT -> dx > 15;
+                    // Fading changes which edge texels pass the glyph mask.
+                    case UP -> Math.abs(dx) <= 2.5f && dy >= 18;
+                    case DOWN -> Math.abs(dx) <= 2.5f && dy <= 12;
+                }, direction + ": drift follows the committed facing (" + dx + ", " + dy + ")");
+                combat.update(.33f);
+                overlay.update(0);
+                require(DamageFeedbackProbe.count(victim) == 0 && glyphs(32, 52, 64, 54, Color.GREEN).pixels() == 0,
+                    "Expired number is removed and leaves no framebuffer trail");
+                overlay.removeEntity(victim);
+            }
+
+            var wounded = new Entity().add(new Health(100)).add(transform(34, 48, 4, 4, 0));
+            Health.MAPPER.get(wounded).damage(40);
+            var killed = new Entity().add(new Health(5)).add(transform(90, 48, 4, 4, 0));
+            overlay.addEntity(wounded);
+            overlay.addEntity(killed);
+            DamageFeedbackProbe.hit(wounded, 10, Facing.Direction.UP);
+            DamageFeedbackProbe.hit(killed, 10, Facing.Direction.UP);
+            overlay.update(0);
+            require(glyphs(16, 52, 36, 32, Color.YELLOW).pixels() > 0, "Half health is yellow");
+            require(glyphs(74, 52, 36, 32, Color.RED).pixels() > 0, "Killing number is red and still visible");
+            overlay.removeSystem(combat);
+            overlay.update(0);
+            require(DamageFeedbackProbe.count(wounded) == 0 && DamageFeedbackProbe.count(killed) == 0,
+                "Removing combat retires feedback even if the rendering system survives");
+            var font = (BitmapFont) field(field(render, "hud"), "font");
+            int handle = font.getRegion().getTexture().getTextureObjectHandle();
+            gl.glActiveTexture(GL_TEXTURE0);
+            gl.glBindTexture(GL_TEXTURE_2D, handle);
+            render.dispose();
+            require(!gl.glIsTexture(handle) && integer(GL_TEXTURE_BINDING_2D) == 0,
+                "HUD disposal releases its font texture without restoring the deleted binding");
+        } finally {
+            overlay.removeAllSystems();
+            render.dispose();
+        }
+    }
+
+    private Glyphs glyphs(int x, int y, int width, int height, Color tint) {
+        var image = Pixmap.createFromFrameBuffer(ox + x, oy + y, width, height);
+        try {
+            int pixels = 0, xSum = 0, ySum = 0, brightness = 0;
+            for (int iy = 0; iy < height; iy++) {
+                for (int ix = 0; ix < width; ix++) {
+                    int rgba = image.getPixel(ix, iy);
+                    int r = red(rgba), g = rgba >>> 16 & 255, b = blue(rgba);
+                    if ((tint.r == 0 ? r < 100 : r > 90) && (tint.g == 0 ? g < 32 : g > 90)
+                        && (tint.b == 0 ? b < 32 : b > 90)) {
+                        pixels++;
+                        xSum += x + ix;
+                        ySum += y + iy;
+                        brightness = Math.max(brightness, Math.max(r, g));
+                    }
+                }
+            }
+            return new Glyphs(pixels, (float) xSum / pixels, (float) ySum / pixels, brightness);
+        } finally { image.dispose(); }
+    }
+
+    private record Glyphs(int pixels, float x, float y, int brightness) { }
 
     private void integrationAndOrder(AssetService assets) throws Exception {
         // 8px strips overlap at different depths. Adjacent probes independently expose each pass.

@@ -58,7 +58,7 @@ public class CombatSystem extends IteratingSystem implements ContactListener, En
         float damageScale = Math.min(drawFrame + 1, 4) / 4f;
         arrows.add(new ArrowFlight(owner, arrowType, start, target, attack.damage() * damageScale));
         var combat = Combat.MAPPER.get(owner);
-        combat.beginAttack(Combat.AttackSlot.PRIMARY, attack);
+        combat.beginAttack(Combat.AttackSlot.PRIMARY, attack, facing.getDirection());
         activeAttacks.put(owner, combat);
         animation.releaseBow();
         aim.cancel();
@@ -88,6 +88,8 @@ public class CombatSystem extends IteratingSystem implements ContactListener, En
         arrows.clear();
         engine.removeEntityListener(this);
         pendingHits.clear();
+        var victims = engine.getEntitiesFor(DamageFeedback.FAMILY);
+        for (int i = victims.size() - 1; i >= 0; i--) { victims.get(i).remove(DamageFeedback.class); }
         super.removedFromEngine(engine);
     }
 
@@ -95,6 +97,13 @@ public class CombatSystem extends IteratingSystem implements ContactListener, En
     public void update(float deltaTime) {
         // Box2D callbacks only queue data. Health changes and fixture mutations happen unlocked.
         if (world.isLocked()) { return; }
+        var victims = getEngine().getEntitiesFor(DamageFeedback.FAMILY);
+        for (int i = victims.size() - 1; i >= 0; i--) {
+            var victim = victims.get(i);
+            var feedback = DamageFeedback.MAPPER.get(victim);
+            feedback.advance(deltaTime);
+            if (feedback.numbers.isEmpty()) { victim.remove(DamageFeedback.class); }
+        }
         applyPendingHits();
         arrows.removeIf(arrow -> arrow.finished(world, deltaTime));
         super.update(deltaTime);
@@ -113,7 +122,7 @@ public class CombatSystem extends IteratingSystem implements ContactListener, En
             if ((attackerHealth == null || attackerHealth.isAlive())
                 && combat != null && combat.isAttacking() && combat.getAttackId() == hit.attackId()
                 && health != null && health.isAlive() && combat.markHit(hit.target())) {
-                health.damage(combat.getActiveAttack().damage());
+                DamageFeedback.land(hit.target(), health, combat.getActiveAttack().damage(), combat.getAttackFacing());
             }
         }
         pendingHits.clear();
@@ -133,7 +142,7 @@ public class CombatSystem extends IteratingSystem implements ContactListener, En
                 var next = requested == Combat.AttackSlot.PRIMARY ? weapon.primary() : weapon.secondary();
                 stopAttack(entity);
                 animation.queueAttack(next.animation());
-                combat.beginAttack(requested, next);
+                combat.beginAttack(requested, next, Facing.MAPPER.get(entity).getDirection());
                 activeAttacks.put(entity, combat);
                 return;
             }
@@ -152,7 +161,7 @@ public class CombatSystem extends IteratingSystem implements ContactListener, En
         var anchor = new Vector2(size.x * 0.5f, size.y * 0.5f);
         var shape = new PolygonShape();
         try {
-            shape.set(attack.vertices(anchor, Facing.MAPPER.get(entity).getDirection()));
+            shape.set(attack.vertices(anchor, combat.getAttackFacing()));
             var definition = new FixtureDef();
             definition.shape = shape;
             definition.isSensor = true;

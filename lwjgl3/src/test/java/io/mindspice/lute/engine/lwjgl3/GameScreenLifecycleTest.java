@@ -8,12 +8,15 @@ import com.badlogic.gdx.Input;
 import com.badlogic.gdx.ScreenAdapter;
 import com.badlogic.gdx.backends.lwjgl3.Lwjgl3Application;
 import com.badlogic.gdx.backends.lwjgl3.Lwjgl3ApplicationConfiguration;
+import com.badlogic.gdx.graphics.Pixmap;
+import com.badlogic.gdx.graphics.glutils.HdpiUtils;
 import com.badlogic.gdx.utils.Disposable;
 import io.mindspice.lute.engine.GameCore;
 import io.mindspice.lute.engine.assets.MapAssets;
 import io.mindspice.lute.engine.components.Actor;
 import io.mindspice.lute.engine.components.Combat;
 import io.mindspice.lute.engine.components.Emissive;
+import io.mindspice.lute.engine.components.Health;
 import io.mindspice.lute.engine.components.Player;
 import io.mindspice.lute.engine.screen.GameScreen;
 import io.mindspice.lute.engine.screen.ScreenManager;
@@ -31,6 +34,7 @@ import io.mindspice.lute.engine.tiled.ManifestLoader;
 
 import java.lang.reflect.Field;
 import java.util.ArrayList;
+import java.util.BitSet;
 import java.util.List;
 import java.util.Map;
 
@@ -236,6 +240,16 @@ public final class GameScreenLifecycleTest extends ApplicationAdapter {
             input.keyDown(Input.Keys.N);
             replacement.render(.02f);
             require(night(replacement), "Fresh press after real key-up toggles the replacement screen");
+            if (layers.equals(new DebugLayers(false, false, false, false))) {
+                replacement.render(0f);
+                var alive = hudGlyphs();
+                var activePlayer = engine.getEntitiesFor(com.badlogic.ashley.core.Family.all(Player.class).get()).first();
+                Health.MAPPER.get(activePlayer).damage(Float.MAX_VALUE);
+                replacement.render(0f);
+                var dead = hudGlyphs();
+                require(!alive.isEmpty() && !dead.isEmpty() && !dead.equals(alive),
+                    "Live-to-dead health redraws unlit glyphs at night without advancing the clock");
+            }
             oldFire = lights.first();
             require(playerCount(engine) == 1, "Recreation installs exactly one live player: " + layers);
             require(engine.getSystem(PhysicSystem.class) != physics, "Recreation uses fresh physics");
@@ -351,6 +365,27 @@ public final class GameScreenLifecycleTest extends ApplicationAdapter {
         if (!(Math.abs(actual - expected) <= 0.000001)) {
             throw new AssertionError(message + ": expected " + expected + ", got " + actual);
         }
+    }
+
+    /** Scan only bright white glyphs, not changing tiles or lights behind the HUD. Call at night. */
+    static BitSet hudGlyphs() {
+        var view = GAME.getViewport();
+        int width = HdpiUtils.toBackBufferX(Math.min(230, view.getScreenWidth()));
+        int height = HdpiUtils.toBackBufferY(24);
+        var pixels = Pixmap.createFromFrameBuffer(HdpiUtils.toBackBufferX(view.getScreenX()),
+            HdpiUtils.toBackBufferY(view.getScreenY() + view.getScreenHeight()) - height, width, height);
+        try {
+            var glyphs = new BitSet(width * height);
+            for (int y = 0; y < height; y++) {
+                for (int x = 0; x < width; x++) {
+                    int rgba = pixels.getPixel(x, y);
+                    if (rgba >>> 24 > 225 && (rgba >>> 16 & 255) > 225 && (rgba >>> 8 & 255) > 225) {
+                        glyphs.set(y * width + x);
+                    }
+                }
+            }
+            return glyphs;
+        } finally { pixels.dispose(); }
     }
 
     private static void require(boolean condition, String message) {

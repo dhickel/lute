@@ -16,6 +16,7 @@ final class ArrowFlight {
     final Vector2 direction;
     private final Vector2 start, aimPoint, travel;
     private final float damage;
+    private final Facing.Direction launchFacing;
     private final double span, rise, bend, sweepStep, endProgress;
     private final Vector2[] vertices;
     private final float collisionPad;
@@ -27,9 +28,10 @@ final class ArrowFlight {
         this.start = start;
         this.aimPoint = aimPoint;
         this.damage = damage;
+        launchFacing = Facing.MAPPER.get(owner).getDirection();
         tip = start.cpy();
         float distance = start.dst(aimPoint);
-        travel = distance == 0 ? switch (Facing.MAPPER.get(owner).getDirection()) {
+        travel = distance == 0 ? switch (launchFacing) {
             case UP -> new Vector2(0, 1);
             case DOWN -> new Vector2(0, -1);
             case LEFT -> new Vector2(-1, 0);
@@ -156,7 +158,7 @@ final class ArrowFlight {
         world.QueryAABB(nearest, Math.min(tip.x, next.x) - collisionPad, Math.min(tip.y, next.y) - collisionPad,
             Math.max(tip.x, next.x) + collisionPad, Math.max(tip.y, next.y) + collisionPad);
         var health = nearest.target == null ? null : Health.MAPPER.get(nearest.target);
-        if (health != null && health.isAlive()) { health.damage(damage); }
+        if (health != null && health.isAlive()) { DamageFeedback.land(nearest.target, health, damage, launchFacing); }
         return Float.isFinite(nearest.distance);
     }
 }

@@ -16,6 +16,17 @@ Map actor data comes from `raw_assets/data/characters.json` for NPCs and `raw_as
 
 The ignored raw and runtime copies in this checkout have been migrated locally. Other checkouts must migrate their own ignored data: move entries from the former `actors.json` role maps into the corresponding files, preserve their graph keys and detection radii, add names, and retain map actor `max_health`. Regenerate runtime assets. There is no `actors.json` fallback.
 
+### Reproducing combat tuning
+
+Both asset trees are ignored, so these JSON values are not included in the PR. After provisioning the raw tree, set the following existing fields, preserving all other data:
+
+- `raw_assets/data/player.json`: set `max_health` to `50`.
+- `raw_assets/data/characters.json`: set `basic_npc.max_health` to `50`.
+- `raw_assets/data/enemies.json`: set `brainless_undead.max_health` to `50`.
+- `raw_assets/data/weapons.json`: set `weapons.basic_sword.attack_stats.primary.stats.damage` to `10` (unchanged) and `weapons.basic_bow.attack_stats.primary.stats.damage` to `11`.
+
+Run `./generate-runtime-assets.sh` from the repository root to regenerate the corresponding `assets/data/` files; do not edit generated files directly. This tuning introduces no schema change. With the independent ±10% damage roll, sword and full-draw bow primary attacks take 5–6 hits to deplete 50 health at the roll extremes. Secondary and unarmed attacks remain weaker and their existing values are unchanged. Partial bow draw multipliers remain 25%, 50%, and 75%; with the primary damage of 11, they yield pre-roll damage of 2.75, 5.5, and 8.25, compared with 11 at full draw.
+
 ## Terrain tilesheet generation
 
 Author maps and terrain sheets normally in `raw_assets/`; do not manually pad generated files or edit `assets/`. `./generate-runtime-assets.sh` extrudes a one-pixel repeated RGBA border around each tile of grid-based, single-image terrain tilesets, whether defined in an external TSX or inline in a TMX. The generated PNG and tileset metadata use margin 1 and spacing 2, with the image reference and dimensions updated to match the generated sheet.

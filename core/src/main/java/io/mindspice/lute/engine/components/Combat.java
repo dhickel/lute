@@ -15,6 +15,7 @@ public class Combat implements Component {
     public static final ComponentMapper<Combat> MAPPER = ComponentMapper.getFor(Combat.class);
     private AttackSlot attackRequested;
     private CombatWeapon.Attack activeAttack;
+    private Facing.Direction attackFacing;
     private boolean attacking;
     private final Map<AttackKey, Float> cooldowns = new HashMap<>();
     private Fixture sensor;
@@ -42,6 +43,7 @@ public class Combat implements Component {
             else { entry.setValue(remaining); }
         }
     }
+    public Facing.Direction getAttackFacing() { return attackFacing; }
     public CombatWeapon.Attack getActiveAttack() { return activeAttack; }
 
     public void requestAttack(AttackSlot slot) {
@@ -54,8 +56,9 @@ public class Combat implements Component {
         return requested;
     }
 
-    public void beginAttack(AttackSlot slot, CombatWeapon.Attack attack) {
+    public void beginAttack(AttackSlot slot, CombatWeapon.Attack attack, Facing.Direction facing) {
         activeAttack = attack;
+        attackFacing = facing;
         cooldowns.put(new AttackKey(attack.weaponId(), slot), attack.cooldownSeconds());
         attacking = true;
         attackId++;
@@ -69,6 +72,7 @@ public class Combat implements Component {
         sensor = null;
         attackRequested = null;
         activeAttack = null;
+        attackFacing = null;
         hitTargets.clear();
     }
 

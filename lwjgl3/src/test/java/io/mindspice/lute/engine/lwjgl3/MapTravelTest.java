@@ -37,6 +37,7 @@ import io.mindspice.lute.engine.singletons.GameConsts;
 import io.mindspice.lute.engine.systems.AwarenessSystem;
 import io.mindspice.lute.engine.components.ActorAi;
 import io.mindspice.lute.engine.systems.CombatSystem;
+import io.mindspice.lute.engine.systems.DamageFeedbackProbe;
 import io.mindspice.lute.engine.systems.EventSystem;
 import io.mindspice.lute.engine.systems.EntityFactory;
 import io.mindspice.lute.engine.systems.PhysicDebugRenderSystem;
@@ -55,6 +56,7 @@ import java.util.List;
 import java.util.Map;
 import java.util.Set;
 
+import static io.mindspice.lute.engine.lwjgl3.GameScreenLifecycleTest.hudGlyphs;
 import static io.mindspice.lute.engine.lwjgl3.GameScreenLifecycleTest.night;
 import static io.mindspice.lute.engine.lwjgl3.GameScreenLifecycleTest.seconds;
 
@@ -229,7 +231,6 @@ public final class MapTravelTest extends ApplicationAdapter {
         int lit = pixel(redCenter);
 
         var health = Health.MAPPER.get(start);
-        health.damage(23);
         var facing = Facing.MAPPER.get(start);
         facing.setDirection(Facing.Direction.LEFT);
         var loadout = Loadout.MAPPER.get(start);
@@ -254,6 +255,16 @@ public final class MapTravelTest extends ApplicationAdapter {
             && Combat.MAPPER.get(start).isCoolingDown("basic_bow", Combat.AttackSlot.PRIMARY),
             "Depart with held inputs, a live arrow and an active cooldown; immediate redraw is blocked");
         var oldBody = body(start);
+        // Land a hit immediately before the transition, too recent to expire normally.
+        time.update((float) ((30 - time.getTotalInGameSeconds() % 60 + 60) % 60 * time.getDayLengthMinutes() / 1440));
+        screen.render(0);
+        var fullHud = hudGlyphs();
+        DamageFeedbackProbe.hit(start, health.getMaximum() / 3, Facing.Direction.RIGHT);
+        float damagedHealth = health.getCurrent();
+        screen.render(0);
+        var damagedHud = hudGlyphs();
+        require(!fullHud.isEmpty() && !damagedHud.isEmpty() && !damagedHud.equals(fullHud)
+            && DamageFeedbackProbe.count(start) == 1, "Active damage updates the source HUD and produces a transient number");
         var beforeSelfTravel = time.getTotalInGameSeconds();
         enterNamed("self");
         var rebuilt = player();
@@ -269,8 +280,10 @@ public final class MapTravelTest extends ApplicationAdapter {
             "Reentry reloads the same logical map and creates fresh runtime entities and bodies");
         require(world.getBodyCount() == sourceBodies, "Self reload leaves no extra bodies");
         atPoint(rebuilt, "PlayerSpawn");
-        require(Health.MAPPER.get(rebuilt) == health && health.getCurrent() == health.getMaximum() - 23,
-            "Health is the same live component with unchanged current and maximum");
+        require(Health.MAPPER.get(rebuilt) == health && health.getCurrent() == damagedHealth && hudGlyphs().equals(damagedHud),
+            "First destination HUD retains the same live current and maximum health and clock minute");
+        require(DamageFeedbackProbe.count(start) == 0 && DamageFeedbackProbe.count(rebuilt) == 0,
+            "Retiring a runtime drops the active number instead of carrying it to the new player");
         require(Facing.MAPPER.get(rebuilt) == facing && facing.getDirection() == Facing.Direction.LEFT, "Facing survives");
         require(Loadout.MAPPER.get(rebuilt) == loadout && loadout.getEquipment().equals(equipment)
             && loadout.getWeaponId().equals("basic_bow"), "Live loadout preserves equipped gear and weapon");
@@ -349,8 +362,18 @@ public final class MapTravelTest extends ApplicationAdapter {
             "Hide/show remounts the current map and retains live player state");
         atPoint(player(), "arrival");
         enter("local"); // Exit the arrival portal again before returning.
-        enter("back");
+        var beforeDeath = hudGlyphs();
+        DamageFeedbackProbe.hit(player(), 2 * health.getMaximum(), Facing.Direction.DOWN);
+        screen.render(0);
+        var deadHud = hudGlyphs();
+        require(!deadHud.isEmpty() && !deadHud.equals(beforeDeath), "The HUD shows the killing hit's zero health");
+        enterNamed("back");
         atPoint(player(), "PlayerSpawn");
+        require(!health.isAlive() && hudGlyphs().equals(deadHud) && DamageFeedbackProbe.count(player()) == 0,
+            "The HUD remains live for a dead player after cross-map travel without carrying the killing number");
+        time.update((float) time.getDayLengthMinutes() * 60 / 24); // Advance one game hour without moving the world.
+        screen.render(0);
+        require(!hudGlyphs().equals(deadHud), "The displayed clock advances after dead-player travel");
         require(GAME.getAssetService().isLoaded(TiledMap.class, A) && !GAME.getAssetService().isLoaded(Sound.class, "TRAVEL_B"),
             "Travel back loads the original manifest and releases B-owned sound");
         require(Health.MAPPER.get(player()) == health && world.getBodyCount() == sourceBodies, "Returning preserves state and balances body ownership");
@@ -432,7 +455,8 @@ public final class MapTravelTest extends ApplicationAdapter {
         body(enemy).setTransform(-100, -100, 0);
         body(player).setTransform(-100 + 80f * GameConsts.UNIT_SCALE, -100, 0);
         var originalHealth = Health.MAPPER.get(player);
-        var testHealth = new Health(originalHealth.getMaximum());
+        float base = Loadout.MAPPER.get(enemy).getWeapon().primary().damage();
+        var testHealth = new Health(4 * base); // The pursuit check needs a survivor independently of authored player HP.
         player.add(testHealth);
         try {
             screen.render(1f / 60f);
@@ -442,8 +466,10 @@ public final class MapTravelTest extends ApplicationAdapter {
             for (int i = 0; i < 120 && !combat.isAttacking(); i++) { screen.render(1f / 60f); }
             require(combat.isAttacking(), "Enemy closes the gap and starts the attack without repositioning the player");
             for (int i = 0; i < 5; i++) { screen.render(1f / 60f); }
-            require(testHealth.getCurrent() == testHealth.getMaximum() - Loadout.MAPPER.get(enemy).getWeapon().primary().damage()
-                && body(enemy).getLinearVelocity().isZero(), "Enemy deals one weapon hit while standing still");
+            require(testHealth.getCurrent() >= testHealth.getMaximum() - 1.1f * base
+                && testHealth.getCurrent() <= testHealth.getMaximum() - .9f * base
+                && body(enemy).getLinearVelocity().isZero() && DamageFeedbackProbe.count(player) == 1,
+                "Enemy deals one weapon hit and creates one player feedback number while standing still");
             var retreat = body(enemy).getPosition().cpy().add(-2.5f, .5f);
             body(player).setTransform(retreat, 0);
             for (int i = 0; i < 90 && combat.isAttacking(); i++) { screen.render(1f / 60f); }
