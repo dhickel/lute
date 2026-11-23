@@ -106,7 +106,8 @@ public final class MapTriggersTest {
         TiledMap map = fixture(layer("Trigger", "",
             rectangle("sense", "Sensor", "")
                 + point("player", "", "")
-                + rectangle("area", "SpawnArea", "")
+                + rectangle("area", "SpawnArea", "<property name=\"spawnInfo\" type=\"class\" propertytype=\"SpawnInfo\">"
+                    + "<properties>" + property("spawnType", "NPC") + "</properties></property>")
                 + teleport("door", "", "landing")
                 + point("landing", "TELEPORT", "")
                 + point("npc", "NPC", "") + point("item", "ITEM", "")
@@ -123,7 +124,8 @@ public final class MapTriggersTest {
                 "SpawnPoint inherits PLAYER and DOWN defaults from the Tiled project");
             near(player.position().x, 96, "Point remains in pixels");
             near(player.position().y, 512, "Point is not flipped twice");
-            check(triggers.areas().getFirst().type() == SpawnType.NPC, "SpawnArea inherits NPC default");
+            check(triggers.areas().getFirst().info().equals(new MapTriggers.SpawnInfo("area", SpawnType.NPC)),
+                "SpawnArea reads its type from the shared Tiled class property");
             rectangle(triggers.areas().getFirst().bounds(), 1, 17, 2, 1);
             check(triggers.sensors().get(1).targetMap().equals("THIS"), "Teleport inherits THIS default");
             check(triggers.points().get(3).spawnKey().equals("campfire1")

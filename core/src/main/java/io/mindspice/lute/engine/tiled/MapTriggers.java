@@ -4,6 +4,7 @@ import com.badlogic.gdx.maps.MapGroupLayer;
 import com.badlogic.gdx.maps.MapLayer;
 import com.badlogic.gdx.maps.MapLayers;
 import com.badlogic.gdx.maps.MapObject;
+import com.badlogic.gdx.maps.MapProperties;
 import com.badlogic.gdx.maps.objects.PointMapObject;
 import com.badlogic.gdx.maps.objects.RectangleMapObject;
 import com.badlogic.gdx.maps.tiled.TiledMap;
@@ -25,8 +26,15 @@ public record MapTriggers(List<Sensor> sensors, List<SpawnPoint> points, List<Sp
         public DetectorGeometry { polygons = List.copyOf(polygons); }
     }
     public record Sensor(String name, SensorType type, DetectorGeometry geometry, String targetMap, String targetSpawn) { }
-    public record SpawnPoint(String name, SpawnType type, Vector2 position, String spawnKey, Facing.Direction facing) { }
-    public record SpawnArea(String name, SpawnType type, Rectangle bounds) { }
+    public record SpawnInfo(String name, SpawnType type) { }
+    public record SpawnPoint(SpawnInfo info, Vector2 position, String spawnKey, Facing.Direction facing) {
+        public String name() { return info.name(); }
+        public SpawnType type() { return info.type(); }
+    }
+    public record SpawnArea(SpawnInfo info, Rectangle bounds) {
+        public String name() { return info.name(); }
+        public SpawnType type() { return info.type(); }
+    }
 
     public MapTriggers {
         sensors = List.copyOf(sensors);
@@ -120,7 +128,7 @@ public record MapTriggers(List<Sensor> sensors, List<SpawnPoint> points, List<Sp
             throw invalid(object, "rotated spawn geometry is unsupported");
         }
         switch (type) {
-            case "Sensor" -> sensors.add(new Sensor(name, enumValue(object, "sensorType", SensorType.class),
+            case "Sensor" -> sensors.add(new Sensor(name, enumValue(object, "sensorType", object.getProperties().get("sensorType"), SensorType.class),
                 DetectorGeometryParser.parse(object, rotation), null, null));
             case "Teleport" -> sensors.add(new Sensor(name, SensorType.GENERAL, DetectorGeometryParser.parse(object, rotation),
                 text(object, "targetMap"), text(object, "targetSpawn")));
@@ -137,21 +145,41 @@ public record MapTriggers(List<Sensor> sensors, List<SpawnPoint> points, List<Sp
                 var position = new Vector2(point.getPoint());
                 finite(object, position.x, "x");
                 finite(object, position.y, "y");
-                var spawnType = enumValue(object, "spawnType", SpawnType.class);
-                String spawnKey = switch (spawnType) {
-                    case NPC, ENEMY -> requiredSpawnKey(object, true);
-                    case OBJECT, ITEM -> requiredSpawnKey(object, false);
+                var properties = spawnProperties(object);
+                var info = new SpawnInfo(name, enumValue(object, "spawnType", properties.get("spawnType"), SpawnType.class));
+                String spawnKey = switch (info.type()) {
+                    case NPC, ENEMY -> requiredSpawnKey(object, properties.get("spawnKey"), true);
+                    case OBJECT, ITEM -> requiredSpawnKey(object, properties.get("spawnKey"), false);
                     default -> null;
                 };
-                var facing = switch (spawnType) {
-                    case PLAYER, NPC, ENEMY, OBJECT, ITEM -> enumValue(object, "facing", Facing.Direction.class);
+                var facing = switch (info.type()) {
+                    case PLAYER, NPC, ENEMY, OBJECT, ITEM -> enumValue(object, "facing", properties.get("facing"), Facing.Direction.class);
                     case TELEPORT -> null;
                 };
-                points.add(new SpawnPoint(name, spawnType, position, spawnKey, facing));
+                points.add(new SpawnPoint(info, position, spawnKey, facing));
             }
-            case "SpawnArea" -> areas.add(new SpawnArea(name, enumValue(object, "spawnType", SpawnType.class), bounds(object)));
+            case "SpawnArea" -> {
+                var properties = spawnProperties(object);
+                var info = new SpawnInfo(name, enumValue(object, "spawnType", properties.get("spawnType"), SpawnType.class));
+                areas.add(new SpawnArea(info, bounds(object)));
+            }
             default -> throw invalid(object, "unsupported trigger class '" + type + "'");
         }
+    }
+
+    private static MapProperties spawnProperties(MapObject object) {
+        var flat = object.getProperties();
+        if (!flat.containsKey("spawnInfo")) { return flat; }
+        if (!(flat.get("spawnInfo") instanceof MapProperties shared) || !"SpawnInfo".equals(shared.get("type"))) {
+            throw invalid(object, "spawnInfo must be a SpawnInfo class property");
+        }
+        var properties = new MapProperties();
+        properties.putAll(shared);
+        // Legacy overrides can coexist with class defaults until the map is migrated.
+        for (String key : new String[]{"spawnType", "spawnKey", "facing"}) {
+            if (flat.containsKey(key)) { properties.put(key, flat.get(key)); }
+        }
+        return properties;
     }
 
     private static Rectangle bounds(MapObject object) {
@@ -178,23 +206,26 @@ public record MapTriggers(List<Sensor> sensors, List<SpawnPoint> points, List<Sp
         }
     }
 
-    private static String requiredSpawnKey(MapObject object, boolean actor) {
-        var value = object.getProperties().get("spawnKey");
+    private static String requiredSpawnKey(MapObject object, Object value, boolean actor) {
         // Tiled supplies the class default "NULL" for markers without an authored key.
         if (value == null || "NULL".equals(value)) {
             if (actor) { return text(object, "actorId"); }
             throw invalid(object, "spawnKey is required");
         }
-        return text(object, "spawnKey");
+        return requireText(object, "spawnKey", value);
     }
 
     private static String text(MapObject object, String key) {
-        if (object.getProperties().get(key) instanceof String value && !value.isBlank()) { return value; }
+        return requireText(object, key, object.getProperties().get(key));
+    }
+
+    private static String requireText(MapObject object, String key, Object raw) {
+        if (raw instanceof String value && !value.isBlank()) { return value; }
         throw invalid(object, key + " must be a nonblank string");
     }
 
-    private static <E extends Enum<E>> E enumValue(MapObject object, String key, Class<E> type) {
-        String value = text(object, key);
+    private static <E extends Enum<E>> E enumValue(MapObject object, String key, Object raw, Class<E> type) {
+        String value = requireText(object, key, raw);
         try { return Enum.valueOf(type, value); }
         catch (IllegalArgumentException failure) { throw invalid(object, "invalid " + key + " '" + value + "'"); }
     }

@@ -447,8 +447,13 @@ public final class MapSensorSystemTest {
                 "PLAYER, NPC, ENEMY and ITEM points spawn entities; teleport points and areas do not");
             near(pixels(6), factory.lastPixels.x, "TiledSystem passes unscaled point X pixels to factory");
             near(pixels(7), factory.lastPixels.y, "TiledSystem passes unflipped point Y pixels to factory");
-            check(game.tiled.getMapTriggers().points().size() == 5 && game.tiled.getMapTriggers().areas().size() == 2,
+            var triggers = game.tiled.getMapTriggers();
+            check(triggers.points().size() == 5 && triggers.areas().size() == 2,
                 "All data-only markers remain available in parsed map metadata");
+            check(triggers.points().getFirst().info().equals(new MapTriggers.SpawnInfo("start", MapTriggers.SpawnType.PLAYER)),
+                "SpawnPoint stores its authored name and type in SpawnInfo");
+            check(triggers.areas().getFirst().info().equals(new MapTriggers.SpawnInfo("npc-area", MapTriggers.SpawnType.NPC)),
+                "SpawnArea stores its authored name and type in SpawnInfo");
             position(factory.lastPlayer, 5, 5.5f, "Initial factory spawn is centered at the PLAYER point");
             game.tick(STEP * 2);
             game.expect(new Event.Sensor.Enter("spawn-room", MapTriggers.SensorType.GENERAL, factory.lastPlayer));
