@@ -20,6 +20,7 @@ public class Animation2D implements Component {
     private final float baseFrameDuration;
     private float frameDuration;
     private float stateTime;
+    private double deathSeconds;
     private boolean bowReleased;
     private Animation<TextureRegion> animation;
     boolean dirty;
@@ -168,7 +169,10 @@ public class Animation2D implements Component {
     }
 
     public float advancePlayback(float delta, boolean drawingBow) {
-        if (bowReleased) {
+        if (type == AnimationType.DEATH) {
+            deathSeconds += delta;
+            stateTime = (float) Math.min(deathSeconds * speed, animation.getAnimationDuration());
+        } else if (bowReleased) {
             stateTime = (BowAim.FULL_DRAW_FRAME + 1) * frameDuration;
             bowReleased = false;
         } else {
@@ -184,6 +188,12 @@ public class Animation2D implements Component {
         frameDuration = baseFrameDuration;
     }
 
+    public double getDeathSeconds() { return deathSeconds; }
+
+    public void setDeathSeconds(double seconds) { deathSeconds = seconds; }
+
+    public double getPlaybackDuration() { return (double) animation.getAnimationDuration() / speed; }
+
     public boolean isFinished() {
         return animation.isAnimationFinished(stateTime);
     }
@@ -194,7 +204,7 @@ public class Animation2D implements Component {
     }
 
     public enum AnimationType {
-        IDLE("idle"), WALK("walk"), ATTACK("attack"), DEFAULT("");
+        IDLE("idle"), WALK("walk"), ATTACK("attack"), DEATH("death"), DEFAULT("");
 
         public final String atlasKey;
 

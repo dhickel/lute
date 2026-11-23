@@ -8,10 +8,10 @@ import java.util.Map;
 
 public final class Graphs {
     private static final RootNode WANDER = actionGraph("Wander", Action.wander());
+    private static final Map<Mode, RootNode> PURSUIT = Map.of(Mode.WANDER, WANDER, Mode.ENGAGE, engage(),
+        Mode.INVESTIGATE, actionGraph("Investigate last seen position", Action.followTarget()));
     private static final Map<String, Map<Mode, RootNode>> PROFILES = Map.of(
-        "wander", Map.of(Mode.WANDER, WANDER),
-        "wander_attack", Map.of(Mode.WANDER, WANDER, Mode.ENGAGE, engage(),
-            Mode.INVESTIGATE, actionGraph("Investigate last seen position", Action.followTarget()))
+        "wander", Map.of(Mode.WANDER, WANDER), "wander_attack", PURSUIT
     );
 
     private Graphs() { }
@@ -23,6 +23,8 @@ public final class Graphs {
     }
 
     public static Map<Mode, RootNode> forKey(String key) { return PROFILES.get(key); }
+
+    public static RootNode pursuit(Mode mode) { return PURSUIT.get(mode); }
 
     private static RootNode actionGraph(String name, Action action) {
         var root = new RootNode();

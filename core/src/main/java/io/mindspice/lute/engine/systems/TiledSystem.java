@@ -31,7 +31,10 @@ import io.mindspice.lute.engine.tiled.properties.AnimatedPhysicObjectProps;
 import io.mindspice.lute.engine.tiled.properties.PhysicObjectProps;
 
 import java.util.ArrayList;
+import java.util.HashMap;
+import java.util.IdentityHashMap;
 import java.util.List;
+import java.util.Map;
 
 public class TiledSystem extends EntitySystem implements EventEmitter {
     private final AssetService assetService;
@@ -42,6 +45,11 @@ public class TiledSystem extends EntitySystem implements EventEmitter {
     private Entry entry;
     private PlayerState playerState;
     private Travel pendingTravel;
+    private boolean pendingRespawn;
+    private double simulationSeconds;
+    private DeathSystem.Corpse hiddenPlayerCorpse;
+    // Only unfinished deaths survive map teardown; after expiry the next runtime spawns normally.
+    private final Map<String, Map<String, DeathSystem.Corpse>> offMapCorpses = new HashMap<>();
 
     public TiledSystem(AssetService assetService, World physicsWorld, InputManager inputManager) {
         this.assetService = assetService;
@@ -54,6 +62,8 @@ public class TiledSystem extends EntitySystem implements EventEmitter {
         hideMap(engine);
         entry = null;
         playerState = null;
+        hiddenPlayerCorpse = null;
+        offMapCorpses.clear();
     }
 
     public MapTriggers getMapTriggers() {
@@ -78,9 +88,25 @@ public class TiledSystem extends EntitySystem implements EventEmitter {
         hideMap(getEngine());
     }
 
+    @Override
+    public void update(float deltaTime) {
+        if (active == null) { return; }
+        simulationSeconds += deltaTime;
+        offMapCorpses.values().removeIf(corpses -> {
+            corpses.values().removeIf(corpse -> corpse.expired(simulationSeconds));
+            return corpses.isEmpty();
+        });
+    }
+
     private void hideMap(Engine engine) {
         pendingTravel = null;
+        pendingRespawn = false;
         if (active == null) { return; }
+        var death = engine.getSystem(DeathSystem.class);
+        if (death != null) { death.update(0f); }
+        hiddenPlayerCorpse = active.player == null ? null : DeathSystem.snapshot(active.player, simulationSeconds);
+        pendingRespawn = false;
+        stashActiveCorpses();
         removeRuntime(engine);
         bindMap(engine, null);
         releaseAssets(active.ownedAssets, List.of());
@@ -88,7 +114,7 @@ public class TiledSystem extends EntitySystem implements EventEmitter {
     }
 
     boolean requestTravel(Entity player, String mapId, String spawn) {
-        if (active == null || active.player != player) { return false; }
+        if (active == null || active.player != player || !Health.MAPPER.get(player).isAlive()) { return false; }
         if (pendingTravel == null) { pendingTravel = new Travel(player, mapId, spawn); }
         return true;
     }
@@ -97,7 +123,8 @@ public class TiledSystem extends EntitySystem implements EventEmitter {
     public void applyPendingTravel() {
         var travel = pendingTravel;
         pendingTravel = null;
-        if (travel == null || !getEngine().getEntities().contains(travel.player(), true)) { return; }
+        if (travel == null || active == null || active.player != travel.player()
+            || !Health.MAPPER.get(travel.player()).isAlive()) { return; }
         RuntimeMap next;
         try {
             var assets = active.entry.assets();
@@ -110,6 +137,49 @@ public class TiledSystem extends EntitySystem implements EventEmitter {
             return;
         }
         install(next);
+    }
+
+    void detachController(Entity player) {
+        var controller = Controller.MAPPER.get(player);
+        if (controller != null) {
+            inputManager.unRegKeyListener(controller.getInputListener());
+            controller.resetInput();
+            player.remove(Controller.class);
+        }
+    }
+
+    boolean retireCorpse(Entity entity) {
+        if (active == null) { return false; }
+        if (active.player == entity) {
+            pendingRespawn = true;
+            entity.remove(Graphic.class);
+            return true;
+        }
+        active.actorSpawns.remove(entity);
+        active.entities.remove(entity);
+        return false; // DeathSystem removes the entity from Ashley (and thus the body from Box2D).
+    }
+
+    /** Replace just the player after the engine update, with families registered before portal checks. */
+    public void applyPendingRespawn() {
+        if (!pendingRespawn || physicsWorld.isLocked()) { return; }
+        pendingRespawn = false;
+        pendingTravel = null;
+        var engine = getEngine();
+        var corpse = active.player;
+        var replacement = createPlayer(active, respawnPoint(active));
+        inputManager.releaseHeldInputs();
+        removeEntity(engine, corpse);
+        active.entities.remove(corpse);
+        detachPlayerState(corpse);
+        active.player = replacement;
+        active.entities.add(replacement);
+        playerState.health().restore();
+        engine.addEntity(replacement);
+        inputManager.regKeyListener(Controller.MAPPER.get(replacement).getInputListener());
+        engine.getSystem(MapSensorSystem.class).suppressArrivalPortals(replacement);
+        var camera = engine.getSystem(CameraSystem.class);
+        if (camera != null) { camera.setMap(active.map, replacement); }
     }
 
     void setMap(TiledMap map, MapAssets assets) {
@@ -137,19 +207,31 @@ public class TiledSystem extends EntitySystem implements EventEmitter {
     private RuntimeMap prepareRuntime(TiledMap map, Entry destination, List<Asset<?>> acquired) {
         if (physicsWorld.isLocked()) { throw new IllegalStateException("Cannot change maps during a physics step"); }
         var triggers = MapTriggers.parse(map);
-        var point = destination.spawn() == null ? triggers.points().stream()
-            .filter(p -> p.type() == MapTriggers.SpawnType.PLAYER).findFirst().orElse(null)
-            : triggers.travelDestination(destination.spawn());
         var next = new RuntimeMap(map, destination, triggers, acquired);
+        var mapId = destination.assets().mapAsset().id();
+        var corpses = active != null && active.entry.assets().mapAsset().id().equals(mapId)
+            ? activeCorpses() : offMapCorpses.getOrDefault(mapId, Map.of());
+        var death = getEngine().getSystem(DeathSystem.class);
+        var point = destination.spawn() == null ? respawnPoint(next) : triggers.travelDestination(destination.spawn());
         try {
             initMapBoundary(next);
             loadMapObjects(next);
-            if (point != null) { spawnPlayerEntity(next, point); }
+            if (point != null) {
+                next.player = createPlayer(next, point);
+                next.entities.add(next.player);
+                if (hiddenPlayerCorpse != null) { death.restore(next.player, hiddenPlayerCorpse, simulationSeconds); }
+            }
             var factory = getEngine().getSystem(EntityFactory.class);
             for (var marker : triggers.points()) {
                 switch (marker.type()) {
-                    case NPC -> next.entities.add(factory.getMapActor(marker.position(), Actor.Role.NPC, marker.spawnKey(), marker.facing()));
-                    case ENEMY -> next.entities.add(factory.getMapActor(marker.position(), Actor.Role.ENEMY, marker.spawnKey(), marker.facing()));
+                    case NPC, ENEMY -> {
+                        var role = marker.type() == MapTriggers.SpawnType.NPC ? Actor.Role.NPC : Actor.Role.ENEMY;
+                        var actor = factory.getMapActor(marker.position(), role, marker.spawnKey(), marker.facing());
+                        next.entities.add(actor);
+                        next.actorSpawns.put(actor, marker.name());
+                        var corpse = corpses.get(marker.name());
+                        if (corpse != null) { death.restore(actor, corpse, simulationSeconds); }
+                    }
                     case ITEM, OBJECT -> next.entities.add(factory.getSpawnedObject(marker.position(), marker.spawnKey(), marker.facing()));
                     default -> { }
                 }
@@ -168,8 +250,10 @@ public class TiledSystem extends EntitySystem implements EventEmitter {
 
     private void install(RuntimeMap next) {
         var engine = getEngine();
+        pendingRespawn = false;
         var previous = active;
         if (previous != null) {
+            stashActiveCorpses();
             removeRuntime(engine);
             var destinationAssets = next.entry.assets().all();
             for (var asset : previous.ownedAssets) {
@@ -179,6 +263,8 @@ public class TiledSystem extends EntitySystem implements EventEmitter {
 
         active = next;
         entry = next.entry;
+        hiddenPlayerCorpse = null;
+        offMapCorpses.remove(entry.assets().mapAsset().id());
         var sensors = engine.getSystem(MapSensorSystem.class);
         sensors.installMap(next.triggers, next.sensors);
         next.sensors = null;
@@ -186,8 +272,10 @@ public class TiledSystem extends EntitySystem implements EventEmitter {
         if (next.player != null) {
             if (playerState == null) { playerState = PlayerState.of(next.player); }
             var controller = Controller.MAPPER.get(next.player);
-            if (controller != null) { inputManager.regKeyListener(controller.getInputListener()); }
-            if (entry.spawn() != null) { sensors.suppressArrivalPortals(next.player); }
+            if (controller != null) {
+                inputManager.regKeyListener(controller.getInputListener());
+                if (entry.spawn() != null) { sensors.suppressArrivalPortals(next.player); }
+            }
         }
         var physics = engine.getSystem(PhysicSystem.class);
         if (physics != null) { physics.resetClock(); }
@@ -196,22 +284,39 @@ public class TiledSystem extends EntitySystem implements EventEmitter {
         eventEmitter.accept(new Event.Map.Changed(next.entry.assets().mapAsset().id()));
     }
 
+    private Map<String, DeathSystem.Corpse> activeCorpses() {
+        var corpses = new HashMap<String, DeathSystem.Corpse>();
+        active.actorSpawns.forEach((actor, marker) -> {
+            var corpse = DeathSystem.snapshot(actor, simulationSeconds);
+            if (corpse != null) { corpses.put(marker, corpse); }
+        });
+        return corpses;
+    }
+
+    private void stashActiveCorpses() {
+        var corpses = activeCorpses();
+        if (!corpses.isEmpty()) { offMapCorpses.put(active.entry.assets().mapAsset().id(), corpses); }
+    }
+
     private void removeRuntime(Engine engine) {
         var sensors = engine.getSystem(MapSensorSystem.class);
         if (sensors != null) { sensors.clearMap(); }
         inputManager.releaseHeldInputs();
-        for (var entity : active.entities) {
-            var controller = Controller.MAPPER.get(entity);
-            if (controller != null) { inputManager.unRegKeyListener(controller.getInputListener()); }
-            engine.removeEntity(entity);
-            entity.remove(DamageFeedback.class);
-        }
+        for (var entity : active.entities) { removeEntity(engine, entity); }
         for (var body : active.bodies) { physicsWorld.destroyBody(body); }
-        if (active.player != null) {
-            active.player.remove(Health.class);
-            active.player.remove(Loadout.class);
-            active.player.remove(Facing.class);
-        }
+        if (active.player != null) { detachPlayerState(active.player); }
+    }
+
+    private void removeEntity(Engine engine, Entity entity) {
+        detachController(entity);
+        engine.removeEntity(entity);
+        entity.remove(DamageFeedback.class);
+    }
+
+    private static void detachPlayerState(Entity player) {
+        player.remove(Health.class);
+        player.remove(Loadout.class);
+        player.remove(Facing.class);
     }
 
     private static void bindMap(Engine engine, RuntimeMap next) {
@@ -241,12 +346,20 @@ public class TiledSystem extends EntitySystem implements EventEmitter {
         }
     }
 
-    private void spawnPlayerEntity(RuntimeMap next, MapTriggers.SpawnPoint point) {
-        next.player = getEngine().getSystem(EntityFactory.class).getPlayerEntity(point.position(), playerState, point.facing());
-        next.entities.add(next.player);
-        var properties = next.map.getProperties();
-        next.player.add(new BowAim(properties.get("tilewidth", Integer.class) * GameConsts.UNIT_SCALE,
+    private static MapTriggers.SpawnPoint respawnPoint(RuntimeMap runtime) {
+        for (var point : runtime.triggers.points()) {
+            if (point.type() == MapTriggers.SpawnType.PLAYER) { return point; }
+        }
+        var arrival = runtime.entry.spawn();
+        return arrival == null ? null : runtime.triggers.travelDestination(arrival);
+    }
+
+    private Entity createPlayer(RuntimeMap runtime, MapTriggers.SpawnPoint point) {
+        var player = getEngine().getSystem(EntityFactory.class).getPlayerEntity(point.position(), playerState, point.facing());
+        var properties = runtime.map.getProperties();
+        player.add(new BowAim(properties.get("tilewidth", Integer.class) * GameConsts.UNIT_SCALE,
             properties.get("tileheight", Integer.class) * GameConsts.UNIT_SCALE));
+        return player;
     }
 
     private void initMapBoundary(RuntimeMap next) {
@@ -345,6 +458,7 @@ public class TiledSystem extends EntitySystem implements EventEmitter {
         final List<Asset<?>> ownedAssets;
         final List<Body> bodies = new ArrayList<>();
         final List<Entity> entities = new ArrayList<>();
+        final Map<Entity, String> actorSpawns = new IdentityHashMap<>();
         List<MapSensorSystem.SensorBody> sensors;
         Entity player;
 

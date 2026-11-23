@@ -18,6 +18,8 @@ public class Health implements Component {
     public float remainingRatio() { return (float) current / maximum; }
     public boolean isAlive() { return current > 0; }
 
+    public void restore() { current = maximum; }
+
     public void damage(int amount) {
         current = Math.max(0, current - amount);
     }

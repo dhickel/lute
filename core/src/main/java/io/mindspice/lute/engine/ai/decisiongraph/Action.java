@@ -29,13 +29,17 @@ public interface Action {
             if (!ai.advanceWander(state.deltaTime())) { return; }
             var random = ThreadLocalRandom.current();
             var direction = Move.MAPPER.get(entity).getDirection();
-            switch (random.nextInt(4)) {
-                case 0 -> direction.set(1, 0);
-                case 1 -> direction.set(-1, 0);
-                case 2 -> direction.set(0, 1);
-                case 3 -> direction.set(0, -1);
+            if (direction.isZero()) {
+                switch (random.nextInt(4)) {
+                    case 0 -> direction.set(1, 0);
+                    case 1 -> direction.set(-1, 0);
+                    case 2 -> direction.set(0, 1);
+                    case 3 -> direction.set(0, -1);
+                }
+            } else {
+                direction.setZero();
             }
-            ai.resetWander(random.nextFloat(.35f, .8f));
+            ai.resetWander(ActorAi.wanderPhaseSeconds());
         };
     }
 
@@ -63,7 +67,9 @@ public interface Action {
     }
 
     static Action attack(Combat.AttackSlot slot) {
-        return (entity, _) -> Combat.MAPPER.get(entity).requestAttack(slot);
+        return (entity, state) -> {
+            if (state.visibleTarget() != null) { Combat.MAPPER.get(entity).requestAttack(slot, state.visibleTarget()); }
+        };
     }
 
     default Action andThen(Action nextAction) {

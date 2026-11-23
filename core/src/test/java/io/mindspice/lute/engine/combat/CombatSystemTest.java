@@ -64,6 +64,7 @@ public final class CombatSystemTest {
         cardinalBowShots();
         ArrowFlightTest.run();
         cooldownBetweenBowAndMelee();
+        queuedLethalHitCancelsBowRelease();
         bowDamageByDrawFrame();
         independentAttacksAndGeometry();
         committedMeleeHit();
@@ -412,6 +413,48 @@ public final class CombatSystemTest {
                 "Once the shot cooldown expires, bow draw replaces the jab even during the jab cooldown");
             game.update(1f);
             damageWithin(2.5f, arrowTarget, "Replacing recovery does not discard the arrow");
+        }
+    }
+
+    private static void queuedLethalHitCancelsBowRelease() {
+        try (var game = new Harness(1, 0, 0)) {
+            var shot = attack("basic_bow", "shot", 1, 2, 1, BoundsType.RECT, CollisionType.PROJECTILE);
+            game.selectWeapon(new CombatWeapon.Weapon("basic_bow", "ranged/basic_bow", shot, shot));
+            var aim = new BowAim(1, 1);
+            game.player.add(aim);
+            var health = Health.MAPPER.get(game.player);
+            health.damage(health.getCurrent() - 1);
+            fixture(game.body(), .08f, .08f, new Vector2(1, 1), true);
+            game.body().getFixtureList().peek().setUserData(Hurtbox.INSTANCE);
+            var target = game.target(1, false);
+            Physic.MAPPER.get(target).getBody().setTransform(2, 1, 0);
+
+            var attacker = game.target(1, false);
+            var body = Physic.MAPPER.get(attacker).getBody();
+            body.setType(BodyDef.BodyType.DynamicBody);
+            body.setTransform(-.5f, 0f, 0f);
+            var weapon = weapon(1, 0, 0, BoundsType.RECT);
+            var combat = new Combat();
+            attacker.add(combat).add(new Loadout(new Loadout.Equipment(null, null, null, null), weapon.id(),
+                Map.of(weapon.id(), weapon), _ -> { }));
+            attacker.add(new Facing(Facing.Direction.RIGHT)).add(new AnimationPlayer(attacker))
+                .add(new Animation2D("OBJECTS", "attacker", Animation2D.AnimationType.IDLE, Animation.PlayMode.LOOP, 1, .125f))
+                .add(new Graphic(new TextureRegion(), Color.WHITE))
+                .add(new Transform(new Vector2(-.5f, 0), 0, new Vector2(2, 2), new Vector2(1, 1), 0, 0));
+            game.input(InputAction.ATTACK_PRIMARY, 1);
+            combat.requestAttack(Combat.AttackSlot.PRIMARY);
+            game.update(0);
+            game.update(0);
+            check(aim.isAiming() && combat.getSensor() != null, "Bow draw and hostile melee sensor coexist before contact");
+            game.step();
+            game.step();
+            check(health.isAlive() && touching(combat.getSensor(), game.body().getFixtureList().peek()),
+                "Lethal contact waits for unlocked combat processing");
+            game.input(InputAction.ATTACK_PRIMARY, 0);
+            game.update(.5f);
+            check(!health.isAlive() && !aim.isAiming() && game.combat().getAttackId() == 0,
+                "A prior lethal contact cancels the queued bow release before it starts an attack");
+            near(100, Health.MAPPER.get(target).getCurrent(), "Killed archer never launches the pending shot");
         }
     }
 

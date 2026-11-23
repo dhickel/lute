@@ -14,6 +14,7 @@ import java.util.Set;
 public class Combat implements Component {
     public static final ComponentMapper<Combat> MAPPER = ComponentMapper.getFor(Combat.class);
     private AttackSlot attackRequested;
+    private Entity requestedTarget;
     private CombatWeapon.Attack activeAttack;
     private Facing.Direction attackFacing;
     private boolean attacking;
@@ -46,13 +47,20 @@ public class Combat implements Component {
     public Facing.Direction getAttackFacing() { return attackFacing; }
     public CombatWeapon.Attack getActiveAttack() { return activeAttack; }
 
-    public void requestAttack(AttackSlot slot) {
-        if (attackRequested == null) { attackRequested = slot; }
+    public void requestAttack(AttackSlot slot) { requestAttack(slot, null); }
+
+    public void requestAttack(AttackSlot slot, Entity target) {
+        if (attackRequested != null) { return; }
+        attackRequested = slot;
+        requestedTarget = target;
     }
+
+    public Entity requestedTarget() { return requestedTarget; }
 
     public AttackSlot consumeAttackRequest() {
         var requested = attackRequested;
         attackRequested = null;
+        requestedTarget = null;
         return requested;
     }
 
@@ -70,7 +78,7 @@ public class Combat implements Component {
     public void endAttack() {
         attacking = false;
         sensor = null;
-        attackRequested = null;
+        consumeAttackRequest();
         activeAttack = null;
         attackFacing = null;
         hitTargets.clear();

@@ -19,18 +19,19 @@ final class DamageFeedback implements Component {
     static final float DURATION = .65f;
     final List<Number> numbers = new ArrayList<>();
 
-    static void land(Entity target, Health health, int base, float scale, Direction facing) {
+    static int land(Entity target, Health health, int base, float scale, Direction facing) {
         int before = health.getCurrent();
         health.damage(roundedDamage(base, scale, MathUtils.random(.9f, 1.1f)));
         int taken = before - health.getCurrent();
         var transform = Transform.MAPPER.get(target);
-        if (taken <= 0 || transform == null) { return; }
+        if (taken <= 0 || transform == null) { return taken; }
         var feedback = MAPPER.get(target);
         if (feedback == null) { feedback = new DamageFeedback(); target.add(feedback); }
         var position = transform.getPosition();
         var size = transform.getSize();
         feedback.numbers.add(new Number(taken, health.remainingRatio(), facing,
             position.x + size.x / 2, position.y + size.y));
+        return taken;
     }
 
     static int roundedDamage(int base, float scale, float roll) {

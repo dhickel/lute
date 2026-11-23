@@ -14,6 +14,7 @@ final class ArrowFlight {
     final Projectile type;
     final Vector2 tip;
     final Vector2 direction;
+    Entity survivingVictim;
     private final Vector2 start, aimPoint, travel;
     private final int baseDamage;
     private final float drawScale;
@@ -142,6 +143,10 @@ final class ArrowFlight {
             @Override public boolean reportFixture(Fixture fixture) {
                 var body = fixture.getBody();
                 if (body.getUserData() == owner) { return true; }
+                if (body.getUserData() instanceof Entity entity) {
+                    var health = Health.MAPPER.get(entity);
+                    if (health != null && !health.isAlive()) { return true; }
+                }
                 if (fixture.getUserData() != Hurtbox.INSTANCE) {
                     if (fixture.isSensor()) { return true; }
                     for (var other : body.getFixtureList()) {
@@ -160,7 +165,11 @@ final class ArrowFlight {
         world.QueryAABB(nearest, Math.min(tip.x, next.x) - collisionPad, Math.min(tip.y, next.y) - collisionPad,
             Math.max(tip.x, next.x) + collisionPad, Math.max(tip.y, next.y) + collisionPad);
         var health = nearest.target == null ? null : Health.MAPPER.get(nearest.target);
-        if (health != null && health.isAlive()) { DamageFeedback.land(nearest.target, health, baseDamage, drawScale, launchFacing); }
+        if (health != null && health.isAlive()
+            && DamageFeedback.land(nearest.target, health, baseDamage, drawScale, launchFacing) > 0
+            && health.isAlive()) {
+            survivingVictim = nearest.target;
+        }
         return Float.isFinite(nearest.distance);
     }
 }
