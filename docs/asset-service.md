@@ -12,6 +12,14 @@
 
 `raw_assets/` and `assets/` are ignored and absent from the current tracked tree and new checkouts. Provision the complete current source tree externally, including settings, data, audio, maps, tilesets, sprites, and the Tiled project, then run `./generate-runtime-assets.sh` from the repository root. The root entrypoint also works when invoked from another directory, fails with an actionable message if the source directory is missing, and creates the runtime directory before generation. Running the game and asset-dependent tests requires the provisioned data. Git ignore is separate from runtime resource ownership; existing Git history has not been purged and may contain asset objects.
 
+## Terrain tilesheet generation
+
+Author maps and terrain sheets normally in `raw_assets/`; do not manually pad generated files or edit `assets/`. `./generate-runtime-assets.sh` extrudes a one-pixel repeated RGBA border around each tile of grid-based, single-image terrain tilesets, whether defined in an external TSX or inline in a TMX. The generated PNG and tileset metadata use margin 1 and spacing 2, with the image reference and dimensions updated to match the generated sheet.
+
+Source margin and spacing default to zero when absent; valid nondefault values are read as authored. The actual source image dimensions determine the grid. Generation fails for invalid grid geometry or explicit columns that conflict with that grid, and normalizes a stale tilecount to the actual grid. Tile order and IDs, properties, animation, and collision are preserved. Image-collection tilesets and image-layer images are not extruded, and source files are never rewritten.
+
+The generated files follow the existing ownership and transaction rules described in the [README](../README.md#per-map-generation). The runtime loader is unchanged; there are no new settings or per-frame operations. Padding reduces texture bleed but does not address every cause of tile seams.
+
 ## Animation authoring and migration
 
 The shared `AnimationData` schema has four fields: speed, atlas key, sound frame, and frame interval in seconds. Player and weapon JSON use `speed`, `atlas_key`, `sound_frame`, and `frame_interval` inside `animation`. Tiled's `Animation` class uses camelCase `speed`, `atlasKey`, `soundFrame`, and `frameInterval`; `AnimatedPhysicObject.animation` is an instance of that class. Players start in `IDLE`; animated environmental objects start in `DEFAULT`. Neither initial type is set in Tiled. Keep the Tiled class and Java/JSON schema synchronized in fields, types, and meaning; values are independently authored.
