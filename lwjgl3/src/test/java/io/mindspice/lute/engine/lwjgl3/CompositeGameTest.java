@@ -254,10 +254,10 @@ public final class CompositeGameTest {
                         placePlayer(player, origin.cpy().sub((bow ? 64 : 48) * GameConsts.UNIT_SCALE, 0));
                         health = new Health(health.getMaximum());
                         actor.add(health);
-                        float before = health.getCurrent();
+                        int before = health.getCurrent();
                         require(fireAtActor(player, bow, Facing.Direction.LEFT, actor) == 0 && health.getCurrent() == before,
                             weapon + " miss leaves " + name + " unharmed and makes no damage number");
-                        float damage = Loadout.MAPPER.get(player).getWeapon().primary().damage();
+                        int damage = Loadout.MAPPER.get(player).getWeapon().primary().damage();
                         require(fireAtActor(player, bow, Facing.Direction.RIGHT, actor) == 1
                                 && oneHit(before, damage, health.getCurrent()),
                             weapon + " deals one full hit and shows one number for " + name + ": " + before + " -> " + health.getCurrent());
@@ -355,7 +355,7 @@ public final class CompositeGameTest {
         int entities = engine.getEntities().size();
         int bodies = world.getBodyCount();
         int fixtures = fixtureCount(world);
-        float playerHealth = Health.MAPPER.get(player).getCurrent();
+        int playerHealth = Health.MAPPER.get(player).getCurrent();
         long previousAttack = combat.getAttackId();
         Facing.Direction direction = Facing.MAPPER.get(player).getDirection();
         var seen = new BitSet();
@@ -436,13 +436,13 @@ public final class CompositeGameTest {
             require(animation.getType() == Animation2D.AnimationType.IDLE, "Attack FSM returns to idle after release");
             require(combat.getAttackId() == previousAttack + 1 && !combat.hasAttackRequest(), "No queued attack from keyUp");
             if (shot) {
-                float remaining = Health.MAPPER.get(target).getCurrent();
+                int remaining = Health.MAPPER.get(target).getCurrent();
                 boolean clear = direction == Facing.Direction.LEFT || direction == Facing.Direction.RIGHT;
-                require(clear ? oneHit(1000f, expected.damage(), remaining) : remaining == 1000f,
+                require(clear ? oneHit(1000, expected.damage(), remaining) : remaining == 1000,
                     "Probe takes one hit on clear paths, none behind test-map walls: " + direction);
             } else {
                 require(sensorSeen, "Melee attack really creates a sensor, including bow jab");
-                require(oneHit(1000f, expected.damage(), Health.MAPPER.get(target).getCurrent()),
+                require(oneHit(1000, expected.damage(), Health.MAPPER.get(target).getCurrent()),
                     "Real physics contact deals exactly one authored melee hit: " + weapon.id() + "/" + slot + "/" + direction);
             }
             require(fixtureCount(world) == fixtures, "Completed attack restores world fixture count");
@@ -486,7 +486,7 @@ public final class CompositeGameTest {
             filter.groupIndex = -17;
             fixture.setFilterData(filter);
         } finally { circle.dispose(); }
-        var target = new Entity().add(new Health(1000f))
+        var target = new Entity().add(new Health(1000))
             .add(new Physic(body, center.cpy()))
             .add(new Transform(center.cpy(), 0, new Vector2(1, 1), new Vector2(1, 1), 0, 0));
         body.setUserData(target);
@@ -531,8 +531,8 @@ public final class CompositeGameTest {
         GAME.dispose();
     }
 
-    private static boolean oneHit(float before, float base, float after) {
-        return after >= Math.max(0f, before - 1.1f * base) && after <= Math.max(0f, before - .9f * base);
+    private static boolean oneHit(int before, int base, int after) {
+        return after >= Math.max(0, before - Math.round(1.1f * base)) && after <= Math.max(0, before - Math.round(.9f * base));
     }
 
     private static void require(boolean condition, String message) {

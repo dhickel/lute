@@ -139,6 +139,7 @@ public final class LightingRenderTest extends ApplicationAdapter {
             largeCollisionRings();
             pulseAndProjection();
             stateAndFailure();
+            view.setScreenBounds(ox, oy, side, side);
             gameplayOverlay(assets);
             require(Gdx.gl.glGetError() == GL_NO_ERROR, "driver error at teardown");
         } catch (Throwable ex) { failure = ex; }
@@ -159,7 +160,7 @@ public final class LightingRenderTest extends ApplicationAdapter {
     }
 
     private void gameplayOverlay(AssetService assets) throws ReflectiveOperationException {
-        // Empty black world isolates the unlit font pixels; keep the existing nonzero viewport offset.
+        // An empty world isolates the HUD; the surrounding sentinel exposes letterbox writes.
         var overlay = new Engine();
         var render = new RenderSystem(batch, view, camera, assets, OFF);
         var combat = new CombatSystem(world, null);
@@ -169,20 +170,39 @@ public final class LightingRenderTest extends ApplicationAdapter {
         overlay.addSystem(new TiledSystem(null, world, null));
         overlay.addSystem(render);
         render.gameplayFrame(world, AMBIENT, false, 0);
+        clear(BAR);
         try {
             var gl = Gdx.gl;
             int active = integer(GL_ACTIVE_TEXTURE);
             gl.glActiveTexture(GL_TEXTURE1);
             try {
                 var before = snapshot();
-                withSmallUnpackBuffer("first day HUD font upload", () -> overlay.update(0));
+                withSmallUnpackBuffer("first day HUD font and panel texture uploads", () -> overlay.update(0));
                 checkState(before, "HUD draw and upload");
-                require(glyphs(0, 110, 60, 18, Color.WHITE).pixels() > 0, "Clock in the top viewport strip");
+                var dayClock = glyphs(0, 102, side, 26, Color.WHITE);
+                require(dayClock.pixels() > 0 && Math.abs(dayClock.x() - side / 2f) < 3,
+                    "Clock is centered without player health");
                 render.gameplayFrame(world, AMBIENT, true, 0);
                 overlay.update(0);
                 checkState(before, "Night HUD draw");
+                require(glyphs(0, 102, side, 26, Color.WHITE).equals(dayClock), "Night lighting leaves clock inks and position unchanged");
             } finally { gl.glActiveTexture(active); }
-            require(glyphs(0, 110, 60, 18, Color.WHITE).pixels() > 0, "Unlit clock in the top viewport strip");
+
+            for (int x = 0; x < side; x++) {
+                near(pixel(x, side - 1), 0x232323ff, 1, "Neutral upper edge spans the viewport without trim");
+                near(pixel(x, side - 28), 0x191919ff, 1, "Neutral lower edge spans the viewport without trim");
+                near(pixel(x, side - 29), 0x00000000, 0, "Panel stops above the world");
+            }
+            near(pixel(-1, side - 4), BAR, 0, "Bar stops at left letterbox");
+            near(pixel(side, side - 4), BAR, 0, "Bar stops at right letterbox");
+            near(pixel(2, side), BAR, 0, "Bar stops at top letterbox");
+            var underBar = new Entity().add(new Health(100)).add(transform(20, 101, 4, 4, 0));
+            overlay.addEntity(underBar);
+            DamageFeedbackProbe.hit(underBar, 10, Facing.Direction.RIGHT);
+            overlay.update(0);
+            require(glyphs(0, side - 28, 45, 28, Color.GREEN).pixels() == 0,
+                "Opaque bar covers a hit number at the top of the world");
+            overlay.removeEntity(underBar);
 
             for (var direction : Facing.Direction.values()) {
                 var victim = new Entity().add(new Health(100)).add(transform(62, 48, 4, 4, 0));
@@ -228,13 +248,22 @@ public final class LightingRenderTest extends ApplicationAdapter {
             overlay.update(0);
             require(DamageFeedbackProbe.count(wounded) == 0 && DamageFeedbackProbe.count(killed) == 0,
                 "Removing combat retires feedback even if the rendering system survives");
-            var font = (BitmapFont) field(field(render, "hud"), "font");
+            var hud = field(render, "hud");
+            var font = (BitmapFont) field(hud, "font");
             int handle = font.getRegion().getTexture().getTextureObjectHandle();
-            gl.glActiveTexture(GL_TEXTURE0);
+            var crosshair = (Texture) field(render, "crosshair");
+            require(((TextureRegion) field(hud, "white")).getTexture() == crosshair, "Panel borrows the renderer's crosshair texture");
+            int panelTexture = crosshair.getTextureObjectHandle();
+            gl.glActiveTexture(GL_TEXTURE1);
             gl.glBindTexture(GL_TEXTURE_2D, handle);
+            gl.glActiveTexture(GL_TEXTURE0);
+            gl.glBindTexture(GL_TEXTURE_2D, panelTexture);
             render.dispose();
-            require(!gl.glIsTexture(handle) && integer(GL_TEXTURE_BINDING_2D) == 0,
-                "HUD disposal releases its font texture without restoring the deleted binding");
+            require(!gl.glIsTexture(handle) && !gl.glIsTexture(panelTexture) && integer(GL_TEXTURE_BINDING_2D) == 0,
+                "Disposal releases the font and shared texture without restoring the deleted panel binding");
+            gl.glActiveTexture(GL_TEXTURE1);
+            require(integer(GL_TEXTURE_BINDING_2D) == 0, "Disposal clears the deleted font binding on unit one");
+            gl.glActiveTexture(GL_TEXTURE0);
         } finally {
             overlay.removeAllSystems();
             render.dispose();

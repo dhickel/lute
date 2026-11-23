@@ -25,7 +25,9 @@ Both asset trees are ignored, so these JSON values are not included in the PR. A
 - `raw_assets/data/enemies.json`: set `brainless_undead.max_health` to `50`.
 - `raw_assets/data/weapons.json`: set `weapons.basic_sword.attack_stats.primary.stats.damage` to `10` (unchanged) and `weapons.basic_bow.attack_stats.primary.stats.damage` to `11`.
 
-Run `./generate-runtime-assets.sh` from the repository root to regenerate the corresponding `assets/data/` files; do not edit generated files directly. This tuning introduces no schema change. With the independent ±10% damage roll, sword and full-draw bow primary attacks take 5–6 hits to deplete 50 health at the roll extremes. Secondary and unarmed attacks remain weaker and their existing values are unchanged. Partial bow draw multipliers remain 25%, 50%, and 75%; with the primary damage of 11, they yield pre-roll damage of 2.75, 5.5, and 8.25, compared with 11 at full draw.
+Run `./generate-runtime-assets.sh` from the repository root to regenerate the corresponding `assets/data/` files; do not edit generated files directly. This tuning introduces no asset schema migration. Health and authored and applied damage are whole numbers. Each landed hit independently rolls within ±10% after any bow draw scaling, then rounds once to the nearest integer before subtracting health. Floating damage displays the whole effective health loss, capped by current health before the hit. Sword primary rolls to 9–11 damage and takes 5–6 landed hits to deplete 50 health; full-draw bow primary rolls to 10–12 and always takes five landed hits. Secondary and unarmed attacks remain weaker and their existing values are unchanged. Partial bow draw multipliers remain 25%, 50%, and 75%; with the primary damage of 11, they yield pre-roll damage of 2.75, 5.5, and 8.25, compared with 11 at full draw.
+
+The stylized top bar spans the gameplay viewport with open sides and visually distinguished text. Player HP and 24-hour game time are horizontally centered together. HP text uses the same green-yellow-red current-to-maximum health ratio as floating damage, without a colorful border.
 
 ## Terrain tilesheet generation
 

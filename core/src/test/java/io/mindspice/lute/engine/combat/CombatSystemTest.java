@@ -435,7 +435,7 @@ public final class CombatSystemTest {
                     check(game.animation().getFrameIndex() == 5, "All draw strengths start release at frame 5");
                     check(rolls.count == 0, "Bow release does not roll damage before landing");
                     game.update(.5f);
-                    near(100 - damage[frame] * 1.05f, Health.MAPPER.get(target).getCurrent(),
+                    near(100 - Math.round(damage[frame] * 1.05f), Health.MAPPER.get(target).getCurrent(),
                         "One roll applies to draw-scaled damage at frame " + frame);
                     check(rolls.count == 1, "Landed arrow rolls once across duplicate fixtures");
                 } finally { MathUtils.random = previous; }
@@ -564,7 +564,7 @@ public final class CombatSystemTest {
                 game.update(.25f);
                 check(game.combat().getSensor() != null, "Committed hit frame installs the sensor");
                 game.step(); game.combatSystem.update(0);
-                near(89.5f, Health.MAPPER.get(target).getCurrent(), "Hitbox still points along the committed attack");
+                near(89, Health.MAPPER.get(target).getCurrent(), "Hitbox still points along the committed attack");
                 game.step(); game.combatSystem.update(0);
                 check(rolls.count == 1, "Duplicate fixtures and contact ticks do not consume another roll");
             } finally { MathUtils.random = previous; }
@@ -802,7 +802,7 @@ public final class CombatSystemTest {
         }
         var health = new Health(100);
         health.damage(25); near(75, health.getCurrent(), "Damage subtracts");
-        health.damage(Float.MAX_VALUE); near(0, health.getCurrent(), "Damage clamps");
+        health.damage(Integer.MAX_VALUE); near(0, health.getCurrent(), "Damage clamps");
         check(!health.isAlive(), "Zero health dead");
     }
 
@@ -1121,8 +1121,8 @@ public final class CombatSystemTest {
     }
     private static void damageWithin(float base, Entity target, String message) {
         var health = Health.MAPPER.get(target);
-        float taken = health.getMaximum() - health.getCurrent();
-        check(Math.abs(base - taken) <= base * .1f + .0001f, message + ": damage " + taken);
+        int taken = health.getMaximum() - health.getCurrent();
+        check(taken >= Math.round(base * .9f) && taken <= Math.round(base * 1.1f), message + ": damage " + taken);
     }
 
     private static void near(float expected, float actual, String message) {

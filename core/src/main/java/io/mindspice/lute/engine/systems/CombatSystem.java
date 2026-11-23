@@ -56,7 +56,7 @@ public class CombatSystem extends IteratingSystem implements ContactListener, En
         var animation = Animation2D.MAPPER.get(owner);
         int drawFrame = animation.isAttackReady() ? animation.getFrameIndex() : 0;
         float damageScale = Math.min(drawFrame + 1, 4) / 4f;
-        arrows.add(new ArrowFlight(owner, arrowType, start, target, attack.damage() * damageScale));
+        arrows.add(new ArrowFlight(owner, arrowType, start, target, attack.damage(), damageScale));
         var combat = Combat.MAPPER.get(owner);
         combat.beginAttack(Combat.AttackSlot.PRIMARY, attack, facing.getDirection());
         activeAttacks.put(owner, combat);
@@ -122,7 +122,7 @@ public class CombatSystem extends IteratingSystem implements ContactListener, En
             if ((attackerHealth == null || attackerHealth.isAlive())
                 && combat != null && combat.isAttacking() && combat.getAttackId() == hit.attackId()
                 && health != null && health.isAlive() && combat.markHit(hit.target())) {
-                DamageFeedback.land(hit.target(), health, combat.getActiveAttack().damage(), combat.getAttackFacing());
+                DamageFeedback.land(hit.target(), health, combat.getActiveAttack().damage(), 1, combat.getAttackFacing());
             }
         }
         pendingHits.clear();

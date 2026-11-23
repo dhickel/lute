@@ -15,19 +15,21 @@ final class ArrowFlight {
     final Vector2 tip;
     final Vector2 direction;
     private final Vector2 start, aimPoint, travel;
-    private final float damage;
+    private final int baseDamage;
+    private final float drawScale;
     private final Facing.Direction launchFacing;
     private final double span, rise, bend, sweepStep, endProgress;
     private final Vector2[] vertices;
     private final float collisionPad;
     private double elapsed, progress;
 
-    ArrowFlight(Entity owner, Projectile type, Vector2 start, Vector2 aimPoint, float damage) {
+    ArrowFlight(Entity owner, Projectile type, Vector2 start, Vector2 aimPoint, int baseDamage, float drawScale) {
         this.owner = owner;
         this.type = type;
         this.start = start;
         this.aimPoint = aimPoint;
-        this.damage = damage;
+        this.baseDamage = baseDamage;
+        this.drawScale = drawScale;
         launchFacing = Facing.MAPPER.get(owner).getDirection();
         tip = start.cpy();
         float distance = start.dst(aimPoint);
@@ -158,7 +160,7 @@ final class ArrowFlight {
         world.QueryAABB(nearest, Math.min(tip.x, next.x) - collisionPad, Math.min(tip.y, next.y) - collisionPad,
             Math.max(tip.x, next.x) + collisionPad, Math.max(tip.y, next.y) + collisionPad);
         var health = nearest.target == null ? null : Health.MAPPER.get(nearest.target);
-        if (health != null && health.isAlive()) { DamageFeedback.land(nearest.target, health, damage, launchFacing); }
+        if (health != null && health.isAlive()) { DamageFeedback.land(nearest.target, health, baseDamage, drawScale, launchFacing); }
         return Float.isFinite(nearest.distance);
     }
 }

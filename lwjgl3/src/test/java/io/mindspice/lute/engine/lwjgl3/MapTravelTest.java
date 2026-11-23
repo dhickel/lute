@@ -260,7 +260,7 @@ public final class MapTravelTest extends ApplicationAdapter {
         screen.render(0);
         var fullHud = hudGlyphs();
         DamageFeedbackProbe.hit(start, health.getMaximum() / 3, Facing.Direction.RIGHT);
-        float damagedHealth = health.getCurrent();
+        int damagedHealth = health.getCurrent();
         screen.render(0);
         var damagedHud = hudGlyphs();
         require(!fullHud.isEmpty() && !damagedHud.isEmpty() && !damagedHud.equals(fullHud)
@@ -455,7 +455,7 @@ public final class MapTravelTest extends ApplicationAdapter {
         body(enemy).setTransform(-100, -100, 0);
         body(player).setTransform(-100 + 80f * GameConsts.UNIT_SCALE, -100, 0);
         var originalHealth = Health.MAPPER.get(player);
-        float base = Loadout.MAPPER.get(enemy).getWeapon().primary().damage();
+        int base = Loadout.MAPPER.get(enemy).getWeapon().primary().damage();
         var testHealth = new Health(4 * base); // The pursuit check needs a survivor independently of authored player HP.
         player.add(testHealth);
         try {
@@ -466,8 +466,8 @@ public final class MapTravelTest extends ApplicationAdapter {
             for (int i = 0; i < 120 && !combat.isAttacking(); i++) { screen.render(1f / 60f); }
             require(combat.isAttacking(), "Enemy closes the gap and starts the attack without repositioning the player");
             for (int i = 0; i < 5; i++) { screen.render(1f / 60f); }
-            require(testHealth.getCurrent() >= testHealth.getMaximum() - 1.1f * base
-                && testHealth.getCurrent() <= testHealth.getMaximum() - .9f * base
+            require(testHealth.getCurrent() >= testHealth.getMaximum() - Math.round(1.1f * base)
+                && testHealth.getCurrent() <= testHealth.getMaximum() - Math.round(.9f * base)
                 && body(enemy).getLinearVelocity().isZero() && DamageFeedbackProbe.count(player) == 1,
                 "Enemy deals one weapon hit and creates one player feedback number while standing still");
             var retreat = body(enemy).getPosition().cpy().add(-2.5f, .5f);

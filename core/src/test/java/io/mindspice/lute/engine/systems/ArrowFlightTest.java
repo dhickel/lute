@@ -21,6 +21,12 @@ public final class ArrowFlightTest {
     private ArrowFlightTest() { }
 
     public static void run() {
+        require(DamageFeedback.roundedDamage(10, 1, .9f) == 9 && DamageFeedback.roundedDamage(10, 1, 1.1f) == 11,
+            "Sword roll endpoints");
+        require(DamageFeedback.roundedDamage(11, 1, .9f) == 10 && DamageFeedback.roundedDamage(11, 1, 1.1f) == 12,
+            "Full draw roll endpoints");
+        require(DamageFeedback.roundedDamage(11, .25f, .9f) == 2 && DamageFeedback.roundedDamage(11, .25f, 1.1f) == 3,
+            "Quarter draw is not rounded before the roll");
         rollsPerHit();
         collisionShapes();
         var aim = new Vector2(1, 0);
@@ -36,19 +42,22 @@ public final class ArrowFlightTest {
             var target = hurtbox(world, aim);
             var arrow = launch(TYPE, aim);
             Facing.MAPPER.get(arrow.owner).setDirection(Facing.Direction.DOWN);
+            DamageFeedback.land(target, Health.MAPPER.get(target), 1, .25f, Facing.Direction.RIGHT);
+            require(Health.MAPPER.get(target).getCurrent() == 100 && DamageFeedback.MAPPER.get(target) == null,
+                "A hit rounded to zero consumes no HP and creates no number");
             require(arrow.finished(world, 2f) && oneHit(target), "One long update sweeps through the exact crosshair");
             var feedback = DamageFeedback.MAPPER.get(target);
             var hit = feedback.numbers.getFirst();
             var health = Health.MAPPER.get(target);
             require(hit.facing == Facing.Direction.RIGHT && hit.amount == 100 - health.getCurrent()
-                && hit.remaining == health.getCurrent() / 100, "Feedback snapshots release facing and effective hit");
+                && hit.remaining == health.getCurrent() / 100f, "Feedback snapshots release facing and effective hit");
             feedback.advance(.25f);
-            DamageFeedback.land(target, health, 500, Facing.Direction.LEFT);
+            DamageFeedback.land(target, health, 500, 1, Facing.Direction.LEFT);
             var kill = feedback.numbers.getLast();
             require(kill.remaining == 0 && kill.amount == 100 - hit.amount, "Killing hit reports only remaining HP");
-            require(GameplayHud.label(health, 6 * 60 + 4).equals("HP 0/100    06:04"), "Dead player's clock and health");
-            require(GameplayHud.label(new Health(53), 23 * 60 + 59).equals("HP 53/53    23:59")
-                && GameplayHud.label(health, 0).equals("HP 0/100    00:00"), "24-hour format at the day boundary");
+            require(GameplayHud.healthText(health).equals("HP 0/100") && GameplayHud.clockText(6 * 60 + 4).equals("06:04"), "Dead player's clock and health");
+            require(GameplayHud.healthText(new Health(53)).equals("HP 53/53") && GameplayHud.clockText(23 * 60 + 59).equals("23:59")
+                && GameplayHud.clockText(0).equals("00:00"), "24-hour format at the day boundary");
             feedback.advance(.45f);
             require(feedback.numbers.size() == 1 && feedback.numbers.getFirst() == kill, "Numbers expire independently");
             feedback.advance(.25f);
@@ -74,11 +83,11 @@ public final class ArrowFlightTest {
             var expected = new java.util.Random(17);
             var target = new Entity();
             var health = new Health(500);
-            float remaining = 500;
+            int remaining = 500;
             for (int i = 0; i < 20; i++) {
-                DamageFeedback.land(target, health, 10, Facing.Direction.UP);
-                remaining -= 10 * (.9f + (1.1f - .9f) * expected.nextFloat());
-                require(Math.abs(remaining - health.getCurrent()) < .0001f, "Fresh uniform sample for each hit");
+                DamageFeedback.land(target, health, 10, 1, Facing.Direction.UP);
+                remaining -= Math.round(10 * (.9f + (1.1f - .9f) * expected.nextFloat()));
+                require(remaining == health.getCurrent(), "Fresh uniform sample for each hit");
             }
         } finally { com.badlogic.gdx.math.MathUtils.random = previous; }
     }
@@ -176,11 +185,11 @@ public final class ArrowFlightTest {
     }
 
     private static ArrowFlight launch(Projectile type, Vector2 aim) {
-        return new ArrowFlight(new Entity().add(new Facing(Facing.Direction.RIGHT)), type, new Vector2(), aim, 10);
+        return new ArrowFlight(new Entity().add(new Facing(Facing.Direction.RIGHT)), type, new Vector2(), aim, 10, 1);
     }
 
     private static boolean oneHit(Entity target) {
-        float remaining = Health.MAPPER.get(target).getCurrent();
+        int remaining = Health.MAPPER.get(target).getCurrent();
         return remaining >= 89 && remaining <= 91;
     }
 

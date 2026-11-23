@@ -39,6 +39,7 @@ public final class DataLoaderTest {
             playerSchema(player, definitions);
             characterBoundsSchema(player);
             weaponSchema(definitions);
+            rejectsFractionalCombatData();
             projectileSchema();
             missingProjectileData();
             actorsSchema();
@@ -54,6 +55,24 @@ public final class DataLoaderTest {
                 "generated projectiles match source");
             System.out.println("DataLoaderTest: passed");
         } finally { Gdx.files = previousFiles; }
+    }
+
+    private static void rejectsFractionalCombatData() throws Exception {
+        var player = (tools.jackson.databind.node.ObjectNode) DataLoader.mapper.readTree(Path.of("assets/data/player.json").toFile());
+        var weapons = DataLoader.mapper.readTree(Path.of("assets/data/weapons.json").toFile());
+        var stats = (tools.jackson.databind.node.ObjectNode) weapons.at("/weapons/basic_sword/attack_stats/primary/stats");
+        var fixture = Files.createTempFile("fractional-combat-data", ".json");
+        try {
+            useFile(fixture);
+            Files.writeString(fixture, player.put("max_health", 50.5).toString());
+            rejects(DataLoader::parsePlayerData, "fractional player max_health");
+            stats.put("damage", 10.5);
+            Files.writeString(fixture, weapons.toString());
+            rejects(DataLoader::parseWeaponData, "fractional weapon damage");
+        } finally {
+            useAssets();
+            Files.delete(fixture);
+        }
     }
 
     private static void projectileSchema() {

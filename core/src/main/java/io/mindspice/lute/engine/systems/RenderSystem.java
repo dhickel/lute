@@ -149,8 +149,7 @@ public class RenderSystem extends SortedIteratingSystem implements Disposable {
             }
             if (world != null && debugLayers.lightingOutlines()) {
                 if (outlines == null) {
-                    // Borrow an opaque white texel from the overlay we already own; no second texture or shader.
-                    outlines = new LightingOutlines(batch, new TextureRegion(crosshair(state), 2, 7, 1, 1));
+                    outlines = new LightingOutlines(batch, overlayWhite(state));
                 }
                 outlines.draw(world, getEngine().getEntitiesFor(LIGHTS), sessionSeconds, camera, pixels[3]);
             }
@@ -164,7 +163,7 @@ public class RenderSystem extends SortedIteratingSystem implements Disposable {
                 if (hud == null) {
                     batch.flush();
                     state.prepareTextureUpload();
-                    hud = new GameplayHud();
+                    hud = new GameplayHud(overlayWhite(state));
                 }
                 var clock = getEngine().getSystem(WorldTimeSystem.class);
                 hud.draw(batch, getEngine(), viewport, tiled.playerHealth(), (int) clock.getMinuteOfDay());
@@ -263,6 +262,11 @@ public class RenderSystem extends SortedIteratingSystem implements Disposable {
             } finally { pixels.dispose(); }
         }
         return crosshair;
+    }
+
+    // Both overlays borrow an opaque white texel from the crosshair; this renderer owns the texture.
+    private TextureRegion overlayWhite(RenderState state) {
+        return new TextureRegion(crosshair(state), 2, 7, 1, 1);
     }
 
     private void drawCrosshair(float x, float y, RenderState state) {

@@ -8,8 +8,8 @@ import io.mindspice.lute.engine.components.Health;
 public final class DamageFeedbackProbe {
     private DamageFeedbackProbe() { }
 
-    public static void hit(Entity victim, float base, Facing.Direction facing) {
-        DamageFeedback.land(victim, Health.MAPPER.get(victim), base, facing);
+    public static void hit(Entity victim, int base, Facing.Direction facing) {
+        DamageFeedback.land(victim, Health.MAPPER.get(victim), base, 1, facing);
     }
 
     public static int count(Entity victim) {

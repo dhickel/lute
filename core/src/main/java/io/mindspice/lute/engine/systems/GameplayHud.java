@@ -1,8 +1,11 @@
 package io.mindspice.lute.engine.systems;
 
 import com.badlogic.ashley.core.Engine;
+import com.badlogic.gdx.graphics.Color;
 import com.badlogic.gdx.graphics.g2d.Batch;
 import com.badlogic.gdx.graphics.g2d.BitmapFont;
+import com.badlogic.gdx.graphics.g2d.GlyphLayout;
+import com.badlogic.gdx.graphics.g2d.TextureRegion;
 import com.badlogic.gdx.math.Matrix4;
 import com.badlogic.gdx.math.Vector2;
 import com.badlogic.gdx.utils.Align;
@@ -10,9 +13,21 @@ import com.badlogic.gdx.utils.viewport.Viewport;
 import io.mindspice.lute.engine.components.Health;
 
 final class GameplayHud {
+    private static final int BAR_HEIGHT = 28;
+    private static final int LABEL_GAP = 16;
+    private static final int MIN_LABEL_GAP = 8;
+    private static final int SIDE_INSET = 4;
+
     private final BitmapFont font = new BitmapFont();
     private final Matrix4 projection = new Matrix4();
     private final Vector2 point = new Vector2();
+
+    private final TextureRegion white;
+    private final GlyphLayout measure = new GlyphLayout();
+
+    GameplayHud(TextureRegion white) {
+        this.white = white;
+    }
 
     void draw(Batch batch, Engine engine, Viewport viewport, Health player, int minute) {
         batch.setProjectionMatrix(projection.setToOrtho2D(0, 0, viewport.getScreenWidth(), viewport.getScreenHeight()));
@@ -31,23 +46,68 @@ final class GameplayHud {
                     case UP -> y += 12 * t;
                     case DOWN -> y -= 12 * t;
                 }
-                drawText(batch, amount(hit.amount), x, y, Align.center,
-                    Math.min(1, 2 - 2 * hit.remaining), Math.min(1, 2 * hit.remaining), 0, 1 - t);
+                drawHealthText(batch, Integer.toString(hit.amount), x, y, Align.center, hit.remaining, 1 - t);
             }
         }
-        drawText(batch, label(player, minute), 10, viewport.getScreenHeight() - 8, Align.left, 1, 1, 1, 1);
+        drawBar(batch, viewport.getScreenWidth(), viewport.getScreenHeight(), player, minute);
     }
 
-    static String label(Health health, int minute) {
+    private void drawBar(Batch batch, int width, int top, Health player, int minute) {
+        int bottom = top - BAR_HEIGHT;
+        batch.setColor(.10f, .10f, .10f, 1);
+        batch.draw(white, 0, bottom, width, BAR_HEIGHT);
+        batch.setColor(.14f, .14f, .14f, 1);
+        batch.draw(white, 0, bottom + 15, width, 13);
+
+        String time = clockText(minute);
+        measure.setText(font, time);
+        float timeWidth = measure.width;
+        String hp = player == null ? null : healthText(player);
+        float hpWidth = 0;
+        if (hp != null) {
+            measure.setText(font, hp);
+            hpWidth = measure.width;
+        }
+
+        // Keep native-size glyphs if a tighter gap is enough; otherwise shrink the entire group, not just one label.
+        float available = width - 2 * Math.min(SIDE_INSET, width / 4f);
+        float gap = hp == null ? 0 : Math.clamp(available - hpWidth - timeWidth, MIN_LABEL_GAP, LABEL_GAP);
+        float groupWidth = hpWidth + gap + timeWidth;
+        float scale = Math.min(1, available / groupWidth);
+        float x = (width - groupWidth * scale) / 2;
+        if (scale < 1) {
+            font.getData().setScale(scale);
+            font.setUseIntegerPositions(false);
+        } else {
+            x = Math.round(x);
+        }
+        try {
+            float y = Math.round(bottom + (BAR_HEIGHT + font.getCapHeight()) / 2);
+            if (hp != null) {
+                drawHealthText(batch, hp, x, y, Align.left, player.remainingRatio(), 1);
+                x += (hpWidth + gap) * scale;
+            }
+            batch.setColor(Color.WHITE);
+            drawText(batch, time, x, y, Align.left, .61f, .79f, .86f, 1);
+        } finally {
+            if (scale < 1) {
+                font.getData().setScale(1);
+                font.setUseIntegerPositions(true);
+            }
+        }
+    }
+
+    static String healthText(Health health) {
+        return "HP " + health.getCurrent() + "/" + health.getMaximum();
+    }
+
+    static String clockText(int minute) {
         int hour = minute / 60, minutes = minute % 60;
-        String time = (hour < 10 ? "0" : "") + hour + ":" + (minutes < 10 ? "0" : "") + minutes;
-        return health == null ? time : "HP " + amount(health.getCurrent()) + "/" + amount(health.getMaximum()) + "    " + time;
+        return (hour < 10 ? "0" : "") + hour + ":" + (minutes < 10 ? "0" : "") + minutes;
     }
 
-    private static String amount(float value) {
-        double rounded = Math.round(value * 10d) / 10d;
-        if (rounded == 0 && value > 0) { return "<0.1"; }
-        return rounded == (long) rounded ? Long.toString((long) rounded) : Double.toString(rounded);
+    private void drawHealthText(Batch batch, String text, float x, float y, int align, float ratio, float alpha) {
+        drawText(batch, text, x, y, align, Math.min(1, 2 - 2 * ratio), Math.min(1, 2 * ratio), 0, alpha);
     }
 
     private void drawText(Batch batch, String text, float x, float y, int align, float r, float g, float b, float alpha) {

@@ -152,7 +152,7 @@ public final class TriggerDebugRenderSystemTest {
         engine.addSystem(combat);
         try {
             float scale = GameConsts.UNIT_SCALE;
-            var arrow = new ArrowFlight(new Entity().add(new Facing(Facing.Direction.UP)), definition, new Vector2(), new Vector2(0, 8), 1);
+            var arrow = new ArrowFlight(new Entity().add(new Facing(Facing.Direction.UP)), definition, new Vector2(), new Vector2(0, 8), 1, 1);
             combat.arrows().add(arrow);
             combat.update(0.25f);
             debug.update(0);
@@ -193,14 +193,14 @@ public final class TriggerDebugRenderSystemTest {
             var owner = new Entity().add(new Facing(Facing.Direction.LEFT));
             var start = new Vector2();
             var aim = new Vector2(1, 0);
-            var arrow = new ArrowFlight(owner, definition, start, aim, 1);
+            var arrow = new ArrowFlight(owner, definition, start, aim, 1, 1);
             check(!arrow.finished(world, 0.25f) && arrow.tip.x < 1,
                 "The curved path to the crosshair is longer than the straight line");
             check(!arrow.finished(world, 0.5f) && arrow.tip.x > 1 && arrow.tip.y < 0,
                 "Arrow continues down the same curve past the crosshair");
             check(arrow.finished(world, 1), "Unobstructed arrow expires by lifetime");
 
-            var centered = new ArrowFlight(owner, definition, start, start, 1);
+            var centered = new ArrowFlight(owner, definition, start, start, 1, 1);
             check(!centered.finished(world, 0.25f), "Centered aim still fires");
             near(centered.tip.x, -1, "Centered aim uses the owner's facing");
 
@@ -212,7 +212,7 @@ public final class TriggerDebugRenderSystemTest {
                 shape.setAsBox(0.05f, 0.1f);
                 wall.createFixture(shape, 0);
             } finally { shape.dispose(); }
-            var blocked = new ArrowFlight(owner, definition, start, aim, 1);
+            var blocked = new ArrowFlight(owner, definition, start, aim, 1, 1);
             check(blocked.finished(world, 0.75f), "A long frame sweeps into a wall below the aim line");
             check(blocked.tip.x > 1 && blocked.tip.x < 2, "Wall blocks the post-crosshair segment");
         } finally { world.dispose(); }

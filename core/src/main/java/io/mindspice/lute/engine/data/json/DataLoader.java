@@ -83,7 +83,9 @@ public class DataLoader {
     public static PlayerData parsePlayerData() {
         String filepath = GameConsts.DATA_PATH + "player.json";
         try (var file = Gdx.files.internal(filepath).read()) {
-            return mapper.readValue(file, PlayerData.class);
+            return mapper.readerFor(PlayerData.class)
+                .without(DeserializationFeature.ACCEPT_FLOAT_AS_INT)
+                .readValue(file);
         } catch (IOException e) {
             throw new GdxRuntimeException("Failed to read file at path: " + filepath, e);
         }
@@ -101,7 +103,9 @@ public class DataLoader {
     public static WeaponsData parseWeaponData() {
         String filepath = GameConsts.DATA_PATH + "weapons.json";
         try (var file = Gdx.files.internal(filepath).read()) {
-            return mapper.readValue(file, WeaponsData.class);
+            return mapper.readerFor(WeaponsData.class)
+                .without(DeserializationFeature.ACCEPT_FLOAT_AS_INT)
+                .readValue(file);
         } catch (IOException e) {
             throw new GdxRuntimeException("Failed to read file at path: " + filepath, e);
         }

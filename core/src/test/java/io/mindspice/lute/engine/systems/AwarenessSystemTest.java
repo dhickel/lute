@@ -85,11 +85,11 @@ public final class AwarenessSystemTest {
         engine.update(0);
         check(facing.getDirection() == Facing.Direction.LEFT && combat.consumeAttackRequest() == Combat.AttackSlot.PRIMARY,
             "Moving the body moves the attached circle");
-        Health.MAPPER.get(player).damage(100f);
+        Health.MAPPER.get(player).damage(100);
         engine.update(0);
         check(!combat.hasAttackRequest() && ActorAi.MAPPER.get(enemy).mode() == Mode.INVESTIGATE,
             "A dead player cannot be targeted for melee; the enemy can only investigate its remembered position");
-        Health.MAPPER.get(enemy).damage(100f);
+        Health.MAPPER.get(enemy).damage(100);
         engine.update(0);
         check(Move.MAPPER.get(enemy).getDirection().isZero() && ActorAi.MAPPER.get(enemy).mode() == Mode.WANDER,
             "Dead enemy stops moving and clears its memory");

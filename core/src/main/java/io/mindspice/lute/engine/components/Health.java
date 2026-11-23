@@ -5,19 +5,20 @@ import com.badlogic.ashley.core.ComponentMapper;
 
 public class Health implements Component {
     public static final ComponentMapper<Health> MAPPER = ComponentMapper.getFor(Health.class);
-    private final float maximum;
-    private float current;
+    private final int maximum;
+    private int current;
 
-    public Health(float maximum) {
+    public Health(int maximum) {
         this.maximum = maximum;
         this.current = maximum;
     }
 
-    public float getMaximum() { return maximum; }
-    public float getCurrent() { return current; }
-    public boolean isAlive() { return current > 0f; }
+    public int getMaximum() { return maximum; }
+    public int getCurrent() { return current; }
+    public float remainingRatio() { return (float) current / maximum; }
+    public boolean isAlive() { return current > 0; }
 
-    public void damage(float amount) {
-        current = Math.max(0f, current - amount);
+    public void damage(int amount) {
+        current = Math.max(0, current - amount);
     }
 }

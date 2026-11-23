@@ -19,18 +19,22 @@ final class DamageFeedback implements Component {
     static final float DURATION = .65f;
     final List<Number> numbers = new ArrayList<>();
 
-    static void land(Entity target, Health health, float base, Direction facing) {
-        float before = health.getCurrent();
-        health.damage(base * MathUtils.random(.9f, 1.1f));
-        float taken = before - health.getCurrent();
+    static void land(Entity target, Health health, int base, float scale, Direction facing) {
+        int before = health.getCurrent();
+        health.damage(roundedDamage(base, scale, MathUtils.random(.9f, 1.1f)));
+        int taken = before - health.getCurrent();
         var transform = Transform.MAPPER.get(target);
         if (taken <= 0 || transform == null) { return; }
         var feedback = MAPPER.get(target);
         if (feedback == null) { feedback = new DamageFeedback(); target.add(feedback); }
         var position = transform.getPosition();
         var size = transform.getSize();
-        feedback.numbers.add(new Number(taken, health.getCurrent() / health.getMaximum(), facing,
+        feedback.numbers.add(new Number(taken, health.remainingRatio(), facing,
             position.x + size.x / 2, position.y + size.y));
+    }
+
+    static int roundedDamage(int base, float scale, float roll) {
+        return Math.round(base * scale * roll);
     }
 
     void advance(float dt) {
@@ -38,11 +42,12 @@ final class DamageFeedback implements Component {
     }
 
     static final class Number {
-        final float amount, remaining, x, y;
+        final int amount;
+        final float remaining, x, y;
         final Direction facing;
         float age;
 
-        Number(float amount, float remaining, Direction facing, float x, float y) {
+        Number(int amount, float remaining, Direction facing, float x, float y) {
             this.amount = amount;
             this.remaining = remaining;
             this.facing = facing;
