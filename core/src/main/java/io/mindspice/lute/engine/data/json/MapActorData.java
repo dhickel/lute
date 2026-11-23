@@ -10,11 +10,13 @@ public sealed interface MapActorData permits MapActorData.Npc, MapActorData.Enem
     CharacterBounds hitboxBounds();
     DetectionBounds detectionBounds();
     float moveSpeed();
+    String name();
     int maxHealth();
     String decisionGraph();
     String weapon();
 
     record Npc(
+        String name,
         @JsonProperty("move_speed") float moveSpeed,
         @JsonProperty("max_health") int maxHealth,
         PlayerData.Loadout loadout,
@@ -27,7 +29,7 @@ public sealed interface MapActorData permits MapActorData.Npc, MapActorData.Enem
         @JsonProperty("decision_graph") String decisionGraph
     ) implements MapActorData {
         public Npc {
-            validate(moveSpeed, maxHealth, animation, sounds, logicalSize, collision, hitboxBounds, detectionBounds, decisionGraph);
+            validate(name, moveSpeed, maxHealth, animation, sounds, logicalSize, collision, hitboxBounds, detectionBounds, decisionGraph);
             if (loadout == null) { throw new IllegalArgumentException("NPC loadout is required"); }
         }
 
@@ -35,6 +37,7 @@ public sealed interface MapActorData permits MapActorData.Npc, MapActorData.Enem
     }
 
     record Enemy(
+        String name,
         @JsonProperty("move_speed") float moveSpeed,
         @JsonProperty("max_health") int maxHealth,
         @JsonProperty(value = "weapon", required = true) String weapon,
@@ -47,7 +50,7 @@ public sealed interface MapActorData permits MapActorData.Npc, MapActorData.Enem
         @JsonProperty("decision_graph") String decisionGraph
     ) implements MapActorData {
         public Enemy {
-            validate(moveSpeed, maxHealth, animation, sounds, logicalSize, collision, hitboxBounds, detectionBounds, decisionGraph);
+            validate(name, moveSpeed, maxHealth, animation, sounds, logicalSize, collision, hitboxBounds, detectionBounds, decisionGraph);
             if (weapon != null && weapon.isBlank()) { throw new IllegalArgumentException("Enemy weapon must not be blank"); }
         }
     }
@@ -61,12 +64,14 @@ public sealed interface MapActorData permits MapActorData.Npc, MapActorData.Enem
         }
     }
 
-    private static void validate(float speed, int health, AnimationData animation, PlayerData.Sounds sounds,
-                                 PlayerData.LogicalSize size, CollisionData feet, CharacterBounds hitbox,
-                                 DetectionBounds detection, String decisionGraph) {
+    private static void validate(String name, float speed, int maxHealth, AnimationData animation,
+                                 PlayerData.Sounds sounds, PlayerData.LogicalSize size, CollisionData feet,
+                                 CharacterBounds hitbox, DetectionBounds detection, String decisionGraph) {
         Graphs.requireKey(decisionGraph);
-        if (!Float.isFinite(speed) || speed <= 0f || health <= 0) {
-            throw new IllegalArgumentException("Actor movement speed and health must be positive and finite");
+        if (name == null || name.isBlank()) { throw new IllegalArgumentException("Actor name must not be blank"); }
+        if (maxHealth <= 0) { throw new IllegalArgumentException("Actor max_health must be positive"); }
+        if (!Float.isFinite(speed) || speed <= 0f) {
+            throw new IllegalArgumentException("Actor movement speed must be positive and finite");
         }
         if (animation == null || animation.atlasKey().isBlank() || sounds == null || detection == null) {
             throw new IllegalArgumentException("Actor animation with a sprite prefix, sounds, and detection bounds are required");

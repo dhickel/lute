@@ -108,9 +108,12 @@ public final class DataLoaderTest {
 
     private static void actorsSchema() throws Exception {
         var directory = Files.createTempDirectory("actor-data");
-        var actors = directory.resolve("actors.json");
-        check(Files.mismatch(Path.of("raw_assets/data/actors.json"), Path.of("assets/data/actors.json")) == -1,
-            "Generated actors catalogue matches source");
+        var characters = directory.resolve("characters.json");
+        var enemies = directory.resolve("enemies.json");
+        for (String filename : new String[]{"characters.json", "enemies.json"}) {
+            check(Files.mismatch(Path.of("raw_assets/data", filename), Path.of("assets/data", filename)) == -1,
+                "Generated actor catalogue matches source: " + filename);
+        }
         String common = """
             "max_health": 80, "move_speed": 3.5,
             "logical_size": {"width": 72, "height": 64},
@@ -120,16 +123,26 @@ public final class DataLoaderTest {
             "sounds": {"move": "step.wav", "damage": "hurt.wav"},
             "detection_bounds": {"radius": 72}
             """;
-        String npc = "{" + common + ",\"decision_graph\":\"wander\",\"loadout\":{\"body\":\"basic\",\"weapon\":\"basic_bow\"}}";
-        String enemy = "{" + common.replace("72}", "192.5}") + ",\"decision_graph\":\"wander_attack\",\"weapon\":\"basic_sword\"}";
-        String npcs = "{\"guard\":" + npc + ",\"merchant\":" + npc.replace("80", "60") + "}";
-        String catalogue = "{\"npc\":%s,\"enemies\":{\"guard\":%s}}";
+        String npc = "{\"name\":\"Town Guard\"," + common + ",\"decision_graph\":\"wander\",\"loadout\":{\"body\":\"basic\",\"weapon\":\"basic_bow\"}}";
+        String enemy = "{\"name\":\"Undead Guard\"," + common.replace("72}", "192.5}") + ",\"decision_graph\":\"wander_attack\",\"weapon\":\"basic_sword\"}";
+        String npcs = "{\"guard\":" + npc + ",\"merchant\":" + npc.replace("Town Guard", "Merchant").replace("80", "60") + "}";
+        String entry = "{\"guard\":%s}";
         try {
-            useResolver(path -> new FileHandle(path.equals("data/actors.json") ? actors.toFile() : Path.of("assets", path).toFile()));
-            rejects(DataLoader::loadGameData, "Missing actors file");
-            Files.writeString(actors, catalogue.formatted(npcs, enemy));
+            useResolver(path -> new FileHandle(switch (path) {
+                case "data/characters.json" -> characters.toFile();
+                case "data/enemies.json" -> enemies.toFile();
+                case "data/actors.json" -> throw new AssertionError("Legacy actors.json must not be loaded");
+                default -> Path.of("assets", path).toFile();
+            }));
+            Files.writeString(enemies, entry.formatted(enemy));
+            rejects(DataLoader::loadGameData, "Missing characters file");
+            Files.delete(enemies);
+            Files.writeString(characters, npcs);
+            rejects(DataLoader::loadGameData, "Missing enemies file");
+            Files.writeString(enemies, entry.formatted(enemy));
             var data = DataLoader.loadGameData().actorsData();
-            check(data.npc().get("merchant").maxHealth() == 60, "Multiple NPC IDs are resolved independently");
+            var merchant = data.npc().get("merchant");
+            check(merchant.maxHealth() == 60 && merchant.name().equals("Merchant"), "Multiple NPC IDs resolve independently");
             var guard = data.npc().get("guard");
             check(guard.moveSpeed() == 3.5f && guard.loadout().body().equals("basic") && guard.weapon().equals("basic_bow")
                 && guard.logicalSize().width() == 72 && guard.collision().bounds().x1() == 18 && guard.hitboxBounds().x1() == 14,
@@ -138,9 +151,15 @@ public final class DataLoaderTest {
             check(undead.weapon().equals("basic_sword") && guard.detectionBounds().radius() == 72
                 && undead.detectionBounds().radius() == 192.5f && guard.decisionGraph().equals("wander")
                 && undead.decisionGraph().equals("wander_attack"), "Role-scoped IDs bind distinct radii and graph keys");
-            Files.writeString(actors, catalogue.formatted("{}", enemy.replace("\"basic_sword\"", "null")));
+            check(guard.name().equals("Town Guard") && undead.name().equals("Undead Guard")
+                && guard.maxHealth() == 80 && undead.maxHealth() == 80, "Both catalogues bind name and maximum health");
+            Files.writeString(characters, "{}");
+            Files.writeString(enemies, entry.formatted(enemy.replace("\"basic_sword\"", "null")));
             check(DataLoader.loadGameData().actorsData().enemies().get("guard").weapon() == null,
-                "NPC catalogue may be empty and enemy explicitly unarmed");
+                "Character catalogue may be empty and enemy explicitly unarmed");
+            Files.writeString(enemies, "{}");
+            check(DataLoader.loadGameData().actorsData().enemies().isEmpty(), "Enemy catalogue may be empty");
+            Files.writeString(characters, npcs);
             for (String invalid : new String[]{npc, enemy.replace(",\"weapon\":\"basic_sword\"", ""),
                     enemy.replace("basic_sword", "unknown_weapon"), enemy.replace("192.5", "0"),
                     enemy.replace("192.5", "1e100"), enemy.replace("\"radius\": 192.5", ""),
@@ -148,22 +167,37 @@ public final class DataLoaderTest {
                     enemy.replace(",\"decision_graph\":\"wander_attack\"", ""),
                     enemy.replace("wander_attack", ""), enemy.replace("wander_attack", "unknown_graph"),
                     enemy.replace("\"wander_attack\"", "null")}) {
-                Files.writeString(actors, catalogue.formatted(npcs, invalid));
+                Files.writeString(enemies, entry.formatted(invalid));
                 rejects(DataLoader::loadGameData, "Invalid enemy definition: " + invalid);
             }
-            for (String invalid : new String[]{"null", "{\"\":" + npc + "}",
-                    "{\"guard\":" + npc + ",\"guard\":" + npc + "}", "{\"guard\":" + enemy + "}"}) {
-                Files.writeString(actors, catalogue.formatted(invalid, enemy));
-                rejects(DataLoader::loadGameData, "Invalid NPC catalogue: " + invalid);
+            Files.writeString(enemies, entry.formatted(enemy));
+            for (String invalid : new String[]{"null", "{\"\":" + npc + "}", "{} {}",
+                    "{\"guard\":" + npc + ",\"guard\":" + npc + "}", entry.formatted(enemy)}) {
+                Files.writeString(characters, invalid);
+                rejects(DataLoader::loadGameData, "Invalid character catalogue: " + invalid);
             }
-            for (String invalid : new String[]{"null", "{}", "{\"npc\":{}}", "{\"enemies\":{}}",
-                    "{\"npc\":{},\"enemies\":{},\"enemy\":{}}", "{\"npc\":{},\"npc\":{},\"enemies\":{}}"}) {
-                Files.writeString(actors, invalid);
-                rejects(DataLoader::loadGameData, "Invalid actor catalogue: " + invalid);
+            Files.writeString(characters, npcs);
+            for (var target : Map.of(characters, npc, enemies, enemy).entrySet()) {
+                var definition = (tools.jackson.databind.node.ObjectNode) DataLoader.mapper.readTree(target.getValue());
+                for (String field : new String[]{"name", "max_health"}) {
+                    var missing = definition.deepCopy();
+                    missing.remove(field);
+                    Files.writeString(target.getKey(), entry.formatted(missing));
+                    rejects(DataLoader::loadGameData, "Missing " + field + " in " + target.getKey());
+                }
+                for (String invalid : new String[]{definition.deepCopy().put("name", "   ").toString(),
+                        target.getValue().replace("\"max_health\": 80", "\"max_health\": 0"),
+                        target.getValue().replace("\"max_health\": 80", "\"max_health\": 80.5"),
+                        target.getValue().replace("\"max_health\"", "\"base_health\"")}) {
+                    Files.writeString(target.getKey(), entry.formatted(invalid));
+                    rejects(DataLoader::loadGameData, "Invalid name or health in " + target.getKey());
+                }
+                Files.writeString(target.getKey(), entry.formatted(target.getValue()));
             }
         } finally {
             useAssets();
-            Files.deleteIfExists(actors);
+            Files.deleteIfExists(characters);
+            Files.deleteIfExists(enemies);
             Files.delete(directory);
         }
     }

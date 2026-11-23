@@ -38,14 +38,18 @@ public class DataLoader {
     }
 
     private static ActorsData parseActorsData() {
-        var path = Gdx.files.internal(GameConsts.DATA_PATH + "actors.json");
+        return new ActorsData(
+            parseActorDefinitions("characters.json", MapActorData.Npc.class),
+            parseActorDefinitions("enemies.json", MapActorData.Enemy.class));
+    }
+
+    private static <T extends MapActorData> Map<String, T> parseActorDefinitions(String filename, Class<T> type) {
+        var path = Gdx.files.internal(GameConsts.DATA_PATH + filename);
         try (var file = path.read()) {
-            ActorsData actors = mapper.readerFor(ActorsData.class)
-                .with(DeserializationFeature.FAIL_ON_UNKNOWN_PROPERTIES, DeserializationFeature.FAIL_ON_TRAILING_TOKENS)
-                .with(StreamReadFeature.STRICT_DUPLICATE_DETECTION)
+            return definitionsReader(type)
+                .with(DeserializationFeature.FAIL_ON_TRAILING_TOKENS)
+                .without(DeserializationFeature.ACCEPT_FLOAT_AS_INT)
                 .readValue(file);
-            if (actors == null) { throw new IllegalArgumentException("actors.json requires an actor catalogue"); }
-            return actors;
         } catch (IOException e) {
             throw new GdxRuntimeException("Failed to read file at path: " + path, e);
         }
