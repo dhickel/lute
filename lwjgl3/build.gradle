@@ -32,6 +32,7 @@ dependencies {
   implementation "com.badlogicgames.gdx:gdx-box2d-platform:$gdxVersion:natives-desktop"
   implementation "com.badlogicgames.gdx:gdx-platform:$gdxVersion:natives-desktop"
   implementation project(':core')
+  testImplementation project(':util') // exercise generation and the real TMX loader in the same GL regression
 
   if(enableGraalNative == 'true') {
     implementation "io.github.berstanio:gdx-svmhelper-backend-lwjgl3:$graalHelperVersion"
@@ -54,6 +55,14 @@ tasks.register('compositeRenderTest', JavaExec) {
   classpath = sourceSets.test.runtimeClasspath
   mainClass = 'io.mindspice.lute.engine.lwjgl3.CompositeRenderTest'
   workingDir = rootProject.file('assets')
+  environment 'DISPLAY', System.getenv('DISPLAY') ?: ':0'
+  jvmArgs '--enable-native-access=ALL-UNNAMED', '--add-exports=java.base/jdk.internal.misc=ALL-UNNAMED'
+}
+
+tasks.register('mapTileAtlasTest', JavaExec) {
+  dependsOn testClasses
+  classpath = sourceSets.test.runtimeClasspath
+  mainClass = 'io.mindspice.lute.engine.lwjgl3.MapTileAtlasTest'
   environment 'DISPLAY', System.getenv('DISPLAY') ?: ':0'
   jvmArgs '--enable-native-access=ALL-UNNAMED', '--add-exports=java.base/jdk.internal.misc=ALL-UNNAMED'
 }

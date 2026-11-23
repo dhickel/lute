@@ -24,6 +24,8 @@ A legacy classpath loader is not precedent for authored gameplay data. Player, w
 
 The four typed maps already enumerate every registered asset. An additional `owned` collection duplicated that index merely to preserve incidental diagnostic/disposal order, not a required dependency order. Keep only the separate loading `queue`, whose ordering and cancellation serve actual loading behavior; test diagnostic completeness rather than cross-type insertion order.
 
+A terrain GID alone does not uniquely identify both a sheet-local animation frame and an overlapping placement. Generated atlas regions use `__lute_tile/<firstgid>` with the local tile ID as index. Placement resolution follows tileset declaration precedence, including sparse collection holes; animation frames remain qualified to their own sheet. Regenerate earlier GID-only atlases. The real-GL fixture compared identical framebuffers and measured 8 to 1 draws for its particular four-sheet layout, not a general performance guarantee.
+
 ## Project Relevance
 
 The custom service uses direct map loading and disposes the map on unload. Callers must not retain or use the map or dependent resources afterward. Logical IDs and loader ownership are separate concerns; lookup keys need not expose file paths or LibGDX descriptors.

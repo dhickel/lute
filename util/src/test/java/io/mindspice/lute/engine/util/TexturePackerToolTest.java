@@ -99,6 +99,7 @@ public final class TexturePackerToolTest {
                     "Temporary output must be cleaned after success and failure");
             }
             terrainExtrusion(directory.resolve("terrain-extrusion"));
+            terrainOverflow(directory.resolve("terrain-overflow"));
             ownershipAndStaleOutputs(directory.resolve("ownership"));
             atlasCollisions(directory.resolve("collisions"));
             publicationRollback(directory.resolve("publication"));
@@ -119,11 +120,17 @@ public final class TexturePackerToolTest {
         Path output = directory.resolve("assets");
         createInputs(raw);
         createMap(raw, "alpha");
+        createMap(raw, "beta");
+        Files.writeString(raw.resolve("maps/beta/beta.tmx"), """
+            <map><tileset firstgid="51" source="../../tilesets/shared/terrain.tsx"/>
+            <layer width="1" height="1"><data encoding="csv">52</data></layer></map>
+            """);
         Path shared = raw.resolve("tilesets/shared");
         var source = new BufferedImage(7, 7, BufferedImage.TYPE_INT_ARGB);
         for (int y = 0; y < 7; y++) {
             for (int x = 0; x < 7; x++) { source.setRGB(x, y, 0x80000000 | x << 16 | y << 8 | 0x44); }
         }
+        source.setRGB(1, 1, 0x00123456); // Transparent pixels may still carry authored RGB.
         ImageIO.write(source, "png", shared.resolve("terrain.png").toFile());
         Path tsx = shared.resolve("terrain.tsx");
         String external = """
@@ -141,7 +148,7 @@ public final class TexturePackerToolTest {
                 <image source="../../tilesets/shared/terrain.png"/>
               </tileset>
               <group><imagelayer><image source="../../tilesets/shared/terrain.png"/></imagelayer></group>
-              <layer><data encoding="csv">3,7,6</data></layer>
+              <layer width="3" height="1"><data encoding="csv">3,7,6</data></layer>
             </map>
             """;
         Files.writeString(map, authoredMap);
@@ -170,6 +177,34 @@ public final class TexturePackerToolTest {
         check(generatedMap.getChildByName("layer").getChildByName("data").getText().equals("3,7,6"), "Retain map tile data");
         check(Files.mismatch(shared.resolve("terrain.png"), output.resolve("tilesets/shared/terrain.png")) == -1,
             "Keep the original image unchanged when used by an image layer");
+        var atlasDir = new FileHandle(output.resolve("atlases").toFile());
+        var secondMap = new TextureAtlasData(atlasDir.child("beta.atlas"), atlasDir, false);
+        check(secondMap.getRegions().size == 3 && hasRegion(secondMap, "__lute_tile/51", 1),
+            "A map sharing the same TSX with a different firstgid must pack only its own tile and objects");
+        check(!terrain.hasAttribute("luteAtlasLocalIds"), "A map-specific subset must never leak into a shared TSX");
+        var atlas = new TextureAtlasData(atlasDir.child("alpha.atlas"), atlasDir, false);
+        var keys = new java.util.HashSet<String>();
+        for (var region : atlas.getRegions()) {
+            if (!region.name.startsWith("__lute_tile/")) { continue; }
+            String key = region.name + ":" + region.index;
+            keys.add(key);
+            var page = ImageIO.read(region.page.textureFile.file());
+            int size = region.name.equals("__lute_tile/7") ? 7 : 2;
+            int start = switch (key) {
+                case "__lute_tile/3:0" -> 1;
+                case "__lute_tile/3:3" -> 4;
+                case "__lute_tile/7:0" -> 0;
+                default -> throw new AssertionError("Unexpected terrain region " + key);
+            };
+            for (int y = -1; y <= size; y++) {
+                for (int x = -1; x <= size; x++) {
+                    int wanted = source.getRGB(start + Math.clamp(x, 0, size - 1), start + Math.clamp(y, 0, size - 1));
+                    check(page.getRGB(region.left + x, region.top + y) == wanted, "Atlas must preserve exact RGBA interiors, edges and corners");
+                }
+            }
+        }
+        check(keys.equals(java.util.Set.of("__lute_tile/3:0", "__lute_tile/3:3", "__lute_tile/7:0")),
+            "Use only placed external and inline tiles with nondefault source grids");
         check(snapshot(shared).equals(authoredSheet) && Files.readString(map).equals(authoredMap), "Do not modify authored tilesets or maps");
         var published = snapshot(output);
         TexturePackerTool.generate(raw, output);
@@ -179,6 +214,41 @@ public final class TexturePackerToolTest {
         Files.writeString(tsx, external.replace("margin=\"1\"", "margin=\"9\""));
         rejects(() -> TexturePackerTool.generate(raw, output));
         check(snapshot(output).equals(published), "Invalid authored grid must not replace previously generated assets");
+    }
+
+    private static void terrainOverflow(Path directory) throws IOException {
+        Path raw = directory.resolve("raw_assets"), output = directory.resolve("assets");
+        createInputs(raw);
+        createMap(raw, "alpha");
+        Path inputs = raw.resolve("maps/alpha");
+        Path map = inputs.resolve("alpha.tmx");
+        // The padded width of one region and height of the other consume an entire page axis.
+        for (String name : new String[]{"wide", "tall"}) {
+            var img = new BufferedImage(name.equals("wide") ? 2046 : 2, name.equals("tall") ? 2046 : 2, BufferedImage.TYPE_INT_ARGB);
+            ImageIO.write(img, "png", inputs.resolve(name + ".png").toFile());
+        }
+        String original = """
+            <map><tileset firstgid="1" name="wide" tilewidth="2046" tileheight="2"><image source="wide.png"/></tileset>
+            <tileset firstgid="2" name="tall" tilewidth="2" tileheight="2046"><image source="tall.png"/></tileset>
+            <layer width="2" height="1"><data encoding="csv">1,2</data></layer></map>
+            """;
+        Files.writeString(map, original);
+        TexturePackerTool.generate(raw, output);
+        var dir = new FileHandle(output.resolve("atlases").toFile());
+        var atlas = new TextureAtlasData(dir.child("alpha.atlas"), dir, false);
+        check(atlas.getPages().size == 3, "Both blank terrain tiles must survive on separate pages alongside the object page");
+        for (var page : atlas.getPages()) {
+            check(page.width <= 2048 && page.height <= 2048, "Terrain page budget must be enforced");
+        }
+        var published = snapshot(output);
+        TexturePackerTool.generate(raw, output);
+        check(snapshot(output).equals(published), "Multiple terrain pages and ownership inventory regenerate identically");
+        Files.writeString(map, original.replace(">1,2<", ">1,3<"));
+        rejects(() -> TexturePackerTool.generate(raw, output));
+        check(snapshot(output).equals(published), "Unresolvable sheet GID must not damage a prior generation");
+        Files.writeString(map, original.replace(">1,2<", ">1,0<"));
+        TexturePackerTool.generate(raw, output);
+        check(!dir.child("alpha3.png").exists(), "Regenerating a smaller set removes the obsolete terrain page");
     }
 
     private static BufferedImage checkExtrudedSheet(Path definition, Element tileset, int columns, int rows,
@@ -616,6 +686,11 @@ public final class TexturePackerToolTest {
         rejects(() -> TexturePackerTool.generate(raw, output));
         check(!Files.exists(output), "Atlas page collisions between map names must fail before publication");
         deleteTree(raw.resolve("maps/alpha2"));
+        Path reserved = Files.createDirectory(raw.resolve("maps/alpha/objects/__lute_tile"));
+        Files.copy(raw.resolve("maps/alpha/objects/house.png"), reserved.resolve("3_0.png"));
+        rejects(() -> TexturePackerTool.generate(raw, output));
+        check(!Files.exists(output), "Objects must not publish in the qualified terrain namespace");
+        deleteTree(reserved);
         Files.copy(raw.resolve("maps/alpha/objects/tree/tree_00.png"), raw.resolve("maps/alpha/objects/tree/tree_0.png"));
         rejects(() -> TexturePackerTool.generate(raw, output));
         check(!Files.exists(output), "Duplicate logical frame indexes must fail before publication");

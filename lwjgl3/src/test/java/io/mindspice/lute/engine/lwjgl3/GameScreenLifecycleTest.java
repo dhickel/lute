@@ -9,6 +9,8 @@ import com.badlogic.gdx.ScreenAdapter;
 import com.badlogic.gdx.backends.lwjgl3.Lwjgl3Application;
 import com.badlogic.gdx.backends.lwjgl3.Lwjgl3ApplicationConfiguration;
 import com.badlogic.gdx.graphics.Pixmap;
+import com.badlogic.gdx.graphics.g2d.TextureAtlas;
+import com.badlogic.gdx.maps.tiled.TiledMapTileLayer;
 import com.badlogic.gdx.graphics.glutils.HdpiUtils;
 import com.badlogic.gdx.utils.Disposable;
 import io.mindspice.lute.engine.GameCore;
@@ -78,6 +80,21 @@ public final class GameScreenLifecycleTest extends ApplicationAdapter {
             GAME.render();
         }
         require(playerCount(engine) == 1, "Real initial loading creates one player");
+        var map = engine.getSystem(TiledSystem.class).getCurrentMap();
+        var ground = (TiledMapTileLayer) map.getLayers().get("Ground");
+        var groundTile = ground.getCell(0, 0).getTile();
+        var mapAtlas = GAME.getAssetService().get(TextureAtlas.class, assets.mapAsset().id());
+        int firstGid = 0;
+        for (var set : map.getTileSets()) {
+            if (set.getTile(groundTile.getId()) == groundTile) {
+                firstGid = set.getProperties().get("firstgid", Integer.class);
+                break;
+            }
+        }
+        require(firstGid > 0 && groundTile.getTextureRegion() == mapAtlas.findRegion("__lute_tile/" + firstGid, groundTile.getId() - firstGid),
+            "The real GameScreen ground layer must render from the generated map atlas");
+        System.out.println("GameScreen entered: Ground[0,0] GID " + groundTile.getId()
+            + " uses atlas GL texture " + groundTile.getTextureRegion().getTexture().getTextureObjectHandle());
         var foreign = new ForeignSystem();
         engine.addSystem(foreign);
         var owned = snapshot(engine, foreign);

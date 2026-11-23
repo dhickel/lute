@@ -14,6 +14,7 @@ import com.badlogic.gdx.maps.tiled.TiledMapTileSet;
 import com.badlogic.gdx.maps.tiled.TmxMapLoader;
 import com.badlogic.gdx.utils.Array;
 import com.badlogic.gdx.utils.ObjectMap;
+import com.badlogic.gdx.utils.IntMap;
 import com.badlogic.gdx.utils.GdxRuntimeException;
 import com.badlogic.gdx.utils.XmlReader.Element;
 import io.mindspice.lute.engine.assets.DirectTexture;
@@ -23,24 +24,41 @@ import java.util.regex.Pattern;
 
 public class FixedTmxMapLoader extends TmxMapLoader {
     private static final Pattern INDEXED_IMAGE = Pattern.compile("(.+)_([0-9]+)$");
-    private final TextureAtlas objectAtlas;
+    // Emitted by the asset generator on the TMX reference, not the shared TSX.
+    private static final String ATLAS_LOCAL_IDS = "luteAtlasLocalIds";
+    private static final String TERRAIN_PREFIX = "__lute_tile/";
+    private final TextureAtlas mapAtlas;
+    private final ObjectMap<String, IntMap<TextureAtlas.AtlasRegion>> terrainBySheet = new ObjectMap<>();
+    private String atlasLocalIds;
 
     public FixedTmxMapLoader(FileHandleResolver resolver) {
         this(resolver, null);
     }
 
-    public FixedTmxMapLoader(FileHandleResolver resolver, TextureAtlas objectAtlas) {
+    public FixedTmxMapLoader(FileHandleResolver resolver, TextureAtlas mapAtlas) {
         super(resolver);
-        this.objectAtlas = objectAtlas;
+        this.mapAtlas = mapAtlas;
+        if (mapAtlas != null) {
+            for (var region : mapAtlas.getRegions()) {
+                if (!region.name.startsWith(TERRAIN_PREFIX)) { continue; }
+                var sheet = terrainBySheet.get(region.name);
+                if (sheet == null) {
+                    sheet = new IntMap<>();
+                    terrainBySheet.put(region.name, sheet);
+                }
+                sheet.put(region.index, region);
+            }
+        }
     }
 
     @Override
     protected Array<FileHandle> getTileSetDependencyFileHandle(
             Array<FileHandle> files, FileHandle tmxFile, Element tileset) {
+        if (mapAtlas != null && tileset.hasAttribute(ATLAS_LOCAL_IDS)) { return files; }
         String source = tileset.getAttribute("source", null);
         Element definition = source == null ? tileset : xml.parse(getRelativeFileHandle(tmxFile, source));
         // Collection images are supplied by the borrowed atlas, never opened as source PNGs.
-        if (objectAtlas != null && definition.getChildByName("image") == null) { return files; }
+        if (mapAtlas != null && definition.getChildByName("image") == null) { return files; }
         return super.getTileSetDependencyFileHandle(files, tmxFile, tileset);
     }
 
@@ -98,19 +116,54 @@ public class FixedTmxMapLoader extends TmxMapLoader {
     }
 
     @Override
+    public TiledMapTileSet loadTileSet(Element reference, FileHandle tmxFile, ImageResolver imageResolver) {
+        // libGDX resolves external references before addStaticTiles; keep the map-specific selection.
+        atlasLocalIds = mapAtlas == null ? null : reference.getAttribute(ATLAS_LOCAL_IDS, null);
+        return super.loadTileSet(reference, tmxFile, imageResolver);
+    }
+
+    @Override
     protected void addStaticTiles(
             FileHandle tmxFile, ImageResolver imageResolver, TiledMapTileSet tileSet,
             Element element, Array<Element> tileElements, String name, int firstgid,
             int tilewidth, int tileheight, int spacing, int margin, int offsetX,
             int offsetY, String imageSource, int imageWidth, int imageHeight,
             FileHandle image) {
+        if (atlasLocalIds != null && image != null) {
+            // Preserve TmxMapLoader's public sheet metadata. Only the source of the static regions changes;
+            // libGDX still attaches properties, collision shapes and native animations and resolves all GIDs.
+            var props = tileSet.getProperties();
+            props.put("imagesource", imageSource);
+            props.put("imagewidth", imageWidth);
+            props.put("imageheight", imageHeight);
+            props.put("tilewidth", tilewidth);
+            props.put("tileheight", tileheight);
+            props.put("margin", margin);
+            props.put("spacing", spacing);
+            if (!atlasLocalIds.isEmpty()) {
+                var sheet = terrainBySheet.get(TERRAIN_PREFIX + firstgid);
+                for (String local : atlasLocalIds.split(",")) {
+                    int localId = Integer.parseInt(local);
+                    int gid = firstgid + localId;
+                    var region = sheet == null ? null : sheet.get(localId);
+                    if (region == null || region.rotate || region.getRegionWidth() != tilewidth
+                            || region.getRegionHeight() != tileheight || region.originalWidth != tilewidth
+                            || region.originalHeight != tileheight) {
+                        throw new GdxRuntimeException("Missing or invalid terrain atlas region for GID " + gid
+                            + " (firstgid=" + firstgid + ", localId=" + localId + ") in " + tmxFile);
+                    }
+                    addStaticTiledMapTile(tileSet, region, gid, offsetX, offsetY);
+                }
+            }
+            return;
+        }
         String tilesetSource = element.getAttribute("source", null);
         FileHandle imageBase = tmxFile;
         // Image-collection paths are relative to the external tileset, not the map.
         if (element.getChildByName("image") == null && tilesetSource != null) {
             imageBase = getRelativeFileHandle(tmxFile, tilesetSource);
         }
-        if (objectAtlas != null && image == null) {
+        if (mapAtlas != null && image == null) {
             var regions = new ObjectMap<String, TextureRegion>();
             for (Element tile : tileElements) {
                 Element tileImage = tile.getChildByName("image");
@@ -131,7 +184,7 @@ public class FixedTmxMapLoader extends TmxMapLoader {
                         throw new GdxRuntimeException("Invalid atlas frame index: " + source, failure);
                     }
                 }
-                TextureRegion region = objectAtlas.findRegion(key, index);
+                TextureRegion region = mapAtlas.findRegion(key, index);
                 if (region == null) {
                     throw new GdxRuntimeException("Missing object atlas region for '" + source + "' in tileset '" + name + "'");
                 }

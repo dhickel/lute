@@ -90,12 +90,14 @@ public final class TexturePackerTool {
             var extrusion = new TilesheetExtrusion(raw, stage);
             try (var directories = Files.list(raw.resolve("maps"))) {
                 for (Path directory : directories.filter(Files::isDirectory).sorted().toList()) {
-                    if (!Files.isDirectory(directory.resolve("objects"))) { continue; }
+                    String name = directory.getFileName().toString();
+                    if (!Files.isDirectory(directory.resolve("objects")) && !Files.exists(directory.resolve(name + ".tmx"))
+                            && !Files.exists(directory.resolve(name + ".manifest.json"))) { continue; }
                     generateMap(raw, directory, stage, extrusion);
                     maps++;
                 }
             }
-            if (maps == 0) { throw new IllegalArgumentException("No map directories with an objects input folder in " + raw); }
+            if (maps == 0) { throw new IllegalArgumentException("No map directories in " + raw); }
             generateSprites(raw.resolve("sprites"), stage);
             Path prepared = transaction.resolve("prepared");
             preparePublication(stage, output, prepared, adoptIdentical);
@@ -226,17 +228,16 @@ public final class TexturePackerTool {
                 throw new IllegalArgumentException("Manifest requires " + field + " (an empty object is allowed): " + manifest);
             }
         }
-        var packSettings = new Json().fromJson(TexturePacker.Settings.class, new FileHandle(objects.resolve("pack.json").toFile()));
-        if (!packSettings.combineSubdirectories) {
-            throw new IllegalArgumentException("Map object packing must combine subdirectories: " + objects);
-        }
-        var atlas = packAtlas(objects, stage, name, packSettings);
+        var atlas = packMapObjects(objects, stage, name);
+        var terrain = new MapTileAtlas(raw, map, stage);
         Path runtimeMap = stage.resolve("maps").resolve(name);
         Document document = readTiledXml(map);
         Element root = document.getDocumentElement();
         copy(manifest, runtimeMap.resolve(name + ".manifest.json"));
         boolean rewriteMap = false;
-        for (Element tileset : children(root, "tileset")) {
+        // Match TiledMapTileSets.getTile: the last definition that actually contains a GID wins.
+        // Only our processing order changes; keep the declarations in their authored order in the TMX.
+        for (Element tileset : children(root, "tileset").reversed()) {
             boolean external = tileset.hasAttribute("source");
             Path definition = external ? mapDependency(raw, directory, map.getParent().resolve(tileset.getAttribute("source"))) : map;
             Element element = external ? readTiledXml(definition).getDocumentElement() : tileset;
@@ -244,10 +245,12 @@ public final class TexturePackerTool {
             if (!sheets.isEmpty()) {
                 Element image = sheets.getFirst();
                 Path sheet = mapDependency(raw, directory, definition.getParent().resolve(image.getAttribute("source")));
-                extrusion.apply(definition, element, image, sheet);
+                Path padded = extrusion.apply(definition, element, image, sheet);
+                terrain.addSheet(tileset, element, padded);
                 if (external) { writeTiledXml(element.getOwnerDocument(), stage.resolve(raw.relativize(definition))); }
-                else { rewriteMap = true; }
+                rewriteMap = true;
             } else {
+                terrain.addCollection(tileset, element);
                 for (Element tile : children(element, "tile")) {
                     for (Element image : children(tile, "image")) {
                         Path input = inside(objects, definition.getParent().resolve(image.getAttribute("source")));
@@ -271,12 +274,42 @@ public final class TexturePackerTool {
                 copy(source, stage.resolve(raw.relativize(source)));
             }
         }
+        terrain.pack(stage.resolve("atlases"), name);
         Path output = runtimeMap.resolve(name + ".tmx");
         if (rewriteMap) { writeTiledXml(document, output); }
         else { copy(map, output); }
     }
 
-    private static List<Element> children(Element parent, String name) {
+    private static TextureAtlasData packMapObjects(Path objects, Path stage, String name) throws IOException {
+        boolean hasObjects = false;
+        if (Files.isDirectory(objects)) {
+            try (var paths = Files.walk(objects)) {
+                hasObjects = paths.filter(Files::isRegularFile).anyMatch(path -> {
+                    String file = path.getFileName().toString().toLowerCase(java.util.Locale.ROOT);
+                    return file.endsWith(".png") || file.endsWith(".jpg") || file.endsWith(".jpeg");
+                });
+            }
+        }
+        if (!hasObjects) {
+            // Terrain-only and empty maps still have the manifest's one atlas owner.
+            Path directory = Files.createDirectories(stage.resolve("atlases"));
+            Path atlas = Files.createFile(directory.resolve(name + ".atlas"));
+            return new TextureAtlasData(new FileHandle(atlas.toFile()), new FileHandle(directory.toFile()), false);
+        }
+        var settings = new Json().fromJson(TexturePacker.Settings.class, new FileHandle(objects.resolve("pack.json").toFile()));
+        if (!settings.combineSubdirectories) {
+            throw new IllegalArgumentException("Map object packing must combine subdirectories: " + objects);
+        }
+        var atlas = packAtlas(objects, stage, name, settings);
+        for (var region : atlas.getRegions()) {
+            if (region.name.startsWith(MapTileAtlas.REGION_PREFIX)) {
+                throw new IOException("Reserved map atlas region: " + region.name);
+            }
+        }
+        return atlas;
+    }
+
+    static List<Element> children(Element parent, String name) {
         List<Element> elements = new ArrayList<>();
         for (var node = parent.getFirstChild(); node != null; node = node.getNextSibling()) {
             if (node instanceof Element element && element.getTagName().equals(name)) { elements.add(element); }
@@ -455,7 +488,7 @@ public final class TexturePackerTool {
         throw new IllegalArgumentException("Missing packed region for " + source);
     }
 
-    private static Path mapDependency(Path raw, Path mapDirectory, Path candidate) {
+    static Path mapDependency(Path raw, Path mapDirectory, Path candidate) {
         Path path = inside(raw, candidate);
         if (!path.startsWith(mapDirectory) && !path.startsWith(raw.resolve("tilesets"))) {
             throw new IllegalArgumentException("Map dependency must be in its map or shared tilesets: " + path);
@@ -479,7 +512,7 @@ public final class TexturePackerTool {
         }
     }
 
-    private static void copy(Path source, Path output) throws IOException {
+    static void copy(Path source, Path output) throws IOException {
         rejectSymlinks(output);
         Files.createDirectories(output.getParent());
         Files.copy(source, output, StandardCopyOption.REPLACE_EXISTING, StandardCopyOption.COPY_ATTRIBUTES);
