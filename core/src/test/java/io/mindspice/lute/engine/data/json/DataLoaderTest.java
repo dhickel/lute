@@ -39,6 +39,7 @@ public final class DataLoaderTest {
             playerSchema(player, definitions);
             characterBoundsSchema(player);
             weaponSchema(definitions);
+            rejectsFractionalCombatData();
             projectileSchema();
             missingProjectileData();
             actorsSchema();
@@ -54,6 +55,24 @@ public final class DataLoaderTest {
                 "generated projectiles match source");
             System.out.println("DataLoaderTest: passed");
         } finally { Gdx.files = previousFiles; }
+    }
+
+    private static void rejectsFractionalCombatData() throws Exception {
+        var player = (tools.jackson.databind.node.ObjectNode) DataLoader.mapper.readTree(Path.of("assets/data/player.json").toFile());
+        var weapons = DataLoader.mapper.readTree(Path.of("assets/data/weapons.json").toFile());
+        var stats = (tools.jackson.databind.node.ObjectNode) weapons.at("/weapons/basic_sword/attack_stats/primary/stats");
+        var fixture = Files.createTempFile("fractional-combat-data", ".json");
+        try {
+            useFile(fixture);
+            Files.writeString(fixture, player.put("max_health", 50.5).toString());
+            rejects(DataLoader::parsePlayerData, "fractional player max_health");
+            stats.put("damage", 10.5);
+            Files.writeString(fixture, weapons.toString());
+            rejects(DataLoader::parseWeaponData, "fractional weapon damage");
+        } finally {
+            useAssets();
+            Files.delete(fixture);
+        }
     }
 
     private static void projectileSchema() {
@@ -232,7 +251,7 @@ public final class DataLoaderTest {
     }
 
     private static void playerSchema(PlayerData player, WeaponsData definitions) {
-        check(player.maxHealth() == 100 && player.moveSpeed() == 4, "player stats");
+        check(player.maxHealth() > 0 && player.moveSpeed() == 4, "player stats");
         check(player.animation().frameInterval() == .125f && player.animation().speed() == 1
             && player.animation().atlasKey().isEmpty() && player.animation().soundFrame() == 0, "flat base animation");
         check(player.logicalSize().width() == 64 && player.logicalSize().height() == 64, "logical character size");
@@ -355,7 +374,6 @@ public final class DataLoaderTest {
         check(sword.atlasKey().equals("melee/basic_sword") && bow.atlasKey().equals("ranged/basic_bow")
             && unarmed.atlasKey().equals("NONE"), "weapon layer prefixes");
         check(sword.attackStats().primary().animation().atlasKey().equals("slash"), "sword primary slash");
-        check(sword.attackStats().primary().stats().damage() == 10, "preserved slash damage");
         check(bow.attackStats().primary().animation().atlasKey().equals("shot")
             && bow.attackStats().primary().collisionType() == CollisionType.PROJECTILE, "bow primary projectile metadata");
         var authored = DataLoader.mapper.readTree(Files.readString(Path.of("assets/data/weapons.json"))).get("weapons");

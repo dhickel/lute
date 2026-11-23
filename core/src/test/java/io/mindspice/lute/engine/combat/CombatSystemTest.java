@@ -9,6 +9,7 @@ import com.badlogic.gdx.graphics.Texture;
 import com.badlogic.gdx.graphics.g2d.Animation;
 import com.badlogic.gdx.graphics.g2d.TextureAtlas;
 import com.badlogic.gdx.graphics.g2d.TextureRegion;
+import com.badlogic.gdx.math.MathUtils;
 import com.badlogic.gdx.math.Vector2;
 import com.badlogic.gdx.maps.objects.RectangleMapObject;
 import com.badlogic.gdx.maps.tiled.objects.TiledMapTileMapObject;
@@ -63,8 +64,10 @@ public final class CombatSystemTest {
         cardinalBowShots();
         ArrowFlightTest.run();
         cooldownBetweenBowAndMelee();
+        queuedLethalHitCancelsBowRelease();
         bowDamageByDrawFrame();
         independentAttacksAndGeometry();
+        committedMeleeHit();
         contacts();
         characterFixturesAndContacts();
         cleanup();
@@ -207,7 +210,7 @@ public final class CombatSystemTest {
             game.update(0); game.step(); game.update(0);
             check(game.animation().getAction().equals("jab") && game.animation().getFrameIndex() == 0,
                 "Replacement starts the selected action from frame zero");
-            near(80, Health.MAPPER.get(target).getCurrent(), "Each attack can hit the same target once");
+            damageWithin(20, target, "Each attack can hit the same target once");
             game.events.update(0);
             check(game.sounds.size() == 2, "Replacement gets its own sound cue");
         }
@@ -289,7 +292,7 @@ public final class CombatSystemTest {
                         }
                     }
                     if (expected.collisionType() == CollisionType.MELEE) {
-                        near(90, Health.MAPPER.get(target).getCurrent(), "Selected melee attack deals damage once");
+                        damageWithin(10, target, "Selected melee attack deals damage once");
                     }
                     game.events.update(0);
                     check(game.sounds.stream().filter(s -> s.equals(expected.animation().soundId())).count() == 1,
@@ -366,7 +369,7 @@ public final class CombatSystemTest {
                 body.getFixtureList().first().setUserData(Hurtbox.INSTANCE);
                 body.setTransform(x, y, 0);
                 game.input(InputAction.ATTACK_PRIMARY, 0); game.update(.5f);
-                near(97.5f, Health.MAPPER.get(target).getCurrent(), "Quick shot reaches terminal hurtbox: " + facing);
+                damageWithin(2.5f, target, "Quick shot reaches terminal hurtbox: " + facing);
                 game.input(InputAction.ATTACK_PRIMARY, 1); game.update(0);
                 check(!aim.isAiming(), "Redraw is blocked immediately after release even on a long update");
                 game.input(InputAction.ATTACK_PRIMARY, 0); game.update(.125f);
@@ -374,7 +377,7 @@ public final class CombatSystemTest {
                 check(aim.isAiming() && game.animation().getFrameIndex() == 0, "Fresh press redraws during recovery at cooldown expiry");
                 game.input(InputAction.ATTACK_PRIMARY, 0); game.update(0);
                 game.engine.removeEntity(game.player); game.update(1);
-                near(97.5f, Health.MAPPER.get(target).getCurrent(), "Removing owner discards in-flight arrows");
+                damageWithin(2.5f, target, "Removing owner discards in-flight arrows");
             }
         }
     }
@@ -404,18 +407,60 @@ public final class CombatSystemTest {
             game.body().setAwake(true);
             game.step(); game.step(); // Leave this hit queued until the bow press cancels the jab.
             game.input(InputAction.ATTACK_PRIMARY, 1); game.update(.125f);
-            near(90, Health.MAPPER.get(meleeTarget).getCurrent(), "Draw cancellation preserves queued melee contact");
+            damageWithin(10, meleeTarget, "Draw cancellation preserves queued melee contact");
             check(aim.isAiming() && game.combat().getSensor() == null && game.animation().getFrameIndex() == 0
                 && game.combat().isCoolingDown("basic_bow", Combat.AttackSlot.SECONDARY),
                 "Once the shot cooldown expires, bow draw replaces the jab even during the jab cooldown");
             game.update(1f);
-            near(97.5f, Health.MAPPER.get(arrowTarget).getCurrent(), "Replacing recovery does not discard the arrow");
+            damageWithin(2.5f, arrowTarget, "Replacing recovery does not discard the arrow");
+        }
+    }
+
+    private static void queuedLethalHitCancelsBowRelease() {
+        try (var game = new Harness(1, 0, 0)) {
+            var shot = attack("basic_bow", "shot", 1, 2, 1, BoundsType.RECT, CollisionType.PROJECTILE);
+            game.selectWeapon(new CombatWeapon.Weapon("basic_bow", "ranged/basic_bow", shot, shot));
+            var aim = new BowAim(1, 1);
+            game.player.add(aim);
+            var health = Health.MAPPER.get(game.player);
+            health.damage(health.getCurrent() - 1);
+            fixture(game.body(), .08f, .08f, new Vector2(1, 1), true);
+            game.body().getFixtureList().peek().setUserData(Hurtbox.INSTANCE);
+            var target = game.target(1, false);
+            Physic.MAPPER.get(target).getBody().setTransform(2, 1, 0);
+
+            var attacker = game.target(1, false);
+            var body = Physic.MAPPER.get(attacker).getBody();
+            body.setType(BodyDef.BodyType.DynamicBody);
+            body.setTransform(-.5f, 0f, 0f);
+            var weapon = weapon(1, 0, 0, BoundsType.RECT);
+            var combat = new Combat();
+            attacker.add(combat).add(new Loadout(new Loadout.Equipment(null, null, null, null), weapon.id(),
+                Map.of(weapon.id(), weapon), _ -> { }));
+            attacker.add(new Facing(Facing.Direction.RIGHT)).add(new AnimationPlayer(attacker))
+                .add(new Animation2D("OBJECTS", "attacker", Animation2D.AnimationType.IDLE, Animation.PlayMode.LOOP, 1, .125f))
+                .add(new Graphic(new TextureRegion(), Color.WHITE))
+                .add(new Transform(new Vector2(-.5f, 0), 0, new Vector2(2, 2), new Vector2(1, 1), 0, 0));
+            game.input(InputAction.ATTACK_PRIMARY, 1);
+            combat.requestAttack(Combat.AttackSlot.PRIMARY);
+            game.update(0);
+            game.update(0);
+            check(aim.isAiming() && combat.getSensor() != null, "Bow draw and hostile melee sensor coexist before contact");
+            game.step();
+            game.step();
+            check(health.isAlive() && touching(combat.getSensor(), game.body().getFixtureList().peek()),
+                "Lethal contact waits for unlocked combat processing");
+            game.input(InputAction.ATTACK_PRIMARY, 0);
+            game.update(.5f);
+            check(!health.isAlive() && !aim.isAiming() && game.combat().getAttackId() == 0,
+                "A prior lethal contact cancels the queued bow release before it starts an attack");
+            near(100, Health.MAPPER.get(target).getCurrent(), "Killed archer never launches the pending shot");
         }
     }
 
     private static void bowDamageByDrawFrame() {
-        float[] expectedHealth = {97.5f, 95f, 92.5f, 90f, 90f};
-        for (int frame = 0; frame < expectedHealth.length; frame++) {
+        float[] damage = {2.5f, 5f, 7.5f, 10f, 10f};
+        for (int frame = 0; frame < damage.length; frame++) {
             try (var game = new Harness(1, 1, 1)) {
                 var shot = attack("basic_bow", "shot", 1, 2, 1, BoundsType.RECT, CollisionType.PROJECTILE);
                 game.selectWeapon(new CombatWeapon.Weapon("basic_bow", "ranged/basic_bow", shot, shot));
@@ -425,10 +470,18 @@ public final class CombatSystemTest {
                 game.input(InputAction.ATTACK_PRIMARY, 1); game.update(0);
                 game.update(frame * shot.animation().frameInterval());
                 check(game.animation().getFrameIndex() == frame, "Expected draw frame " + frame);
-                game.input(InputAction.ATTACK_PRIMARY, 0); game.update(0);
-                check(game.animation().getFrameIndex() == 5, "All draw strengths start release at frame 5");
-                game.update(.5f);
-                near(expectedHealth[frame], Health.MAPPER.get(target).getCurrent(), "Damage sampled at draw frame " + frame);
+                var previous = MathUtils.random;
+                var rolls = new HitRolls();
+                try {
+                    MathUtils.random = rolls;
+                    game.input(InputAction.ATTACK_PRIMARY, 0); game.update(0);
+                    check(game.animation().getFrameIndex() == 5, "All draw strengths start release at frame 5");
+                    check(rolls.count == 0, "Bow release does not roll damage before landing");
+                    game.update(.5f);
+                    near(100 - Math.round(damage[frame] * 1.05f), Health.MAPPER.get(target).getCurrent(),
+                        "One roll applies to draw-scaled damage at frame " + frame);
+                    check(rolls.count == 1, "Landed arrow rolls once across duplicate fixtures");
+                } finally { MathUtils.random = previous; }
             }
         }
     }
@@ -477,7 +530,7 @@ public final class CombatSystemTest {
             check(game.animation().getFrameIndex() == 5, "Quick release skips unplayed draw frames");
             near(100, Health.MAPPER.get(target).getCurrent(), "Shot is not hitscan");
             game.update(.5f);
-            near(97.5f, Health.MAPPER.get(target).getCurrent(), "One quick shot hits even on long frame");
+            damageWithin(2.5f, target, "One quick shot hits even on long frame");
 
             input.keyDown(space); game.update(0);
             game.input(InputAction.MOVE_UP, 1); game.update(1f / 6f);
@@ -485,7 +538,7 @@ public final class CombatSystemTest {
             input.keyUp(space); game.update(0);
             check(game.animation().getFdirection() == Facing.Direction.UP, "Exact diagonal tie faces vertically");
             game.input(InputAction.MOVE_UP, 0); game.update(.5f);
-            near(92.5f, Health.MAPPER.get(target).getCurrent(), "Vertical pose still fires along the diagonal");
+            damageWithin(7.5f, target, "Vertical pose still fires along the diagonal");
 
             input.keyDown(space); game.update(0);
             game.input(InputAction.MOVE_DOWN, 1); game.update(1f / 6f);
@@ -527,8 +580,8 @@ public final class CombatSystemTest {
                 }
                 near(first ? 2.25f : 1.75f, tip, "Independent configured reach");
                 game.step(); game.combatSystem.update(0);
-                near(100 - expected.damage(), Health.MAPPER.get(near).getCurrent(), "Independent selected damage, once per target");
-                near(first ? 59 : 100, Health.MAPPER.get(far).getCurrent(), "Only longer primary reaches distant target");
+                damageWithin(expected.damage(), near, "Independent selected damage, once per target");
+                damageWithin(first ? 41 : 0, far, "Only longer primary reaches distant target");
                 game.update(.125f); game.events.update(0);
                 check(game.sounds.equals(List.of(first ? "primary" : "secondary")), "Independent secondary cue reached once");
                 game.update(0); game.events.update(0);
@@ -536,6 +589,34 @@ public final class CombatSystemTest {
                 game.finish();
             }
         }
+    }
+
+    private static void committedMeleeHit() {
+        try (var game = new Harness(1, 2, 1)) {
+            var target = game.target(3, false);
+            Physic.MAPPER.get(target).getBody().setTransform(2.125f, 1, 0);
+            var previous = MathUtils.random;
+            var rolls = new HitRolls();
+            try {
+                MathUtils.random = rolls;
+                game.attack();
+                check(rolls.count == 0 && game.combat().getAttackFacing() == Facing.Direction.RIGHT,
+                    "Committing an attack captures facing without consuming the hit roll");
+                Facing.MAPPER.get(game.player).setDirection(Facing.Direction.LEFT);
+                game.update(0); // Reloading the visual facing does not advance playback.
+                game.update(.25f);
+                check(game.combat().getSensor() != null, "Committed hit frame installs the sensor");
+                game.step(); game.combatSystem.update(0);
+                near(89, Health.MAPPER.get(target).getCurrent(), "Hitbox still points along the committed attack");
+                game.step(); game.combatSystem.update(0);
+                check(rolls.count == 1, "Duplicate fixtures and contact ticks do not consume another roll");
+            } finally { MathUtils.random = previous; }
+        }
+    }
+
+    private static final class HitRolls extends java.util.Random {
+        int count;
+        @Override public float nextFloat() { count++; return .75f; }
     }
 
     private static void contacts() {
@@ -554,11 +635,11 @@ public final class CombatSystemTest {
                 game.attack(); game.step();
                 near(100, Health.MAPPER.get(target).getCurrent(), "Contact callback only queues damage");
                 game.combatSystem.update(0);
-                near(90, Health.MAPPER.get(target).getCurrent(), "Sleeping owner hits beyond sprite in " + facing);
+                damageWithin(10, target, "Sleeping owner hits beyond sprite in " + facing);
                 game.step(); game.combatSystem.update(0);
-                near(90, Health.MAPPER.get(target).getCurrent(), "Multiple fixtures damage once per attack");
+                damageWithin(10, target, "Multiple fixtures damage once per attack");
                 game.finish(); game.attack(); game.step(); game.combatSystem.update(0);
-                near(80, Health.MAPPER.get(target).getCurrent(), "New attack can hit same target");
+                damageWithin(20, target, "New attack can hit same target");
             }
         }
         try (var game = new Harness(1, 0, 0)) {
@@ -628,10 +709,10 @@ public final class CombatSystemTest {
                 check(!touching(sensor, feetOnly ? hurtbox : physical), "Feet and upper hurtbox are independently placed");
                 near(100, Health.MAPPER.get(target).getCurrent(), "Hurtbox contact defers damage until unlocked update");
                 game.combatSystem.update(0);
-                near(feetOnly ? 100 : 90, Health.MAPPER.get(target).getCurrent(),
+                damageWithin(feetOnly ? 0 : 10, target,
                     feetOnly ? "Physical-only overlap does not damage explicit hurtbox targets" : "Upper-body hurtbox is damaged outside feet, once across duplicate fixtures");
                 game.step(); game.combatSystem.update(0);
-                near(feetOnly ? 100 : 90, Health.MAPPER.get(target).getCurrent(), "Persistent contacts cannot repeat damage");
+                damageWithin(feetOnly ? 0 : 10, target, "Persistent contacts cannot repeat damage");
                 game.finish();
                 check(targetBody.getFixtureList().contains(hurtbox, true) && hurtbox.getUserData() == Hurtbox.INSTANCE,
                     "Attack cleanup leaves persistent tagged target hurtbox intact");
@@ -640,7 +721,7 @@ public final class CombatSystemTest {
                     game.attack(); game.step();
                     game.engine.removeEntity(target);
                     game.combatSystem.update(0);
-                    near(90, Health.MAPPER.get(target).getCurrent(), "Removed hurtbox target discards queued damage safely");
+                    damageWithin(10, target, "Removed hurtbox target discards queued damage safely");
                 }
             }
         }
@@ -764,7 +845,7 @@ public final class CombatSystemTest {
         }
         var health = new Health(100);
         health.damage(25); near(75, health.getCurrent(), "Damage subtracts");
-        health.damage(Float.MAX_VALUE); near(0, health.getCurrent(), "Damage clamps");
+        health.damage(Integer.MAX_VALUE); near(0, health.getCurrent(), "Damage clamps");
         check(!health.isAlive(), "Zero health dead");
     }
 
@@ -920,7 +1001,7 @@ public final class CombatSystemTest {
             engine.addEntity(player);
             var animation = Animation2D.MAPPER.get(player);
             var state = Combat.MAPPER.get(player);
-            near(100, Health.MAPPER.get(player).getCurrent(), "Factory player stats");
+            near(data.playerData().maxHealth(), Health.MAPPER.get(player).getCurrent(), "Factory player stats");
             var loadout = Loadout.MAPPER.get(player);
             var defaultWeapon = data.playerData().loadout().weapon();
             check(loadout != null && java.util.Objects.equals(loadout.getWeaponId(), defaultWeapon),
@@ -1081,6 +1162,12 @@ public final class CombatSystemTest {
         checks++;
         if (!condition) { throw new AssertionError(message); }
     }
+    private static void damageWithin(float base, Entity target, String message) {
+        var health = Health.MAPPER.get(target);
+        int taken = health.getMaximum() - health.getCurrent();
+        check(taken >= Math.round(base * .9f) && taken <= Math.round(base * 1.1f), message + ": damage " + taken);
+    }
+
     private static void near(float expected, float actual, String message) {
         check(Math.abs(expected - actual) < .0002f, message + ": expected " + expected + ", got " + actual);
     }

@@ -41,15 +41,63 @@ public final class AwarenessSystem extends IteratingSystem {
             return;
         }
         var graphs = Graphs.forKey(ai.graphKey());
-        if (graphs.containsKey(ActorAi.Mode.ENGAGE)) {
+        var shooter = ai.retaliationTarget();
+        boolean detectsPlayer = Actor.MAPPER.get(actor).role() == Actor.Role.ENEMY
+            && graphs.containsKey(ActorAi.Mode.ENGAGE);
+        if (detectsPlayer || ai.mode() != ActorAi.Mode.WANDER) {
             var from = feet(actor);
-            state.setTargetOffset(ai.updateTarget(from, visiblePlayerFeet(actor, from), deltaTime));
+            // Prefer the visible shooter, but keep normal player detection on every tick.
+            var visible = shooter == null ? null : retaliationFeet(actor, shooter, from);
+            var target = visible == null ? null : shooter;
+            if (target == null && detectsPlayer) {
+                target = visiblePlayer(actor, from);
+                if (target != null) { visible = feet(target); }
+            }
+            if (shooter != null && (target != null && target != shooter || !livingActor(shooter))) {
+                ai.retaliateAgainst(null);
+            }
+            state.setVisibleTarget(target);
+            state.setTargetOffset(ai.updateTarget(from, visible, deltaTime));
         }
         if (Combat.MAPPER.get(actor).isAttacking()) {
             stop.perform(actor, state);
             return;
         }
-        graphs.get(ai.mode()).travel(actor, state);
+        var graph = ai.mode() == ActorAi.Mode.WANDER ? graphs.get(ai.mode()) : Graphs.pursuit(ai.mode());
+        graph.travel(actor, state);
+    }
+
+    void arrowDamaged(Entity victim, Entity shooter) {
+        var ai = ActorAi.MAPPER.get(victim);
+        if (ai == null || !livingActor(victim) || Actor.MAPPER.get(victim).role() == Actor.Role.PLAYER) { return; }
+        var from = feet(victim);
+        var to = retaliationFeet(victim, shooter, from);
+        if (to != null) {
+            var combat = Combat.MAPPER.get(victim);
+            if (combat.requestedTarget() != shooter) { combat.consumeAttackRequest(); }
+            ai.retaliateAgainst(shooter);
+            ai.updateTarget(from, to, 0f);
+        }
+    }
+
+    private Vector2 retaliationFeet(Entity victim, Entity shooter, Vector2 from) {
+        if (shooter == victim || !livingActor(shooter)) { return null; }
+        var to = feet(shooter);
+        for (var fixture : Physic.MAPPER.get(victim).getBody().getFixtureList()) {
+            if (fixture.getUserData() != SENSOR_TAG) { continue; }
+            double radius = 3d * ((CircleShape) fixture.getShape()).getRadius();
+            double dx = (double) to.x - from.x;
+            double dy = (double) to.y - from.y;
+            return dx * dx + dy * dy <= radius * radius && clearSight(from, to) ? to : null;
+        }
+        return null;
+    }
+
+    private boolean livingActor(Entity entity) {
+        if (entity == null || !getEntities().contains(entity, true)) { return false; }
+        var health = Health.MAPPER.get(entity);
+        var body = Physic.MAPPER.get(entity).getBody();
+        return health != null && health.isAlive() && body.getUserData() == entity && body.isActive();
     }
 
     /** Snapshot of matching actors whose physical feet centers lie in the owner's circle, including its edge. */
@@ -108,11 +156,9 @@ public final class AwarenessSystem extends IteratingSystem {
         return !blocked[0];
     }
 
-    private Vector2 visiblePlayerFeet(Entity owner, Vector2 from) {
+    private Entity visiblePlayer(Entity owner, Vector2 from) {
         for (var player : inRange(owner, Actor.Role.PLAYER)) {
-            if (!Health.MAPPER.get(player).isAlive()) { continue; }
-            var to = feet(player);
-            if (clearSight(from, to)) { return to; }
+            if (Health.MAPPER.get(player).isAlive() && clearSight(from, feet(player))) { return player; }
         }
         return null;
     }

@@ -55,6 +55,7 @@ public class GameScreen extends ScreenAdapter {
             addSystem(new AnimationPlayerSystem());
             addSystem(new AnimationSystem(this.game.getAssetService()));
             addSystem(new CombatSystem(physicWorld, game.getGameData().projectilesData().ironArrow()));
+            addSystem(new DeathSystem(physicWorld));
             addSystem(new LoadoutSystem());
             addSystem(new MapSensorSystem(physicWorld));
             addSystem(new PhysicMoveSystem());
@@ -132,6 +133,7 @@ public class GameScreen extends ScreenAdapter {
         sessionSeconds += step;
         renderer.gameplayFrame(physicWorld, ambient, night, sessionSeconds);
         engine.update(step);
+        tiled.applyPendingRespawn();
         tiled.applyPendingTravel();
     }
 

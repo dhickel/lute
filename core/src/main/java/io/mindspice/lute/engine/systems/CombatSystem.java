@@ -29,19 +29,23 @@ public class CombatSystem extends IteratingSystem implements ContactListener, En
         var combat = Combat.MAPPER.get(owner);
         if (combat == null || combat.isCoolingDown(weapon.id(), Combat.AttackSlot.PRIMARY)
             || combat.hasAttackRequest()) { return; }
-        if (combat.isAttacking()) {
-            // Bow input runs before combat. Keep contacts from the preceding physics step.
-            applyPendingHits();
-            var health = Health.MAPPER.get(owner);
-            if (health != null && !health.isAlive()) { return; }
-            stopAttack(owner);
-        }
+        // Bow input runs before combat. Resolve contacts from the preceding physics step first.
+        applyPendingHits();
+        var health = Health.MAPPER.get(owner);
+        if (health != null && !health.isAlive()) { return; }
+        if (combat.isAttacking()) { stopAttack(owner); }
         Animation2D.MAPPER.get(owner).queueAttack(weapon.primary().animation());
         AnimationPlayer.MAPPER.get(owner).getAnimationFsm().changeState(AnimationState.ATTACK);
         aim.start(weapon, Transform.MAPPER.get(owner), Facing.MAPPER.get(owner).getDirection());
     }
 
     void launch(Entity owner, BowAim aim) {
+        applyPendingHits();
+        var health = Health.MAPPER.get(owner);
+        if (health != null && !health.isAlive()) {
+            aim.cancel();
+            return;
+        }
         var transform = Transform.MAPPER.get(owner);
         var start = transform.getPosition().cpy().mulAdd(transform.getSize(), 0.5f);
         var target = new Vector2(aim.getTargetX(), aim.getTargetY());
@@ -56,9 +60,9 @@ public class CombatSystem extends IteratingSystem implements ContactListener, En
         var animation = Animation2D.MAPPER.get(owner);
         int drawFrame = animation.isAttackReady() ? animation.getFrameIndex() : 0;
         float damageScale = Math.min(drawFrame + 1, 4) / 4f;
-        arrows.add(new ArrowFlight(owner, arrowType, start, target, attack.damage() * damageScale));
+        arrows.add(new ArrowFlight(owner, arrowType, start, target, attack.damage(), damageScale));
         var combat = Combat.MAPPER.get(owner);
-        combat.beginAttack(Combat.AttackSlot.PRIMARY, attack);
+        combat.beginAttack(Combat.AttackSlot.PRIMARY, attack, facing.getDirection());
         activeAttacks.put(owner, combat);
         animation.releaseBow();
         aim.cancel();
@@ -88,6 +92,8 @@ public class CombatSystem extends IteratingSystem implements ContactListener, En
         arrows.clear();
         engine.removeEntityListener(this);
         pendingHits.clear();
+        var victims = engine.getEntitiesFor(DamageFeedback.FAMILY);
+        for (int i = victims.size() - 1; i >= 0; i--) { victims.get(i).remove(DamageFeedback.class); }
         super.removedFromEngine(engine);
     }
 
@@ -95,8 +101,22 @@ public class CombatSystem extends IteratingSystem implements ContactListener, En
     public void update(float deltaTime) {
         // Box2D callbacks only queue data. Health changes and fixture mutations happen unlocked.
         if (world.isLocked()) { return; }
+        var victims = getEngine().getEntitiesFor(DamageFeedback.FAMILY);
+        for (int i = victims.size() - 1; i >= 0; i--) {
+            var victim = victims.get(i);
+            var feedback = DamageFeedback.MAPPER.get(victim);
+            feedback.advance(deltaTime);
+            if (feedback.numbers.isEmpty()) { victim.remove(DamageFeedback.class); }
+        }
         applyPendingHits();
-        arrows.removeIf(arrow -> arrow.finished(world, deltaTime));
+        var awareness = getEngine().getSystem(AwarenessSystem.class);
+        arrows.removeIf(arrow -> {
+            if (!arrow.finished(world, deltaTime)) { return false; }
+            if (awareness != null && arrow.survivingVictim != null) {
+                awareness.arrowDamaged(arrow.survivingVictim, arrow.owner);
+            }
+            return true;
+        });
         super.update(deltaTime);
     }
 
@@ -113,7 +133,7 @@ public class CombatSystem extends IteratingSystem implements ContactListener, En
             if ((attackerHealth == null || attackerHealth.isAlive())
                 && combat != null && combat.isAttacking() && combat.getAttackId() == hit.attackId()
                 && health != null && health.isAlive() && combat.markHit(hit.target())) {
-                health.damage(combat.getActiveAttack().damage());
+                DamageFeedback.land(hit.target(), health, combat.getActiveAttack().damage(), 1, combat.getAttackFacing());
             }
         }
         pendingHits.clear();
@@ -124,7 +144,15 @@ public class CombatSystem extends IteratingSystem implements ContactListener, En
         var combat = Combat.MAPPER.get(entity);
         var health = Health.MAPPER.get(entity);
         boolean alive = health == null || health.isAlive();
+        var target = combat.requestedTarget();
         var requested = combat.consumeAttackRequest();
+        // Another hit in this update may have killed the AI's target since the awareness pass.
+        if (target != null) {
+            var targetHealth = Health.MAPPER.get(target);
+            if (targetHealth == null || !targetHealth.isAlive() || !getEngine().getEntities().contains(target, true)) {
+                requested = null;
+            }
+        }
         var animation = Animation2D.MAPPER.get(entity);
         var aim = BowAim.MAPPER.get(entity);
         if (requested != null && alive && (aim == null || !aim.isAiming())) {
@@ -133,7 +161,7 @@ public class CombatSystem extends IteratingSystem implements ContactListener, En
                 var next = requested == Combat.AttackSlot.PRIMARY ? weapon.primary() : weapon.secondary();
                 stopAttack(entity);
                 animation.queueAttack(next.animation());
-                combat.beginAttack(requested, next);
+                combat.beginAttack(requested, next, Facing.MAPPER.get(entity).getDirection());
                 activeAttacks.put(entity, combat);
                 return;
             }
@@ -152,7 +180,7 @@ public class CombatSystem extends IteratingSystem implements ContactListener, En
         var anchor = new Vector2(size.x * 0.5f, size.y * 0.5f);
         var shape = new PolygonShape();
         try {
-            shape.set(attack.vertices(anchor, Facing.MAPPER.get(entity).getDirection()));
+            shape.set(attack.vertices(anchor, combat.getAttackFacing()));
             var definition = new FixtureDef();
             definition.shape = shape;
             definition.isSensor = true;
@@ -206,10 +234,16 @@ public class CombatSystem extends IteratingSystem implements ContactListener, En
 
     @Override
     public void entityRemoved(Entity entity) {
+        cancelCombat(entity);
+    }
+
+    void cancelCombat(Entity entity) {
         arrows.removeIf(arrow -> arrow.owner == entity);
         pendingHits.removeIf(hit -> hit.attacker() == entity || hit.target() == entity);
         var aim = BowAim.MAPPER.get(entity);
         if (aim != null) { aim.cancel(); }
+        var combat = Combat.MAPPER.get(entity);
+        if (combat != null) { combat.consumeAttackRequest(); }
         stopAttack(entity);
     }
 

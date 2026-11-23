@@ -62,6 +62,7 @@ public class RenderSystem extends SortedIteratingSystem implements Disposable {
     private NightLighting lighting;
     private final GameConsts.DebugLayers debugLayers;
     private LightingOutlines outlines;
+    private GameplayHud hud;
 
     public RenderSystem(Batch batch, Viewport viewport, OrthographicCamera camera, AssetService assets,
                         GameConsts.DebugLayers debugLayers) {
@@ -148,8 +149,7 @@ public class RenderSystem extends SortedIteratingSystem implements Disposable {
             }
             if (world != null && debugLayers.lightingOutlines()) {
                 if (outlines == null) {
-                    // Borrow an opaque white texel from the overlay we already own; no second texture or shader.
-                    outlines = new LightingOutlines(batch, new TextureRegion(crosshair(state), 2, 7, 1, 1));
+                    outlines = new LightingOutlines(batch, overlayWhite(state));
                 }
                 outlines.draw(world, getEngine().getEntitiesFor(LIGHTS), sessionSeconds, camera, pixels[3]);
             }
@@ -157,6 +157,16 @@ public class RenderSystem extends SortedIteratingSystem implements Disposable {
             for (Entity entity : getEngine().getEntitiesFor(AIMERS)) {
                 var aim = BowAim.MAPPER.get(entity);
                 if (aim.isAiming()) { drawCrosshair(aim.getTargetX(), aim.getTargetY(), state); }
+            }
+            var tiled = getEngine().getSystem(TiledSystem.class);
+            if (world != null && tiled != null) {
+                if (hud == null) {
+                    batch.flush();
+                    state.prepareTextureUpload();
+                    hud = new GameplayHud(overlayWhite(state));
+                }
+                var clock = getEngine().getSystem(WorldTimeSystem.class);
+                hud.draw(batch, getEngine(), viewport, tiled.playerHealth(), (int) clock.getMinuteOfDay());
             }
             batch.end();
         } finally {
@@ -254,6 +264,11 @@ public class RenderSystem extends SortedIteratingSystem implements Disposable {
         return crosshair;
     }
 
+    // Both overlays borrow an opaque white texel from the crosshair; this renderer owns the texture.
+    private TextureRegion overlayWhite(RenderState state) {
+        return new TextureRegion(crosshair(state), 2, 7, 1, 1);
+    }
+
     private void drawCrosshair(float x, float y, RenderState state) {
         var texture = crosshair(state);
         float size = texture.getWidth() * GameConsts.UNIT_SCALE;
@@ -311,6 +326,7 @@ public class RenderSystem extends SortedIteratingSystem implements Disposable {
         try {
             if (lighting != null) { lighting.dispose(state); lighting = null; }
             world = null;
+            if (hud != null) { hud.dispose(state); }
             if (crosshair != null) {
                 state.releasedTexture(crosshair.getTextureObjectHandle());
                 crosshair.dispose();

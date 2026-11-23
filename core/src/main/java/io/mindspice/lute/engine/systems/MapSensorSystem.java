@@ -9,6 +9,7 @@ import com.badlogic.gdx.math.Intersector;
 import com.badlogic.gdx.math.Vector2;
 import com.badlogic.gdx.physics.box2d.*;
 import com.badlogic.gdx.utils.Disposable;
+import io.mindspice.lute.engine.components.Health;
 import io.mindspice.lute.engine.components.Physic;
 import io.mindspice.lute.engine.components.Player;
 import io.mindspice.lute.engine.components.Transform;
@@ -337,11 +338,16 @@ public final class MapSensorSystem extends EntitySystem implements EntityListene
 
     @Override
     public void entityAdded(Entity entity) {
-        players.put(entity, Physic.MAPPER.get(entity));
+        var health = Health.MAPPER.get(entity);
+        if (health == null || health.isAlive()) { players.put(entity, Physic.MAPPER.get(entity)); }
     }
 
     @Override
     public void entityRemoved(Entity entity) {
+        forgetPlayer(entity);
+    }
+
+    void forgetPlayer(Entity entity) {
         players.remove(entity);
         pending.removeIf(change -> change.player() == entity);
         for (var sensor : sensors) {

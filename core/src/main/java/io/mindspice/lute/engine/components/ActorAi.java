@@ -2,8 +2,11 @@ package io.mindspice.lute.engine.components;
 
 import com.badlogic.ashley.core.Component;
 import com.badlogic.ashley.core.ComponentMapper;
+import com.badlogic.ashley.core.Entity;
 import com.badlogic.gdx.math.Vector2;
 import io.mindspice.lute.engine.singletons.GameConsts;
+
+import java.util.concurrent.ThreadLocalRandom;
 
 public final class ActorAi implements Component {
     public static final ComponentMapper<ActorAi> MAPPER = ComponentMapper.getFor(ActorAi.class);
@@ -17,20 +20,25 @@ public final class ActorAi implements Component {
     private Mode mode = Mode.WANDER;
     private final Vector2 lastSeenFeet = new Vector2();
     private float investigateTimeLeft;
-    // Start idle briefly so the authored spawn facing is visible.
-    private float wanderTimeLeft = .25f;
+    private Entity retaliateAgainst;
+    // Start with a wait so the authored spawn facing is visible.
+    private float wanderTimeLeft = wanderPhaseSeconds();
 
     public ActorAi(String graphKey) { this.graphKey = graphKey; }
 
     public String graphKey() { return graphKey; }
     public Mode mode() { return mode; }
 
+    public Entity retaliationTarget() { return retaliateAgainst; }
+
+    public void retaliateAgainst(Entity shooter) { retaliateAgainst = shooter; }
+
     /** Update the mode from live sight and return a steering offset, if any. */
-    public Vector2 updateTarget(Vector2 feet, Vector2 visiblePlayerFeet, float deltaTime) {
-        if (visiblePlayerFeet != null) {
-            lastSeenFeet.set(visiblePlayerFeet);
+    public Vector2 updateTarget(Vector2 feet, Vector2 visibleFeet, float deltaTime) {
+        if (visibleFeet != null) {
+            lastSeenFeet.set(visibleFeet);
             mode = Mode.ENGAGE;
-            return visiblePlayerFeet.sub(feet);
+            return visibleFeet.cpy().sub(feet);
         }
         if (mode == Mode.WANDER) { return null; }
         if (mode == Mode.ENGAGE) {
@@ -50,6 +58,7 @@ public final class ActorAi implements Component {
 
     public void forgetTarget() {
         mode = Mode.WANDER;
+        retaliateAgainst = null;
         lastSeenFeet.setZero();
         investigateTimeLeft = 0f;
     }
@@ -60,4 +69,6 @@ public final class ActorAi implements Component {
     }
 
     public void resetWander(float duration) { wanderTimeLeft = duration; }
+
+    public static float wanderPhaseSeconds() { return ThreadLocalRandom.current().nextFloat(1f, 3f); }
 }

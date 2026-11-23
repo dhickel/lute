@@ -328,11 +328,12 @@ public final class MapSensorSystemTest {
             game.sensors.update(0);
             game.combat.update(0);
             game.flush();
-            near(90, Health.MAPPER.get(target).getCurrent(), "Actual attack hits survive map listener forwarding");
+            float after = Health.MAPPER.get(target).getCurrent();
+            check(after >= 89 && after <= 91, "Actual attack hits survive map listener forwarding");
             game.expect(new Event.Sensor.Enter("feet", MapTriggers.SensorType.GENERAL, player));
             game.tick(STEP * 4);
             game.combat.update(0);
-            near(90, Health.MAPPER.get(target).getCurrent(), "Multi-fixture target is damaged only once per attack");
+            near(after, Health.MAPPER.get(target).getCurrent(), "Multi-fixture target is damaged only once per attack");
             check(game.countEnter("attack-only") == 0, "Real player attack fixture cannot activate map sensors");
         }
     }

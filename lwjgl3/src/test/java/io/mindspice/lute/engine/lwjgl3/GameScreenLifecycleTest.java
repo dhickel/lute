@@ -8,12 +8,15 @@ import com.badlogic.gdx.Input;
 import com.badlogic.gdx.ScreenAdapter;
 import com.badlogic.gdx.backends.lwjgl3.Lwjgl3Application;
 import com.badlogic.gdx.backends.lwjgl3.Lwjgl3ApplicationConfiguration;
+import com.badlogic.gdx.graphics.Pixmap;
+import com.badlogic.gdx.graphics.glutils.HdpiUtils;
 import com.badlogic.gdx.utils.Disposable;
 import io.mindspice.lute.engine.GameCore;
 import io.mindspice.lute.engine.assets.MapAssets;
 import io.mindspice.lute.engine.components.Actor;
 import io.mindspice.lute.engine.components.Combat;
 import io.mindspice.lute.engine.components.Emissive;
+import io.mindspice.lute.engine.components.Health;
 import io.mindspice.lute.engine.components.Player;
 import io.mindspice.lute.engine.screen.GameScreen;
 import io.mindspice.lute.engine.screen.ScreenManager;
@@ -31,6 +34,7 @@ import io.mindspice.lute.engine.tiled.ManifestLoader;
 
 import java.lang.reflect.Field;
 import java.util.ArrayList;
+import java.util.BitSet;
 import java.util.List;
 import java.util.Map;
 
@@ -236,6 +240,40 @@ public final class GameScreenLifecycleTest extends ApplicationAdapter {
             input.keyDown(Input.Keys.N);
             replacement.render(.02f);
             require(night(replacement), "Fresh press after real key-up toggles the replacement screen");
+            if (layers.equals(new DebugLayers(false, false, false, false))) {
+                replacement.render(0f);
+                var alive = hudGlyphs();
+                var view = GAME.getViewport();
+                int vx = view.getScreenX(), vy = view.getScreenY(), vw = view.getScreenWidth(), vh = view.getScreenHeight();
+                try {
+                    view.setScreenBounds(vx + 19, vy + 7, vw - 52, vh - 30);
+                    replacement.render(0f);
+                    hudGlyphs(); // Recheck both endpoints and the group's center with nonzero X and Y offsets.
+                    for (int width : new int[]{260, 96, 72}) {
+                        GAME.resize(width, 180);
+                        require(view.getScreenWidth() == width && view.getScreenY() > 0,
+                            "Resize exercises the letterboxed gameplay viewport at " + width + "px");
+                        replacement.render(0f);
+                        hudGlyphs();
+                    }
+                } finally { GAME.resize(Gdx.graphics.getWidth(), Gdx.graphics.getHeight()); }
+                replacement.render(0f);
+                require(hudGlyphs().equals(alive), "Restoring the viewport also restores native-size glyphs");
+                var activePlayer = engine.getEntitiesFor(com.badlogic.ashley.core.Family.all(Player.class).get()).first();
+                var health = Health.MAPPER.get(activePlayer);
+                health.damage(health.getMaximum() / 2);
+                replacement.render(0f);
+                hudGlyphs(); // Half health must use yellow ink.
+                health.damage(Integer.MAX_VALUE);
+                replacement.render(0f);
+                var dead = hudGlyphs();
+                require(!dead.equals(alive), "Live-to-dead health redraws unlit glyphs at night without advancing the clock");
+                var largerHealth = new Health(10000);
+                largerHealth.damage(Integer.MAX_VALUE); // Keep current HP and time fixed; change only maximum HP.
+                activePlayer.add(largerHealth);
+                replacement.render(0f);
+                require(!hudGlyphs().equals(dead), "HUD reads the player's new maximum HP");
+            }
             oldFire = lights.first();
             require(playerCount(engine) == 1, "Recreation installs exactly one live player: " + layers);
             require(engine.getSystem(PhysicSystem.class) != physics, "Recreation uses fresh physics");
@@ -351,6 +389,53 @@ public final class GameScreenLifecycleTest extends ApplicationAdapter {
         if (!(Math.abs(actual - expected) <= 0.000001)) {
             throw new AssertionError(message + ": expected " + expected + ", got " + actual);
         }
+    }
+
+    /** Read the two foreground inks, excluding shadows and the panel. */
+    static BitSet hudGlyphs() {
+        var view = GAME.getViewport();
+        int width = HdpiUtils.toBackBufferX(view.getScreenWidth());
+        int height = HdpiUtils.toBackBufferY(24);
+        var pixels = Pixmap.createFromFrameBuffer(HdpiUtils.toBackBufferX(view.getScreenX()),
+            HdpiUtils.toBackBufferY(view.getScreenY() + view.getScreenHeight()) - height, width, height);
+        try {
+            var player = GAME.getEngine().getEntitiesFor(com.badlogic.ashley.core.Family.all(Player.class).get()).first();
+            var health = Health.MAPPER.get(player);
+            float ratio = (float) health.getCurrent() / health.getMaximum();
+            int hpRed = Math.round(255 * Math.min(1, 2 * (1 - ratio)));
+            int hpGreen = Math.round(255 * Math.min(1, 2 * ratio));
+            var glyphs = new BitSet(width * height);
+            int left = width, right = -1, hpEnd = -1, timeStart = width;
+            for (int y = 0; y < height; y++) {
+                for (int x = 0; x < width; x++) {
+                    int rgba = pixels.getPixel(x, y);
+                    int r = rgba >>> 24, g = rgba >>> 16 & 255, b = rgba >>> 8 & 255;
+                    boolean hp = Math.abs(r - hpRed) < 15 && Math.abs(g - hpGreen) < 15 && b < 10;
+                    boolean time = b > 195 && b > g && g > r;
+                    if (hp || time) {
+                        if (hp) { hpEnd = Math.max(hpEnd, x); }
+                        if (time) { timeStart = Math.min(timeStart, x); }
+                        left = Math.min(left, x);
+                        right = Math.max(right, x);
+                        glyphs.set(y * width + x);
+                    }
+                }
+            }
+            require(hpEnd >= 0 && timeStart < width && hpEnd < timeStart, "HP in its live ratio color precedes the blue clock");
+            int rightMargin = width - 1 - right;
+            require(Math.min(left, rightMargin) >= HdpiUtils.toBackBufferX(3)
+                    && Math.abs(left - rightMargin) <= HdpiUtils.toBackBufferX(3),
+                "HP and time share the viewport center with open side margins at " + width + "px: " + left + "/" + rightMargin);
+            int gap = (hpEnd + timeStart) / 2;
+            for (int y = 0; y < height; y++) {
+                int charcoal = pixels.getPixel(0, y);
+                require((charcoal == 0x191919ff || charcoal == 0x232323ff)
+                        && pixels.getPixel(width - 1, y) == charcoal,
+                    "Neutral charcoal spans the viewport at row " + y);
+                require(pixels.getPixel(gap, y) == charcoal, "No divider between HP and time at row " + y);
+            }
+            return glyphs;
+        } finally { pixels.dispose(); }
     }
 
     private static void require(boolean condition, String message) {

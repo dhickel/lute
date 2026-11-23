@@ -17,6 +17,7 @@ import com.badlogic.gdx.graphics.glutils.HdpiUtils;
 import com.badlogic.gdx.graphics.g2d.TextureAtlas;
 import com.badlogic.gdx.maps.objects.RectangleMapObject;
 import com.badlogic.gdx.maps.tiled.TiledMap;
+import com.badlogic.gdx.math.MathUtils;
 import com.badlogic.gdx.math.Vector2;
 import com.badlogic.gdx.physics.box2d.Body;
 import com.badlogic.gdx.physics.box2d.BodyDef;
@@ -37,6 +38,7 @@ import io.mindspice.lute.engine.singletons.GameConsts;
 import io.mindspice.lute.engine.systems.AwarenessSystem;
 import io.mindspice.lute.engine.components.ActorAi;
 import io.mindspice.lute.engine.systems.CombatSystem;
+import io.mindspice.lute.engine.systems.DamageFeedbackProbe;
 import io.mindspice.lute.engine.systems.EventSystem;
 import io.mindspice.lute.engine.systems.EntityFactory;
 import io.mindspice.lute.engine.systems.PhysicDebugRenderSystem;
@@ -55,6 +57,7 @@ import java.util.List;
 import java.util.Map;
 import java.util.Set;
 
+import static io.mindspice.lute.engine.lwjgl3.GameScreenLifecycleTest.hudGlyphs;
 import static io.mindspice.lute.engine.lwjgl3.GameScreenLifecycleTest.night;
 import static io.mindspice.lute.engine.lwjgl3.GameScreenLifecycleTest.seconds;
 
@@ -183,6 +186,33 @@ public final class MapTravelTest extends ApplicationAdapter {
                 "Legacy sample THIS remains in-place");
             atPoint(player(), actual.targetSpawn());
         }
+        var npcCorpse = actualActors.first();
+        var survivor = actualActors.get(1);
+        var mapBeforeDeath = tiled.getCurrentMap();
+        int beforeNpcDeath = world.getBodyCount();
+        kill(npcCorpse);
+        verifyDeathPose(npcCorpse);
+        require(actualActors.size() == 1 && actualActors.first() == survivor
+            && world.getBodyCount() == beforeNpcDeath - 1, "Expired NPC is removed with its native body, not respawned");
+        var survivorHealth = Health.MAPPER.get(survivor);
+        survivorHealth.damage(1);
+        exitFromActors(player());
+        verifyPlayerRespawn("PlayerSpawn", false);
+        require(tiled.getCurrentMap() == mapBeforeDeath && actualActors.first() == survivor
+            && actualActors.size() == 1 && Health.MAPPER.get(survivor) == survivorHealth
+            && survivorHealth.getCurrent() == survivorHealth.getMaximum() - 1,
+            "PLAYER-point respawn preserves the survivor, its damage and the expired NPC's absence");
+        kill(survivor);
+        screen.hide();
+        require(world.getBodyCount() == 0, "Hiding with an active corpse releases all native bodies");
+        screen.show();
+        var rebuiltNpc = actor(Actor.Role.NPC);
+        var remountedEnemy = actor(Actor.Role.ENEMY);
+        require(rebuiltNpc != npcCorpse && Health.MAPPER.get(rebuiltNpc).isAlive(), "Expired NPC rebuilds on a fresh runtime");
+        require(remountedEnemy != survivor && !Health.MAPPER.get(remountedEnemy).isAlive()
+            && !body(remountedEnemy).isActive(), "Only the in-progress enemy corpse resumes on remount");
+        verifyDeathPose(remountedEnemy);
+        require(actualActors.size() == 1 && actualActors.first() == rebuiltNpc, "Remounted enemy corpse expires in place");
         screens.unloadScreen("GameScreen");
         require(actualActors.size() == 0, "Disposing the actual map removes both actors");
         require(!GAME.getAssetService().isLoaded(TiledMap.class, "test_tiled"), "Disposal releases the starting map");
@@ -229,7 +259,6 @@ public final class MapTravelTest extends ApplicationAdapter {
         int lit = pixel(redCenter);
 
         var health = Health.MAPPER.get(start);
-        health.damage(23);
         var facing = Facing.MAPPER.get(start);
         facing.setDirection(Facing.Direction.LEFT);
         var loadout = Loadout.MAPPER.get(start);
@@ -254,6 +283,16 @@ public final class MapTravelTest extends ApplicationAdapter {
             && Combat.MAPPER.get(start).isCoolingDown("basic_bow", Combat.AttackSlot.PRIMARY),
             "Depart with held inputs, a live arrow and an active cooldown; immediate redraw is blocked");
         var oldBody = body(start);
+        // Land a hit immediately before the transition, too recent to expire normally.
+        time.update((float) ((30 - time.getTotalInGameSeconds() % 60 + 60) % 60 * time.getDayLengthMinutes() / 1440));
+        screen.render(0);
+        var fullHud = hudGlyphs();
+        DamageFeedbackProbe.hit(start, health.getMaximum() / 3, Facing.Direction.RIGHT);
+        int damagedHealth = health.getCurrent();
+        screen.render(0);
+        var damagedHud = hudGlyphs();
+        require(!fullHud.isEmpty() && !damagedHud.isEmpty() && !damagedHud.equals(fullHud)
+            && DamageFeedbackProbe.count(start) == 1, "Active damage updates the source HUD and produces a transient number");
         var beforeSelfTravel = time.getTotalInGameSeconds();
         enterNamed("self");
         var rebuilt = player();
@@ -269,8 +308,10 @@ public final class MapTravelTest extends ApplicationAdapter {
             "Reentry reloads the same logical map and creates fresh runtime entities and bodies");
         require(world.getBodyCount() == sourceBodies, "Self reload leaves no extra bodies");
         atPoint(rebuilt, "PlayerSpawn");
-        require(Health.MAPPER.get(rebuilt) == health && health.getCurrent() == health.getMaximum() - 23,
-            "Health is the same live component with unchanged current and maximum");
+        require(Health.MAPPER.get(rebuilt) == health && health.getCurrent() == damagedHealth && hudGlyphs().equals(damagedHud),
+            "First destination HUD retains the same live current and maximum health and clock minute");
+        require(DamageFeedbackProbe.count(start) == 0 && DamageFeedbackProbe.count(rebuilt) == 0,
+            "Retiring a runtime drops the active number instead of carrying it to the new player");
         require(Facing.MAPPER.get(rebuilt) == facing && facing.getDirection() == Facing.Direction.LEFT, "Facing survives");
         require(Loadout.MAPPER.get(rebuilt) == loadout && loadout.getEquipment().equals(equipment)
             && loadout.getWeaponId().equals("basic_bow"), "Live loadout preserves equipped gear and weapon");
@@ -349,11 +390,51 @@ public final class MapTravelTest extends ApplicationAdapter {
             "Hide/show remounts the current map and retains live player state");
         atPoint(player(), "arrival");
         enter("local"); // Exit the arrival portal again before returning.
-        enter("back");
+        var otherMap = tiled.getCurrentMap();
+        verifyPlayerRespawn("arrival", true);
+        require(tiled.getCurrentMap() == otherMap, "Respawn uses the named arrival when the current map has no PLAYER point");
+        frame();
+        require(tiled.getCurrentMap() == otherMap, "Respawn inside a return portal suppresses it until leave and reentry");
+        enter("local");
+        var outgoingNpc = actor(Actor.Role.NPC);
+        kill(outgoingNpc);
+        for (int i = 0; i < 8; i++) { screen.render(1f / 32f); }
+        int outgoingFrame = Animation2D.MAPPER.get(outgoingNpc).getFrameIndex();
+        var corpseLocation = body(outgoingNpc).getPosition().cpy();
+        enterNamed("back");
         atPoint(player(), "PlayerSpawn");
+        require(!GAME.getEngine().getEntities().contains(outgoingNpc, true), "Travel retires an in-progress corpse");
         require(GAME.getAssetService().isLoaded(TiledMap.class, A) && !GAME.getAssetService().isLoaded(Sound.class, "TRAVEL_B"),
             "Travel back loads the original manifest and releases B-owned sound");
         require(Health.MAPPER.get(player()) == health && world.getBodyCount() == sourceBodies, "Returning preserves state and balances body ownership");
+        enterNamed("other");
+        var returnedCorpse = actor(Actor.Role.NPC);
+        var returnedAnimation = Animation2D.MAPPER.get(returnedCorpse);
+        require(returnedCorpse != outgoingNpc && !Health.MAPPER.get(returnedCorpse).isAlive()
+            && !body(returnedCorpse).isActive() && body(returnedCorpse).getPosition().equals(corpseLocation)
+            && returnedAnimation.getFrameIndex() >= outgoingFrame && returnedAnimation.getDeathSeconds() > .25,
+            "Quick return restores the corpse at its death position without replaying from frame zero");
+        enter("local");
+        enterNamed("back");
+        int offMapTicks = (int) Math.ceil(32d * (returnedAnimation.getPlaybackDuration() + 5d));
+        for (int i = 0; i < offMapTicks; i++) { screen.render(1f / 32f); }
+        enterNamed("other");
+        require(Health.MAPPER.get(actor(Actor.Role.NPC)).isAlive(), "Expired off-map corpse permits a fresh actor on return");
+        var interrupted = player();
+        kill(interrupted);
+        var interruptedPosition = body(interrupted).getPosition().cpy();
+        screen.hide();
+        require(world.getBodyCount() == 0, "Hide while the player is dying releases its body and sensor registrations");
+        screen.render(1f);
+        screen.show();
+        var remountedCorpse = player();
+        require(remountedCorpse != interrupted && !health.isAlive() && !Controller.MAPPER.has(remountedCorpse)
+            && !body(remountedCorpse).isActive() && body(remountedCorpse).getPosition().equals(interruptedPosition)
+            && Animation2D.MAPPER.get(remountedCorpse).getDeathSeconds() == 0d,
+            "Remount resumes the player corpse without aging it while hidden or reattaching input");
+        verifyDeathPose(remountedCorpse);
+        atPoint(player(), "arrival");
+        require(health.getCurrent() == health.getMaximum(), "Remounted player respawns only after the corpse expires");
 
         screens.unloadScreen("travel");
         require(lights().isEmpty(), "Screen teardown retires every mounted emitter");
@@ -425,14 +506,19 @@ public final class MapTravelTest extends ApplicationAdapter {
         body(npc).setTransform(-110, -100, 0);
         body(enemy).setTransform(-100, -100, 0);
         body(player).setTransform(-90, -100, 0);
-        for (int i = 0; i < 24; i++) { screen.render(1f / 60f); }
-        require(!body(npc).getPosition().epsilonEquals(-110, -100, .01f)
-            && !body(enemy).getPosition().epsilonEquals(-100, -100, .01f)
-            && combat.getAttackId() == 0, "Both actors physically wander without attacking out of range");
+        boolean npcMoved = false, enemyMoved = false;
+        for (int i = 0; i < 190 && !(npcMoved && enemyMoved); i++) {
+            screen.render(1f / 60f);
+            npcMoved |= !body(npc).getPosition().epsilonEquals(-110, -100, .01f);
+            enemyMoved |= !body(enemy).getPosition().epsilonEquals(-100, -100, .01f);
+        }
+        require(npcMoved && enemyMoved && combat.getAttackId() == 0,
+            "Both actors physically wander after their initial wait without attacking out of range");
         body(enemy).setTransform(-100, -100, 0);
         body(player).setTransform(-100 + 80f * GameConsts.UNIT_SCALE, -100, 0);
         var originalHealth = Health.MAPPER.get(player);
-        var testHealth = new Health(originalHealth.getMaximum());
+        int base = Loadout.MAPPER.get(enemy).getWeapon().primary().damage();
+        var testHealth = new Health(4 * base); // The pursuit check needs a survivor independently of authored player HP.
         player.add(testHealth);
         try {
             screen.render(1f / 60f);
@@ -442,8 +528,10 @@ public final class MapTravelTest extends ApplicationAdapter {
             for (int i = 0; i < 120 && !combat.isAttacking(); i++) { screen.render(1f / 60f); }
             require(combat.isAttacking(), "Enemy closes the gap and starts the attack without repositioning the player");
             for (int i = 0; i < 5; i++) { screen.render(1f / 60f); }
-            require(testHealth.getCurrent() == testHealth.getMaximum() - Loadout.MAPPER.get(enemy).getWeapon().primary().damage()
-                && body(enemy).getLinearVelocity().isZero(), "Enemy deals one weapon hit while standing still");
+            require(testHealth.getCurrent() >= testHealth.getMaximum() - Math.round(1.1f * base)
+                && testHealth.getCurrent() <= testHealth.getMaximum() - Math.round(.9f * base)
+                && body(enemy).getLinearVelocity().isZero() && DamageFeedbackProbe.count(player) == 1,
+                "Enemy deals one weapon hit and creates one player feedback number while standing still");
             var retreat = body(enemy).getPosition().cpy().add(-2.5f, .5f);
             body(player).setTransform(retreat, 0);
             for (int i = 0; i < 90 && combat.isAttacking(); i++) { screen.render(1f / 60f); }
@@ -457,6 +545,124 @@ public final class MapTravelTest extends ApplicationAdapter {
             body(enemy).setTransform(enemyPosition, 0);
             body(player).setTransform(playerPosition, 0);
         }
+    }
+
+    private static Entity actor(Actor.Role role) {
+        for (var actor : GAME.getEngine().getEntitiesFor(Family.all(ActorAi.class, Actor.class).get())) {
+            if (Actor.MAPPER.get(actor).role() == role) { return actor; }
+        }
+        throw new AssertionError("Missing map actor: " + role);
+    }
+
+    private void exitFromActors(Entity player) {
+        body(player).setTransform(-110, -100, 0);
+        screen.render(GameConsts.PHYSIC_INTERVAL);
+    }
+
+    private void kill(Entity entity) {
+        DamageFeedbackProbe.hit(entity, 2 * Health.MAPPER.get(entity).getMaximum(), Facing.Direction.DOWN);
+        screen.render(0f);
+        var animation = Animation2D.MAPPER.get(entity);
+        require(!body(entity).isActive() && !Combat.MAPPER.get(entity).isAttacking()
+            && animation.getType() == Animation2D.AnimationType.DEATH && animation.getFrameIndex() == 0,
+            "Death immediately disables the body/combat and publishes authored frame zero without a physics tick");
+    }
+
+    private void verifyDeathPose(Entity corpse) {
+        var animation = Animation2D.MAPPER.get(corpse);
+        var frames = animation.getAnimation().getKeyFrames();
+        var first = (TextureAtlas.AtlasRegion) frames[0];
+        require(first.name.equals(animation.regionKey("death", animation.getFdirection())) && frames.length > 1,
+            "Death playback uses the authored facing-specific animation");
+        float dt = 1f / 32f;
+        double animationSeconds = (double) animation.getAnimation().getAnimationDuration() / animation.getSpeed();
+        int expiryStep = (int) Math.ceil((animationSeconds + 5d) / dt);
+        var region = Graphic.MAPPER.get(corpse);
+        int previous = 0;
+        boolean sawIntermediate = false;
+        var entities = GAME.getEngine().getEntities();
+        for (int tick = 1; tick < expiryStep; tick++) {
+            screen.render(dt);
+            int frameIndex = animation.getFrameIndex();
+            sawIntermediate |= frameIndex > 0 && frameIndex < frames.length - 1;
+            require(entities.contains(corpse, true) && frameIndex >= previous && region.getRegion() == frames[frameIndex],
+                "Death frames advance once, with the corpse still registered before expiry");
+            if (tick * dt >= animationSeconds) {
+                require(animation.isFinished() && frameIndex == frames.length - 1, "Hold uses the completed animation's final pose");
+            }
+            previous = frameIndex;
+        }
+        require(sawIntermediate, "Death animation is not frozen or skipped");
+        screen.render(0f);
+        screen.pause();
+        screen.render(dt);
+        require(entities.contains(corpse, true), "Zero and paused simulation time cannot expire a corpse");
+        screen.resume();
+        screen.render(dt);
+        require(!entities.contains(corpse, true), "Corpse retires on the first tick at or after five seconds from animation completion");
+    }
+
+    private void verifyPlayerRespawn(String point, boolean checkHud) throws ReflectiveOperationException {
+        var corpse = player();
+        var loadout = Loadout.MAPPER.get(corpse);
+        var health = Health.MAPPER.get(corpse);
+        var map = tiled.getCurrentMap();
+        var triggers = tiled.getMapTriggers();
+        int bodies = world.getBodyCount();
+        var time = GAME.getEngine().getSystem(WorldTimeSystem.class);
+        double before = time.getTotalInGameSeconds();
+        double sessionBefore = seconds(screen);
+        var input = Gdx.input.getInputProcessor();
+        loadout.setWeapon("basic_bow");
+        input.keyDown(Input.Keys.SHIFT_LEFT);
+        input.keyUp(Input.Keys.SHIFT_LEFT);
+        screen.render(0f);
+        require(Combat.MAPPER.get(corpse).isCoolingDown("basic_bow", Combat.AttackSlot.SECONDARY),
+            "Player has an independent secondary cooldown before death");
+        input.keyDown(Input.Keys.SPACE);
+        input.keyDown(Input.Keys.W);
+        screen.render(0f);
+        require(BowAim.MAPPER.get(corpse).isAiming(), "Player has a bow draw and held movement before death");
+        var liveHud = checkHud ? hudGlyphs() : null;
+        kill(corpse);
+        var deadHud = checkHud ? hudGlyphs() : null;
+        require(!Controller.MAPPER.has(corpse) && !BowAim.MAPPER.get(corpse).isAiming(),
+            "Corpse has no controller and no queued bow release");
+        if (checkHud) { require(!deadHud.isEmpty() && !deadHud.equals(liveHud), "The HUD shows the killing hit's zero health"); }
+        verifyDeathPose(corpse);
+        var replacement = player();
+        atPoint(replacement, point);
+        require(replacement != corpse && body(replacement).isActive() && world.getBodyCount() == bodies
+            && tiled.getMapTriggers() == triggers && tiled.getCurrentMap() == map, "Respawn replaces only the player and balances body ownership");
+        require(Health.MAPPER.get(replacement) == health && health.getCurrent() == health.getMaximum()
+            && Loadout.MAPPER.get(replacement) == loadout && "basic_bow".equals(loadout.getWeaponId()), "Respawn restores full HP and retains live loadout");
+        require(Controller.MAPPER.has(replacement) && replacement.getComponent(CameraFollow.class) != null
+            && Move.MAPPER.get(replacement).getDirection().isZero() && !Combat.MAPPER.get(replacement).isAttacking()
+            && !BowAim.MAPPER.get(replacement).isAiming() && arrowCount() == 0
+            && !Combat.MAPPER.get(replacement).isCoolingDown("basic_bow", Combat.AttackSlot.SECONDARY),
+            "Respawn registers fresh input, camera and combat state");
+        var camera = GAME.getCamera();
+        var props = map.getProperties();
+        var pos = Transform.MAPPER.get(replacement).getPosition();
+        float width = props.get("width", Integer.class) * props.get("tilewidth", Integer.class) * GameConsts.UNIT_SCALE;
+        float height = props.get("height", Integer.class) * props.get("tileheight", Integer.class) * GameConsts.UNIT_SCALE;
+        require(camera.position.x == cameraTarget(pos.x, camera.viewportWidth, width)
+            && camera.position.y == cameraTarget(pos.y, camera.viewportHeight, height), "Camera snaps to the replacement on respawn");
+        input.keyUp(Input.Keys.SPACE);
+        input.keyUp(Input.Keys.W);
+        screen.render(0f);
+        if (checkHud) { require(!hudGlyphs().equals(deadHud), "The HUD recovers after respawn"); }
+        double elapsed = seconds(screen) - sessionBefore;
+        double clockElapsed = time.getTotalInGameSeconds() - before;
+        require(GAME.getEngine().getSystem(WorldTimeSystem.class) == time && elapsed >= 5d
+            && Math.abs(clockElapsed - elapsed * 1440d / time.getDayLengthMinutes()) < 1e-7,
+            "Respawn preserves both the session timeline and the exact advancement of the game clock");
+    }
+
+    private static float cameraTarget(float position, float viewport, float mapSize) {
+        float half = viewport * .5f;
+        return mapSize > half ? MathUtils.clamp(position + .5f, Math.min(half, mapSize - half), Math.max(half, mapSize - half))
+            : position + .5f;
     }
 
     private static void setObjects(Map<String, ObjectData> definitions) throws ReflectiveOperationException {

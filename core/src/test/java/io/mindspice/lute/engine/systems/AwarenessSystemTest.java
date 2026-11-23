@@ -2,17 +2,24 @@ package io.mindspice.lute.engine.systems;
 
 import com.badlogic.ashley.core.Engine;
 import com.badlogic.ashley.core.Entity;
+import com.badlogic.gdx.graphics.g2d.Animation;
 import com.badlogic.gdx.math.Vector2;
 import com.badlogic.gdx.physics.box2d.*;
 import com.badlogic.gdx.utils.GdxNativesLoader;
 import io.mindspice.lute.engine.components.Actor;
 import io.mindspice.lute.engine.components.ActorAi;
 import io.mindspice.lute.engine.components.ActorAi.Mode;
+import io.mindspice.lute.engine.components.Animation2D;
 import io.mindspice.lute.engine.components.Combat;
 import io.mindspice.lute.engine.components.CombatWeapon;
 import io.mindspice.lute.engine.components.Health;
+import io.mindspice.lute.engine.components.Hurtbox;
 import io.mindspice.lute.engine.components.Loadout;
 import io.mindspice.lute.engine.components.Move;
+import io.mindspice.lute.engine.components.Transform;
+import io.mindspice.lute.engine.data.json.CharacterBounds;
+import io.mindspice.lute.engine.data.json.CollisionData;
+import io.mindspice.lute.engine.data.json.ProjectilesData.Projectile;
 import io.mindspice.lute.engine.data.json.WeaponsData.WeaponData.CollisionType;
 import io.mindspice.lute.engine.singletons.GameConsts;
 import io.mindspice.lute.engine.components.Facing;
@@ -22,6 +29,8 @@ import java.util.List;
 import java.util.Map;
 
 public final class AwarenessSystemTest {
+    private static int checks;
+
     public static void main(String[] args) {
         GdxNativesLoader.load();
         Box2D.init();
@@ -30,11 +39,12 @@ public final class AwarenessSystemTest {
         try {
             GameConsts.UNIT_SCALE = .125f;
             run(world);
+            try (var test = new RetaliationTest()) { test.run(); }
         } finally {
             GameConsts.UNIT_SCALE = originalScale;
             world.dispose();
         }
-        System.out.println("AwarenessSystemTest: passed (native Box2D)");
+        System.out.println("AwarenessSystemTest: " + checks + " checks passed (native Box2D)");
     }
 
     private static void run(World world) {
@@ -52,8 +62,8 @@ public final class AwarenessSystemTest {
         engine.update(.25f);
         check(facing.getDirection() == Facing.Direction.DOWN && !Combat.MAPPER.get(enemy).hasAttackRequest(),
             "AABB corner does not trigger an attack");
-        check(!Move.MAPPER.get(npc).getDirection().isZero() && !Move.MAPPER.get(enemy).getDirection().isZero(),
-            "Both graphs wander without a target");
+        checkWander(awareness, npc);
+        checkWander(awareness, enemy);
         checkPursuit(world, engine, enemy, player);
         body(player).setTransform(4, 0, 0);
         check(awareness.inRange(enemy, Actor.Role.PLAYER).equals(List.of(player)), "Boundary is inclusive");
@@ -85,11 +95,11 @@ public final class AwarenessSystemTest {
         engine.update(0);
         check(facing.getDirection() == Facing.Direction.LEFT && combat.consumeAttackRequest() == Combat.AttackSlot.PRIMARY,
             "Moving the body moves the attached circle");
-        Health.MAPPER.get(player).damage(100f);
+        Health.MAPPER.get(player).damage(100);
         engine.update(0);
         check(!combat.hasAttackRequest() && ActorAi.MAPPER.get(enemy).mode() == Mode.INVESTIGATE,
             "A dead player cannot be targeted for melee; the enemy can only investigate its remembered position");
-        Health.MAPPER.get(enemy).damage(100f);
+        Health.MAPPER.get(enemy).damage(100);
         engine.update(0);
         check(Move.MAPPER.get(enemy).getDirection().isZero() && ActorAi.MAPPER.get(enemy).mode() == Mode.WANDER,
             "Dead enemy stops moving and clears its memory");
@@ -105,6 +115,160 @@ public final class AwarenessSystemTest {
         world.destroyBody(body(enemy));
         engine.update(0);
         check(awareness.inRange(enemy, Actor.Role.NPC).isEmpty(), "Destroyed owner body can't query");
+    }
+
+    private static void checkWander(AwarenessSystem awareness, Entity actor) {
+        var direction = Move.MAPPER.get(actor).getDirection();
+        check(direction.isZero(), "Both roles start in a wait phase");
+        int phases = 16;
+        float elapsed = .25f;
+        while (phases > 0) {
+            boolean waiting = direction.isZero();
+            // Exercise individual graphs, so another actor's perception cannot alter the phase.
+            awareness.processEntity(actor, .125f);
+            elapsed += .125f;
+            if (waiting != direction.isZero()) {
+                check(elapsed >= 1f && elapsed <= 3f, "Each wait/move phase lasts within 1–3 seconds");
+                if (!direction.isZero()) { check(direction.len2() == 1f, "Wander keeps cardinal movement"); }
+                phases--;
+                elapsed = 0f;
+            } else if (elapsed >= 3f) {
+                throw new AssertionError("Wander phase failed to change by the upper bound");
+            }
+        }
+    }
+
+    private static final class RetaliationTest implements AutoCloseable {
+        final World world = new World(Vector2.Zero, true);
+        final Engine engine = new Engine();
+        final Projectile type = new Projectile("test", 12, 5,
+            new CollisionData(CollisionData.Shape.RECT, new CharacterBounds(0, 0, 1, 2), 0f), 0, 0, 0, 0);
+        final AwarenessSystem awareness = new AwarenessSystem(world);
+        final CombatSystem combat = new CombatSystem(world, type);
+
+        void run() {
+            engine.addSystem(awareness);
+            engine.addSystem(combat);
+            var victim = actor(engine, world, Actor.Role.NPC, 0, 0);
+            box(body(victim), 0, 0, .2f, true).setUserData(Hurtbox.INSTANCE);
+            var shooter = actor(engine, world, Actor.Role.ENEMY, -2, 0);
+            var ai = ActorAi.MAPPER.get(victim);
+            var melee = Combat.MAPPER.get(victim);
+            var wall = world.createBody(new BodyDef());
+            var cover = box(wall, 0, 1.5f, .25f, false);
+
+            fire(shooter, 10, 1);
+            combat.update(.05f); // In flight while the shooter is visible at launch.
+            check(combat.arrows().size() == 1, "Arrow is still in flight when shooter moves");
+            body(shooter).setTransform(0, 3, 0);
+            impact();
+            check(Health.MAPPER.get(victim).getCurrent() < 100 && ai.mode() == Mode.WANDER,
+                "Arrow damages but won't provoke through cover to the shooter's current feet inside normal radius");
+
+            body(shooter).setTransform(0, 12.0001f, 0);
+            cover.setSensor(true);
+            fire(shooter, 10, 1);
+            impact();
+            check(ai.retaliationTarget() == null, "Beyond three radii is ignored");
+            body(shooter).setTransform(0, 12, 0);
+            fire(shooter, 10, 1);
+            impact();
+            awareness.processEntity(victim, 0);
+            check(ai.mode() == Mode.ENGAGE && ai.retaliationTarget() == shooter
+                && Move.MAPPER.get(victim).getDirection().equals(new Vector2(0, 12)) && !melee.hasAttackRequest(),
+                "Exactly three radii provokes pursuit of the actual non-player shooter through sensors");
+
+            cover.setSensor(false);
+            body(shooter).setTransform(0, 3, 0);
+            awareness.processEntity(victim, 0);
+            check(ai.mode() == Mode.INVESTIGATE && !melee.hasAttackRequest()
+                && Move.MAPPER.get(victim).getDirection().equals(new Vector2(0, 12)),
+                "Lost sight uses the old point and never attacks a hidden shooter in melee range");
+            cover.setSensor(true);
+            awareness.processEntity(victim, 0);
+            check(ai.mode() == Mode.ENGAGE && melee.consumeAttackRequest() == Combat.AttackSlot.PRIMARY,
+                "NPC with the unarmed loadout can attack on live reacquisition");
+            var unarmed = Loadout.MAPPER.get(victim).getWeapon().primary();
+            melee.beginAttack(Combat.AttackSlot.PRIMARY, unarmed, Facing.Direction.UP);
+            melee.endAttack();
+            awareness.processEntity(victim, 0);
+            check(!melee.hasAttackRequest() && Move.MAPPER.get(victim).getDirection().isZero(),
+                "Retaliation uses the existing unarmed cooldown");
+            body(shooter).setTransform(0, 13, 0);
+            awareness.processEntity(victim, 0);
+            check(ai.mode() == Mode.INVESTIGATE && Move.MAPPER.get(victim).getDirection().equals(new Vector2(0, 3)),
+                "A visible shooter leaving extended range also starts investigation");
+            awareness.processEntity(victim, 2f);
+            check(ai.mode() == Mode.WANDER && ai.retaliationTarget() == null, "Investigation clears the lead on timeout");
+
+            body(shooter).setTransform(0, 3, 0);
+            fire(shooter, 10, 1);
+            impact();
+            check(ai.retaliationTarget() == shooter, "A damaging hit with live sight also provokes inside normal radius");
+            ai.forgetTarget();
+            fire(shooter, 1, .25f);
+            int hp = Health.MAPPER.get(victim).getCurrent();
+            impact();
+            awareness.arrowDamaged(victim, victim);
+            check(Health.MAPPER.get(victim).getCurrent() == hp && ai.retaliationTarget() == null, "Zero damage and self leads are ignored");
+            Health.MAPPER.get(shooter).damage(100);
+            fire(shooter, 10, 1);
+            impact();
+            check(ai.retaliationTarget() == null, "Dead shooter is ignored");
+            Health.MAPPER.get(shooter).restore();
+            engine.removeEntity(shooter);
+            fire(shooter, 10, 1);
+            impact();
+            check(ai.retaliationTarget() == null, "Retired shooter is ignored even if its body is still live");
+            engine.addEntity(shooter);
+            fire(shooter, 100, 1);
+            impact();
+            check(!Health.MAPPER.get(victim).isAlive() && ai.retaliationTarget() == null, "Lethal arrow does not provoke");
+            checkAttackQueue();
+        }
+
+        private void checkAttackQueue() {
+            var enemy = actor(engine, world, Actor.Role.ENEMY, 20, 0);
+            var player = actor(engine, world, Actor.Role.PLAYER, 20, 3);
+            var shooter = actor(engine, world, Actor.Role.NPC, 20, -8);
+            enemy.add(new Animation2D("test", "", Animation2D.AnimationType.IDLE, Animation.PlayMode.LOOP, 1, .125f))
+                .add(new Transform(new Vector2(20, 0), 0, new Vector2(1, 1), new Vector2(1, 1), 0, 0));
+            var ai = ActorAi.MAPPER.get(enemy);
+            var melee = Combat.MAPPER.get(enemy);
+            awareness.processEntity(enemy, 0f);
+            check(melee.requestedTarget() == player, "Normal enemy vision queues melee against the live nearby player");
+            combat.arrows().add(new ArrowFlight(shooter, type, new Vector2(18, 0), new Vector2(20, 0), 10, 1));
+            impact();
+            check(ai.retaliationTarget() == shooter && melee.getAttackId() == 0 && !melee.hasAttackRequest(),
+                "A new retaliation lead invalidates the old target's queued melee before it commits");
+            awareness.processEntity(enemy, 0f);
+            check(!melee.hasAttackRequest() && Move.MAPPER.get(enemy).getDirection().equals(new Vector2(0, -8)),
+                "Enemy pursues the actual shooter rather than attacking the unrelated player");
+            body(shooter).setTransform(20, -13, 0);
+            awareness.processEntity(enemy, 0f);
+            check(ai.retaliationTarget() == null && melee.requestedTarget() == player,
+                "Losing the shooter does not mask normal live enemy detection");
+            Health.MAPPER.get(player).damage(100);
+            combat.update(0f);
+            check(melee.getAttackId() == 0 && !melee.hasAttackRequest(), "Target death before combat consumes the queued melee");
+            engine.removeEntity(player);
+            var replacement = actor(engine, world, Actor.Role.PLAYER, 20, 3);
+            awareness.processEntity(enemy, 0f);
+            check(melee.requestedTarget() == replacement, "Vision acquires the replacement without retaining the retired player");
+            combat.update(0f);
+            check(melee.getAttackId() == 1 && melee.isAttacking(), "Live sight still commits an attack through the combat system");
+        }
+
+        private void fire(Entity shooter, int damage, float scale) {
+            combat.arrows().add(new ArrowFlight(shooter, type, new Vector2(-2, 0), new Vector2(0, 0), damage, scale));
+        }
+
+        private void impact() {
+            combat.update(.2f);
+            check(combat.arrows().isEmpty(), "Arrow resolves the impact");
+        }
+
+        @Override public void close() { world.dispose(); }
     }
 
     private static void checkPursuit(World world, Engine engine, Entity enemy, Entity player) {
@@ -131,7 +295,7 @@ public final class AwarenessSystemTest {
             wall = world.createBody(wallDef);
             box(wall, 0, 0, .25f, false);
             var attack = Loadout.MAPPER.get(enemy).getWeapon().primary();
-            combat.beginAttack(Combat.AttackSlot.PRIMARY, attack);
+            combat.beginAttack(Combat.AttackSlot.PRIMARY, attack, Facing.MAPPER.get(enemy).getDirection());
             var facing = Facing.MAPPER.get(enemy).getDirection();
             body(player).setTransform(3, .75f, 0);
             engine.update(0);
@@ -194,11 +358,11 @@ public final class AwarenessSystemTest {
         entity.add(new Actor(role, 0, 0)).add(new Physic(body, def.position.cpy()))
             .add(new Facing(Facing.Direction.DOWN)).add(new Health(100));
         if (role != Actor.Role.PLAYER) {
-            var attack = new CombatWeapon.Attack("test", 10, 0, .3f, null, null, null, null, CollisionType.MELEE);
-            var weapon = new CombatWeapon.Weapon("test", "", attack, attack);
+            var attack = new CombatWeapon.Attack("unarmed", 10, 0, .3f, null, null, null, null, CollisionType.MELEE);
+            var weapon = new CombatWeapon.Weapon("unarmed", "", attack, attack);
             entity.add(new ActorAi(role == Actor.Role.ENEMY ? "wander_attack" : "wander"))
                 .add(new Combat()).add(new Move(1f))
-                .add(new Loadout(new Loadout.Equipment(null, null, null, null), "test", Map.of("test", weapon), _ -> { }));
+                .add(new Loadout(new Loadout.Equipment(null, null, null, null), null, Map.of("unarmed", weapon), _ -> { }));
         }
         engine.addEntity(entity);
         return entity;
@@ -219,6 +383,7 @@ public final class AwarenessSystemTest {
     private static Body body(Entity entity) { return Physic.MAPPER.get(entity).getBody(); }
 
     private static void check(boolean condition, String message) {
+        checks++;
         if (!condition) { throw new AssertionError(message); }
     }
 }

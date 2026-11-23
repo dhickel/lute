@@ -14,7 +14,7 @@ public final class CombatWeapon {
 
     public record Weapon(String id, String atlasKey, Attack primary, Attack secondary) { }
 
-    public record Attack(String weaponId, float damage, int hitFrame, float cooldownSeconds,
+    public record Attack(String weaponId, int damage, int hitFrame, float cooldownSeconds,
                          Animation2D.Attack animation, String hitSoundId,
                          BoundsType shape, Bounds bounds, CollisionType collisionType) {
         public void validateGeometry(Vector2 anchor) {

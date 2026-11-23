@@ -60,6 +60,16 @@ public enum AnimationState implements State<Entity> {
             animation.setMode(Animation.PlayMode.LOOP);
             animation.endAttack();
         }
+    },
+    DEATH {
+        @Override
+        public void enter(Entity entity) {
+            var animation = Animation2D.MAPPER.get(entity);
+            animation.setType(Animation2D.AnimationType.DEATH);
+            animation.setMode(Animation.PlayMode.NORMAL);
+        }
+
+        @Override public void update(Entity entity) { }
     };
 
     private static boolean attacking(Entity entity) {
