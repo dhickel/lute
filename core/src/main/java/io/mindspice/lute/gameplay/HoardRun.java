@@ -8,6 +8,8 @@ public final class HoardRun {
     public static final int PLAYER_HEALTH = 1000;
     private static final int ROUND_SECONDS = 180;
     private static final int BASE_BATCH = 5;
+    private static final int BASE_KILL_POINTS = 5;
+    private static final int ROUND_BONUS_PERCENT = 5;
     private static final int NIGHT_START_MINUTE = 20 * 60;
     private static final int NIGHT_END_MINUTE = 6 * 60;
     private static final int BATCH_UNITS = 100 * 100 * 100; // size, round and night percentages
@@ -18,9 +20,9 @@ public final class HoardRun {
     private boolean gameOver;
     private int round;
     private long kills;
+    private long score;
     private double elapsed;
     private int nextBatch;
-    private int openingRemainder, extraRemainder;
 
     public HoardRun(RandomGenerator random, Runnable healPlayer, IntConsumer spawn, boolean night) {
         this.random = random;
@@ -55,24 +57,25 @@ public final class HoardRun {
     }
 
     private void spawnBatch(boolean opening, boolean night) {
-        // Linear percentage points on the baseline. Multiply that budget by 1.15 at night.
-        // Carry fixed-point fractions separately so neither batch type loses its growth to rounding.
         int sizePercent = opening ? 100 : random.nextInt(25, 51);
-        long units = (long) BASE_BATCH * sizePercent * (100L + round - 1) * (night ? 115 : 100);
-        units += opening ? openingRemainder : extraRemainder;
-        int remainder = (int) (units % BATCH_UNITS);
-        if (opening) { openingRemainder = remainder; }
-        else { extraRemainder = remainder; }
-        spawn.accept((int) (units / BATCH_UNITS));
+        long units = (long) BASE_BATCH * sizePercent * roundPercent() * (night ? 115 : 100);
+        spawn.accept((int) ((units + BATCH_UNITS / 2) / BATCH_UNITS));
     }
+
+    private long roundPercent() { return 100L + ROUND_BONUS_PERCENT * (long) round; }
 
     public void end() { gameOver = true; }
     public boolean isGameOver() { return gameOver; }
 
     // Credit is committed on delivery. Even a kill queued before death cannot revise the final score.
-    public void enemyKilled() { if (!gameOver) { kills++; } }
+    public void enemyKilled() {
+        if (gameOver) { return; }
+        kills++;
+        score += (BASE_KILL_POINTS * roundPercent() + 50) / 100;
+    }
+
     public long kills() { return kills; }
-    public long score() { return 5L * kills; }
+    public long score() { return score; }
     public int round() { return round; }
     public int remainingSeconds() { return (int) Math.ceil(ROUND_SECONDS - elapsed); }
 }

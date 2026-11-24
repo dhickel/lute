@@ -31,31 +31,33 @@ public final class HoardRunTest {
             run.advance(delay - .25, false);
             require(batches.size() == 1 && run.remainingSeconds() == 181 - delay, "wait for batch; round time rounds up");
             run.advance(.25, false);
-            require(rolls.size() == 1 && batches.size() == 2 && batches.getLast() == 5 * rolls.getFirst() / 100
+            require(rolls.size() == 1 && batches.size() == 2 && batches.getLast() == Math.round(5 * rolls.getFirst() * .0105)
                 && heals.size() == 1, "first reinforcement rolls a smaller batch and does not heal");
             run.enemyKilled();
             run.advance(180 - delay, false);
             require(run.round() == 2 && run.remainingSeconds() == 180 && run.kills() == 1 && run.score() == 5, "round rollover");
             require(heals.equals(java.util.List.of(0, 1 + 179 / delay)), "opening batch takes precedence over simultaneous reinforcement");
-            require(batches.getLast() == 5, "round two does not immediately ceil to six");
-            // Verify both independent fractional budgets (including a day -> night crossing).
-            for (int i = 2; i < 42; i++) { run.advance(180, i >= 12); }
-            int starts = 0, extras = 0, roll = 0;
+            require(batches.getLast() == 6, "round two opens with 5.5 rounded up to six");
+            for (int i = 2; i < 10; i++) { run.advance(180, false); }
+            require(run.round() == 10 && batches.getLast() == 8, "round ten opens with 7.5 rounded up to eight");
+            run.enemyKilled();
+            require(run.kills() == 2 && run.score() == 13, "round ten awards eight points without repricing round one");
+            for (int i = 10; i < 42; i++) { run.advance(180, i >= 12); }
+            int roll = 0;
             require(random.schedules == batches.size() && rolls.size() == batches.size() - heals.size(),
                 "fresh interval after every batch; size rolled only for reinforcements");
-            long openingUnits = 0, extraUnits = 0;
             for (int r = 1; r <= 42; r++) {
-                long opening = 5L * (99 + r) * (r >= 13 ? 115 : 100);
-                starts += batches.get(heals.get(r - 1));
-                openingUnits += opening;
-                require(starts == openingUnits / 10_000, "opening scaling and carry at round " + r);
+                long roundPercent = 100 + 5L * r;
+                long opening = 5 * roundPercent * (r >= 13 ? 115 : 100);
+                require(batches.get(heals.get(r - 1)) == (opening + 5_000) / 10_000,
+                    "opening scaling and rounding at round " + r);
                 if (r == 42) { break; }
                 int firstExtra = heals.get(r - 1) + 1;
                 require(heals.get(r) - firstExtra == 179 / delay, "scheduled reinforcement count");
                 for (int i = firstExtra; i < heals.get(r); i++) {
-                    extras += batches.get(i);
-                    extraUnits += 5L * rolls.get(roll++) * (99 + r) * (r >= 12 ? 115 : 100);
-                    require(extras == extraUnits / 1_000_000, "reinforcement scaling and carry at roll " + roll);
+                    long extra = 5L * rolls.get(roll++) * roundPercent * (r >= 12 ? 115 : 100);
+                    require(batches.get(i) == (extra + 500_000) / 1_000_000,
+                        "reinforcement scaling and rounding at roll " + roll);
                 }
             }
 
@@ -68,7 +70,7 @@ public final class HoardRunTest {
             run.end();
             run.advance(540, true);
             require(run.isGameOver() && run.round() == 42 && run.remainingSeconds() == 1
-                && run.kills() == 1 && run.score() == 5, "terminal state freezes time and credits");
+                && run.kills() == 2 && run.score() == 13, "terminal state freezes time and credits");
             require(batches.size() == batchCount && heals.size() == 42, "no reinforcements or round heals after death");
         }
         require(!HoardRun.isNight(Math.nextDown(20 * 60.0)) && HoardRun.isNight(20 * 60)

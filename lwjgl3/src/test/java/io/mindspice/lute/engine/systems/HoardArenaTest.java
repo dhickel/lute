@@ -98,7 +98,7 @@ public final class HoardArenaTest extends ApplicationAdapter {
         // Advance real Box2D fixed ticks without rendering thousands of intermediate frames.
         var physics = engine.getSystem(PhysicSystem.class);
         physics.update(40.01f);
-        require(enemies.size() > 5 && enemies.size() <= 10 && health.getCurrent() == 899,
+        require(enemies.size() > 5 && enemies.size() <= 11 && health.getCurrent() == 899,
             "one or two smaller daylight reinforcements without healing");
         physics.update(140.02f);
         require(run.round() == 2 && health.getCurrent() == 1000 && enemies.contains(survivor, true)
@@ -113,9 +113,9 @@ public final class HoardArenaTest extends ApplicationAdapter {
         Health.MAPPER.get(survivor).damage(42);
         Combat.MAPPER.get(player()).requestAttack(Combat.AttackSlot.PRIMARY);
         for (int i = 0; i < 60 && run.score() == 0; i++) { engine.update(1f / 60); }
-        require(!Health.MAPPER.get(survivor).isAlive() && run.kills() == 1 && run.score() == 5,
-            "the same real killing blow feeds death, kills and score");
-        require(GameplayHud.statusText(720, run).endsWith("Kills 1   Score 5"), "live HUD credit");
+        require(!Health.MAPPER.get(survivor).isAlive() && run.kills() == 1 && run.score() == 6,
+            "the same real killing blow feeds death, kills and round-scaled score");
+        require(GameplayHud.statusText(720, run).endsWith("Kills 1   Score 6"), "live HUD credit");
 
         engine.getSystem(AwarenessSystem.class).setProcessing(true);
         verifyTerminalRun(tiled, hoard);
@@ -305,7 +305,7 @@ public final class HoardArenaTest extends ApplicationAdapter {
         bus.emitEvent(new Event.Player.KilledEnemy(corpse, victim));
         health.damage(health.getCurrent());
         engine.getSystem(DeathSystem.class).update(0f);
-        String finalHud = "12:00   Game Over   Round 2   0:01 left   Kills 1   Score 5";
+        String finalHud = "12:00   Game Over   Round 2   0:01 left   Kills 1   Score 6";
         require(hoard.run() == run && run.isGameOver() && GameplayHud.statusText(720, run).equals(finalHud),
             "final score on the lethal frame, without a physics tick or event drain");
         require(pose.getType() == Animation2D.AnimationType.DEATH && pose.getFrameIndex() == 0
