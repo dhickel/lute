@@ -87,6 +87,13 @@ public class CircularKeyQueue {
 
 
 
+    public void forEach(KeyActionConsumer consumer) {
+        for (int i = 0; i < size; i++) {
+            int index = (head + i) % capacity;
+            consumer.accept(inputActions[index], keyStates[index]);
+        }
+    }
+
     public void peek(KeyActionConsumer consumer) {
         if (!isEmpty()) {
             consumer.accept(inputActions[head], keyStates[head]);

@@ -23,7 +23,9 @@ public class ControllerSystem extends IteratingSystem implements EventEmitter {
         var health = Health.MAPPER.get(entity);
         boolean alive = health == null || health.isAlive();
         if (aim != null && (!alive || loadout == null || aim.getWeapon() != loadout.getWeapon())) { aim.cancel(); }
+        var combat = Combat.MAPPER.get(entity);
         if (listener.consumeInvalidation()) {
+            if (combat != null) { combat.consumeAttackRequest(); }
             if (aim != null) { aim.cancel(); }
             listener.getQueue().consumePreviousContext((action, state) -> {
                 if (action == InputAction.ATTACK_PRIMARY) {
@@ -32,7 +34,8 @@ public class ControllerSystem extends IteratingSystem implements EventEmitter {
             });
             if (listener.consumeDetach()) { controller.resetInput(); }
         }
-        var combat = Combat.MAPPER.get(entity);
+        // Draw/recovery decisions use this frame's final stick direction regardless of edge order.
+        listener.getQueue().forEach((action, state) -> movement(controller, action, state));
         listener.consume((action, state) -> {
             if (state != 0 && state != 1) { return; }
             boolean pressed = state == 1;
@@ -45,6 +48,9 @@ public class ControllerSystem extends IteratingSystem implements EventEmitter {
                         getEngine().getSystem(CombatSystem.class).drawBow(entity, aim, weapon);
                     } else if (aim.isAiming()) {
                         getEngine().getSystem(CombatSystem.class).launch(entity, aim);
+                    } else if (combat != null && combat.requestedSlot() == Combat.AttackSlot.PRIMARY) {
+                        // Released before a deferred draw started: there is no arrow to fire.
+                        combat.consumeAttackRequest();
                     }
                 } else if (pressed) { requestAttack(combat, weapon, Combat.AttackSlot.PRIMARY); }
             } else if (action == InputAction.ATTACK_SECONDARY) {
@@ -59,7 +65,7 @@ public class ControllerSystem extends IteratingSystem implements EventEmitter {
                         getEngine().getSystem(LoadoutSystem.class).equipWeapon(entity, cycle.get(next));
                     }
                 }
-            } else { movement(controller, action, state); }
+            }
         });
         if (aim != null && aim.isAiming()) {
             aim.steer(controller.getHeldDirection(), deltaTime);

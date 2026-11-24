@@ -29,11 +29,20 @@ public class CombatSystem extends IteratingSystem implements ContactListener, En
         var combat = Combat.MAPPER.get(owner);
         if (combat == null || combat.isCoolingDown(weapon.id(), Combat.AttackSlot.PRIMARY)
             || combat.hasAttackRequest()) { return; }
+        if (!Controller.MAPPER.get(owner).getHeldDirection().isZero()
+            && (combat.isAttacking() || combat.awaitingMovement(physicsStep()))) {
+            combat.requestAttack(Combat.AttackSlot.PRIMARY);
+            return;
+        }
         // Bow input runs before combat. Resolve contacts from the preceding physics step first.
         applyPendingHits();
         var health = Health.MAPPER.get(owner);
         if (health != null && !health.isAlive()) { return; }
         if (combat.isAttacking()) { stopAttack(owner); }
+        startDraw(owner, aim, weapon);
+    }
+
+    private void startDraw(Entity owner, BowAim aim, CombatWeapon.Weapon weapon) {
         Animation2D.MAPPER.get(owner).queueAttack(weapon.primary().animation());
         AnimationPlayer.MAPPER.get(owner).getAnimationFsm().changeState(AnimationState.ATTACK);
         aim.start(weapon, Transform.MAPPER.get(owner), Facing.MAPPER.get(owner).getDirection());
@@ -63,13 +72,14 @@ public class CombatSystem extends IteratingSystem implements ContactListener, En
         arrows.add(new ArrowFlight(owner, arrowType, start, target, attack.damage(), damageScale));
         var combat = Combat.MAPPER.get(owner);
         combat.beginAttack(Combat.AttackSlot.PRIMARY, attack, facing.getDirection());
-        activeAttacks.put(owner, combat);
+        mountedCombat.put(owner, combat);
         animation.releaseBow();
         aim.cancel();
     }
 
     private final List<Hit> pendingHits = new ArrayList<>();
-    private final Map<Entity, Combat> activeAttacks = new IdentityHashMap<>();
+    // Family removal may arrive after Ashley has detached the component, even mid-handoff.
+    private final Map<Entity, Combat> mountedCombat = new IdentityHashMap<>();
 
     public CombatSystem(World world, Projectile arrowType) {
         super(Family.all(Combat.class, Loadout.class, Animation2D.class, Physic.class, Transform.class, Facing.class).get());
@@ -87,7 +97,7 @@ public class CombatSystem extends IteratingSystem implements ContactListener, En
     @Override
     public void removedFromEngine(Engine engine) {
         // Removing the system must not leave active attack fixtures behind.
-        for (var entity : getEntities()) { stopAttack(entity); }
+        for (var entity : getEntities()) { cancelCombat(entity); }
         world.setContactListener(null);
         arrows.clear();
         engine.removeEntityListener(this);
@@ -144,7 +154,27 @@ public class CombatSystem extends IteratingSystem implements ContactListener, En
         var combat = Combat.MAPPER.get(entity);
         var health = Health.MAPPER.get(entity);
         boolean alive = health == null || health.isAlive();
+        var animation = Animation2D.MAPPER.get(entity);
+        var move = Move.MAPPER.get(entity);
+        boolean movingPlayer = alive && Controller.MAPPER.has(entity) && move != null
+            && !move.isRooted() && !move.getDirection().isZero();
+        if (alive && combat.isAttacking() && (movingPlayer || combat.hasDeferredRequest())) {
+            combat.deferRequest();
+            // Input and animation precede combat; movement and fixed physics follow it.
+            // Retain the first ready request while this swing and then a movement tick resolve.
+            boolean melee = combat.getActiveAttack().collisionType() == CollisionType.MELEE;
+            if (melee && !combat.sensorHasStepped(physicsStep())) {
+                activateMeleeSensor(entity, combat, animation);
+            } else if (!combat.activeAttackCoolingDown() || (animation.isAttackReady() && animation.isFinished())) {
+                stopAttack(entity);
+                if (movingPlayer) { combat.yieldToMovement(physicsStep()); }
+            }
+            return;
+        }
+        if (movingPlayer && combat.awaitingMovement(physicsStep())) { return; }
+        combat.clearMovementWait();
         var target = combat.requestedTarget();
+        var aim = BowAim.MAPPER.get(entity);
         var requested = combat.consumeAttackRequest();
         // Another hit in this update may have killed the AI's target since the awareness pass.
         if (target != null) {
@@ -153,25 +183,38 @@ public class CombatSystem extends IteratingSystem implements ContactListener, En
                 requested = null;
             }
         }
-        var animation = Animation2D.MAPPER.get(entity);
-        var aim = BowAim.MAPPER.get(entity);
         if (requested != null && alive && (aim == null || !aim.isAiming())) {
             var weapon = Loadout.MAPPER.get(entity).getWeapon();
             if (!combat.isCoolingDown(weapon.id(), requested)) {
                 var next = requested == Combat.AttackSlot.PRIMARY ? weapon.primary() : weapon.secondary();
                 stopAttack(entity);
+                if (aim != null && Controller.MAPPER.has(entity) && requested == Combat.AttackSlot.PRIMARY
+                    && next.collisionType() == CollisionType.PROJECTILE) {
+                    startDraw(entity, aim, weapon);
+                    if (move != null) { move.getDirection().setZero(); }
+                    return;
+                }
                 animation.queueAttack(next.animation());
                 combat.beginAttack(requested, next, Facing.MAPPER.get(entity).getDirection());
-                activeAttacks.put(entity, combat);
+                mountedCombat.put(entity, combat);
                 return;
             }
         }
         if (!combat.isAttacking()) { return; }
-        var attack = combat.getActiveAttack();
         if (!alive || (animation.isAttackReady() && animation.isFinished())) {
             stopAttack(entity);
             return;
         }
+        activateMeleeSensor(entity, combat, animation);
+    }
+
+    private long physicsStep() {
+        var physics = getEngine().getSystem(PhysicSystem.class);
+        return physics == null ? 0 : physics.completedSteps();
+    }
+
+    private void activateMeleeSensor(Entity entity, Combat combat, Animation2D animation) {
+        var attack = combat.getActiveAttack();
         if (attack.collisionType() != CollisionType.MELEE
             || combat.getSensor() != null || !animation.hasReachedFrame(attack.hitFrame())) { return; }
 
@@ -186,7 +229,7 @@ public class CombatSystem extends IteratingSystem implements ContactListener, En
             definition.isSensor = true;
             var sensor = body.createFixture(definition);
             body.setAwake(true);
-            combat.setSensor(sensor);
+            combat.setSensor(sensor, physicsStep());
             sensor.setUserData(new AttackSensor(entity, combat.getAttackId()));
         } finally {
             shape.dispose();
@@ -194,8 +237,7 @@ public class CombatSystem extends IteratingSystem implements ContactListener, En
     }
 
     private void stopAttack(Entity entity) {
-        // Ashley removes components before delivering family-removal callbacks.
-        var combat = activeAttacks.remove(entity);
+        var combat = mountedCombat.get(entity);
         if (combat == null || !combat.isAttacking()) { return; }
         var sensor = combat.getSensor();
         if (sensor != null) { sensor.getBody().destroyFixture(sensor); }
@@ -243,8 +285,13 @@ public class CombatSystem extends IteratingSystem implements ContactListener, En
         var aim = BowAim.MAPPER.get(entity);
         if (aim != null) { aim.cancel(); }
         var combat = Combat.MAPPER.get(entity);
-        if (combat != null) { combat.consumeAttackRequest(); }
+        if (combat == null) { combat = mountedCombat.get(entity); }
+        if (combat != null) {
+            combat.consumeAttackRequest();
+            combat.clearMovementWait();
+        }
         stopAttack(entity);
+        mountedCombat.remove(entity);
     }
 
     private record AttackSensor(Entity attacker, long attackId) { }

@@ -8,6 +8,7 @@ import com.badlogic.ashley.systems.IteratingSystem;
 import com.badlogic.gdx.math.MathUtils;
 import com.badlogic.gdx.physics.box2d.BodyDef;
 import com.badlogic.gdx.physics.box2d.World;
+import io.mindspice.lute.engine.components.Combat;
 import io.mindspice.lute.engine.components.Physic;
 import io.mindspice.lute.engine.components.Transform;
 
@@ -15,6 +16,9 @@ public class PhysicSystem extends IteratingSystem implements EntityListener {
     private final World world;
     private final float interval;
     private float accumulator;
+    private long completedSteps;
+
+    long completedSteps() { return completedSteps; }
 
 
     public PhysicSystem(World world, float interval) {
@@ -36,6 +40,7 @@ public class PhysicSystem extends IteratingSystem implements EntityListener {
             accumulator -= interval;
             super.update(deltaTime);
             world.step(interval, 6, 2);
+            completedSteps++;
             var sensors = getEngine().getSystem(MapSensorSystem.class);
             if (sensors != null) { sensors.afterPhysicsStep(); }
         }
@@ -66,7 +71,13 @@ public class PhysicSystem extends IteratingSystem implements EntityListener {
     @Override
     protected void processEntity(Entity entity, float deltaTime) {
         Physic physic = Physic.MAPPER.get(entity);
-        physic.getPrevPos().set(physic.getBody().getPosition());
+        var body = physic.getBody();
+        physic.getPrevPos().set(body.getPosition());
+        // Movement sets velocity once per frame. Don't carry the handoff tick into later substeps.
+        var combat = Combat.MAPPER.get(entity);
+        if (combat != null && combat.usedBufferedMovementTick(completedSteps)) {
+            body.setLinearVelocity(0, 0);
+        }
     }
 
     private void interpolateEntity(Entity entity, float alpha) {
