@@ -49,9 +49,13 @@ public class AnimationSystem extends IteratingSystem implements EventEmitter {
         var aim = BowAim.MAPPER.get(entity);
         boolean drawing = aim != null && aim.isAiming();
         if (anim2d.isDirty() || fDirection != anim2d.getFdirection() || atlasChanged) {
+            boolean turningAttack = !atlasChanged && anim2d.isAttackReady();
+            float previousTime = anim2d.getStateTime();
             updateAnimation(anim2d, fDirection);
             currentAtlases.put(anim2d, atlas);
-            deltaTime = 0f;
+            // A new direction changes the pose, not the clock or the attack cues.
+            if (turningAttack) { anim2d.setStateTime(previousTime); }
+            else { deltaTime = 0f; }
         }
         float stateTime = anim2d.advancePlayback(deltaTime, drawing);
 

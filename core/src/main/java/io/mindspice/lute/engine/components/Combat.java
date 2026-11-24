@@ -45,6 +45,7 @@ public class Combat implements Component {
         }
     }
     public Facing.Direction getAttackFacing() { return attackFacing; }
+    public void setAttackFacing(Facing.Direction facing) { attackFacing = facing; }
     public CombatWeapon.Attack getActiveAttack() { return activeAttack; }
 
     public void requestAttack(AttackSlot slot) { requestAttack(slot, null); }

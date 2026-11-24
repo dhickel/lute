@@ -155,13 +155,21 @@ public class CombatSystem extends IteratingSystem implements ContactListener, En
         }
         var animation = Animation2D.MAPPER.get(entity);
         var aim = BowAim.MAPPER.get(entity);
+        var facing = Facing.MAPPER.get(entity);
+        var move = Move.MAPPER.get(entity);
+        boolean playerSteering = Controller.MAPPER.has(entity) && move != null && !move.getDirection().isZero();
         if (requested != null && alive && (aim == null || !aim.isAiming())) {
             var weapon = Loadout.MAPPER.get(entity).getWeapon();
             if (!combat.isCoolingDown(weapon.id(), requested)) {
                 var next = requested == Combat.AttackSlot.PRIMARY ? weapon.primary() : weapon.secondary();
+                if (playerSteering && next.collisionType() == CollisionType.MELEE && combat.isAttacking()
+                    && combat.getActiveAttack().collisionType() == CollisionType.PROJECTILE) {
+                    // Retarget the new jab, not the release pose that animation already sampled.
+                    FacingSystem.faceFromMovement(facing, move.getDirection());
+                }
                 stopAttack(entity);
                 animation.queueAttack(next.animation());
-                combat.beginAttack(requested, next, Facing.MAPPER.get(entity).getDirection());
+                combat.beginAttack(requested, next, facing.getDirection());
                 activeAttacks.put(entity, combat);
                 return;
             }
@@ -172,8 +180,13 @@ public class CombatSystem extends IteratingSystem implements ContactListener, En
             stopAttack(entity);
             return;
         }
-        if (attack.collisionType() != CollisionType.MELEE
-            || combat.getSensor() != null || !animation.hasReachedFrame(attack.hitFrame())) { return; }
+        if (attack.collisionType() != CollisionType.MELEE) { return; }
+        if (playerSteering && facing.getDirection() != combat.getAttackFacing()) {
+            // Previous contacts already resolved in their original direction. Keep this attack's hit set.
+            removeSensor(combat);
+            combat.setAttackFacing(facing.getDirection());
+        }
+        if (combat.getSensor() != null || !animation.hasReachedFrame(attack.hitFrame())) { return; }
 
         var body = Physic.MAPPER.get(entity).getBody();
         var size = Transform.MAPPER.get(entity).getSize();
@@ -197,9 +210,16 @@ public class CombatSystem extends IteratingSystem implements ContactListener, En
         // Ashley removes components before delivering family-removal callbacks.
         var combat = activeAttacks.remove(entity);
         if (combat == null || !combat.isAttacking()) { return; }
-        var sensor = combat.getSensor();
-        if (sensor != null) { sensor.getBody().destroyFixture(sensor); }
+        removeSensor(combat);
         combat.endAttack();
+    }
+
+    private void removeSensor(Combat combat) {
+        var sensor = combat.getSensor();
+        if (sensor != null) {
+            sensor.getBody().destroyFixture(sensor);
+            combat.setSensor(null);
+        }
     }
 
     @Override
