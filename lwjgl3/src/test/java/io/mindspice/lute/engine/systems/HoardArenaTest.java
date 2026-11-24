@@ -56,7 +56,8 @@ public final class HoardArenaTest extends ApplicationAdapter {
         var run = hoard.run();
         var enemies = engine.getEntitiesFor(Family.all(ActorAi.class).get());
         require(run != null && run.round() == 1 && enemies.size() == 5, "five enemies at arena mount");
-        require(GameplayHud.statusText(360, run).equals("06:00   Round 1   3:00 left   Kills 0   Score 0"), "arena HUD");
+        var clock = engine.getSystem(WorldTimeSystem.class);
+        require(GameplayHud.statusText((int) clock.getMinuteOfDay(), run).equals("06:00   Round 1   3:00 left   Kills 0   Score 0"), "arena HUD");
         var area = tiled.getMapTriggers().requireEnemyArea("SpawnArea1", "agroWanderingHoard");
         for (var enemy : enemies) {
             var transform = Transform.MAPPER.get(enemy);
@@ -70,18 +71,22 @@ public final class HoardArenaTest extends ApplicationAdapter {
         health.damage(101);
         Health.MAPPER.get(survivor).damage(7);
 
-        GAME.render(); // supplies the renderer with its session and draws the initial night
+        GAME.render(); // supplies the renderer with its session and draws the initial daylight
         var renderer = engine.getSystem(RenderSystem.class);
-        require(hoard.clockNight(), "06:00 is overnight");
+        require(!hoard.clockNight(), "06:00 is daylight");
+        double daylight = brightness();
+        double secondsPerHour = clock.getDayLengthMinutes() * 60 / 24;
+        clock.update((float) (16 * secondsPerHour)); // 06:00 -> 22:00
+        renderer.update(0f);
+        require(hoard.clockNight(), "22:00 is overnight");
         double dark = brightness();
         Gdx.input.getInputProcessor().keyDown(Input.Keys.N);
         Gdx.input.getInputProcessor().keyUp(Input.Keys.N);
         GAME.render();
         double afterToggle = brightness();
-        var clock = engine.getSystem(WorldTimeSystem.class);
-        clock.update((float) (clock.getDayLengthMinutes() * 60 / 4)); // 06:00 -> noon
+        clock.update((float) (14 * secondsPerHour)); // 22:00 -> noon
         renderer.update(0f);
-        require(!hoard.clockNight() && brightness() > Math.max(dark, afterToggle) * 1.15,
+        require(!hoard.clockNight() && Math.min(daylight, brightness()) > Math.max(dark, afterToggle) * 1.15,
             "N leaves the arena in clock-driven night until sunrise");
         GAME.pause();
         int frozen = run.remainingSeconds();
@@ -93,7 +98,8 @@ public final class HoardArenaTest extends ApplicationAdapter {
         // Advance real Box2D fixed ticks without rendering thousands of intermediate frames.
         var physics = engine.getSystem(PhysicSystem.class);
         physics.update(40.01f);
-        require(enemies.size() >= 10 && health.getCurrent() == 899, "extra batch without healing");
+        require(enemies.size() > 5 && enemies.size() <= 10 && health.getCurrent() == 899,
+            "one or two smaller daylight reinforcements without healing");
         physics.update(140.02f);
         require(run.round() == 2 && health.getCurrent() == 1000 && enemies.contains(survivor, true)
             && Health.MAPPER.get(survivor).getCurrent() == 43, "round heals only player and keeps survivors");
@@ -169,7 +175,11 @@ public final class HoardArenaTest extends ApplicationAdapter {
             // Every placement tries (25,25); the first solid feet block the rest of the batch.
             hoard.bind(tiled, area, new Random(1) {
                 @Override public float nextFloat() { return .5f; }
-                @Override public int nextInt(int origin, int bound) { return 20; }
+                @Override public int nextInt(int origin, int bound) {
+                    if (origin == 20 && bound == 41) { return 20; }
+                    require(origin == 25 && bound == 51, "reinforcement percentage roll");
+                    return 50;
+                }
             });
             // Empty the arena so the sword can only contact the first reinforcement.
             for (int i = enemies.size() - 1; i >= 0; i--) {

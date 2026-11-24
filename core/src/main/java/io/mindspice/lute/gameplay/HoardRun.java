@@ -8,8 +8,9 @@ public final class HoardRun {
     public static final int PLAYER_HEALTH = 1000;
     private static final int ROUND_SECONDS = 180;
     private static final int BASE_BATCH = 5;
-    private static final int NIGHT_START_MINUTE = 18 * 60;
-    private static final int NIGHT_END_MINUTE = 10 * 60;
+    private static final int NIGHT_START_MINUTE = 20 * 60;
+    private static final int NIGHT_END_MINUTE = 6 * 60;
+    private static final int BATCH_UNITS = 100 * 100 * 100; // size, round and night percentages
 
     private final RandomGenerator random;
     private final Runnable healPlayer;
@@ -56,12 +57,13 @@ public final class HoardRun {
     private void spawnBatch(boolean opening, boolean night) {
         // Linear percentage points on the baseline. Multiply that budget by 1.15 at night.
         // Carry fixed-point fractions separately so neither batch type loses its growth to rounding.
-        long units = (long) BASE_BATCH * (100L + round - 1) * (night ? 115 : 100);
+        int sizePercent = opening ? 100 : random.nextInt(25, 51);
+        long units = (long) BASE_BATCH * sizePercent * (100L + round - 1) * (night ? 115 : 100);
         units += opening ? openingRemainder : extraRemainder;
-        int remainder = (int) (units % 10_000);
+        int remainder = (int) (units % BATCH_UNITS);
         if (opening) { openingRemainder = remainder; }
         else { extraRemainder = remainder; }
-        spawn.accept((int) (units / 10_000));
+        spawn.accept((int) (units / BATCH_UNITS));
     }
 
     public void end() { gameOver = true; }
