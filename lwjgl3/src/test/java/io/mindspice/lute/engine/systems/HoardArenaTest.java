@@ -55,18 +55,22 @@ public final class HoardArenaTest extends ApplicationAdapter {
         var hoard = engine.getSystem(HoardSystem.class);
         var run = hoard.run();
         var enemies = engine.getEntitiesFor(Family.all(ActorAi.class).get());
-        require(run != null && run.round() == 1 && enemies.size() == 6, "five wave enemies plus authored archer at arena mount");
+        require(run != null && run.round() == 1 && enemies.size() == 5, "five wave enemies at arena mount");
         var clock = engine.getSystem(WorldTimeSystem.class);
-        require(GameplayHud.statusText((int) clock.getMinuteOfDay(), run).equals("06:00   Round 1   3:00 left   Kills 0   Score 0"), "arena HUD");
-        var area = tiled.getMapTriggers().requireEnemyArea("SpawnArea1", "agroWanderingHoard");
-        Entity survivor = authoredArcher();
+        require(GameplayHud.statusText((int) clock.getMinuteOfDay(), run).equals("06:00   Round 1   2:00 left   Kills 0   Score 0"), "arena HUD");
+        var areas = HoardSystem.arena("hoard_mode", tiled.getMapTriggers());
+        var occupied = new java.util.HashSet<String>();
+        Entity survivor = enemies.first();
         for (var enemy : enemies) {
-            if (enemy == survivor) { continue; }
             var transform = Transform.MAPPER.get(enemy);
-            require(area.polygon().contains(transform.centerX(), transform.centerY())
-                && Health.MAPPER.get(enemy).getCurrent() == 50 && Health.MAPPER.get(enemy).getMaximum() == 50
-                && ActorAi.MAPPER.get(enemy).behaviorGraphKey().equals("wander_attack"), "authored polygon enemy");
+            var area = areas.stream().filter(a -> a.polygon().contains(transform.centerX(), transform.centerY()))
+                .findFirst().orElseThrow();
+            occupied.add(area.name());
+            require(Health.MAPPER.get(enemy).getCurrent() == 50 && Health.MAPPER.get(enemy).getMaximum() == 50
+                && ActorAi.MAPPER.get(enemy).behaviorGraphKey().equals(BowAim.MAPPER.has(enemy) ? "wander_archer" : "wander_attack"),
+                "wave enemy has its own behavior inside the polygon");
         }
+        require(occupied.size() == 4, "opening batch reaches all four authored polygons");
         var health = Health.MAPPER.get(player());
         require(health.getCurrent() == 1000 && health.getMaximum() == 1000, "arena HP");
         health.damage(101);
@@ -99,9 +103,9 @@ public final class HoardArenaTest extends ApplicationAdapter {
         // Advance real Box2D fixed ticks without rendering thousands of intermediate frames.
         var physics = engine.getSystem(PhysicSystem.class);
         physics.update(40.01f);
-        require(enemies.size() > 6 && enemies.size() <= 12 && health.getCurrent() == 899,
+        require(enemies.size() > 5 && enemies.size() <= 11 && health.getCurrent() == 899,
             "one or two smaller daylight reinforcements without healing");
-        physics.update(140.02f);
+        physics.update(80.02f);
         require(run.round() == 2 && health.getCurrent() == 1000 && enemies.contains(survivor, true)
             && Health.MAPPER.get(survivor).getCurrent() == 43, "round heals only player and keeps survivors");
 
@@ -122,9 +126,10 @@ public final class HoardArenaTest extends ApplicationAdapter {
         verifyTerminalRun(tiled, hoard);
         remountArena(tiled, hoard);
         require(!enemies.contains(survivor, true), "old runtime enemies are gone");
-        verifyLethalContactAtRollover(hoard);
-        var dyingArcher = authoredArcher();
-        Health.MAPPER.get(dyingArcher).damage(50);
+        var dyingEnemy = enemies.first();
+        var melee = verifyMixedWaves(tiled, hoard);
+        verifyLethalContactAtRollover(hoard, melee);
+        Health.MAPPER.get(dyingEnemy).damage(50);
         engine.getSystem(DeathSystem.class).update(0f);
         remountArena(tiled, hoard);
         var bus = engine.getSystem(EventSystem.class);
@@ -140,11 +145,11 @@ public final class HoardArenaTest extends ApplicationAdapter {
         require(tiled.requestTravel(player(), "hoard_mode", "PlayerSpawn"), "reenter arena");
         tiled.applyPendingTravel();
         bus.update(0);
-        require(hoard.run() != priorRun && hoard.run().round() == 1 && hoard.run().score() == 0 && enemies.size() == 6,
+        require(hoard.run() != priorRun && hoard.run().round() == 1 && hoard.run().score() == 0 && enemies.size() == 5,
             "new run ignores late kills from prior arena");
         // This lethal frame *does* step physics and would have started round two and healed.
         var lastSecond = hoard.run();
-        lastSecond.advance(179.999, false);
+        lastSecond.advance(119.999, false);
         int waveSize = enemies.size();
         var dyingPlayer = player();
         var dyingHealth = Health.MAPPER.get(dyingPlayer);
@@ -176,8 +181,9 @@ public final class HoardArenaTest extends ApplicationAdapter {
         try {
             tiled.setMap(map, ManifestLoader.parseMapManifest("hoard_mode"));
             var area = HoardSystem.arena("hoard_mode", tiled.getMapTriggers());
-            // Every placement tries (25,25); the first solid feet block the rest of the batch.
+            // Start at the first undersized area. Only area four can fit one reinforcement.
             hoard.bind(tiled, area, new Random(1) {
+                @Override public int nextInt(int bound) { return 0; }
                 @Override public float nextFloat() { return .5f; }
                 @Override public int nextInt(int origin, int bound) {
                     if (origin == 20 && bound == 41) { return 20; }
@@ -248,23 +254,53 @@ public final class HoardArenaTest extends ApplicationAdapter {
         start.getProperties().put("spawnType", "PLAYER");
         start.getProperties().put("facing", "RIGHT");
         triggers.getObjects().add(start);
-        var area = new PolygonMapObject(new float[]{640, 640, 960, 640, 960, 960, 640, 960});
-        area.setName("SpawnArea1");
-        area.getProperties().put("type", "SpawnArea");
-        area.getProperties().put("spawnType", "ENEMY");
-        area.getProperties().put("spawnKey", "brainless_undead");
-        area.getProperties().put("behaviorKey", "agroWanderingHoard");
-        area.getProperties().put("facing", "DOWN");
-        triggers.getObjects().add(area);
+        for (int i = 1; i <= 4; i++) {
+            float end = i == 4 ? 960 : 641;
+            var area = new PolygonMapObject(new float[]{640, 640, end, 640, end, end, 640, end});
+            area.setName("SpawnArea" + i);
+            area.getProperties().put("type", "SpawnArea");
+            area.getProperties().put("spawnType", "ENEMY");
+            area.getProperties().put("spawnKey", "brainless_undead");
+            area.getProperties().put("behaviorKey", "agroWanderingHoard");
+            area.getProperties().put("facing", "DOWN");
+            triggers.getObjects().add(area);
+        }
         return map;
     }
 
-    private void verifyLethalContactAtRollover(HoardSystem hoard) {
+    private Entity verifyMixedWaves(TiledSystem tiled, HoardSystem hoard) {
+        var engine = GAME.getEngine();
+        var enemies = engine.getEntitiesFor(Family.all(ActorAi.class).get());
+        int start = enemies.size();
+        boolean[] archer = {true, true, false, true, false, false, false, true};
+        var area = HoardSystem.arena("hoard_mode", tiled.getMapTriggers());
+        hoard.bind(tiled, area, new Random(37) {
+            int slot;
+            @Override public boolean nextBoolean() { return slot < archer.length ? archer[slot++] : super.nextBoolean(); }
+            @Override public int nextInt(int origin, int bound) { return bound - 1; }
+        });
+        require(enemies.size() == start + 5, "five scripted opening slots");
+        hoard.run().advance(40, false);
+        require(enemies.size() == start + archer.length, "three scripted reinforcement slots");
+        for (int i = 0; i < archer.length; i++) {
+            var enemy = enemies.get(start + i);
+            require(tiled.owns(enemy) && BowAim.MAPPER.has(enemy) == archer[i]
+                && Loadout.MAPPER.get(enemy).getWeaponId().equals(archer[i] ? "basic_bow" : "basic_sword"),
+                "map-owned wave actor matches roll for slot " + i);
+        }
+        var bus = engine.getSystem(EventSystem.class);
+        bus.emitEvent(new Event.Player.KilledEnemy(player(), enemies.get(start)));
+        bus.emitEvent(new Event.Player.KilledEnemy(player(), enemies.get(start + 2)));
+        bus.update(0);
+        require(hoard.run().kills() == 2 && hoard.run().score() == 10, "both wave types earn round-one credit");
+        return enemies.get(start + 2);
+    }
+
+    private void verifyLethalContactAtRollover(HoardSystem hoard, Entity attacker) {
         var engine = GAME.getEngine();
         var physics = engine.getSystem(PhysicSystem.class);
         var awareness = engine.getSystem(AwarenessSystem.class);
         var enemies = engine.getEntitiesFor(Family.all(ActorAi.class).get());
-        var attacker = enemies.get(BowAim.MAPPER.has(enemies.first()) ? 1 : 0);
         var player = player();
         var health = Health.MAPPER.get(player);
         var attack = Combat.MAPPER.get(attacker);
@@ -281,7 +317,7 @@ public final class HoardArenaTest extends ApplicationAdapter {
         require(attack.getSensor() != null && health.getCurrent() == 1, "live player before sword contact");
 
         var run = hoard.run();
-        run.advance(179.999, false);
+        run.advance(run.remainingSeconds() - .001, false);
         int waveSize = enemies.size();
         physics.setProcessing(true);
         engine.update(GameConsts.PHYSIC_INTERVAL);
@@ -343,21 +379,10 @@ public final class HoardArenaTest extends ApplicationAdapter {
         require(hoard.run() == null && enemies.size() == 0 && world.getBodyCount() == 0, "unmount releases arena and bodies");
         tiled.showMap(ManifestLoader.parseMapManifest("hoard_mode"));
         var fresh = hoard.run();
-        require(fresh != previous && !fresh.isGameOver() && fresh.round() == 1 && fresh.remainingSeconds() == 180
-            && fresh.kills() == 0 && fresh.score() == 0 && enemies.size() == 6, "fresh arena counters and opening batch");
-        authoredArcher();
+        require(fresh != previous && !fresh.isGameOver() && fresh.round() == 1 && fresh.remainingSeconds() == 120
+            && fresh.kills() == 0 && fresh.score() == 0 && enemies.size() == 5, "fresh arena counters and opening batch");
         require(Health.MAPPER.get(player()).getCurrent() == 1000 && Controller.MAPPER.has(player())
             && Physic.MAPPER.get(player()).getBody().isActive(), "fresh live, controllable arena player");
-    }
-
-    private Entity authoredArcher() {
-        var archers = GAME.getEngine().getEntitiesFor(Family.all(ActorAi.class, BowAim.class).get());
-        require(archers.size() == 1, "exactly one authored archer");
-        var archer = archers.first();
-        require(ActorAi.MAPPER.get(archer).behaviorGraphKey().equals("wander_archer")
-            && Loadout.MAPPER.get(archer).getWeaponId().equals("basic_bow")
-            && Health.MAPPER.get(archer).getCurrent() == 50, "fresh live bow archer");
-        return archer;
     }
 
     private double brightness() {

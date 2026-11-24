@@ -83,8 +83,13 @@ public class TiledSystem extends EntitySystem implements EventEmitter {
 
     /** Call on the simulation thread outside a Box2D step. Null means no clear spot in this batch. */
     public Entity trySpawnAreaEnemy(MapTriggers.SpawnArea area, RandomGenerator random) {
+        return trySpawnAreaEnemy(area, area.spawnKey(), random);
+    }
+
+    Entity trySpawnAreaEnemy(MapTriggers.SpawnArea area, String key, RandomGenerator random) {
         if (physicsWorld.isLocked()) { throw new IllegalStateException("Cannot spawn during a physics step"); }
-        var footprint = active == null ? null : active.enemyFootprints.get(area);
+        var footprints = active == null ? null : active.enemyFootprints.get(area);
+        var footprint = footprints == null ? null : footprints.get(key);
         if (footprint == null) { throw new IllegalArgumentException("Expected a configured enemy area from the active map"); }
         var candidate = new Rectangle();
         var occupied = new boolean[1];
@@ -104,12 +109,12 @@ public class TiledSystem extends EntitySystem implements EventEmitter {
             }, candidate.x, candidate.y, candidate.x + candidate.width, candidate.y + candidate.height);
             if (occupied[0]) { continue; }
             var pixels = new Vector2(x, y).scl(1f / GameConsts.UNIT_SCALE);
-            var actor = getEngine().getSystem(EntityFactory.class).getMapActor(pixels, Actor.Role.ENEMY, area.spawnKey(), area.facing());
+            var actor = getEngine().getSystem(EntityFactory.class).getMapActor(pixels, Actor.Role.ENEMY, key, area.facing());
             // Runtime-owned but not tied to a persistent point/corpse on reentry.
             active.entities.add(actor);
             // The body participates in the next fixed tick. Ashley may not publish the entity
             // until PhysicSystem returns; entityAdded ends this map-owned registration window.
-            if (area == active.arena) { active.arrivingEnemies.add(actor); }
+            if (active.arena != null && active.arena.contains(area)) { active.arrivingEnemies.add(actor); }
             getEngine().addEntity(actor);
             return actor;
         }
@@ -283,7 +288,12 @@ public class TiledSystem extends EntitySystem implements EventEmitter {
             var factory = getEngine().getSystem(EntityFactory.class);
             for (var area : triggers.areas()) {
                 if (area.behaviorKey() != null) {
-                    next.enemyFootprints.put(area, factory.enemySpawnFootprint(area.spawnKey(), area.facing()));
+                    var footprints = new HashMap<String, Rectangle>();
+                    footprints.put(area.spawnKey(), factory.enemySpawnFootprint(area.spawnKey(), area.facing()));
+                    if (next.arena != null && next.arena.contains(area)) {
+                        footprints.put(HoardSystem.WAVE_ARCHER, factory.enemySpawnFootprint(HoardSystem.WAVE_ARCHER, area.facing()));
+                    }
+                    next.enemyFootprints.put(area, footprints);
                 }
             }
             for (var marker : triggers.points()) {
@@ -536,10 +546,10 @@ public class TiledSystem extends EntitySystem implements EventEmitter {
         final List<Entity> entities = new ArrayList<>();
         final Set<Entity> arrivingEnemies = Collections.newSetFromMap(new IdentityHashMap<>());
         final Rectangle mapBounds = new Rectangle();
-        final Map<MapTriggers.SpawnArea, Rectangle> enemyFootprints = new IdentityHashMap<>();
+        final Map<MapTriggers.SpawnArea, Map<String, Rectangle>> enemyFootprints = new IdentityHashMap<>();
         final Map<Entity, String> actorSpawns = new IdentityHashMap<>();
         List<MapSensorSystem.SensorBody> sensors;
-        final MapTriggers.SpawnArea arena;
+        final List<MapTriggers.SpawnArea> arena;
         final Health arenaHealth; // Remains available to the HUD after the corpse is removed.
         Entity player;
         PlayerState sessionPlayer;
@@ -547,7 +557,7 @@ public class TiledSystem extends EntitySystem implements EventEmitter {
         @Override public void entityAdded(Entity entity) { arrivingEnemies.remove(entity); }
         @Override public void entityRemoved(Entity entity) { arrivingEnemies.remove(entity); }
 
-        RuntimeMap(TiledMap map, Entry entry, MapTriggers triggers, List<Asset<?>> ownedAssets, MapTriggers.SpawnArea arena) {
+        RuntimeMap(TiledMap map, Entry entry, MapTriggers triggers, List<Asset<?>> ownedAssets, List<MapTriggers.SpawnArea> arena) {
             this.arena = arena;
             arenaHealth = arena == null ? null : new Health(HoardRun.PLAYER_HEALTH);
             this.map = map;

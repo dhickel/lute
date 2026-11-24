@@ -8,29 +8,45 @@ import io.mindspice.lute.engine.events.EventListener;
 import io.mindspice.lute.engine.tiled.MapTriggers;
 import io.mindspice.lute.gameplay.HoardRun;
 
+import java.util.ArrayList;
+import java.util.List;
 import java.util.function.Consumer;
 import java.util.random.RandomGenerator;
 
 /** Adapts one map-scoped run to the simulation clock, combat events and unlocked map placement. */
 public final class HoardSystem extends EntitySystem implements EventListener {
+    static final String WAVE_ARCHER = "undead_archer";
     private HoardRun run;
     private final Consumer<Event.Player.KilledEnemy> onKill = event -> {
         // The bus drains on the next update, possibly after named travel or hide/show.
         if (run != null && getEngine().getSystem(TiledSystem.class).owns(event.enemy())) { run.enemyKilled(); }
     };
 
-    static MapTriggers.SpawnArea arena(String mapId, MapTriggers triggers) {
+    static List<MapTriggers.SpawnArea> arena(String mapId, MapTriggers triggers) {
         if (!"hoard_mode".equals(mapId)) { return null; }
-        var area = triggers.requireEnemyArea("SpawnArea1", "agroWanderingHoard");
-        if (area.polygon() == null) { throw new IllegalArgumentException("hoard_mode requires a polygon for SpawnArea1"); }
-        return area;
+        var areas = new ArrayList<MapTriggers.SpawnArea>();
+        for (int i = 1; i <= 4; i++) {
+            var area = triggers.requireEnemyArea("SpawnArea" + i, "agroWanderingHoard");
+            if (area.polygon() == null || !"brainless_undead".equals(area.spawnKey())) {
+                throw new IllegalArgumentException(area.name() + " requires a brainless_undead polygon");
+            }
+            areas.add(area);
+        }
+        return List.copyOf(areas);
     }
 
-    void bind(TiledSystem tiled, MapTriggers.SpawnArea area, RandomGenerator random) {
-        if (area == null) { run = null; return; }
+    void bind(TiledSystem tiled, List<MapTriggers.SpawnArea> areas, RandomGenerator random) {
+        if (areas == null) { run = null; return; }
         run = new HoardRun(random, tiled.playerHealth()::restore, amount -> {
+            int next = random.nextInt(areas.size());
             for (int i = 0; i < amount; i++) {
-                if (tiled.trySpawnAreaEnemy(area, random) == null) { break; }
+                boolean archer = random.nextBoolean();
+                for (int attempt = 0; attempt < areas.size(); attempt++) {
+                    var area = areas.get(next);
+                    next = (next + 1) % areas.size();
+                    String key = archer ? WAVE_ARCHER : area.spawnKey();
+                    if (tiled.trySpawnAreaEnemy(area, key, random) != null) { break; }
+                }
             }
         }, clockNight());
     }

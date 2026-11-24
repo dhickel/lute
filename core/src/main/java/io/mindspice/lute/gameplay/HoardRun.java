@@ -6,7 +6,7 @@ import java.util.random.RandomGenerator;
 /** The rules and counters for one visit to the arena. Times are simulation seconds. */
 public final class HoardRun {
     public static final int PLAYER_HEALTH = 1000;
-    private static final int ROUND_SECONDS = 180;
+    private static final int ROUND_SECONDS = 120;
     private static final int BASE_BATCH = 5;
     private static final int BASE_KILL_POINTS = 5;
     private static final int ROUND_BONUS_PERCENT = 5;
