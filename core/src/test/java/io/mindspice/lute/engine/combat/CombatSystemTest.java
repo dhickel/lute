@@ -175,20 +175,23 @@ public final class CombatSystemTest {
 
     private static void movementAndInput() {
         try (var game = new Harness(1, 0, 0)) {
-            game.input(InputAction.MOVE_RIGHT, 1); game.update(0);
+            game.input(InputAction.MOVE_UP, 1); game.update(0);
             check(game.fsm().getCurrentState() == AnimationState.WALK, "Movement enters walk");
             game.attack();
             long id = game.combat().getAttackId();
-            game.input(InputAction.MOVE_RIGHT, 0); game.input(InputAction.MOVE_UP, 1);
-            game.input(InputAction.ATTACK_PRIMARY, 0); game.update(.125f);
-            game.input(InputAction.ATTACK_PRIMARY, 1); game.update(.125f);
+            game.input(InputAction.MOVE_UP, 0); game.input(InputAction.MOVE_DOWN, 1);
+            game.input(InputAction.ATTACK_PRIMARY, 0); game.update(STEP * 4);
+            game.input(InputAction.ATTACK_PRIMARY, 1); game.update(STEP * 4);
             check(game.combat().getAttackId() == id, "Busy press does not restart attack");
-            check(Facing.MAPPER.get(game.player).getDirection() == Facing.Direction.RIGHT, "Facing locked during attack");
-            check(game.body().getLinearVelocity().isZero(), "Movement locked during attack");
-            game.finish();
+            check(game.fsm().getCurrentState() == AnimationState.ATTACK && game.animation().getFdirection() == Facing.Direction.UP,
+                "Attack still plays facing up after the hit steps but before cooldown expires");
+            near(-4 * STEP * 8, game.body().getPosition().y, "Backpedals at full speed during the attack");
+            game.update(.25f); game.update(0);
+            check(!game.combat().isAttacking() && game.animation().getFdirection() == Facing.Direction.DOWN,
+                "Cooldown cancel returns playback to movement facing");
             check(game.fsm().getCurrentState() == AnimationState.WALK, "Held movement resumes walk");
-            near(4, game.body().getLinearVelocity().y, "Held up movement resumes");
-            game.input(InputAction.MOVE_UP, 0); game.update(0);
+            near(-4, game.body().getLinearVelocity().y, "Backpedal continues after cancel");
+            game.input(InputAction.MOVE_DOWN, 0); game.update(0);
             check(game.fsm().getCurrentState() == AnimationState.IDLE, "Release returns to idle");
             game.attack();
             check(game.combat().getAttackId() == id + 1, "New press starts a new attack");
@@ -198,6 +201,7 @@ public final class CombatSystemTest {
     private static void movementCancelsRecovery() {
         try (var game = new Harness(.5f, 2, 0)) {
             var target = game.target(2, false);
+            Physic.MAPPER.get(target).getBody().setTransform(3.2f, 1, 0);
             game.attack();
             game.input(InputAction.MOVE_RIGHT, 1);
             game.input(InputAction.ATTACK_PRIMARY, 1);
@@ -207,8 +211,7 @@ public final class CombatSystemTest {
             check(game.combat().isAttacking() && game.combat().getSensor() == null,
                 "Cooldown expiry cannot interrupt windup");
             game.update(.125f);
-            check(game.combat().getSensor() != null && game.body().getLinearVelocity().isZero(),
-                "Batched hit-frame steps keep the player stationary");
+            check(game.combat().getSensor() != null, "Sensor follows the moving player through hit-frame steps");
             game.update(0);
             damageWithin(10, target, "Batched contacts land once before cancellation");
             check(!game.combat().isAttacking() && game.combat().getSensor() == null,
@@ -230,7 +233,7 @@ public final class CombatSystemTest {
                 "Ready secondary cannot bypass primary commitment");
             game.combat().tickCooldown(1); // Expire the timer without advancing Box2D.
             game.update(0); game.update(STEP);
-            check(game.combat().isAttacking() && game.body().getLinearVelocity().isZero(),
+            check(game.combat().isAttacking() && game.combat().getSensor() != null,
                 "Even an expired swing gets a physics step with its hitbox");
             game.input(InputAction.ATTACK_PRIMARY, 1);
             game.update(0);
@@ -238,15 +241,11 @@ public final class CombatSystemTest {
             float start = game.body().getPosition().x;
             game.update(STEP / 2); game.update(0);
             near(start, game.body().getPosition().x, "Substep update cannot move the body");
-            check(!game.combat().isAttacking(), "Zero-step updates cannot start the followup");
-            game.update(STEP * 3.5f);
-            near(start + 4 * STEP, game.body().getPosition().x, "One full normal movement step before relock");
-            game.update(0);
             check(game.combat().getActiveAttack() == Loadout.MAPPER.get(game.player).getWeapon().secondary()
                 && game.combat().getAttackId() == 2 && !game.combat().hasAttackRequest(),
                 "Only the first queued slot starts");
-            game.update(STEP * 3);
-            near(start + 4 * STEP, game.body().getPosition().x, "No movement during the next swing");
+            game.update(STEP * 3.5f);
+            near(start + 4 * STEP * 4, game.body().getPosition().x, "Full movement on every substep of the follow-up");
         }
     }
 
@@ -257,7 +256,7 @@ public final class CombatSystemTest {
                 game.input(InputAction.MOVE_RIGHT, 1);
                 game.input(InputAction.ATTACK_SECONDARY, 1);
                 game.update(.375f); game.update(0);
-                check(!game.combat().isAttacking() && game.combat().hasAttackRequest(), "Waiting for movement");
+                check(!game.combat().isAttacking() && game.combat().hasAttackRequest(), "Follow-up pending after recovery cancel");
                 if (death) { Health.MAPPER.get(game.player).damage(100); }
                 else {
                     var combat = game.player.remove(Combat.class);
@@ -281,12 +280,14 @@ public final class CombatSystemTest {
             game.input(InputAction.ATTACK_PRIMARY, 1); game.update(0);
             game.input(InputAction.MOVE_RIGHT, 1); game.update(0);
             check(aim.isAiming() && game.body().getLinearVelocity().isZero(), "Movement steers the draw");
-            game.input(InputAction.ATTACK_PRIMARY, 0); game.update(0);
+            game.input(InputAction.ATTACK_PRIMARY, 0); game.update(STEP * 4);
+            near(4 * STEP * 4, game.body().getPosition().x, "Releasing the bow immediately restores full movement");
+            check(game.combat().isAttacking(), "Release recovery still plays before cooldown expiry");
             game.input(InputAction.MOVE_RIGHT, 0); game.update(0);
             float start = game.body().getPosition().x;
             game.input(InputAction.ATTACK_PRIMARY, 1);
-            game.input(InputAction.MOVE_RIGHT, 1); game.update(.25f);
-            near(start + 4 * STEP, game.body().getPosition().x, "Redraw before stick edge still yields exactly one tick");
+            game.input(InputAction.MOVE_RIGHT, 1); game.update(.25f + STEP / 2);
+            near(start + 4 * STEP * 15, game.body().getPosition().x, "Full batch of movement before deferred redraw");
             check(!game.combat().isAttacking() && !aim.isAiming() && game.body().getPosition().x > 0,
                 "Movement cancels release recovery before redraw");
             game.update(0);

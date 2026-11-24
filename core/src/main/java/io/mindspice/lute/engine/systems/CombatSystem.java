@@ -29,8 +29,7 @@ public class CombatSystem extends IteratingSystem implements ContactListener, En
         var combat = Combat.MAPPER.get(owner);
         if (combat == null || combat.isCoolingDown(weapon.id(), Combat.AttackSlot.PRIMARY)
             || combat.hasAttackRequest()) { return; }
-        if (!Controller.MAPPER.get(owner).getHeldDirection().isZero()
-            && (combat.isAttacking() || combat.awaitingMovement(physicsStep()))) {
+        if (combat.isAttacking() && !Controller.MAPPER.get(owner).getHeldDirection().isZero()) {
             combat.requestAttack(Combat.AttackSlot.PRIMARY);
             return;
         }
@@ -161,18 +160,15 @@ public class CombatSystem extends IteratingSystem implements ContactListener, En
         if (alive && combat.isAttacking() && (movingPlayer || combat.hasDeferredRequest())) {
             combat.deferRequest();
             // Input and animation precede combat; movement and fixed physics follow it.
-            // Retain the first ready request while this swing and then a movement tick resolve.
+            // Keep the first ready follow-up until the committed hit has had a physics step.
             boolean melee = combat.getActiveAttack().collisionType() == CollisionType.MELEE;
             if (melee && !combat.sensorHasStepped(physicsStep())) {
                 activateMeleeSensor(entity, combat, animation);
             } else if (!combat.activeAttackCoolingDown() || (animation.isAttackReady() && animation.isFinished())) {
                 stopAttack(entity);
-                if (movingPlayer) { combat.yieldToMovement(physicsStep()); }
             }
             return;
         }
-        if (movingPlayer && combat.awaitingMovement(physicsStep())) { return; }
-        combat.clearMovementWait();
         var target = combat.requestedTarget();
         var aim = BowAim.MAPPER.get(entity);
         var requested = combat.consumeAttackRequest();
@@ -286,10 +282,7 @@ public class CombatSystem extends IteratingSystem implements ContactListener, En
         if (aim != null) { aim.cancel(); }
         var combat = Combat.MAPPER.get(entity);
         if (combat == null) { combat = mountedCombat.get(entity); }
-        if (combat != null) {
-            combat.consumeAttackRequest();
-            combat.clearMovementWait();
-        }
+        if (combat != null) { combat.consumeAttackRequest(); }
         stopAttack(entity);
         mountedCombat.remove(entity);
     }

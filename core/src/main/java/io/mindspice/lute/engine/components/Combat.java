@@ -23,7 +23,6 @@ public class Combat implements Component {
     private AttackKey activeKey;
     private Fixture sensor;
     private long sensorCreatedAtStep;
-    private long movementStartStep = -1;
     private long attackId;
     private final Set<Entity> hitTargets = Collections.newSetFromMap(new IdentityHashMap<>());
 
@@ -88,12 +87,6 @@ public class Combat implements Component {
         sensorCreatedAtStep = step;
     }
     public boolean sensorHasStepped(long step) { return sensor != null && step > sensorCreatedAtStep; }
-    public void yieldToMovement(long step) { movementStartStep = step; }
-    public boolean awaitingMovement(long step) { return movementStartStep == step; }
-    public boolean usedBufferedMovementTick(long step) {
-        return movementStartStep >= 0 && step > movementStartStep && hasAttackRequest();
-    }
-    public void clearMovementWait() { movementStartStep = -1; }
 
     public void endAttack() {
         attacking = false;
