@@ -8,6 +8,7 @@ import com.badlogic.gdx.graphics.g2d.Animation;
 import com.badlogic.gdx.math.Vector2;
 import com.badlogic.gdx.physics.box2d.*;
 import com.badlogic.gdx.utils.GdxNativesLoader;
+import io.mindspice.lute.engine.behaviorgraph.BehaviorGraphs;
 import io.mindspice.lute.engine.components.Actor;
 import io.mindspice.lute.engine.components.ActorAi;
 import io.mindspice.lute.engine.components.ActorAi.Mode;
@@ -41,12 +42,35 @@ public final class AwarenessSystemTest {
         try {
             GameConsts.UNIT_SCALE = .125f;
             run(world);
+            checkArcherSight(world);
             try (var test = new RetaliationTest()) { test.run(); }
         } finally {
             GameConsts.UNIT_SCALE = originalScale;
             world.dispose();
         }
         System.out.println("AwarenessSystemTest: " + checks + " checks passed (native Box2D)");
+    }
+
+    private static void checkArcherSight(World world) {
+        var engine = new Engine();
+        engine.addSystem(new AwarenessSystem(world));
+        var enemy = actor(engine, world, Actor.Role.ENEMY, 50, 50);
+        var player = actor(engine, world, Actor.Role.PLAYER, 53, 50);
+        var shot = new CombatWeapon.Attack("bow", new Scalar(10), 0, .3f, null, null, null, null, CollisionType.PROJECTILE);
+        var bow = new CombatWeapon.Weapon("bow", "", shot, shot);
+        enemy.add(new ActorAi(BehaviorGraphs.ARCHER)).add(new Loadout(new Loadout.Equipment(null, null, null, null),
+            "bow", Map.of("bow", bow), _ -> { }));
+        var combat = Combat.MAPPER.get(enemy);
+        engine.update(0);
+        check(combat.requestedTarget() == player && Move.MAPPER.get(enemy).getDirection().isZero(),
+            "Archer chooses its ranged engage graph instead of chasing");
+        combat.consumeAttackRequest();
+        var wall = world.createBody(new BodyDef());
+        wall.setTransform(51, 50, 0);
+        box(wall, 0, 0, .25f, false);
+        engine.update(0);
+        check(!combat.hasAttackRequest() && ActorAi.MAPPER.get(enemy).mode() == Mode.INVESTIGATE,
+            "Archer investigates instead of firing through cover");
     }
 
     private static void run(World world) {

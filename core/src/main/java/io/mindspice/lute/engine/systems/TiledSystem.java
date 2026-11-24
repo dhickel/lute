@@ -292,7 +292,8 @@ public class TiledSystem extends EntitySystem implements EventEmitter {
                         var role = marker.type() == MapTriggers.SpawnType.NPC ? Actor.Role.NPC : Actor.Role.ENEMY;
                         var actor = factory.getMapActor(marker.position(), role, marker.spawnKey(), marker.facing());
                         next.entities.add(actor);
-                        next.actorSpawns.put(actor, marker.name());
+                        // Arena actors belong to this run, including authored point enemies.
+                        if (next.arena == null) { next.actorSpawns.put(actor, marker.name()); }
                         var corpse = corpses.get(marker.name());
                         if (corpse != null) { death.restore(actor, corpse, simulationSeconds); }
                     }

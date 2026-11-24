@@ -48,8 +48,7 @@ public class CombatSystem extends IteratingSystem implements ContactListener, En
             aim.cancel();
             return;
         }
-        var transform = Transform.MAPPER.get(owner);
-        var start = transform.getPosition().cpy().mulAdd(transform.getSize(), 0.5f);
+        var start = launchCenter(owner);
         var target = new Vector2(aim.getTargetX(), aim.getTargetY());
         float dx = target.x - start.x, dy = target.y - start.y;
         var facing = Facing.MAPPER.get(owner);
@@ -68,6 +67,11 @@ public class CombatSystem extends IteratingSystem implements ContactListener, En
         activeAttacks.put(owner, combat);
         animation.releaseBow();
         aim.cancel();
+    }
+
+    private static Vector2 launchCenter(Entity owner) {
+        var transform = Transform.MAPPER.get(owner);
+        return transform.getPosition().cpy().mulAdd(transform.getSize(), .5f);
     }
 
     private final List<Hit> pendingHits = new ArrayList<>();
@@ -179,6 +183,24 @@ public class CombatSystem extends IteratingSystem implements ContactListener, En
         var facing = Facing.MAPPER.get(entity);
         var move = Move.MAPPER.get(entity);
         boolean playerSteering = Controller.MAPPER.has(entity) && move != null && !move.getDirection().isZero();
+        if (aim != null && ActorAi.MAPPER.has(entity)) {
+            var weapon = Loadout.MAPPER.get(entity).getWeapon();
+            if (alive && requested == Combat.AttackSlot.PRIMARY && target != null
+                && weapon.primary().collisionType() == CollisionType.PROJECTILE) {
+                if (!aim.isAiming() || aim.getWeapon() != weapon) {
+                    aim.cancel();
+                    drawBow(entity, aim, weapon);
+                } else if (animation.hasReachedFrame(BowAim.FULL_DRAW_FRAME)) {
+                    var body = Physic.MAPPER.get(target).getBody();
+                    var center = body.getPosition().cpy().mulAdd(Transform.MAPPER.get(target).getSize(), .5f);
+                    aim.aimAt(ArrowFlight.intercept(arrowType, launchCenter(entity), center, body.getLinearVelocity()));
+                    launch(entity, aim);
+                }
+                return;
+            }
+            // A draw requires a renewed request from the live-sight graph every tick.
+            aim.cancel();
+        }
         if (requested != null && alive && (aim == null || !aim.isAiming())) {
             var weapon = Loadout.MAPPER.get(entity).getWeapon();
             if (!combat.isCoolingDown(weapon.id(), requested)) {

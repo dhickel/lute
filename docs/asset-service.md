@@ -67,6 +67,26 @@ Author a `SpawnPoint` as a zero-size point. A data-only `SpawnArea` must be an u
 
 Both asset trees are ignored. Provision the `hoard_mode` map and manifest in `raw_assets/maps/hoard_mode/`, with their referenced tilesets and art. In the raw Tiled project, add the string member `behaviorKey` to `SpawnInfo` with the literal default `NULL` (not JSON null). On the map's `Triggers` layer, author a simple polygon `SpawnArea` named `SpawnArea1`; its nested `spawnInfo` must set `behaviorKey` to `agroWanderingHoard`, `spawnType` to `ENEMY`, and `spawnKey` to `brainless_undead`. Provide that enemy definition in `raw_assets/data/enemies.json` and a player spawn point. Set `startupMap` to `hoard_mode` in `raw_assets/game.settings.json` to start there. Preserve other assets and regenerate with `./generate-runtime-assets.sh`; this produces the ignored runtime map, project, and data under `assets/`.
 
+`HoardArenaTest` also requires exactly one authored archer in addition to the five opening wave enemies. In `raw_assets/maps/hoard_mode/hoard_mode.tmx`, add a zero-size `SpawnPoint` named `CourtyardArcher` to `Triggers` at Tiled coordinates x=650.5, y=1840. Its nested `spawnInfo` sets `spawnType` to `ENEMY` and `spawnKey` to `undead_archer`; facing uses the Tiled project default. Add this entry to the existing top-level map in `raw_assets/data/enemies.json`, preserving the other entries:
+
+```json
+"undead_archer": {
+  "name": "Undead Archer",
+  "max_health": 50,
+  "behavior_graph": "wander_archer",
+  "move_speed": 4.0,
+  "logical_size": { "width": 64, "height": 64 },
+  "collision": { "shape": "ELLIPSE", "bounds": { "x1": 20, "y1": 4, "x2": 44, "y2": 14 }, "rotation": 0 },
+  "hitbox_bounds": { "x1": 16, "y1": 6, "x2": 48, "y2": 56 },
+  "sounds": { "move": "sword_hit.wav", "damage": "sword_hit.wav" },
+  "animation": { "speed": 1, "atlas_key": "brainless_undead", "sound_frame": 0, "frame_interval": 0.12 },
+  "detection_bounds": { "radius": 160 },
+  "weapon": "basic_bow"
+}
+```
+
+The existing raw and generated assets remain ignored; regenerate them with `./generate-runtime-assets.sh` after authoring the fixture.
+
 The arena starts with 1,000 player HP and three-minute rounds. Each round restores a living player, spawns an opening batch using the full five-enemy baseline, and schedules reinforcements every 20–40 simulation seconds. Each reinforcement batch independently samples 25–50% inclusive of that baseline. Both batch types use the multiplier `1 + 0.05 × round number`: +5% in round 1 and +50% in round 10. Apply the reinforcement percentage and the unchanged ×1.15 night multiplier before rounding each final batch count to the nearest whole number, with ties rounded up and no fractional carry. Each credited player kill of a map-owned enemy awards the base five points multiplied by the current round multiplier, rounded per kill to the nearest whole number with ties up. Night does not affect score, and earlier kills are not repriced when the round changes. The HUD adds round, time remaining, kills, and score to HP and world time. Arena night runs overnight from 20:00 inclusive to 06:00 exclusive by world clock; N is ignored there. A new session starts at 06:00, and map travel does not reset the clock. Player death is terminal in the arena; ordinary maps retain their existing respawn behavior.
 
 OBJECT and ITEM points use the required shared `objects.atlas`, generated from `raw_assets/sprites/objects/`, and required `raw_assets/data/objects.json`, keyed by `spawnKey`. Each definition requires the exact keys `animation`, `collision`, and `emissive`, each explicitly nullable; omission is invalid. `animation` is nullable: null selects the static atlas region named exactly by `spawnKey`; otherwise it uses the player `AnimationData` fields and `atlas_key` selects indexed frames. `sound_frame` is required but unused for objects. `collision` is explicitly nullable for objects; null creates no physics body or fixture. Otherwise its bounds use bottom-left sprite-local pixels. The sprite is centered on the point, while the fixture retains its offset from the sprite center; object facing rotates both around the point: DOWN 0°, RIGHT 90°, UP 180°, LEFT -90°. Collision rotation adds to facing without rotating the artwork.

@@ -44,5 +44,7 @@ public final class BowAim implements Component {
         target.add(dx * tileWidth * step, dy * tileHeight * step);
     }
 
+    public void aimAt(Vector2 point) { target.set(point); }
+
     public void cancel() { weapon = null; }
 }

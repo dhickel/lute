@@ -42,9 +42,8 @@ final class ArrowFlight {
             case RIGHT -> new Vector2(1, 0);
         } : aimPoint.cpy().sub(start);
         span = travel.len();
-        double northAngle = Math.toDegrees(Math.atan2(Math.abs(travel.x), travel.y));
-        double blend = Math.max(0, Math.min(1, (northAngle - 10) / 15));
-        double lift = Math.min(type.arcHeight(), distance * .15f) * blend * blend * (3 - 2 * blend);
+        double blend = northBlend(travel.x, travel.y);
+        double lift = lift(type, distance, blend);
         rise = travel.y + 4 * lift;
         bend = 8 * lift;
         // Keep the parabola within a quarter sprite pixel of each collision chord.
@@ -66,6 +65,38 @@ final class ArrowFlight {
         double apex = bend > 0 ? rise / bend : Double.POSITIVE_INFINITY;
         endProgress = blend > 0 && blend < 1 && Math.abs(travel.x) * apex < 32 * GameConsts.UNIT_SCALE + collisionPad
             ? apex : Double.POSITIVE_INFINITY;
+    }
+
+    private static double northBlend(float x, float y) {
+        double angle = Math.toDegrees(Math.atan2(Math.abs(x), y));
+        return Math.max(0, Math.min(1, (angle - 10) / 15));
+    }
+
+    private static double lift(Projectile type, float distance, double blend) {
+        return Math.min(type.arcHeight(), distance * .15f) * blend * blend * (3 - 2 * blend);
+    }
+
+    // Find a point the arrow and a constant-velocity target reach at the same time.
+    // If the lifetime is too short, take a direct shot rather than leading beyond reach.
+    static Vector2 intercept(Projectile type, Vector2 start, Vector2 center, Vector2 velocity) {
+        if (velocity.isZero() || center.equals(start)) { return center.cpy(); }
+        float low = 0, high = type.lifetime();
+        var point = center.cpy().mulAdd(velocity, high);
+        if (secondsToAim(type, start, point) > high) { return center.cpy(); }
+        for (int i = 0; i < 24; i++) {
+            float time = (low + high) * .5f;
+            point.set(center).mulAdd(velocity, time);
+            if (secondsToAim(type, start, point) > time) { low = time; }
+            else { high = time; }
+        }
+        return point.set(center).mulAdd(velocity, high);
+    }
+
+    private static double secondsToAim(Projectile type, Vector2 start, Vector2 point) {
+        float x = point.x - start.x, y = point.y - start.y;
+        float distance = Vector2.len(x, y);
+        double lift = lift(type, distance, northBlend(x, y));
+        return distanceAt(1, distance, x, y + 4 * lift, 8 * lift) / type.speed();
     }
 
     int boundsVertexCount() { return vertices.length; }
@@ -108,15 +139,19 @@ final class ArrowFlight {
     }
 
     private double distanceAt(double at) {
+        return distanceAt(at, span, travel.x, rise, bend);
+    }
+
+    private static double distanceAt(double at, double span, double x, double rise, double bend) {
         double drop = bend * at;
         // For nearly straight intervals avoid subtracting almost equal antiderivative values.
-        if (drop < 1e-6 * span) { return at * Math.hypot(travel.x, rise - drop / 2); }
-        return (arcIntegral(rise) - arcIntegral(rise - drop)) / bend;
+        if (drop <= 1e-6 * span) { return at * Math.hypot(x, rise - drop / 2); }
+        return (arcIntegral(x, rise) - arcIntegral(x, rise - drop)) / bend;
     }
 
     // Integral of hypot(horizontal, slope), with a separate exact vertical limit.
-    private double arcIntegral(double slope) {
-        double x = Math.abs(travel.x);
+    private static double arcIntegral(double x, double slope) {
+        x = Math.abs(x);
         double y = Math.abs(slope);
         if (x == 0) { return slope * y / 2; }
         double magnitude = Math.hypot(x, y);

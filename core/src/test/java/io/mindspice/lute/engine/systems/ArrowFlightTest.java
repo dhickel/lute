@@ -31,6 +31,7 @@ public final class ArrowFlightTest {
         var aim = new Vector2(1, 0);
         var world = new World(Vector2.Zero, true);
         try {
+            verifyIntercept(world);
             verifySpeed(world, 1f, .15f);
             verifySpeed(world, 8f, .5f);
             verifyNorthShots(world);
@@ -154,6 +155,22 @@ public final class ArrowFlightTest {
             max = Math.max(max, value);
         }
         return max - min;
+    }
+
+    private static void verifyIntercept(World world) {
+        var center = new Vector2(3, -1);
+        require(ArrowFlight.intercept(TYPE, Vector2.Zero, center, Vector2.Zero).equals(center),
+            "Stationary target needs no lead");
+        require(ArrowFlight.intercept(TYPE, center, center, new Vector2(2, 3)).equals(center),
+            "Coincident target does not invent a lead direction");
+        require(ArrowFlight.intercept(TYPE, Vector2.Zero, center, new Vector2(20, 0)).equals(center),
+            "An outrunning target gets a direct shot");
+        var velocity = new Vector2(0, 4);
+        var aim = ArrowFlight.intercept(TYPE, Vector2.Zero, center, velocity);
+        float time = (aim.y - center.y) / velocity.y;
+        var arrow = launch(TYPE, aim);
+        require(time > 0 && !arrow.finished(world, time) && arrow.tip.epsilonEquals(aim, .0001f),
+            "Lead time matches actual curved flight, not straight-line distance");
     }
 
     private static void verifySpeed(World world, float aimX, float lift) {

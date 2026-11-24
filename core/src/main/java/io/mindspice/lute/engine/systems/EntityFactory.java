@@ -24,6 +24,7 @@ import io.mindspice.lute.engine.assets.CharacterAssets;
 import io.mindspice.lute.engine.assets.ObjectAssets;
 import io.mindspice.lute.engine.data.json.CharacterBounds;
 import io.mindspice.lute.engine.data.json.CollisionData;
+import io.mindspice.lute.engine.behaviorgraph.BehaviorGraphs;
 import io.mindspice.lute.engine.components.ActorAi;
 import io.mindspice.lute.engine.data.json.MapActorData;
 import io.mindspice.lute.engine.data.json.WeaponsData;
@@ -177,6 +178,9 @@ public class EntityFactory extends EntitySystem {
             .add(new CompositeCharacter(region.getRegionWidth(), region.getRegionHeight()));
         entity.add(new Health(definition.maxHealth()));
         entity.add(new ActorAi(definition.behaviorGraph()));
+        if (BehaviorGraphs.ARCHER.equals(definition.behaviorGraph())) {
+            entity.add(new BowAim(transform.getSize().x, transform.getSize().y));
+        }
         entity.add(new Move(definition.moveSpeed()));
         entity.add(new Combat());
         entity.add(new AnimationPlayer(entity));
