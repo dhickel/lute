@@ -80,7 +80,7 @@ Both asset trees are ignored. Provision the `hoard_mode` map and manifest in `ra
   "hitbox_bounds": { "x1": 16, "y1": 6, "x2": 48, "y2": 56 },
   "sounds": { "move": "sword_hit.wav", "damage": "sword_hit.wav" },
   "animation": { "speed": 1, "atlas_key": "brainless_undead", "sound_frame": 0, "frame_interval": 0.12 },
-  "detection_bounds": { "radius": 160 },
+  "detection_bounds": { "radius": 320 },
   "weapon": "basic_bow"
 }
 ```

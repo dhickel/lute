@@ -177,7 +177,7 @@ public class EntityFactory extends EntitySystem {
             .add(new Graphic(region, Color.WHITE.cpy()))
             .add(new CompositeCharacter(region.getRegionWidth(), region.getRegionHeight()));
         entity.add(new Health(definition.maxHealth()));
-        entity.add(new ActorAi(definition.behaviorGraph()));
+        entity.add(new ActorAi(definition.behaviorGraph(), definition.detectionBounds().radius() * GameConsts.UNIT_SCALE));
         if (BehaviorGraphs.ARCHER.equals(definition.behaviorGraph())) {
             entity.add(new BowAim(transform.getSize().x, transform.getSize().y));
         }

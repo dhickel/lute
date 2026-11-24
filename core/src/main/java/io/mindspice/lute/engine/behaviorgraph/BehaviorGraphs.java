@@ -1,6 +1,9 @@
 package io.mindspice.lute.engine.behaviorgraph;
 
+import com.badlogic.ashley.core.Entity;
+import io.mindspice.lute.engine.components.ActorAi;
 import io.mindspice.lute.engine.components.ActorAi.Mode;
+import io.mindspice.lute.engine.components.Combat;
 import io.mindspice.lute.engine.components.Combat.AttackSlot;
 import io.mindspice.lute.engine.components.Loadout;
 import io.mindspice.lute.engine.data.json.WeaponsData.WeaponData.CollisionType;
@@ -36,12 +39,30 @@ public final class BehaviorGraphs {
         return root;
     }
 
+    /** Only an engaging archer can step or start another draw during projectile recovery. */
+    public static boolean attackLocksMovement(Entity entity) {
+        var combat = Combat.MAPPER.get(entity);
+        if (combat == null || !combat.isAttacking()) { return false; }
+        var ai = ActorAi.MAPPER.get(entity);
+        return ai == null || ai.mode() != Mode.ENGAGE || !ARCHER.equals(ai.behaviorGraphKey())
+            || combat.getActiveAttack().collisionType() != CollisionType.PROJECTILE;
+    }
+
     private static RootNode archer() {
         var root = new RootNode();
         var bow = DecisionNode.of("Primary projectile weapon", List.of((entity, _) ->
             Loadout.MAPPER.get(entity).getWeapon().primary().collisionType() == CollisionType.PROJECTILE));
-        bow.addEdgeNode(ActionNode.of("Aim at visible target", Action.stop().andThen(Action.faceTarget())
-            .andThen(Action.attack(AttackSlot.PRIMARY))));
+        var stopAndFace = Action.stop().andThen(Action.faceTarget());
+        var ready = DecisionNode.of("Bow ready", List.of(Decision.attackReady(AttackSlot.PRIMARY)));
+        ready.addEdgeNode(ActionNode.of("Draw and release", stopAndFace.andThen(Action.attack(AttackSlot.PRIMARY))));
+        bow.addEdgeNode(ready);
+        var near = DecisionNode.of("Within half detection radius", List.of((entity, state) -> {
+            float range = ActorAi.MAPPER.get(entity).detectionRadius() * .5f;
+            return state.targetOffset().len2() <= range * range;
+        }));
+        near.addEdgeNode(ActionNode.of("Hold position", stopAndFace));
+        bow.addEdgeNode(near);
+        bow.addEdgeNode(ActionNode.of("Approach between shots", Action.followTarget()));
         root.addEdgeNode(bow);
         root.addEdgeNode(PURSUIT.get(Mode.ENGAGE));
         return root;

@@ -59,7 +59,7 @@ public final class AwarenessSystem extends IteratingSystem {
             state.setVisibleTarget(target);
             state.setTargetOffset(ai.updateTarget(from, visible, deltaTime));
         }
-        if (Combat.MAPPER.get(actor).isAttacking()) {
+        if (BehaviorGraphs.attackLocksMovement(actor)) {
             stop.perform(actor, state);
             return;
         }

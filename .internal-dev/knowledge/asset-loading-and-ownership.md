@@ -26,6 +26,10 @@ The four typed maps already enumerate every registered asset. An additional `own
 
 A terrain GID alone does not uniquely identify both a sheet-local animation frame and an overlapping placement. Generated atlas regions use `__lute_tile/<firstgid>` with the local tile ID as index. Placement resolution follows tileset declaration precedence, including sparse collection holes; animation frames remain qualified to their own sheet. Regenerate earlier GID-only atlases. The real-GL fixture compared identical framebuffers and measured 8 to 1 draws for its particular four-sheet layout, not a general performance guarantee.
 
+## Recovering blocked runtime asset publication
+
+If a locally modified generated file blocks runtime publication, inspect its semantics and back up the affected file or files outside the repository. Reconcile the intended data in the raw assets, then move only the affected generated file out of the tree and regenerate. Leave the ownership manifest intact. This process has successfully restored publication.
+
 ## Project Relevance
 
 The custom service uses direct map loading and disposes the map on unload. Callers must not retain or use the map or dependent resources afterward. Logical IDs and loader ownership are separate concerns; lookup keys need not expose file paths or LibGDX descriptors.

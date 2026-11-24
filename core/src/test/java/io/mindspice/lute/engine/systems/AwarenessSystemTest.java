@@ -58,12 +58,30 @@ public final class AwarenessSystemTest {
         var player = actor(engine, world, Actor.Role.PLAYER, 53, 50);
         var shot = new CombatWeapon.Attack("bow", new Scalar(10), 0, .3f, null, null, null, null, CollisionType.PROJECTILE);
         var bow = new CombatWeapon.Weapon("bow", "", shot, shot);
-        enemy.add(new ActorAi(BehaviorGraphs.ARCHER)).add(new Loadout(new Loadout.Equipment(null, null, null, null),
+        body(enemy).setType(BodyDef.BodyType.DynamicBody);
+        engine.addSystem(new PhysicMoveSystem());
+        enemy.add(new ActorAi(BehaviorGraphs.ARCHER, 4f)).add(new Loadout(new Loadout.Equipment(null, null, null, null),
             "bow", Map.of("bow", bow), _ -> { }));
         var combat = Combat.MAPPER.get(enemy);
         engine.update(0);
         check(combat.requestedTarget() == player && Move.MAPPER.get(enemy).getDirection().isZero(),
             "Archer chooses its ranged engage graph instead of chasing");
+        combat.consumeAttackRequest();
+        combat.beginAttack(Combat.AttackSlot.PRIMARY, shot, Facing.Direction.RIGHT);
+        engine.update(0);
+        check(body(enemy).getLinearVelocity().x > 0 && !combat.hasAttackRequest(),
+            "Outer archer advances during shot recovery without requesting an early draw");
+        body(player).setTransform(52, 50, 0);
+        engine.update(0);
+        check(body(enemy).getLinearVelocity().isZero() && !combat.hasAttackRequest(),
+            "Half-radius boundary is inside the hold zone");
+        body(player).setTransform(53, 50, 0);
+        engine.update(0);
+        check(body(enemy).getLinearVelocity().x > 0, "Approach resumes when the visible player moves out");
+        combat.tickCooldown(shot.cooldownSeconds());
+        engine.update(0);
+        check(body(enemy).getLinearVelocity().isZero() && combat.requestedTarget() == player,
+            "Ready bow stops to draw again even before release playback finishes");
         combat.consumeAttackRequest();
         var wall = world.createBody(new BodyDef());
         wall.setTransform(51, 50, 0);
@@ -386,7 +404,7 @@ public final class AwarenessSystemTest {
         if (role != Actor.Role.PLAYER) {
             var attack = new CombatWeapon.Attack("unarmed", new Scalar(10), 0, .3f, null, null, null, null, CollisionType.MELEE);
             var weapon = new CombatWeapon.Weapon("unarmed", "", attack, attack);
-            entity.add(new ActorAi(role == Actor.Role.ENEMY ? "wander_attack" : "wander"))
+            entity.add(new ActorAi(role == Actor.Role.ENEMY ? "wander_attack" : "wander", 4f))
                 .add(new Combat()).add(new Move(1f))
                 .add(new Loadout(new Loadout.Equipment(null, null, null, null), null, Map.of("unarmed", weapon), _ -> { }));
         }

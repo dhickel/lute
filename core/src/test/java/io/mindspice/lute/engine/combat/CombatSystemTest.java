@@ -427,7 +427,7 @@ public final class CombatSystemTest {
             var archer = game.player;
             archer.remove(Controller.class);
             var aim = new BowAim(1, 1);
-            archer.add(aim).add(new ActorAi(BehaviorGraphs.ARCHER));
+            archer.add(aim).add(new ActorAi(BehaviorGraphs.ARCHER, 8f));
             var target = game.target(1, true);
             var body = Physic.MAPPER.get(target).getBody();
             body.setType(BodyDef.BodyType.DynamicBody);
@@ -451,7 +451,18 @@ public final class CombatSystemTest {
             }
             check(!aim.isAiming() && game.combat().isCoolingDown("bow", Combat.AttackSlot.PRIMARY),
                 "Enemy releases and starts primary cooldown");
-            for (int i = 0; i < 90; i++) { game.update(STEP); }
+            long firstShot = game.combat().getAttackId();
+            for (int i = 0; i < 90; i++) {
+                // Keep the moving-target case single-shot to test lead at the original release.
+                if (releaseSpeed == 0f) {
+                    graph.travel(archer, sight);
+                    check(Move.MAPPER.get(archer).getDirection().isZero(), "Inner archer never rushes between shots");
+                }
+                game.update(STEP);
+            }
+            if (releaseSpeed == 0f) {
+                check(game.combat().getAttackId() > firstShot, "Continuous inner sight produces another release");
+            }
             check(Health.MAPPER.get(target).getCurrent() < 100,
                 "Real enemy arrow hits target moving at release speed " + releaseSpeed);
         }

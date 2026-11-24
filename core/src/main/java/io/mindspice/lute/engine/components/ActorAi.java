@@ -24,7 +24,14 @@ public final class ActorAi implements Component {
     // Start with a wait so the authored spawn facing is visible.
     private float wanderTimeLeft = wanderPhaseSeconds();
 
-    public ActorAi(String behaviorGraphKey) { this.behaviorGraphKey = behaviorGraphKey; }
+    private final float detectionRadius;
+
+    public ActorAi(String behaviorGraphKey, float detectionRadius) {
+        this.behaviorGraphKey = behaviorGraphKey;
+        this.detectionRadius = detectionRadius;
+    }
+
+    public float detectionRadius() { return detectionRadius; }
 
     public String behaviorGraphKey() { return behaviorGraphKey; }
     public Mode mode() { return mode; }
