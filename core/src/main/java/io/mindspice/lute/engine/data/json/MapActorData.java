@@ -1,7 +1,7 @@
 package io.mindspice.lute.engine.data.json;
 
 import com.fasterxml.jackson.annotation.JsonProperty;
-import io.mindspice.lute.engine.ai.decisiongraph.Graphs;
+import io.mindspice.lute.engine.behaviorgraph.BehaviorGraphs;
 
 public sealed interface MapActorData permits MapActorData.Npc, MapActorData.Enemy {
     AnimationData animation();
@@ -12,7 +12,7 @@ public sealed interface MapActorData permits MapActorData.Npc, MapActorData.Enem
     float moveSpeed();
     String name();
     int maxHealth();
-    String decisionGraph();
+    String behaviorGraph();
     String weapon();
 
     record Npc(
@@ -26,10 +26,10 @@ public sealed interface MapActorData permits MapActorData.Npc, MapActorData.Enem
         @JsonProperty(required = true) CollisionData collision,
         @JsonProperty("hitbox_bounds") CharacterBounds hitboxBounds,
         @JsonProperty("detection_bounds") DetectionBounds detectionBounds,
-        @JsonProperty("decision_graph") String decisionGraph
+        @JsonProperty("behavior_graph") String behaviorGraph
     ) implements MapActorData {
         public Npc {
-            validate(name, moveSpeed, maxHealth, animation, sounds, logicalSize, collision, hitboxBounds, detectionBounds, decisionGraph);
+            validate(name, moveSpeed, maxHealth, animation, sounds, logicalSize, collision, hitboxBounds, detectionBounds, behaviorGraph);
             if (loadout == null) { throw new IllegalArgumentException("NPC loadout is required"); }
         }
 
@@ -47,10 +47,10 @@ public sealed interface MapActorData permits MapActorData.Npc, MapActorData.Enem
         @JsonProperty(required = true) CollisionData collision,
         @JsonProperty("hitbox_bounds") CharacterBounds hitboxBounds,
         @JsonProperty("detection_bounds") DetectionBounds detectionBounds,
-        @JsonProperty("decision_graph") String decisionGraph
+        @JsonProperty("behavior_graph") String behaviorGraph
     ) implements MapActorData {
         public Enemy {
-            validate(name, moveSpeed, maxHealth, animation, sounds, logicalSize, collision, hitboxBounds, detectionBounds, decisionGraph);
+            validate(name, moveSpeed, maxHealth, animation, sounds, logicalSize, collision, hitboxBounds, detectionBounds, behaviorGraph);
             if (weapon != null && weapon.isBlank()) { throw new IllegalArgumentException("Enemy weapon must not be blank"); }
         }
     }
@@ -66,8 +66,8 @@ public sealed interface MapActorData permits MapActorData.Npc, MapActorData.Enem
 
     private static void validate(String name, float speed, int maxHealth, AnimationData animation,
                                  PlayerData.Sounds sounds, PlayerData.LogicalSize size, CollisionData feet,
-                                 CharacterBounds hitbox, DetectionBounds detection, String decisionGraph) {
-        Graphs.requireKey(decisionGraph);
+                                 CharacterBounds hitbox, DetectionBounds detection, String behaviorGraph) {
+        BehaviorGraphs.requireKey(behaviorGraph);
         if (name == null || name.isBlank()) { throw new IllegalArgumentException("Actor name must not be blank"); }
         if (maxHealth <= 0) { throw new IllegalArgumentException("Actor max_health must be positive"); }
         if (!Float.isFinite(speed) || speed <= 0f) {

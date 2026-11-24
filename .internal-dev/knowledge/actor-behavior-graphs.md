@@ -1,17 +1,17 @@
-# Actor decision graphs and persistent modes
+# Actor behavior graphs and persistent modes
 
 ## Topic
 
-Per-actor modes and decision graphs for actor perception and movement.
+Per-actor modes and behavior graphs for actor perception and movement.
 
 ## Source References
 
-- `AwarenessSystem`, `Graphs`, and `ActorAi` in `core/src/main/java/io/mindspice/lute/engine`.
+- `AwarenessSystem`, `BehaviorGraphs`, and `ActorAi` in `core/src/main/java/io/mindspice/lute/engine`.
 - [Map actor awareness decision](../specifications/decisions.md#map-actor-awareness) and [Composite Characters](../specifications/composite-characters.md).
 
 ## Key Takeaways
 
-The accepted actor design uses a per-actor Wander/Engage/Investigate FSM with simple explicit Java transitions. The current mode selects a decision graph; the graph chooses actions within that mode. Keep mode, timers, and last-seen coordinates per actor, not in shared graph state. This supersedes the earlier guidance that no actor FSM was needed.
+The accepted actor design uses a per-actor Wander/Engage/Investigate FSM with simple explicit Java transitions. The current mode selects a behavior graph; the graph chooses actions within that mode. The name covers actions as well as decisions; it does not imply generic non-actor traversal. The graph package is `io.mindspice.lute.engine.behaviorgraph`, with registry `BehaviorGraphs` and Java accessors `behaviorGraph()` and `behaviorGraphKey()`. Keep mode, timers, and last-seen coordinates per actor, not in shared graph state. This supersedes the earlier guidance that no actor FSM was needed.
 
 The existing feet-centered sensor and feet-to-feet line of sight acquire a living player. Engage records the last seen world-space feet coordinates. On loss of detection, Investigate steers directly to that point and returns to Wander within 8 logical pixels or after 2 seconds, whichever comes first. Reacquisition is possible on any tick. Only live sight can request melee; the existing 32-pixel range, cooldown, and damage remain unchanged. Perception continues during attack, while motion and facing remain committed until the attack ends. The intended contract adds no pathfinding or saved data. NPCs do not acquire targets by default, but a living NPC or enemy damaged by a bow checks the living shooter's current position at impact. With feet-to-feet sight unobstructed by solid cover and within three times the victim's detection radius, it can identify and pursue the shooter; even an unarmed NPC can retaliate. Attacks still require live sight and the existing cooldown, and sight loss uses the existing Investigate behavior. Each NPC and enemy independently chooses each wander and pause duration from 1–3 seconds.
 

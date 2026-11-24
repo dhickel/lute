@@ -7,9 +7,9 @@ import com.badlogic.gdx.math.Vector2;
 import com.badlogic.gdx.physics.box2d.CircleShape;
 import com.badlogic.gdx.physics.box2d.Fixture;
 import com.badlogic.gdx.physics.box2d.World;
-import io.mindspice.lute.engine.ai.decisiongraph.Action;
-import io.mindspice.lute.engine.ai.decisiongraph.FocusState;
-import io.mindspice.lute.engine.ai.decisiongraph.Graphs;
+import io.mindspice.lute.engine.behaviorgraph.Action;
+import io.mindspice.lute.engine.behaviorgraph.BehaviorGraphs;
+import io.mindspice.lute.engine.behaviorgraph.FocusState;
 import io.mindspice.lute.engine.components.Actor;
 import io.mindspice.lute.engine.components.ActorAi;
 import io.mindspice.lute.engine.components.Combat;
@@ -40,7 +40,7 @@ public final class AwarenessSystem extends IteratingSystem {
             stop.perform(actor, state);
             return;
         }
-        var graphs = Graphs.forKey(ai.graphKey());
+        var graphs = BehaviorGraphs.forKey(ai.behaviorGraphKey());
         var shooter = ai.retaliationTarget();
         boolean detectsPlayer = Actor.MAPPER.get(actor).role() == Actor.Role.ENEMY
             && graphs.containsKey(ActorAi.Mode.ENGAGE);
@@ -63,7 +63,7 @@ public final class AwarenessSystem extends IteratingSystem {
             stop.perform(actor, state);
             return;
         }
-        var graph = ai.mode() == ActorAi.Mode.WANDER ? graphs.get(ai.mode()) : Graphs.pursuit(ai.mode());
+        var graph = ai.mode() == ActorAi.Mode.WANDER ? graphs.get(ai.mode()) : BehaviorGraphs.pursuit(ai.mode());
         graph.travel(actor, state);
     }
 

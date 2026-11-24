@@ -16,7 +16,7 @@ public final class ActorAi implements Component {
 
     public enum Mode { WANDER, ENGAGE, INVESTIGATE }
 
-    private final String graphKey;
+    private final String behaviorGraphKey;
     private Mode mode = Mode.WANDER;
     private final Vector2 lastSeenFeet = new Vector2();
     private float investigateTimeLeft;
@@ -24,9 +24,9 @@ public final class ActorAi implements Component {
     // Start with a wait so the authored spawn facing is visible.
     private float wanderTimeLeft = wanderPhaseSeconds();
 
-    public ActorAi(String graphKey) { this.graphKey = graphKey; }
+    public ActorAi(String behaviorGraphKey) { this.behaviorGraphKey = behaviorGraphKey; }
 
-    public String graphKey() { return graphKey; }
+    public String behaviorGraphKey() { return behaviorGraphKey; }
     public Mode mode() { return mode; }
 
     public Entity retaliationTarget() { return retaliateAgainst; }

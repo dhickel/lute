@@ -1,4 +1,4 @@
-package io.mindspice.lute.engine.ai.decisiongraph;
+package io.mindspice.lute.engine.behaviorgraph;
 
 import com.badlogic.ashley.core.Entity;
 import io.mindspice.lute.engine.components.ActorAi;

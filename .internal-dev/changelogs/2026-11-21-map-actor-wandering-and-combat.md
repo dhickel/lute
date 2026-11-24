@@ -16,7 +16,7 @@ Consolidated role-specific definitions into `actors.json`, resolved by spawn typ
 
 - Core actor data loader and records, decision graphs and `ActorAi`, spawn factory, `AwarenessSystem`, and `GameScreen`.
 - Core and desktop tests, the tracked actor fixture, and the local raw and runtime actor catalogues.
-- `README.md`, `docs/asset-service.md`, composite character and decisions specs, and the [state-machine research note](../knowledge/actor-decision-graphs.md).
+- `README.md`, `docs/asset-service.md`, composite character and decisions specs, and the [state-machine research note](../knowledge/actor-behavior-graphs.md).
 
 ## Behavioral Impact
 

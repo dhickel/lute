@@ -1,4 +1,4 @@
-package io.mindspice.lute.engine.ai.decisiongraph;
+package io.mindspice.lute.engine.behaviorgraph;
 
 import io.mindspice.lute.engine.components.ActorAi.Mode;
 import io.mindspice.lute.engine.components.Combat.AttackSlot;
@@ -6,7 +6,7 @@ import io.mindspice.lute.engine.components.Combat.AttackSlot;
 import java.util.List;
 import java.util.Map;
 
-public final class Graphs {
+public final class BehaviorGraphs {
     private static final RootNode WANDER = actionGraph("Wander", Action.wander());
     private static final Map<Mode, RootNode> PURSUIT = Map.of(Mode.WANDER, WANDER, Mode.ENGAGE, engage(),
         Mode.INVESTIGATE, actionGraph("Investigate last seen position", Action.followTarget()));
@@ -14,11 +14,11 @@ public final class Graphs {
         "wander", Map.of(Mode.WANDER, WANDER), "wander_attack", PURSUIT
     );
 
-    private Graphs() { }
+    private BehaviorGraphs() { }
 
     public static void requireKey(String key) {
         if (key == null || !PROFILES.containsKey(key)) {
-            throw new IllegalArgumentException("Missing or unknown decision_graph: " + key);
+            throw new IllegalArgumentException("Missing or unknown behavior_graph: " + key);
         }
     }
 

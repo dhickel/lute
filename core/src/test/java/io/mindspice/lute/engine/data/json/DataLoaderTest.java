@@ -142,8 +142,8 @@ public final class DataLoaderTest {
             "sounds": {"move": "step.wav", "damage": "hurt.wav"},
             "detection_bounds": {"radius": 72}
             """;
-        String npc = "{\"name\":\"Town Guard\"," + common + ",\"decision_graph\":\"wander\",\"loadout\":{\"body\":\"basic\",\"weapon\":\"basic_bow\"}}";
-        String enemy = "{\"name\":\"Undead Guard\"," + common.replace("72}", "192.5}") + ",\"decision_graph\":\"wander_attack\",\"weapon\":\"basic_sword\"}";
+        String npc = "{\"name\":\"Town Guard\"," + common + ",\"behavior_graph\":\"wander\",\"loadout\":{\"body\":\"basic\",\"weapon\":\"basic_bow\"}}";
+        String enemy = "{\"name\":\"Undead Guard\"," + common.replace("72}", "192.5}") + ",\"behavior_graph\":\"wander_attack\",\"weapon\":\"basic_sword\"}";
         String npcs = "{\"guard\":" + npc + ",\"merchant\":" + npc.replace("Town Guard", "Merchant").replace("80", "60") + "}";
         String entry = "{\"guard\":%s}";
         try {
@@ -168,8 +168,8 @@ public final class DataLoaderTest {
                 "NPC definitions mirror player gameplay and loadout fields");
             var undead = data.enemies().get("guard");
             check(undead.weapon().equals("basic_sword") && guard.detectionBounds().radius() == 72
-                && undead.detectionBounds().radius() == 192.5f && guard.decisionGraph().equals("wander")
-                && undead.decisionGraph().equals("wander_attack"), "Role-scoped IDs bind distinct radii and graph keys");
+                && undead.detectionBounds().radius() == 192.5f && guard.behaviorGraph().equals("wander")
+                && undead.behaviorGraph().equals("wander_attack"), "Role-scoped IDs bind distinct radii and graph keys");
             check(guard.name().equals("Town Guard") && undead.name().equals("Undead Guard")
                 && guard.maxHealth() == 80 && undead.maxHealth() == 80, "Both catalogues bind name and maximum health");
             Files.writeString(characters, "{}");
@@ -183,7 +183,7 @@ public final class DataLoaderTest {
                     enemy.replace("basic_sword", "unknown_weapon"), enemy.replace("192.5", "0"),
                     enemy.replace("192.5", "1e100"), enemy.replace("\"radius\": 192.5", ""),
                     enemy.replace("\"x2\": 50", "\"x2\": 100"), "null",
-                    enemy.replace(",\"decision_graph\":\"wander_attack\"", ""),
+                    enemy.replace(",\"behavior_graph\":\"wander_attack\"", ""),
                     enemy.replace("wander_attack", ""), enemy.replace("wander_attack", "unknown_graph"),
                     enemy.replace("\"wander_attack\"", "null")}) {
                 Files.writeString(enemies, entry.formatted(invalid));
@@ -197,6 +197,8 @@ public final class DataLoaderTest {
             }
             Files.writeString(characters, npcs);
             for (var target : Map.of(characters, npc, enemies, enemy).entrySet()) {
+                Files.writeString(target.getKey(), entry.formatted(target.getValue().replace("\"behavior_graph\"", "\"decision_graph\"")));
+                rejects(DataLoader::loadGameData, "Legacy decision_graph is not accepted in " + target.getKey());
                 var definition = (tools.jackson.databind.node.ObjectNode) DataLoader.mapper.readTree(target.getValue());
                 for (String field : new String[]{"name", "max_health"}) {
                     var missing = definition.deepCopy();

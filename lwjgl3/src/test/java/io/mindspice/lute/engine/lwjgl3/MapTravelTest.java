@@ -137,8 +137,8 @@ public final class MapTravelTest extends ApplicationAdapter {
             && Health.MAPPER.get(oldEnemy).getMaximum() == enemy.maxHealth(), "Map actors use authored maximum health");
         require(Actor.MAPPER.get(player).role() == Actor.Role.PLAYER && body(player).getFixtureList().size == 2,
             "Player is detectable without owning a third fixture");
-        require(ActorAi.MAPPER.get(oldNpc).graphKey().equals(npc.decisionGraph())
-            && ActorAi.MAPPER.get(oldEnemy).graphKey().equals(enemy.decisionGraph()), "Spawned actors use their authored graph keys");
+        require(ActorAi.MAPPER.get(oldNpc).behaviorGraphKey().equals(npc.behaviorGraph())
+            && ActorAi.MAPPER.get(oldEnemy).behaviorGraphKey().equals(enemy.behaviorGraph()), "Spawned actors use their authored graph keys");
         verifyActorAi(oldNpc, oldEnemy, player, awareness);
         var oldNpcBody = body(oldNpc);
         var oldEnemyBody = body(oldEnemy);

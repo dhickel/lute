@@ -1,4 +1,4 @@
-package io.mindspice.lute.engine.ai.decisiongraph;
+package io.mindspice.lute.engine.behaviorgraph;
 
 import java.util.List;
 import java.util.concurrent.ThreadLocalRandom;
