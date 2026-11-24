@@ -15,6 +15,9 @@ public class PhysicSystem extends IteratingSystem implements EntityListener {
     private final World world;
     private final float interval;
     private float accumulator;
+    private long completedSteps;
+
+    long completedSteps() { return completedSteps; }
 
 
     public PhysicSystem(World world, float interval) {
@@ -36,6 +39,7 @@ public class PhysicSystem extends IteratingSystem implements EntityListener {
             accumulator -= interval;
             super.update(deltaTime);
             world.step(interval, 6, 2);
+            completedSteps++;
             var sensors = getEngine().getSystem(MapSensorSystem.class);
             if (sensors != null) { sensors.afterPhysicsStep(); }
             var hoard = getEngine().getSystem(HoardSystem.class);

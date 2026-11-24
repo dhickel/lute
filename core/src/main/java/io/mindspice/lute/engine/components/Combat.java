@@ -15,11 +15,14 @@ public class Combat implements Component {
     public static final ComponentMapper<Combat> MAPPER = ComponentMapper.getFor(Combat.class);
     private AttackSlot attackRequested;
     private Entity requestedTarget;
+    private boolean deferredRequest;
     private CombatWeapon.Attack activeAttack;
     private Facing.Direction attackFacing;
     private boolean attacking;
     private final Map<AttackKey, Float> cooldowns = new HashMap<>();
+    private AttackKey activeKey;
     private Fixture sensor;
+    private long sensorCreatedAtStep;
     private long attackId;
     private final Set<Entity> hitTargets = Collections.newSetFromMap(new IdentityHashMap<>());
 
@@ -56,11 +59,15 @@ public class Combat implements Component {
         requestedTarget = target;
     }
 
+    public void deferRequest() { deferredRequest = hasAttackRequest(); }
+    public boolean hasDeferredRequest() { return deferredRequest; }
+    public AttackSlot requestedSlot() { return attackRequested; }
     public Entity requestedTarget() { return requestedTarget; }
 
     public AttackSlot consumeAttackRequest() {
         var requested = attackRequested;
         attackRequested = null;
+        deferredRequest = false;
         requestedTarget = null;
         return requested;
     }
@@ -68,18 +75,24 @@ public class Combat implements Component {
     public void beginAttack(AttackSlot slot, CombatWeapon.Attack attack, Facing.Direction facing) {
         activeAttack = attack;
         attackFacing = facing;
-        cooldowns.put(new AttackKey(attack.weaponId(), slot), attack.cooldownSeconds());
+        activeKey = new AttackKey(attack.weaponId(), slot);
+        cooldowns.put(activeKey, attack.cooldownSeconds());
         attacking = true;
         attackId++;
         hitTargets.clear();
     }
 
-    public void setSensor(Fixture sensor) { this.sensor = sensor; }
+    public boolean activeAttackCoolingDown() { return cooldowns.containsKey(activeKey); }
+    public void setSensor(Fixture sensor, long step) {
+        this.sensor = sensor;
+        sensorCreatedAtStep = step;
+    }
+    public boolean sensorHasStepped(long step) { return sensor != null && step > sensorCreatedAtStep; }
 
     public void endAttack() {
         attacking = false;
         sensor = null;
-        consumeAttackRequest();
+        activeKey = null;
         activeAttack = null;
         attackFacing = null;
         hitTargets.clear();

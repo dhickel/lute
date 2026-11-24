@@ -7,10 +7,8 @@ import com.badlogic.gdx.Gdx;
 import com.badlogic.gdx.math.Vector2;
 import io.mindspice.lute.engine.components.ActorAi;
 import io.mindspice.lute.engine.components.Combat;
-import io.mindspice.lute.engine.components.Controller;
 import io.mindspice.lute.engine.components.Facing;
 import io.mindspice.lute.engine.components.Move;
-import io.mindspice.lute.engine.data.json.WeaponsData.WeaponData.CollisionType;
 
 public class FacingSystem extends IteratingSystem {
     public FacingSystem() {
@@ -20,24 +18,17 @@ public class FacingSystem extends IteratingSystem {
     @Override
     protected void processEntity(Entity entity, float deltaTime) {
         var combat = Combat.MAPPER.get(entity);
-        // Only player melee uses held movement to steer an already active attack.
-        if (combat != null && combat.isAttacking()
-            && (!Controller.MAPPER.has(entity) || combat.getActiveAttack().collisionType() != CollisionType.MELEE)) {
-            return;
-        }
+        if (combat != null && combat.isAttacking()) { return; }
         Move move = Move.MAPPER.get(entity);
         Vector2 moveDir = move.getDirection();
+        if (moveDir.isZero()) { return; }
+
         Facing facing = Facing.MAPPER.get(entity);
         if (ActorAi.MAPPER.has(entity)) {
             facing.faceAlong(moveDir);
             return;
         }
-        faceFromMovement(facing, moveDir);
-    }
-
-    static void faceFromMovement(Facing facing, Vector2 moveDir) {
-        if (moveDir.isZero()) { return; }
-        switch (moveDir) {
+        switch(moveDir) {
             case Vector2 v when v.y > 0f -> facing.setDirection(Facing.Direction.UP);
             case Vector2 v when v.y < 0f -> facing.setDirection(Facing.Direction.DOWN);
             case Vector2 v when v.x > 0f -> facing.setDirection(Facing.Direction.RIGHT);

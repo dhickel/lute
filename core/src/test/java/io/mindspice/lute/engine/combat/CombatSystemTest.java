@@ -61,9 +61,13 @@ public final class CombatSystemTest {
         frameTiming();
         speedAndSkippedFrames();
         movementAndInput();
-        steeredMeleeContacts();
-        sameUpdateMeleeReplacement();
         cooldownCancelsMeleeRecovery();
+        movementCancelsRecovery();
+        movementBeforeFollowup();
+        committedMeleeContacts();
+        movingBowToJab();
+        interruptedMovementQueue();
+        movementAfterBowRelease();
         attackSlotsAndLoadout();
         testWeaponCycle();
         heldBow();
@@ -181,82 +185,167 @@ public final class CombatSystemTest {
 
     private static void movementAndInput() {
         try (var game = new Harness(1, 0, 0)) {
-            game.input(InputAction.MOVE_RIGHT, 1); game.update(0);
+            game.input(InputAction.MOVE_UP, 1); game.update(0);
             check(game.fsm().getCurrentState() == AnimationState.WALK, "Movement enters walk");
             game.attack();
             long id = game.combat().getAttackId();
-            var start = game.body().getPosition().cpy();
-            game.input(InputAction.ATTACK_PRIMARY, 0); game.update(.125f);
-            game.input(InputAction.ATTACK_PRIMARY, 1);
-            game.input(InputAction.MOVE_RIGHT, 0); game.input(InputAction.MOVE_UP, 1);
-            game.update(.125f);
+            game.input(InputAction.MOVE_UP, 0); game.input(InputAction.MOVE_DOWN, 1);
+            game.input(InputAction.ATTACK_PRIMARY, 0); game.update(STEP * 4);
+            game.input(InputAction.ATTACK_PRIMARY, 1); game.update(STEP * 4);
             check(game.combat().getAttackId() == id, "Busy press does not restart attack");
-            check(Facing.MAPPER.get(game.player).getDirection() == Facing.Direction.UP
-                && game.animation().getFdirection() == Facing.Direction.UP
-                && game.combat().getAttackFacing() == Facing.Direction.UP, "Busy melee turns toward held movement");
-            check(game.animation().getFrameIndex() == 2, "Turning advances the existing attack clock");
-            check(game.sounds.size() == 1, "Turning does not repeat the attack sound");
-            check(game.body().getLinearVelocity().isZero() && game.body().getPosition().equals(start),
-                "Held movement does not translate the attacker through physics steps");
-            game.finish();
+            check(game.fsm().getCurrentState() == AnimationState.ATTACK && game.animation().getFdirection() == Facing.Direction.UP,
+                "Attack still plays facing up after the hit steps but before cooldown expires");
+            near(-4 * STEP * 8, game.body().getPosition().y, "Backpedals at full speed during the attack");
+            game.update(.25f); game.update(0);
+            check(!game.combat().isAttacking() && game.animation().getFdirection() == Facing.Direction.DOWN,
+                "Cooldown cancel returns playback to movement facing");
             check(game.fsm().getCurrentState() == AnimationState.WALK, "Held movement resumes walk");
-            near(4, game.body().getLinearVelocity().y, "Held up movement resumes");
-            game.input(InputAction.MOVE_UP, 0); game.update(0);
+            near(-4, game.body().getLinearVelocity().y, "Backpedal continues after cancel");
+            game.input(InputAction.MOVE_DOWN, 0); game.update(0);
             check(game.fsm().getCurrentState() == AnimationState.IDLE, "Release returns to idle");
             game.attack();
             check(game.combat().getAttackId() == id + 1, "New press starts a new attack");
         }
     }
 
-    private static void steeredMeleeContacts() {
+    private static void committedMeleeContacts() {
         try (var game = new Harness(1, 1, 0)) {
             var right = game.target(2, false);
-            Physic.MAPPER.get(right).getBody().setTransform(2.125f, 1, 0);
             var up = game.target(2, false);
-            Physic.MAPPER.get(up).getBody().setTransform(1, 2.125f, 0);
-            game.attack();
-            game.input(InputAction.MOVE_UP, 1); game.update(.125f); game.update(0);
-            check(game.animation().getFrameIndex() == 1, "Turning on the hit frame keeps the authored timing");
-            damageWithin(10, up, "First sensor points in the new direction");
-            near(100, Health.MAPPER.get(right).getCurrent(), "No hit in the original direction");
-
-            var attackId = game.combat().getAttackId();
-            game.input(InputAction.MOVE_UP, 0); game.input(InputAction.MOVE_RIGHT, 1);
-            game.update(STEP);
-            // The rightward contact is now queued; turn again before it is applied.
-            game.input(InputAction.MOVE_RIGHT, 0); game.input(InputAction.MOVE_UP, 1);
+            Physic.MAPPER.get(right).getBody().setTransform(2.125f, 1, 0);
+            Physic.MAPPER.get(up).getBody().setTransform(.7f, 2.125f, 0);
+            game.attack(); game.update(.12f);
+            game.input(InputAction.MOVE_UP, 1); game.update(STEP);
+            var sensor = game.combat().getSensor();
+            game.input(InputAction.MOVE_UP, 0); game.input(InputAction.MOVE_LEFT, 1);
             game.update(STEP); game.update(0);
-            damageWithin(10, right, "An already-active sensor follows the turn and its queued hit lands");
-            damageWithin(10, up, "Turning back over an already-hit target cannot hit it again");
-            check(game.combat().getAttackId() == attackId && game.body().getFixtureList().size == 2,
-                "Turns retain one attack and one sensor");
-            game.update(.5f - .125f - 2 * STEP + .001f);
-            check(!game.combat().isAttacking() && game.combat().getSensor() == null,
-                "Turns do not extend playback or leave a sensor behind");
+            damageWithin(10, right, "Committed melee lands once in the original direction");
+            near(100, Health.MAPPER.get(up).getCurrent(), "Movement cannot redirect the hit frame");
+            check(sensor != null && sensor == game.combat().getSensor() && game.sounds.size() == 1,
+                "Direction changes retain the same sensor and do not replay the cue");
         }
     }
 
-    private static void sameUpdateMeleeReplacement() {
+    private static void movingBowToJab() {
         for (boolean attackFirst : new boolean[]{true, false}) {
             try (var game = new Harness(1, 0, 0)) {
-                game.attack(); game.update(.125f);
-                var start = game.body().getPosition().cpy();
+                var shot = attack("bow", "shot", 1, 2, 1, BoundsType.RECT, CollisionType.PROJECTILE);
+                var jab = attack("bow", "jab", 1, 0, 0, BoundsType.TRIANGLE, CollisionType.MELEE);
+                game.selectWeapon(new CombatWeapon.Weapon("bow", "ranged/bow", shot, jab));
+                game.player.add(new BowAim(8, 1));
+                game.input(InputAction.ATTACK_PRIMARY, 1); game.update(0);
+                game.input(InputAction.ATTACK_PRIMARY, 0); game.update(0);
                 if (attackFirst) { game.input(InputAction.ATTACK_SECONDARY, 1); }
                 game.input(InputAction.MOVE_LEFT, 1);
                 if (!attackFirst) { game.input(InputAction.ATTACK_SECONDARY, 1); }
-                game.update(STEP);
-                check(game.combat().getAttackId() == 2 && game.combat().getAttackFacing() == Facing.Direction.LEFT,
-                    "Replacement uses the final held direction in either input order");
-                check(game.combat().getSensor() == null && game.animation().getAction().equals("slash")
-                    && game.animation().getFdirection() == Facing.Direction.LEFT && game.animation().getFrameIndex() == 1,
-                    "Previous pose turns without restarting; replacement removes its sensor");
-                game.update(STEP);
-                check(game.animation().getAction().equals("jab") && game.animation().getFrameIndex() == 0
-                    && game.animation().getFdirection() == Facing.Direction.LEFT && game.combat().getSensor() != null,
-                    "Accepted replacement starts facing left from frame zero on the next pass");
-                check(game.body().getLinearVelocity().isZero() && game.body().getPosition().equals(start),
-                    "No movement between attacks");
+                game.update(.125f);
+                check(game.combat().getAttackFacing() == Facing.Direction.RIGHT
+                    && game.animation().getFdirection() == Facing.Direction.RIGHT && game.combat().hasDeferredRequest(),
+                    "Movement keeps the release pose and defers the ready jab");
+                game.update(.125f); game.update(0); game.update(0);
+                check(game.combat().getActiveAttack() == jab && game.combat().getAttackFacing() == Facing.Direction.LEFT
+                    && game.animation().getFdirection() == Facing.Direction.LEFT && game.animation().getFrameIndex() == 0,
+                    "After recovery, the jab starts facing held movement in either input order");
             }
+        }
+    }
+
+    private static void movementCancelsRecovery() {
+        try (var game = new Harness(.5f, 2, 0)) {
+            var target = game.target(2, false);
+            Physic.MAPPER.get(target).getBody().setTransform(3.2f, 1, 0);
+            game.attack();
+            game.input(InputAction.MOVE_RIGHT, 1);
+            game.input(InputAction.ATTACK_PRIMARY, 1);
+            game.update(0);
+            check(!game.combat().hasAttackRequest(), "Cooling-down input is not buffered while moving");
+            game.update(.375f);
+            check(game.combat().isAttacking() && game.combat().getSensor() == null,
+                "Cooldown expiry cannot interrupt windup");
+            game.update(.125f);
+            check(game.combat().getSensor() != null, "Sensor follows the moving player through hit-frame steps");
+            game.update(0);
+            damageWithin(10, target, "Batched contacts land once before cancellation");
+            check(!game.combat().isAttacking() && game.combat().getSensor() == null,
+                "Held movement alone cancels the remaining recovery");
+            float start = game.body().getPosition().x;
+            game.update(STEP * 4);
+            near(start + 4 * (4 * STEP), game.body().getPosition().x, "No followup: move through the whole batch");
+        }
+    }
+
+    private static void movementBeforeFollowup() {
+        try (var game = new Harness(1, 0, 0)) {
+            var target = game.target(2, false);
+            game.attack();
+            game.input(InputAction.MOVE_RIGHT, 1);
+            game.input(InputAction.ATTACK_SECONDARY, 1);
+            game.update(0);
+            check(game.combat().getAttackId() == 1 && game.combat().hasAttackRequest(),
+                "Ready secondary cannot bypass primary commitment");
+            game.combat().tickCooldown(1); // Expire the timer without advancing Box2D.
+            game.update(0); game.update(STEP);
+            check(game.combat().isAttacking() && game.combat().getSensor() != null,
+                "Even an expired swing gets a physics step with its hitbox");
+            game.input(InputAction.ATTACK_PRIMARY, 1);
+            game.update(0);
+            damageWithin(10, target, "Committed hit survives the handoff");
+            float start = game.body().getPosition().x;
+            game.update(STEP / 2); game.update(0);
+            near(start, game.body().getPosition().x, "Substep update cannot move the body");
+            check(game.combat().getActiveAttack() == Loadout.MAPPER.get(game.player).getWeapon().secondary()
+                && game.combat().getAttackId() == 2 && !game.combat().hasAttackRequest(),
+                "Only the first queued slot starts");
+            game.update(STEP * 3.5f);
+            near(start + 4 * STEP * 4, game.body().getPosition().x, "Full movement on every substep of the follow-up");
+        }
+    }
+
+    private static void interruptedMovementQueue() {
+        for (boolean death : new boolean[]{true, false}) {
+            try (var game = new Harness(1, 0, 0)) {
+                game.attack();
+                game.input(InputAction.MOVE_RIGHT, 1);
+                game.input(InputAction.ATTACK_SECONDARY, 1);
+                game.update(.375f); game.update(0);
+                check(!game.combat().isAttacking() && game.combat().hasAttackRequest(), "Follow-up pending after recovery cancel");
+                if (death) { Health.MAPPER.get(game.player).damage(100); }
+                else {
+                    var combat = game.player.remove(Combat.class);
+                    game.player.add(combat);
+                }
+                game.update(STEP); game.update(0);
+                check(!game.combat().hasAttackRequest() && game.combat().getAttackId() == 1,
+                    "Death or combat family remount discards the queued request");
+            }
+        }
+    }
+
+    private static void movementAfterBowRelease() {
+        try (var game = new Harness(1, 0, 0)) {
+            var shot = attack("bow", "shot", .5f, 0, 0, BoundsType.RECT, CollisionType.PROJECTILE);
+            game.selectWeapon(new CombatWeapon.Weapon("bow", "ranged/bow", shot, shot));
+            var aim = new BowAim(8, 1);
+            game.player.add(aim);
+            var target = game.target(1, false);
+            Physic.MAPPER.get(target).getBody().setTransform(8, 1, 0);
+            game.input(InputAction.ATTACK_PRIMARY, 1); game.update(0);
+            game.input(InputAction.MOVE_RIGHT, 1); game.update(0);
+            check(aim.isAiming() && game.body().getLinearVelocity().isZero(), "Movement steers the draw");
+            game.input(InputAction.ATTACK_PRIMARY, 0); game.update(STEP * 4);
+            near(4 * STEP * 4, game.body().getPosition().x, "Releasing the bow immediately restores full movement");
+            check(game.combat().isAttacking(), "Release recovery still plays before cooldown expiry");
+            game.input(InputAction.MOVE_RIGHT, 0); game.update(0);
+            float start = game.body().getPosition().x;
+            game.input(InputAction.ATTACK_PRIMARY, 1);
+            game.input(InputAction.MOVE_RIGHT, 1); game.update(.25f + STEP / 2);
+            near(start + 4 * STEP * 15, game.body().getPosition().x, "Full batch of movement before deferred redraw");
+            check(!game.combat().isAttacking() && !aim.isAiming() && game.body().getPosition().x > 0,
+                "Movement cancels release recovery before redraw");
+            game.update(0);
+            check(aim.isAiming() && game.body().getLinearVelocity().isZero(), "Held redraw follows movement");
+            game.update(1);
+            damageWithin(2.5f, target, "Cancelling release playback preserves the committed arrow");
         }
     }
 
@@ -509,25 +598,18 @@ public final class CombatSystemTest {
             var arrowTarget = game.target(2, false);
             Physic.MAPPER.get(arrowTarget).getBody().setTransform(8, 1, 0);
             game.input(InputAction.ATTACK_PRIMARY, 1); game.update(0);
-            game.input(InputAction.ATTACK_PRIMARY, 0);
-            game.input(InputAction.MOVE_LEFT, 1); game.update(0);
-            check(game.animation().getFdirection() == Facing.Direction.RIGHT && game.animation().getFrameIndex() == 5,
-                "Held movement cannot override the committed bow release pose");
+            game.input(InputAction.ATTACK_PRIMARY, 0); game.update(0);
             game.input(InputAction.ATTACK_SECONDARY, 1); game.update(.125f);
-            check(game.animation().getFdirection() == Facing.Direction.RIGHT
-                && game.combat().getAttackFacing() == Facing.Direction.LEFT,
-                "Replacement jab takes held facing without changing the last rendered release pose");
             game.update(0);
             check(game.combat().getActiveAttack() == jab && game.animation().getFrameIndex() == 0
-                && game.animation().getFdirection() == Facing.Direction.LEFT
                 && game.combat().isCoolingDown("basic_bow", Combat.AttackSlot.PRIMARY),
                 "Jab can replace bow recovery while the shot is still cooling down");
             near(100, Health.MAPPER.get(arrowTarget).getCurrent(), "The first arrow is still in flight");
             game.attack(InputAction.ATTACK_SECONDARY);
             check(game.combat().getAttackId() == 2, "Jab cannot repeat during its own cooldown");
             var meleeTarget = game.target(1, false);
-            // Inside the left-facing jab triangle, behind the first arrow.
-            Physic.MAPPER.get(meleeTarget).getBody().setTransform(.55f, 1.4f, 0);
+            // Inside the jab triangle but below the first arrow's trajectory.
+            Physic.MAPPER.get(meleeTarget).getBody().setTransform(1.45f, .6f, 0);
             game.body().setAwake(true);
             game.step(); game.step(); // Leave this hit queued until the bow press cancels the jab.
             game.input(InputAction.ATTACK_PRIMARY, 1); game.update(.125f);

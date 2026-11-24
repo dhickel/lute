@@ -8,6 +8,7 @@ import com.badlogic.gdx.physics.box2d.Body;
 import io.mindspice.lute.engine.behaviorgraph.BehaviorGraphs;
 import io.mindspice.lute.engine.components.Move;
 import io.mindspice.lute.engine.components.Physic;
+import io.mindspice.lute.engine.components.Controller;
 
 public class PhysicMoveSystem extends IteratingSystem {
     private final Vector2 normalizedDir = new Vector2();
@@ -20,7 +21,8 @@ public class PhysicMoveSystem extends IteratingSystem {
     protected void processEntity(Entity entity, float deltaTime) {
         Move move = Move.MAPPER.get(entity);
         Body body = Physic.MAPPER.get(entity).getBody();
-        if (move.isRooted() || move.getDirection().isZero() || BehaviorGraphs.attackLocksMovement(entity)) {
+        if (move.isRooted() || move.getDirection().isZero()
+            || (!Controller.MAPPER.has(entity) && BehaviorGraphs.attackLocksMovement(entity))) {
             body.setLinearVelocity(Vector2.Zero);
             return;
         }

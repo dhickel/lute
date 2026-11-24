@@ -619,6 +619,7 @@ public final class MapTravelTest extends ApplicationAdapter {
         require(Combat.MAPPER.get(corpse).isCoolingDown("basic_bow", Combat.AttackSlot.SECONDARY),
             "Player has an independent secondary cooldown before death");
         input.keyDown(Input.Keys.SPACE);
+        screen.render(0f); // Stationary draw can replace the jab; movement during recovery would defer it.
         input.keyDown(Input.Keys.W);
         screen.render(0f);
         require(BowAim.MAPPER.get(corpse).isAiming(), "Player has a bow draw and held movement before death");
