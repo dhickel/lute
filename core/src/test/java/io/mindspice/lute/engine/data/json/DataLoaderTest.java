@@ -47,6 +47,7 @@ public final class DataLoaderTest {
             objectsSchema();
             invalidMetadata(player, definitions);
             assetIds(definitions);
+            debugLayerLaunchModes();
             settingsAtomicity();
             check(Files.mismatch(Path.of("raw_assets/data/player.json"), Path.of("assets/data/player.json")) == -1,
                 "generated player matches source");
@@ -533,6 +534,43 @@ public final class DataLoaderTest {
             CharacterAssets.FEET, CharacterAssets.WEAPONS)), "all shared character atlases");
         for (var atlas : atlases) {
             check(atlas.path().equals("atlases/" + atlas.id() + ".atlas"), "shared atlas logical ID and path");
+        }
+    }
+
+    private static void debugLayerLaunchModes() throws Exception {
+        var fixture = Files.createTempFile("debug-layer-settings", ".json");
+        var previous = System.clearProperty("luteDebugLayers");
+        try {
+            var settings = (tools.jackson.databind.node.ObjectNode) DataLoader.mapper.readTree(Path.of("assets/game.settings.json").toFile());
+            var layers = settings.putObject("debugLayers");
+            layers.put("physics", false).put("triggers", true).put("rawLightMap", true).put("lightingOutlines", true);
+            Files.writeString(fixture, settings.toString());
+            useFile(fixture);
+            GameConsts.loadSettings();
+            check(GameConsts.DEBUG_LAYERS.equals(new GameConsts.DebugLayers(false, true, true, true)), "absent mode uses JSON");
+            System.setProperty("luteDebugLayers", "off");
+            GameConsts.loadSettings();
+            check(GameConsts.DEBUG_LAYERS.equals(new GameConsts.DebugLayers(false, false, false, false)), "off disables all layers");
+            System.setProperty("luteDebugLayers", "on");
+            GameConsts.loadSettings();
+            check(GameConsts.DEBUG_LAYERS.equals(new GameConsts.DebugLayers(true, true, false, false)), "on enables physics and triggers only");
+
+            var width = GameConsts.VIEW_WIDTH;
+            settings.put("viewWidth", width + 1);
+            Files.writeString(fixture, settings.toString());
+            System.setProperty("luteDebugLayers", "invalid");
+            rejects(GameConsts::loadSettings, "unknown launch mode");
+            check(GameConsts.VIEW_WIDTH == width, "invalid mode publishes nothing");
+            System.setProperty("luteDebugLayers", "on");
+            layers.remove("rawLightMap");
+            Files.writeString(fixture, settings.toString());
+            rejects(GameConsts::loadSettings, "override masking an invalid authored layer");
+        } finally {
+            if (previous == null) System.clearProperty("luteDebugLayers");
+            else System.setProperty("luteDebugLayers", previous);
+            Files.deleteIfExists(fixture);
+            useAssets();
+            GameConsts.loadSettings();
         }
     }
 

@@ -121,6 +121,10 @@ Migrate the ignored raw data files: `raw_assets/data/player.json`, `characters.j
 
 Collision shapes are `ELLIPSE`, `RECT`, `CIRCLE`, and `TRIANGLE`. Bounds `x1`, `y1`, `x2`, `y2` are local pixels with positive width and height; circles require equal dimensions. Rotation is finite counterclockwise degrees about the bounds center. Actor and object circles use native circle fixtures; projectile circles use a 32-vertex sweep polygon. Ellipses use eight vertices; triangles have a bottom base and a top-midpoint apex. For projectiles the unrotated bounds' top midpoint anchors at the art tip: X is full width and Y is length behind the tip. Rotation combines with the flight tangent and does not rotate the art independently. Hitboxes, Tiled collision, arrow flight, and artwork are unchanged.
 
+### Developer debug launches
+
+The shared IntelliJ `.run` configurations call `:lwjgl3:run`: `Lute Run` passes `-PluteDebugLayers=off` to disable all overlays, while `Lute Debug Run` passes `-PluteDebugLayers=on` to enable physics and trigger overlays with the special lighting views off. Select `Lute Debug Run` and use the IDE Run button for game diagnostics; the IDE Debug button separately enables breakpoints. Without the flag, the authored `debugLayers` settings apply. These launch overrides do not alter asset JSON.
+
 ## Weapon assets and animation timing
 
 Map manifests describe map-owned assets. Weapon definitions live in `assets/data/weapons.json`, which contains a shared `atlas` path and a `weapons` map. Each weapon has an `atlas_key` and `attack_stats` with separate `primary` and `secondary` records. Each attack owns its `animation`, `bounds`, `stats`, `collision_type`, and `sounds.attack` and `sounds.hit` paths. The unarmed definition uses `NONE` for its weapon layer.

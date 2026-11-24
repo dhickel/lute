@@ -130,6 +130,8 @@ tasks.named('test') {
 def os = System.properties['os.name'].toLowerCase(Locale.ROOT)
 
 run {
+  def debugLayers = providers.gradleProperty('luteDebugLayers')
+  if (debugLayers.present) systemProperty 'luteDebugLayers', debugLayers.get()
   workingDir = rootProject.file('assets').path
 // You can uncomment the next line if your IDE claims a build failure even when the app closed properly.
   //setIgnoreExitValue(true)

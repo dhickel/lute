@@ -41,13 +41,19 @@ public final class GameConsts {
         try (var file = Gdx.files.internal("game.settings.json").read();
              var parser = DataLoader.mapper.createParser(file)) {
             var settings = parseSettings(parser);
+            var debugLayers = switch (System.getProperty("luteDebugLayers")) {
+                case null -> settings.debugLayers();
+                case "on" -> new DebugLayers(true, true, false, false);
+                case "off" -> new DebugLayers(false, false, false, false);
+                default -> throw new IllegalArgumentException("luteDebugLayers must be on or off");
+            };
             UNIT_SCALE = settings.unitScale();
             VIEW_HEIGHT = settings.viewHeight();
             VIEW_WIDTH = settings.viewWidth();
             PHYSIC_INTERVAL = settings.physicInterval();
             DAY_LENGTH_MINUTES = settings.dayLengthMinutes();
             NIGHT_AMBIENT = settings.nightAmbient();
-            DEBUG_LAYERS = settings.debugLayers();
+            DEBUG_LAYERS = debugLayers;
             PHYSIC_SCALING.set(settings.physicScaling().x(), settings.physicScaling().y());
             CAMERA_SMOOTH_FACTOR = settings.cameraSmoothFactor();
             PROJECT_PATH = settings.projectPath();
