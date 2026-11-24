@@ -57,6 +57,8 @@ public class Animation2D implements Component {
 
     public float getStateTime() { return stateTime; }
 
+    public void setStateTime(float stateTime) { this.stateTime = stateTime; }
+
     public int getFrameIndex() { return animation.getKeyFrameIndex(stateTime); }
 
     public boolean isAttackReady() {
