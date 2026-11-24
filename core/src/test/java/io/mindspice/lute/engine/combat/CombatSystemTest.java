@@ -17,6 +17,8 @@ import com.badlogic.gdx.maps.tiled.tiles.StaticTiledMapTile;
 import com.badlogic.gdx.physics.box2d.*;
 import com.badlogic.gdx.utils.GdxNativesLoader;
 import io.mindspice.lute.engine.GameCore;
+import io.mindspice.lute.engine.ai.decisiongraph.FocusState;
+import io.mindspice.lute.engine.ai.decisiongraph.Graphs;
 import io.mindspice.lute.engine.animation.AnimationState;
 import io.mindspice.lute.engine.assets.*;
 import io.mindspice.lute.engine.components.*;
@@ -61,6 +63,8 @@ public final class CombatSystemTest {
         attackSlotsAndLoadout();
         testWeaponCycle();
         heldBow();
+        enemyBow(0f);
+        enemyBow(4f);
         cardinalBowShots();
         ArrowFlightTest.run();
         cooldownBetweenBowAndMelee();
@@ -348,6 +352,43 @@ public final class CombatSystemTest {
             check(loadout.getWeapon() == bow, "Release and repeat do not cycle");
             game.input(InputAction.CYCLE_WEAPON, 1); game.update(0);
             check(loadout.getWeapon() == sword, "Next press wraps back to the first configured weapon");
+        }
+    }
+
+    private static void enemyBow(float releaseSpeed) {
+        try (var game = new Harness(1, 2, 1)) {
+            var shot = attack("bow", "shot", 1, 2, 1, BoundsType.RECT, CollisionType.PROJECTILE);
+            game.selectWeapon(new CombatWeapon.Weapon("bow", "ranged/bow", shot, shot));
+            var archer = game.player;
+            archer.remove(Controller.class);
+            var aim = new BowAim(1, 1);
+            archer.add(aim).add(new ActorAi(Graphs.ARCHER));
+            var target = game.target(1, true);
+            var body = Physic.MAPPER.get(target).getBody();
+            body.setType(BodyDef.BodyType.DynamicBody);
+            body.setTransform(4, 1, 0);
+            body.getFixtureList().first().setUserData(Hurtbox.INSTANCE);
+            target.add(new Transform(new Vector2(4, 1), 0, new Vector2(), new Vector2(1, 1), 0, 0));
+            var sight = new FocusState(STEP);
+            sight.setVisibleTarget(target);
+            sight.setTargetOffset(new Vector2(3, 0));
+            var graph = Graphs.forKey(Graphs.ARCHER).get(ActorAi.Mode.ENGAGE);
+            graph.travel(archer, sight);
+            game.update(STEP);
+            check(aim.isAiming(), "Live sight starts enemy draw");
+            game.update(STEP);
+            check(!aim.isAiming() && !game.combat().isCoolingDown("bow", Combat.AttackSlot.PRIMARY),
+                "Lost sight cancels draw without starting cooldown");
+            for (int i = 0; i < 60 && !game.combat().isAttacking(); i++) {
+                if (i == 20) { body.setLinearVelocity(0, releaseSpeed); }
+                graph.travel(archer, sight);
+                game.update(STEP);
+            }
+            check(!aim.isAiming() && game.combat().isCoolingDown("bow", Combat.AttackSlot.PRIMARY),
+                "Enemy releases and starts primary cooldown");
+            for (int i = 0; i < 90; i++) { game.update(STEP); }
+            check(Health.MAPPER.get(target).getCurrent() < 100,
+                "Real enemy arrow hits target moving at release speed " + releaseSpeed);
         }
     }
 

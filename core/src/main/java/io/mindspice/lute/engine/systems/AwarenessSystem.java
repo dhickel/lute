@@ -63,7 +63,8 @@ public final class AwarenessSystem extends IteratingSystem {
             stop.perform(actor, state);
             return;
         }
-        var graph = ai.mode() == ActorAi.Mode.WANDER ? graphs.get(ai.mode()) : Graphs.pursuit(ai.mode());
+        // Passive wanderers still use ordinary pursuit when retaliating.
+        var graph = graphs.getOrDefault(ai.mode(), Graphs.pursuit(ai.mode()));
         graph.travel(actor, state);
     }
 
