@@ -1,6 +1,6 @@
 package io.mindspice.lute.gameplay;
 
-import java.util.function.IntConsumer;
+import java.util.function.BiConsumer;
 import java.util.random.RandomGenerator;
 
 /** The rules and counters for one visit to the arena. Times are simulation seconds. */
@@ -16,7 +16,7 @@ public final class HoardRun {
 
     private final RandomGenerator random;
     private final Runnable healPlayer;
-    private final IntConsumer spawn;
+    private final BiConsumer<Integer, Integer> spawn;
     private boolean gameOver;
     private int round;
     private long kills;
@@ -24,7 +24,7 @@ public final class HoardRun {
     private double elapsed;
     private int nextBatch;
 
-    public HoardRun(RandomGenerator random, Runnable healPlayer, IntConsumer spawn, boolean night) {
+    public HoardRun(RandomGenerator random, Runnable healPlayer, BiConsumer<Integer, Integer> spawn, boolean night) {
         this.random = random;
         this.healPlayer = healPlayer;
         this.spawn = spawn;
@@ -58,8 +58,10 @@ public final class HoardRun {
 
     private void spawnBatch(boolean opening, boolean night) {
         int sizePercent = opening ? 100 : random.nextInt(25, 51);
-        long units = (long) BASE_BATCH * sizePercent * roundPercent() * (night ? 115 : 100);
-        spawn.accept((int) ((units + BATCH_UNITS / 2) / BATCH_UNITS));
+        int activeAreas = Math.min(4, 1 + (round - 1) / 5);
+        int baseline = BASE_BATCH + activeAreas - 1;
+        long units = (long) baseline * sizePercent * roundPercent() * (night ? 115 : 100);
+        spawn.accept((int) ((units + BATCH_UNITS / 2) / BATCH_UNITS), activeAreas);
     }
 
     private long roundPercent() { return 100L + ROUND_BONUS_PERCENT * (long) round; }

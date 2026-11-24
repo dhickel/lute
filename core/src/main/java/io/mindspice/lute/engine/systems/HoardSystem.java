@@ -37,13 +37,14 @@ public final class HoardSystem extends EntitySystem implements EventListener {
 
     void bind(TiledSystem tiled, List<MapTriggers.SpawnArea> areas, RandomGenerator random) {
         if (areas == null) { run = null; return; }
-        run = new HoardRun(random, tiled.playerHealth()::restore, amount -> {
-            int next = random.nextInt(areas.size());
+        run = new HoardRun(random, tiled.playerHealth()::restore, (amount, activeAreas) -> {
+            int count = Math.min(activeAreas, areas.size());
+            int next = random.nextInt(count);
             for (int i = 0; i < amount; i++) {
                 boolean archer = random.nextBoolean();
-                for (int attempt = 0; attempt < areas.size(); attempt++) {
+                for (int attempt = 0; attempt < count; attempt++) {
                     var area = areas.get(next);
-                    next = (next + 1) % areas.size();
+                    next = (next + 1) % count;
                     String key = archer ? WAVE_ARCHER : area.spawnKey();
                     if (tiled.trySpawnAreaEnemy(area, key, random) != null) { break; }
                 }

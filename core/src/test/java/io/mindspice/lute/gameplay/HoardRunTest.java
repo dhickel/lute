@@ -26,7 +26,11 @@ public final class HoardRunTest {
             };
             var batches = new ArrayList<Integer>();
             var heals = new ArrayList<Integer>();
-            var run = new HoardRun(random, () -> heals.add(batches.size()), batches::add, false);
+            var activeAreas = new ArrayList<Integer>();
+            var run = new HoardRun(random, () -> heals.add(batches.size()), (amount, count) -> {
+                batches.add(amount);
+                activeAreas.add(count);
+            }, false);
             require(run.round() == 1 && run.remainingSeconds() == 120 && batches.equals(java.util.List.of(5)), "opening round");
             run.advance(delay - .25, false);
             require(batches.size() == 1 && run.remainingSeconds() == 121 - delay, "wait for batch; round time rounds up");
@@ -41,7 +45,7 @@ public final class HoardRunTest {
             require(heals.equals(java.util.List.of(0, 1 + 119 / delay)), "opening batch takes precedence over simultaneous reinforcement");
             require(batches.getLast() == 6, "round two opens with 5.5 rounded up to six");
             for (int i = 2; i < 10; i++) { run.advance(120, false); }
-            require(run.round() == 10 && batches.getLast() == 8, "round ten opens with 7.5 rounded up to eight");
+            require(run.round() == 10 && batches.getLast() == 9, "round ten opens with six scaled to nine");
             run.enemyKilled();
             require(run.kills() == 2 && run.score() == 13, "round ten awards eight points without repricing round one");
             for (int i = 10; i < 42; i++) { run.advance(120, i >= 12); }
@@ -50,14 +54,18 @@ public final class HoardRunTest {
                 "fresh interval after every batch; size rolled only for reinforcements");
             for (int r = 1; r <= 42; r++) {
                 long roundPercent = 100 + 5L * r;
-                long opening = 5 * roundPercent * (r >= 13 ? 115 : 100);
+                int count = r < 6 ? 1 : r < 11 ? 2 : r < 16 ? 3 : 4;
+                int baseline = 4 + count;
+                require(activeAreas.get(heals.get(r - 1)) == count, "opening area count at round " + r);
+                long opening = baseline * roundPercent * (r >= 13 ? 115 : 100);
                 require(batches.get(heals.get(r - 1)) == (opening + 5_000) / 10_000,
                     "opening scaling and rounding at round " + r);
                 if (r == 42) { break; }
                 int firstExtra = heals.get(r - 1) + 1;
                 require(heals.get(r) - firstExtra == 119 / delay, "scheduled reinforcement count");
                 for (int i = firstExtra; i < heals.get(r); i++) {
-                    long extra = 5L * rolls.get(roll++) * roundPercent * (r >= 12 ? 115 : 100);
+                    require(activeAreas.get(i) == count, "reinforcement area count at round " + r);
+                    long extra = (long) baseline * rolls.get(roll++) * roundPercent * (r >= 12 ? 115 : 100);
                     require(batches.get(i) == (extra + 500_000) / 1_000_000,
                         "reinforcement scaling and rounding at roll " + roll);
                 }

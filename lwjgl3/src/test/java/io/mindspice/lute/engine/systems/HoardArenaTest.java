@@ -59,18 +59,15 @@ public final class HoardArenaTest extends ApplicationAdapter {
         var clock = engine.getSystem(WorldTimeSystem.class);
         require(GameplayHud.statusText((int) clock.getMinuteOfDay(), run).equals("06:00   Round 1   2:00 left   Kills 0   Score 0"), "arena HUD");
         var areas = HoardSystem.arena("hoard_mode", tiled.getMapTriggers());
-        var occupied = new java.util.HashSet<String>();
         Entity survivor = enemies.first();
         for (var enemy : enemies) {
             var transform = Transform.MAPPER.get(enemy);
-            var area = areas.stream().filter(a -> a.polygon().contains(transform.centerX(), transform.centerY()))
-                .findFirst().orElseThrow();
-            occupied.add(area.name());
+            require(areas.getFirst().polygon().contains(transform.centerX(), transform.centerY()),
+                "opening enemy is in SpawnArea1");
             require(Health.MAPPER.get(enemy).getCurrent() == 50 && Health.MAPPER.get(enemy).getMaximum() == 50
                 && ActorAi.MAPPER.get(enemy).behaviorGraphKey().equals(BowAim.MAPPER.has(enemy) ? "wander_archer" : "wander_attack"),
                 "wave enemy has its own behavior inside the polygon");
         }
-        require(occupied.size() == 4, "opening batch reaches all four authored polygons");
         var health = Health.MAPPER.get(player());
         require(health.getCurrent() == 1000 && health.getMaximum() == 1000, "arena HP");
         health.damage(101);
@@ -180,6 +177,8 @@ public final class HoardArenaTest extends ApplicationAdapter {
         var damageRandom = MathUtils.random;
         try {
             tiled.setMap(map, ManifestLoader.parseMapManifest("hoard_mode"));
+            require(hoard.run().round() == 1 && enemies.size() == 0,
+                "fresh mount starts with only the undersized SpawnArea1 unlocked");
             var area = HoardSystem.arena("hoard_mode", tiled.getMapTriggers());
             // Start at the first undersized area. Only area four can fit one reinforcement.
             hoard.bind(tiled, area, new Random(1) {
@@ -191,6 +190,10 @@ public final class HoardArenaTest extends ApplicationAdapter {
                     return 50;
                 }
             });
+            hoard.run().advance(15 * 120 - 1, false);
+            require(enemies.size() == 0, "placement retries cannot use locked SpawnArea4 through round 15");
+            hoard.run().advance(1, false);
+            require(enemies.size() == 1, "round 16 opening retries reach newly unlocked SpawnArea4");
             // Empty the arena so the sword can only contact the first reinforcement.
             for (int i = enemies.size() - 1; i >= 0; i--) {
                 var opening = enemies.get(i);
