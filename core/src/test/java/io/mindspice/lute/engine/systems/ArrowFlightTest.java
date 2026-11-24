@@ -10,6 +10,7 @@ import io.mindspice.lute.engine.components.Facing;
 import io.mindspice.lute.engine.components.Health;
 import io.mindspice.lute.engine.components.Hurtbox;
 import io.mindspice.lute.engine.components.Transform;
+import io.mindspice.lute.engine.data.json.AttackDamage;
 import io.mindspice.lute.engine.data.json.CharacterBounds;
 import io.mindspice.lute.engine.data.json.CollisionData;
 import io.mindspice.lute.engine.data.json.ProjectilesData.Projectile;
@@ -21,12 +22,10 @@ public final class ArrowFlightTest {
     private ArrowFlightTest() { }
 
     public static void run() {
-        require(DamageFeedback.roundedDamage(10, 1, .9f) == 9 && DamageFeedback.roundedDamage(10, 1, 1.1f) == 11,
-            "Sword roll endpoints");
-        require(DamageFeedback.roundedDamage(11, 1, .9f) == 10 && DamageFeedback.roundedDamage(11, 1, 1.1f) == 12,
-            "Full draw roll endpoints");
-        require(DamageFeedback.roundedDamage(11, .25f, .9f) == 2 && DamageFeedback.roundedDamage(11, .25f, 1.1f) == 3,
-            "Quarter draw is not rounded before the roll");
+        rangeRolls(15, 20);
+        rangeRolls(10, 10);
+        rangeRolls(20, 30);
+        rangeRolls(Integer.MAX_VALUE, Integer.MAX_VALUE);
         rollsPerHit();
         collisionShapes();
         var aim = new Vector2(1, 0);
@@ -42,7 +41,7 @@ public final class ArrowFlightTest {
             var target = hurtbox(world, aim);
             var arrow = launch(TYPE, aim);
             Facing.MAPPER.get(arrow.owner).setDirection(Facing.Direction.DOWN);
-            DamageFeedback.land(target, Health.MAPPER.get(target), 1, .25f, Facing.Direction.RIGHT);
+            DamageFeedback.land(target, Health.MAPPER.get(target), new AttackDamage.Scalar(1), .25f, Facing.Direction.RIGHT);
             require(Health.MAPPER.get(target).getCurrent() == 100 && DamageFeedback.MAPPER.get(target) == null,
                 "A hit rounded to zero consumes no HP and creates no number");
             require(arrow.finished(world, 2f) && oneHit(target), "One long update sweeps through the exact crosshair");
@@ -52,7 +51,7 @@ public final class ArrowFlightTest {
             require(hit.facing == Facing.Direction.RIGHT && hit.amount == 100 - health.getCurrent()
                 && hit.remaining == health.getCurrent() / 100f, "Feedback snapshots release facing and effective hit");
             feedback.advance(.25f);
-            DamageFeedback.land(target, health, 500, 1, Facing.Direction.LEFT);
+            DamageFeedback.land(target, health, new AttackDamage.Scalar(500), 1, Facing.Direction.LEFT);
             var kill = feedback.numbers.getLast();
             require(kill.remaining == 0 && kill.amount == 100 - hit.amount, "Killing hit reports only remaining HP");
             require(GameplayHud.healthText(health).equals("HP 0/100") && GameplayHud.clockText(6 * 60 + 4).equals("06:04"), "Dead player's clock and health");
@@ -76,6 +75,23 @@ public final class ArrowFlightTest {
         } finally { world.dispose(); }
     }
 
+    private static void rangeRolls(int min, int max) {
+        var damage = new AttackDamage.Range(min, max);
+        for (int offset = 0; offset <= max - min; offset++) {
+            final int sample = offset;
+            var random = new java.util.Random() {
+                @Override public int nextInt(int bound) {
+                    require(bound == max - min + 1, "Roll includes every integer through max");
+                    return sample;
+                }
+            };
+            for (float scale : new float[]{.25f, .5f, .75f, 1f}) {
+                require(damage.roll(random, scale) == Math.round((min + sample) * (double) scale),
+                    "Explicit range scales a single inclusive roll without scalar jitter");
+            }
+        }
+    }
+
     private static void rollsPerHit() {
         var previous = com.badlogic.gdx.math.MathUtils.random;
         try {
@@ -85,7 +101,7 @@ public final class ArrowFlightTest {
             var health = new Health(500);
             int remaining = 500;
             for (int i = 0; i < 20; i++) {
-                DamageFeedback.land(target, health, 10, 1, Facing.Direction.UP);
+                DamageFeedback.land(target, health, new AttackDamage.Scalar(10), 1, Facing.Direction.UP);
                 remaining -= Math.round(10 * (.9f + (1.1f - .9f) * expected.nextFloat()));
                 require(remaining == health.getCurrent(), "Fresh uniform sample for each hit");
             }
@@ -185,7 +201,7 @@ public final class ArrowFlightTest {
     }
 
     private static ArrowFlight launch(Projectile type, Vector2 aim) {
-        return new ArrowFlight(new Entity().add(new Facing(Facing.Direction.RIGHT)), type, new Vector2(), aim, 10, 1);
+        return new ArrowFlight(new Entity().add(new Facing(Facing.Direction.RIGHT)), type, new Vector2(), aim, new AttackDamage.Scalar(10), 1);
     }
 
     private static boolean oneHit(Entity target) {

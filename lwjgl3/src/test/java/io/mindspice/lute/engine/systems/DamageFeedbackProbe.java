@@ -1,5 +1,7 @@
 package io.mindspice.lute.engine.systems;
 
+import io.mindspice.lute.engine.data.json.AttackDamage.Scalar;
+
 import com.badlogic.ashley.core.Entity;
 import io.mindspice.lute.engine.components.Facing;
 import io.mindspice.lute.engine.components.Health;
@@ -9,7 +11,7 @@ public final class DamageFeedbackProbe {
     private DamageFeedbackProbe() { }
 
     public static void hit(Entity victim, int base, Facing.Direction facing) {
-        DamageFeedback.land(victim, Health.MAPPER.get(victim), base, 1, facing);
+        DamageFeedback.land(victim, Health.MAPPER.get(victim), new Scalar(base), 1, facing);
     }
 
     public static int count(Entity victim) {

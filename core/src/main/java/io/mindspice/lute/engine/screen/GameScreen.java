@@ -25,6 +25,7 @@ public class GameScreen extends ScreenAdapter {
     private final MapAssets mapAssets;
     private final TiledSystem tiled;
     private final RenderSystem renderer;
+    private final HoardSystem hoard;
     private final GameConsts.NightAmbient ambient = GameConsts.NIGHT_AMBIENT;
     private final KeyListener lightingInput = new KeyListener(32, List.of(InputAction.TOGGLE_NIGHT));
     private boolean night;
@@ -47,6 +48,8 @@ public class GameScreen extends ScreenAdapter {
         try {
             addSystem(new WorldTimeSystem(GameConsts.DAY_LENGTH_MINUTES));
             addSystem(new EventSystem());
+            hoard = new HoardSystem();
+            addSystem(hoard);
             addSystem(new AttackCooldownSystem());
             addSystem(new ControllerSystem());
             // Read the last completed physics/teleport snapshot before resolving movement and animation.
@@ -127,7 +130,7 @@ public class GameScreen extends ScreenAdapter {
         // Detach and map replacement mark old transitions; only presses from this context count.
         lightingInput.getQueue().consumePreviousContext((action, state) -> { });
         lightingInput.consume((action, state) -> {
-            if (action == InputAction.TOGGLE_NIGHT && state == 1) { night = !night; }
+            if (action == InputAction.TOGGLE_NIGHT && state == 1 && !hoard.isActive()) { night = !night; }
         });
         float step = delta > 0f ? Math.min(delta, 1 / 30f) : 0f;
         sessionSeconds += step;

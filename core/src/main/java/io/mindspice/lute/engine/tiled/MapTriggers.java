@@ -6,9 +6,12 @@ import com.badlogic.gdx.maps.MapLayers;
 import com.badlogic.gdx.maps.MapObject;
 import com.badlogic.gdx.maps.MapProperties;
 import com.badlogic.gdx.maps.objects.PointMapObject;
+import com.badlogic.gdx.maps.objects.PolygonMapObject;
 import com.badlogic.gdx.maps.objects.RectangleMapObject;
 import com.badlogic.gdx.maps.tiled.TiledMap;
 import com.badlogic.gdx.maps.tiled.TiledMapTileLayer;
+import com.badlogic.gdx.math.Intersector;
+import com.badlogic.gdx.math.Polygon;
 import com.badlogic.gdx.math.Rectangle;
 import com.badlogic.gdx.math.Vector2;
 import io.mindspice.lute.engine.components.Facing;
@@ -31,9 +34,23 @@ public record MapTriggers(List<Sensor> sensors, List<SpawnPoint> points, List<Sp
         public String name() { return info.name(); }
         public SpawnType type() { return info.type(); }
     }
-    public record SpawnArea(SpawnInfo info, Rectangle bounds) {
+    /** World-space geometry. A null behaviorKey denotes an ordinary data-only area. */
+    public record SpawnArea(SpawnInfo info, Rectangle bounds, Polygon polygon, String behaviorKey,
+                            String spawnKey, Facing.Direction facing) {
         public String name() { return info.name(); }
         public SpawnType type() { return info.type(); }
+
+        public boolean contains(Rectangle footprint) {
+            if (!bounds.contains(footprint)) { return false; }
+            if (polygon == null) { return true; }
+            if (!polygon.contains(footprint.x, footprint.y)) { return false; }
+            // A concave notch can cross an edge even when all four corners are inside.
+            var v = polygon.getVertices();
+            for (int i = 0, j = v.length - 2; i < v.length; j = i, i += 2) {
+                if (Intersector.intersectSegmentRectangle(v[j], v[j + 1], v[i], v[i + 1], footprint)) { return false; }
+            }
+            return true;
+        }
     }
 
     public MapTriggers {
@@ -72,6 +89,14 @@ public record MapTriggers(List<Sensor> sensors, List<SpawnPoint> points, List<Sp
             }
         }
         return triggers;
+    }
+
+    public SpawnArea requireEnemyArea(String name, String behaviorKey) {
+        for (var area : areas) {
+            if (area.name().equals(name) && area.type() == SpawnType.ENEMY && area.behaviorKey() != null
+                && area.behaviorKey().equals(behaviorKey)) { return area; }
+        }
+        throw new IllegalArgumentException("Expected ENEMY SpawnArea '" + name + "' with behaviorKey '" + behaviorKey + "'");
     }
 
     public SpawnPoint teleportDestination(String name) {
@@ -161,7 +186,25 @@ public record MapTriggers(List<Sensor> sensors, List<SpawnPoint> points, List<Sp
             case "SpawnArea" -> {
                 var properties = spawnProperties(object);
                 var info = new SpawnInfo(name, enumValue(object, "spawnType", properties.get("spawnType"), SpawnType.class));
-                areas.add(new SpawnArea(info, bounds(object)));
+                // Tiled authors the data-only sentinel. An absent field means the project schema is stale.
+                String rawBehavior = requireText(object, "behaviorKey", properties.get("behaviorKey"));
+                String behavior = "NULL".equals(rawBehavior) ? null : rawBehavior;
+                String key = null;
+                Facing.Direction facing = null;
+                if (behavior != null) {
+                    if (info.type() != SpawnType.ENEMY) { throw invalid(object, "behaviorKey requires an ENEMY area"); }
+                    key = requiredSpawnKey(object, properties.get("spawnKey"), false);
+                    facing = enumValue(object, "facing", properties.get("facing"), Facing.Direction.class);
+                }
+                if (behavior != null && object instanceof PolygonMapObject poly) {
+                    DetectorGeometryParser.parse(object, 0f); // Same simple-outline validation as trigger polygons.
+                    var vertices = poly.getPolygon().getTransformedVertices().clone();
+                    for (int i = 0; i < vertices.length; i++) { vertices[i] *= GameConsts.UNIT_SCALE; }
+                    var polygon = new Polygon(vertices);
+                    areas.add(new SpawnArea(info, polygon.getBoundingRectangle(), polygon, behavior, key, facing));
+                } else {
+                    areas.add(new SpawnArea(info, bounds(object), null, behavior, key, facing));
+                }
             }
             default -> throw invalid(object, "unsupported trigger class '" + type + "'");
         }
@@ -176,7 +219,7 @@ public record MapTriggers(List<Sensor> sensors, List<SpawnPoint> points, List<Sp
         var properties = new MapProperties();
         properties.putAll(shared);
         // Legacy overrides can coexist with class defaults until the map is migrated.
-        for (String key : new String[]{"spawnType", "spawnKey", "facing"}) {
+        for (String key : new String[]{"spawnType", "spawnKey", "facing", "behaviorKey"}) {
             if (flat.containsKey(key)) { properties.put(key, flat.get(key)); }
         }
         return properties;

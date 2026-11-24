@@ -517,8 +517,7 @@ public final class MapTravelTest extends ApplicationAdapter {
         body(enemy).setTransform(-100, -100, 0);
         body(player).setTransform(-100 + 80f * GameConsts.UNIT_SCALE, -100, 0);
         var originalHealth = Health.MAPPER.get(player);
-        int base = Loadout.MAPPER.get(enemy).getWeapon().primary().damage();
-        var testHealth = new Health(4 * base); // The pursuit check needs a survivor independently of authored player HP.
+        var testHealth = new Health(100); // The pursuit check needs a survivor independently of authored player HP.
         player.add(testHealth);
         try {
             screen.render(1f / 60f);
@@ -528,8 +527,8 @@ public final class MapTravelTest extends ApplicationAdapter {
             for (int i = 0; i < 120 && !combat.isAttacking(); i++) { screen.render(1f / 60f); }
             require(combat.isAttacking(), "Enemy closes the gap and starts the attack without repositioning the player");
             for (int i = 0; i < 5; i++) { screen.render(1f / 60f); }
-            require(testHealth.getCurrent() >= testHealth.getMaximum() - Math.round(1.1f * base)
-                && testHealth.getCurrent() <= testHealth.getMaximum() - Math.round(.9f * base)
+            require(testHealth.getCurrent() >= testHealth.getMaximum() - 20
+                && testHealth.getCurrent() <= testHealth.getMaximum() - 15
                 && body(enemy).getLinearVelocity().isZero() && DamageFeedbackProbe.count(player) == 1,
                 "Enemy deals one weapon hit and creates one player feedback number while standing still");
             var retreat = body(enemy).getPosition().cpy().add(-2.5f, .5f);

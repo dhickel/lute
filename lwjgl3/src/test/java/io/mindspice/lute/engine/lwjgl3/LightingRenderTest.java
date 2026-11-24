@@ -1,5 +1,7 @@
 package io.mindspice.lute.engine.lwjgl3;
 
+import io.mindspice.lute.engine.data.json.AttackDamage.Scalar;
+
 import com.badlogic.ashley.core.Engine;
 import com.badlogic.ashley.core.Entity;
 import com.badlogic.gdx.*;
@@ -326,7 +328,7 @@ public final class LightingRenderTest extends ApplicationAdapter {
         var combat = new CombatSystem(world, new ProjectilesData.Projectile("arrow", 1, 5,
             CollisionData.ellipse(new CharacterBounds(0, 0, 2, 2)), 0, 0, 4, 0));
         engine.addSystem(combat);
-        var bow = new CombatWeapon.Weapon("bow", "bow", new CombatWeapon.Attack("bow", 1, 0, 1,
+        var bow = new CombatWeapon.Weapon("bow", "bow", new CombatWeapon.Attack("bow", new Scalar(1), 0, 1,
             new Animation2D.Attack("shot", 1, .1f, 0, ""), "", null, null, null), null);
         var aim = new BowAim(8, 8);
         var start = transform(24, 44, 0, 0, 0);

@@ -104,6 +104,7 @@ public class DataLoader {
         String filepath = GameConsts.DATA_PATH + "weapons.json";
         try (var file = Gdx.files.internal(filepath).read()) {
             return mapper.readerFor(WeaponsData.class)
+                .with(DeserializationFeature.FAIL_ON_READING_DUP_TREE_KEY)
                 .without(DeserializationFeature.ACCEPT_FLOAT_AS_INT)
                 .readValue(file);
         } catch (IOException e) {

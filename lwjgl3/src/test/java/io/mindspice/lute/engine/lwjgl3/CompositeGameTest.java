@@ -257,9 +257,8 @@ public final class CompositeGameTest {
                         int before = health.getCurrent();
                         require(fireAtActor(player, bow, Facing.Direction.LEFT, actor) == 0 && health.getCurrent() == before,
                             weapon + " miss leaves " + name + " unharmed and makes no damage number");
-                        int damage = Loadout.MAPPER.get(player).getWeapon().primary().damage();
                         require(fireAtActor(player, bow, Facing.Direction.RIGHT, actor) == 1
-                                && oneHit(before, damage, health.getCurrent()),
+                                && oneHit(before, weapon, Combat.AttackSlot.PRIMARY, health.getCurrent()),
                             weapon + " deals one full hit and shows one number for " + name + ": " + before + " -> " + health.getCurrent());
                     }
                 } finally {
@@ -438,11 +437,11 @@ public final class CompositeGameTest {
             if (shot) {
                 int remaining = Health.MAPPER.get(target).getCurrent();
                 boolean clear = direction == Facing.Direction.LEFT || direction == Facing.Direction.RIGHT;
-                require(clear ? oneHit(1000, expected.damage(), remaining) : remaining == 1000,
+                require(clear ? oneHit(1000, weapon.id(), slot, remaining) : remaining == 1000,
                     "Probe takes one hit on clear paths, none behind test-map walls: " + direction);
             } else {
                 require(sensorSeen, "Melee attack really creates a sensor, including bow jab");
-                require(oneHit(1000, expected.damage(), Health.MAPPER.get(target).getCurrent()),
+                require(oneHit(1000, weapon.id(), slot, Health.MAPPER.get(target).getCurrent()),
                     "Real physics contact deals exactly one authored melee hit: " + weapon.id() + "/" + slot + "/" + direction);
             }
             require(fixtureCount(world) == fixtures, "Completed attack restores world fixture count");
@@ -531,8 +530,15 @@ public final class CompositeGameTest {
         GAME.dispose();
     }
 
-    private static boolean oneHit(int before, int base, int after) {
-        return after >= Math.max(0, before - Math.round(1.1f * base)) && after <= Math.max(0, before - Math.round(.9f * base));
+    private static boolean oneHit(int before, String weapon, Combat.AttackSlot slot, int after) {
+        return switch (weapon) {
+            case "basic_bow" -> after >= Math.max(0, before - 30) && after <= Math.max(0, before - 20);
+            case "basic_sword" -> slot == Combat.AttackSlot.PRIMARY
+                ? after >= Math.max(0, before - 20) && after <= Math.max(0, before - 15)
+                : after == Math.max(0, before - 10);
+            case "unarmed" -> after == Math.max(0, before - 3);
+            default -> throw new AssertionError("Unexpected test weapon: " + weapon);
+        };
     }
 
     private static void require(boolean condition, String message) {

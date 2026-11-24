@@ -8,6 +8,7 @@ import com.badlogic.gdx.math.MathUtils;
 import io.mindspice.lute.engine.components.Facing.Direction;
 import io.mindspice.lute.engine.components.Health;
 import io.mindspice.lute.engine.components.Transform;
+import io.mindspice.lute.engine.data.json.AttackDamage;
 
 import java.util.ArrayList;
 import java.util.List;
@@ -19,9 +20,9 @@ final class DamageFeedback implements Component {
     static final float DURATION = .65f;
     final List<Number> numbers = new ArrayList<>();
 
-    static int land(Entity target, Health health, int base, float scale, Direction facing) {
+    static int land(Entity target, Health health, AttackDamage damage, float scale, Direction facing) {
         int before = health.getCurrent();
-        health.damage(roundedDamage(base, scale, MathUtils.random(.9f, 1.1f)));
+        health.damage(damage.roll(MathUtils.random, scale));
         int taken = before - health.getCurrent();
         var transform = Transform.MAPPER.get(target);
         if (taken <= 0 || transform == null) { return taken; }
@@ -32,10 +33,6 @@ final class DamageFeedback implements Component {
         feedback.numbers.add(new Number(taken, health.remainingRatio(), facing,
             position.x + size.x / 2, position.y + size.y));
         return taken;
-    }
-
-    static int roundedDamage(int base, float scale, float roll) {
-        return Math.round(base * scale * roll);
     }
 
     void advance(float dt) {

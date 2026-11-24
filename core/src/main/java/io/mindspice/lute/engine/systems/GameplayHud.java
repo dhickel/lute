@@ -11,6 +11,7 @@ import com.badlogic.gdx.math.Vector2;
 import com.badlogic.gdx.utils.Align;
 import com.badlogic.gdx.utils.viewport.Viewport;
 import io.mindspice.lute.engine.components.Health;
+import io.mindspice.lute.gameplay.HoardRun;
 
 final class GameplayHud {
     private static final int BAR_HEIGHT = 28;
@@ -29,7 +30,7 @@ final class GameplayHud {
         this.white = white;
     }
 
-    void draw(Batch batch, Engine engine, Viewport viewport, Health player, int minute) {
+    void draw(Batch batch, Engine engine, Viewport viewport, Health player, int minute, HoardRun run) {
         batch.setProjectionMatrix(projection.setToOrtho2D(0, 0, viewport.getScreenWidth(), viewport.getScreenHeight()));
         for (var victim : engine.getEntitiesFor(DamageFeedback.FAMILY)) {
             for (var hit : DamageFeedback.MAPPER.get(victim).numbers) {
@@ -49,17 +50,17 @@ final class GameplayHud {
                 drawHealthText(batch, Integer.toString(hit.amount), x, y, Align.center, hit.remaining, 1 - t);
             }
         }
-        drawBar(batch, viewport.getScreenWidth(), viewport.getScreenHeight(), player, minute);
+        drawBar(batch, viewport.getScreenWidth(), viewport.getScreenHeight(), player, minute, run);
     }
 
-    private void drawBar(Batch batch, int width, int top, Health player, int minute) {
+    private void drawBar(Batch batch, int width, int top, Health player, int minute, HoardRun run) {
         int bottom = top - BAR_HEIGHT;
         batch.setColor(.10f, .10f, .10f, 1);
         batch.draw(white, 0, bottom, width, BAR_HEIGHT);
         batch.setColor(.14f, .14f, .14f, 1);
         batch.draw(white, 0, bottom + 15, width, 13);
 
-        String time = clockText(minute);
+        String time = statusText(minute, run);
         measure.setText(font, time);
         float timeWidth = measure.width;
         String hp = player == null ? null : healthText(player);
@@ -95,6 +96,15 @@ final class GameplayHud {
                 font.setUseIntegerPositions(true);
             }
         }
+    }
+
+    static String statusText(int minute, HoardRun run) {
+        String clock = clockText(minute);
+        if (run == null) { return clock; }
+        int left = run.remainingSeconds();
+        return clock + (run.isGameOver() ? "   Game Over" : "") + "   Round " + run.round()
+            + "   " + left / 60 + ":" + (left % 60 < 10 ? "0" : "") + left % 60
+            + " left   Kills " + run.kills() + "   Score " + run.score();
     }
 
     static String healthText(Health health) {

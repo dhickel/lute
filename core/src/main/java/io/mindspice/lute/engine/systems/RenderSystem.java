@@ -140,7 +140,9 @@ public class RenderSystem extends SortedIteratingSystem implements Disposable {
             super.update(deltaTime);
             straightBlend();
             fgLayers.forEach(mapRenderer::renderMapLayer);
-            if (night) {
+            var hoard = getEngine().getSystem(HoardSystem.class);
+            var run = hoard == null ? null : hoard.run();
+            if (run != null ? hoard.clockNight() : night) {
                 batch.end();
                 if (lighting == null) { lighting = new NightLighting(pixels[2], pixels[3], state); }
                 lighting.render(world, getEngine().getEntitiesFor(LIGHTS), ambient, sessionSeconds, camera, pixels, state,
@@ -166,7 +168,7 @@ public class RenderSystem extends SortedIteratingSystem implements Disposable {
                     hud = new GameplayHud(overlayWhite(state));
                 }
                 var clock = getEngine().getSystem(WorldTimeSystem.class);
-                hud.draw(batch, getEngine(), viewport, tiled.playerHealth(), (int) clock.getMinuteOfDay());
+                hud.draw(batch, getEngine(), viewport, tiled.playerHealth(), (int) clock.getMinuteOfDay(), run);
             }
             batch.end();
         } finally {

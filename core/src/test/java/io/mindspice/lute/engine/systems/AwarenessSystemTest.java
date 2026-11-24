@@ -1,5 +1,7 @@
 package io.mindspice.lute.engine.systems;
 
+import io.mindspice.lute.engine.data.json.AttackDamage.Scalar;
+
 import com.badlogic.ashley.core.Engine;
 import com.badlogic.ashley.core.Entity;
 import com.badlogic.gdx.graphics.g2d.Animation;
@@ -237,7 +239,7 @@ public final class AwarenessSystemTest {
             var melee = Combat.MAPPER.get(enemy);
             awareness.processEntity(enemy, 0f);
             check(melee.requestedTarget() == player, "Normal enemy vision queues melee against the live nearby player");
-            combat.arrows().add(new ArrowFlight(shooter, type, new Vector2(18, 0), new Vector2(20, 0), 10, 1));
+            combat.arrows().add(new ArrowFlight(shooter, type, new Vector2(18, 0), new Vector2(20, 0), new Scalar(10), 1));
             impact();
             check(ai.retaliationTarget() == shooter && melee.getAttackId() == 0 && !melee.hasAttackRequest(),
                 "A new retaliation lead invalidates the old target's queued melee before it commits");
@@ -260,7 +262,7 @@ public final class AwarenessSystemTest {
         }
 
         private void fire(Entity shooter, int damage, float scale) {
-            combat.arrows().add(new ArrowFlight(shooter, type, new Vector2(-2, 0), new Vector2(0, 0), damage, scale));
+            combat.arrows().add(new ArrowFlight(shooter, type, new Vector2(-2, 0), new Vector2(0, 0), new Scalar(damage), scale));
         }
 
         private void impact() {
@@ -358,7 +360,7 @@ public final class AwarenessSystemTest {
         entity.add(new Actor(role, 0, 0)).add(new Physic(body, def.position.cpy()))
             .add(new Facing(Facing.Direction.DOWN)).add(new Health(100));
         if (role != Actor.Role.PLAYER) {
-            var attack = new CombatWeapon.Attack("unarmed", 10, 0, .3f, null, null, null, null, CollisionType.MELEE);
+            var attack = new CombatWeapon.Attack("unarmed", new Scalar(10), 0, .3f, null, null, null, null, CollisionType.MELEE);
             var weapon = new CombatWeapon.Weapon("unarmed", "", attack, attack);
             entity.add(new ActorAi(role == Actor.Role.ENEMY ? "wander_attack" : "wander"))
                 .add(new Combat()).add(new Move(1f))

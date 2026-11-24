@@ -38,6 +38,8 @@ public class PhysicSystem extends IteratingSystem implements EntityListener {
             world.step(interval, 6, 2);
             var sensors = getEngine().getSystem(MapSensorSystem.class);
             if (sensors != null) { sensors.afterPhysicsStep(); }
+            var hoard = getEngine().getSystem(HoardSystem.class);
+            if (hoard != null) { hoard.afterPhysicsStep(interval); }
         }
         world.clearForces();
 

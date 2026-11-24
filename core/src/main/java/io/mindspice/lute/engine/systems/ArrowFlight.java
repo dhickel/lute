@@ -6,6 +6,7 @@ import com.badlogic.gdx.physics.box2d.*;
 import io.mindspice.lute.engine.components.Facing;
 import io.mindspice.lute.engine.components.Health;
 import io.mindspice.lute.engine.components.Hurtbox;
+import io.mindspice.lute.engine.data.json.AttackDamage;
 import io.mindspice.lute.engine.data.json.ProjectilesData.Projectile;
 import io.mindspice.lute.engine.singletons.GameConsts;
 
@@ -14,9 +15,9 @@ final class ArrowFlight {
     final Projectile type;
     final Vector2 tip;
     final Vector2 direction;
-    Entity survivingVictim;
+    Entity damagedVictim;
     private final Vector2 start, aimPoint, travel;
-    private final int baseDamage;
+    private final AttackDamage damage;
     private final float drawScale;
     private final Facing.Direction launchFacing;
     private final double span, rise, bend, sweepStep, endProgress;
@@ -24,12 +25,12 @@ final class ArrowFlight {
     private final float collisionPad;
     private double elapsed, progress;
 
-    ArrowFlight(Entity owner, Projectile type, Vector2 start, Vector2 aimPoint, int baseDamage, float drawScale) {
+    ArrowFlight(Entity owner, Projectile type, Vector2 start, Vector2 aimPoint, AttackDamage damage, float drawScale) {
         this.owner = owner;
         this.type = type;
         this.start = start;
         this.aimPoint = aimPoint;
-        this.baseDamage = baseDamage;
+        this.damage = damage;
         this.drawScale = drawScale;
         launchFacing = Facing.MAPPER.get(owner).getDirection();
         tip = start.cpy();
@@ -166,9 +167,8 @@ final class ArrowFlight {
             Math.max(tip.x, next.x) + collisionPad, Math.max(tip.y, next.y) + collisionPad);
         var health = nearest.target == null ? null : Health.MAPPER.get(nearest.target);
         if (health != null && health.isAlive()
-            && DamageFeedback.land(nearest.target, health, baseDamage, drawScale, launchFacing) > 0
-            && health.isAlive()) {
-            survivingVictim = nearest.target;
+            && DamageFeedback.land(nearest.target, health, damage, drawScale, launchFacing) > 0) {
+            damagedVictim = nearest.target;
         }
         return Float.isFinite(nearest.distance);
     }

@@ -1,5 +1,7 @@
 package io.mindspice.lute.engine.combat;
 
+import io.mindspice.lute.engine.data.json.AttackDamage;
+
 import com.badlogic.ashley.core.Engine;
 import com.badlogic.ashley.core.Entity;
 import com.badlogic.gdx.Gdx;
@@ -66,8 +68,10 @@ public final class CombatSystemTest {
         cooldownBetweenBowAndMelee();
         queuedLethalHitCancelsBowRelease();
         bowDamageByDrawFrame();
-        independentAttacksAndGeometry();
+        independentAttacksAndGeometry(Actor.Role.PLAYER, Actor.Role.ENEMY);
+        independentAttacksAndGeometry(Actor.Role.ENEMY, Actor.Role.PLAYER);
         committedMeleeHit();
+        playerKillCredit();
         contacts();
         characterFixturesAndContacts();
         cleanup();
@@ -459,10 +463,11 @@ public final class CombatSystemTest {
     }
 
     private static void bowDamageByDrawFrame() {
-        float[] damage = {2.5f, 5f, 7.5f, 10f, 10f};
+        int[] damage = {8, 15, 23, 30, 30};
         for (int frame = 0; frame < damage.length; frame++) {
             try (var game = new Harness(1, 1, 1)) {
-                var shot = attack("basic_bow", "shot", 1, 2, 1, BoundsType.RECT, CollisionType.PROJECTILE);
+                var shot = attackWithDamage("basic_bow", "shot", 1, 2, 1, BoundsType.RECT, CollisionType.PROJECTILE,
+                    new AttackDamage.Range(20, 30));
                 game.selectWeapon(new CombatWeapon.Weapon("basic_bow", "ranged/basic_bow", shot, shot));
                 game.player.add(new BowAim(1, 1));
                 var target = game.target(2, false);
@@ -478,7 +483,7 @@ public final class CombatSystemTest {
                     check(game.animation().getFrameIndex() == 5, "All draw strengths start release at frame 5");
                     check(rolls.count == 0, "Bow release does not roll damage before landing");
                     game.update(.5f);
-                    near(100 - Math.round(damage[frame] * 1.05f), Health.MAPPER.get(target).getCurrent(),
+                    near(100 - damage[frame], Health.MAPPER.get(target).getCurrent(),
                         "One roll applies to draw-scaled damage at frame " + frame);
                     check(rolls.count == 1, "Landed arrow rolls once across duplicate fixtures");
                 } finally { MathUtils.random = previous; }
@@ -547,18 +552,19 @@ public final class CombatSystemTest {
         }
     }
 
-    private static void independentAttacksAndGeometry() {
-        var primary = new CombatWeapon.Attack("test", 41, 0, .375f,
+    private static void independentAttacksAndGeometry(Actor.Role attacker, Actor.Role victim) {
+        var primary = new CombatWeapon.Attack("test", new AttackDamage.Range(15, 20), 0, .375f,
             new Animation2D.Attack("slash", 1, .125f, 1, "primary"), "hit", BoundsType.RECT,
             new CombatWeapon.Bounds(32, 16, 72, 48, ZERO, ZERO, ZERO, ZERO), CollisionType.MELEE);
-        var secondary = new CombatWeapon.Attack("test", 17, 2, .375f,
+        var secondary = new CombatWeapon.Attack("test", new AttackDamage.Range(10, 10), 2, .375f,
             new Animation2D.Attack("jab", 1, .125f, 3, "secondary"), "hit", BoundsType.TRIANGLE,
             new CombatWeapon.Bounds(32, 24, 56, 40, ZERO, ZERO, ZERO, ZERO), CollisionType.MELEE);
         for (var input : new InputAction[]{InputAction.ATTACK_PRIMARY, InputAction.ATTACK_SECONDARY}) {
             try (var game = new Harness(1, 0, 0)) {
+                game.player.add(new Actor(attacker, 0, 0));
                 game.selectWeapon(new CombatWeapon.Weapon("test", "melee/test", primary, secondary));
-                var near = game.target(2, false);
-                var far = game.target(1, false);
+                var near = game.target(2, false).add(new Actor(victim, 0, 0));
+                var far = game.target(1, false).add(new Actor(victim, 0, 0));
                 Physic.MAPPER.get(near).getBody().setTransform(1.5f, 1, 0);
                 Physic.MAPPER.get(far).getBody().setTransform(2.1f, 1, 0);
                 boolean first = input == InputAction.ATTACK_PRIMARY;
@@ -580,8 +586,10 @@ public final class CombatSystemTest {
                 }
                 near(first ? 2.25f : 1.75f, tip, "Independent configured reach");
                 game.step(); game.combatSystem.update(0);
-                damageWithin(expected.damage(), near, "Independent selected damage, once per target");
-                damageWithin(first ? 41 : 0, far, "Only longer primary reaches distant target");
+                int nearHit = 100 - Health.MAPPER.get(near).getCurrent();
+                check(first ? nearHit >= 15 && nearHit <= 20 : nearHit == 10, "Independent selected damage, once per target");
+                int farHit = 100 - Health.MAPPER.get(far).getCurrent();
+                check(first ? farHit >= 15 && farHit <= 20 : farHit == 0, "Only longer primary reaches distant target");
                 game.update(.125f); game.events.update(0);
                 check(game.sounds.equals(List.of(first ? "primary" : "secondary")), "Independent secondary cue reached once");
                 game.update(0); game.events.update(0);
@@ -614,9 +622,52 @@ public final class CombatSystemTest {
         }
     }
 
+    private static void playerKillCredit() {
+        for (boolean projectile : new boolean[]{false, true}) {
+            for (var source : new Actor.Role[]{Actor.Role.PLAYER, Actor.Role.ENEMY}) {
+                for (var victim : new Actor.Role[]{Actor.Role.ENEMY, Actor.Role.NPC}) {
+                    try (var game = new Harness(1, 0, 0)) {
+                        var kills = new ArrayList<Event.Player.KilledEnemy>();
+                        game.events.subscribe(Event.Player.KilledEnemy.class, kills::add);
+                        game.player.add(new Actor(source, 0, 0));
+                        var target = game.target(2, false).add(new Actor(victim, 0, 0));
+                        if (projectile) {
+                            var shot = attack("bow", "shot", 1, 2, 1, BoundsType.RECT, CollisionType.PROJECTILE);
+                            game.selectWeapon(new CombatWeapon.Weapon("bow", "ranged/bow", shot, shot));
+                            game.player.add(new BowAim(1, 1));
+                            Physic.MAPPER.get(target).getBody().setTransform(2, 1, 0);
+                        }
+                        for (boolean lethal : new boolean[]{false, true}) {
+                            if (lethal) { Health.MAPPER.get(target).damage(Health.MAPPER.get(target).getCurrent() - 1); }
+                            if (projectile) {
+                                game.input(InputAction.ATTACK_PRIMARY, 1); game.update(0);
+                                game.input(InputAction.ATTACK_PRIMARY, 0); game.update(.5f);
+                            } else {
+                                game.attack(); game.step(); game.combatSystem.update(0);
+                            }
+                            game.finish(); game.events.update(0);
+                            var health = Health.MAPPER.get(target);
+                            check(health.getCurrent() < health.getMaximum() && health.isAlive() != lethal,
+                                "Real hit resolves before checking kill credit");
+                            boolean credited = lethal && source == Actor.Role.PLAYER && victim == Actor.Role.ENEMY;
+                            check(kills.equals(credited ? List.of(new Event.Player.KilledEnemy(game.player, target)) : List.of()),
+                                "Only the player's lethal hit on an enemy gets credit: projectile=" + projectile);
+                        }
+                        kills.clear();
+                        game.engine.removeEntity(target); // corpse retirement
+                        game.engine.removeEntity(game.target(1, false).add(new Actor(Actor.Role.ENEMY, 0, 0)));
+                        game.events.update(0);
+                        check(kills.isEmpty(), "Removing a corpse or a living enemy grants no kill credit");
+                    }
+                }
+            }
+        }
+    }
+
     private static final class HitRolls extends java.util.Random {
         int count;
         @Override public float nextFloat() { count++; return .75f; }
+        @Override public int nextInt(int bound) { count++; return bound - 1; }
     }
 
     private static void contacts() {
@@ -696,7 +747,7 @@ public final class CombatSystemTest {
                 hurtbox.setUserData(Hurtbox.INSTANCE);
                 var bounds = feetOnly ? new CombatWeapon.Bounds(32, 4, 72, 4.5f, ZERO, ZERO, ZERO, ZERO)
                     : new CombatWeapon.Bounds(32, 24, 72, 56, ZERO, ZERO, ZERO, ZERO);
-                var attack = new CombatWeapon.Attack("test", 10, 0, .375f,
+                var attack = new CombatWeapon.Attack("test", new AttackDamage.Scalar(10), 0, .375f,
                     new Animation2D.Attack("slash", 1, .125f, 0, "sound"), "hit", BoundsType.RECT, bounds, CollisionType.MELEE);
                 game.selectWeapon(new CombatWeapon.Weapon("test", "melee/test", attack, attack));
                 if (!feetOnly) {
@@ -838,7 +889,7 @@ public final class CombatSystemTest {
             for (var bounds : new CombatWeapon.Bounds[]{new CombatWeapon.Bounds(0, 0, .001f, .001f, ZERO, ZERO, ZERO, ZERO),
                 new CombatWeapon.Bounds(0, 0, 1e24f, 64, ZERO, ZERO, ZERO, ZERO),
                 new CombatWeapon.Bounds(0, 0, 1e15f, 1e15f, ZERO, ZERO, ZERO, ZERO)}) {
-                var unsafe = new CombatWeapon.Attack("bad", 10, 0, .375f, new Animation2D.Attack("slash", 1, .125f, 0, "sound"),
+                var unsafe = new CombatWeapon.Attack("bad", new AttackDamage.Scalar(10), 0, .375f, new Animation2D.Attack("slash", 1, .125f, 0, "sound"),
                     "hit", shape, bounds, CollisionType.MELEE);
                 rejects(() -> unsafe.validateGeometry(anchor), "Unsafe geometry");
             }
@@ -1153,8 +1204,12 @@ public final class CombatSystemTest {
     }
     private static CombatWeapon.Attack attack(String id, String action, float speed, int hit, int sound,
                                                BoundsType shape, CollisionType collisionType) {
+        return attackWithDamage(id, action, speed, hit, sound, shape, collisionType, new AttackDamage.Scalar(10));
+    }
+    private static CombatWeapon.Attack attackWithDamage(String id, String action, float speed, int hit, int sound,
+                                                        BoundsType shape, CollisionType collisionType, AttackDamage damage) {
         String soundPrefix = "weapon/" + id + (action.equals("jab") ? "/secondary" : "/primary");
-        return new CombatWeapon.Attack(id, 10, hit, collisionType == CollisionType.PROJECTILE ? .25f : .375f,
+        return new CombatWeapon.Attack(id, damage, hit, collisionType == CollisionType.PROJECTILE ? .25f : .375f,
             new Animation2D.Attack(action, speed, .125f, sound, soundPrefix + "/attack"),
             soundPrefix + "/hit", shape, new CombatWeapon.Bounds(32, 0, 72, 64, ZERO, ZERO, ZERO, ZERO), collisionType);
     }

@@ -95,6 +95,34 @@ tasks.register('mapTravelTest', JavaExec) {
   jvmArgs '--enable-native-access=ALL-UNNAMED', '--add-exports=java.base/jdk.internal.misc=ALL-UNNAMED'
 }
 
+tasks.register('hoardArenaTest', JavaExec) {
+  dependsOn testClasses
+  classpath = sourceSets.test.runtimeClasspath
+  mainClass = 'io.mindspice.lute.engine.systems.HoardArenaTest'
+  environment 'DISPLAY', System.getenv('DISPLAY') ?: ':0'
+  jvmArgs '--enable-native-access=ALL-UNNAMED', '--add-exports=java.base/jdk.internal.misc=ALL-UNNAMED'
+}
+
+// Each real-map regression needs a specific map, not the developer's current startup selection.
+// The other provisioned assets remain ordinary runtime classpath resources.
+['hoardArenaTest': 'hoard_mode', 'mapTravelTest': 'test_tiled', 'compositeRenderTest': 'test_tiled',
+ 'gameScreenLifecycleTest': 'test_tiled'].each { taskName, mapId ->
+  tasks.named(taskName, JavaExec) {
+    workingDir = layout.buildDirectory.dir("map-tests/${taskName}").get().asFile
+    doFirst {
+      workingDir.mkdirs()
+      def settings = new groovy.json.JsonSlurper().parse(rootProject.file('assets/game.settings.json'))
+      settings.startupMap = mapId
+      if (mapId == 'hoard_mode') {
+        // Make the clock-lighting pixel comparison independent of the local debug view and ambient tuning.
+        settings.nightAmbient = [tint: '#8299CC', brightness: 0.35]
+        settings.debugLayers = [physics: false, triggers: false, rawLightMap: false, lightingOutlines: false]
+      }
+      new File(workingDir, 'game.settings.json').text = groovy.json.JsonOutput.toJson(settings)
+    }
+  }
+}
+
 tasks.named('test') {
   failOnNoDiscoveredTests = false
 }

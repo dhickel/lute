@@ -13,6 +13,7 @@ import java.lang.reflect.Proxy;
 import java.nio.file.Files;
 import java.nio.file.Path;
 import java.util.HashMap;
+import java.util.List;
 import java.util.Map;
 
 public final class DataLoaderTest {
@@ -69,6 +70,8 @@ public final class DataLoaderTest {
             stats.put("damage", 10.5);
             Files.writeString(fixture, weapons.toString());
             rejects(DataLoader::parseWeaponData, "fractional weapon damage");
+            Files.writeString(fixture, weapons.toString().replace("\"damage\":10.5", "\"damage\":{\"min\":1,\"min\":2,\"max\":3}"));
+            rejects(DataLoader::parseWeaponData, "duplicate damage bound");
         } finally {
             useAssets();
             Files.delete(fixture);
@@ -386,8 +389,7 @@ public final class DataLoaderTest {
             for (var slot : new String[]{"primary", "secondary"}) {
                 var attack = slot.equals("primary") ? weapon.attackStats().primary() : weapon.attackStats().secondary();
                 var json = authored.get(entry.getKey()).get("attack_stats").get(slot);
-                check(attack.stats().damage() == json.get("stats").get("damage").asInt()
-                    && attack.stats().cost() == json.get("stats").get("cost").asInt()
+                check(attack.stats().cost() == json.get("stats").get("cost").asInt()
                     && attack.stats().hitFrame() == json.get("stats").get("hit_frame").asInt()
                     && attack.stats().cooldownSeconds() == (float) json.get("stats").get("cooldown_seconds").asDouble(),
                     "authored " + slot + " stats");
@@ -399,9 +401,16 @@ public final class DataLoaderTest {
         }
         check(unarmed.attackStats().primary().animation().atlasKey().equals("jab")
             && unarmed.attackStats().primary().collisionType() == CollisionType.MELEE, "unarmed primary jab");
-        check(sword.attackStats().secondary().stats().damage() < sword.attackStats().primary().stats().damage()
-            && sword.attackStats().secondary().stats().hitFrame() != sword.attackStats().primary().stats().hitFrame(),
-            "jab has distinct lower tuning");
+        check(sword.attackStats().primary().stats().damage().equals(new AttackDamage.Range(15, 20))
+            && sword.attackStats().secondary().stats().damage().equals(new AttackDamage.Range(10, 10)), "exact sword tuning");
+        for (var attack : List.of(bow.attackStats().primary(), bow.attackStats().secondary())) {
+            check(attack.stats().damage().equals(new AttackDamage.Range(20, 30)), "exact bow tuning");
+        }
+        for (var attack : List.of(unarmed.attackStats().primary(), unarmed.attackStats().secondary())) {
+            check(attack.stats().damage().equals(new AttackDamage.Scalar(3)), "unchanged scalar unarmed tuning");
+        }
+        check(sword.attackStats().secondary().stats().hitFrame() != sword.attackStats().primary().stats().hitFrame(),
+            "jab has a distinct hit frame");
         var stats = DataLoader.mapper.readValue("{\"damage\":1,\"cost\":0,\"hit_frame\":2,\"cooldown_seconds\":0.375}", Stats.class);
         check(stats.cooldownSeconds() == .375f, "cooldown in seconds");
         var animation = DataLoader.mapper.readValue("{\"speed\":1,\"atlas_key\":\"jab\",\"sound_frame\":3,\"frame_interval\":0.15}", AnimationData.class);
@@ -432,11 +441,18 @@ public final class DataLoaderTest {
             primary.bounds(), primary.stats(), primary.sounds(), CollisionType.MELEE), "shot marked melee");
         rejects(() -> new AttackData(primary.animation(), primary.bounds(), primary.stats(), primary.sounds(), CollisionType.PROJECTILE),
             "slash marked projectile");
-        rejects(() -> new Stats(10, 0, -1, .25f), "negative hit frame");
-        rejects(() -> new Stats(0, 0, 0, .25f), "zero damage");
-        rejects(() -> new Stats(10, -1, 0, .25f), "negative cost");
+        var damage = primary.stats().damage();
+        rejects(() -> new Stats(damage, 0, -1, .25f), "negative hit frame");
+        rejects(() -> new Stats(damage, -1, 0, .25f), "negative cost");
+        String fields = "\"cost\":0,\"hit_frame\":0,\"cooldown_seconds\":0.25}";
+        rejects(() -> DataLoader.mapper.readValue("{" + fields, Stats.class), "missing damage");
+        for (String invalid : List.of("0", "-1", "null", "\"10\"", "[]", "{}", "{\"min\":1}", "{\"max\":1}",
+            "{\"min\":null,\"max\":2}", "{\"min\":1,\"max\":null}", "{\"min\":5,\"max\":4}", "{\"min\":0,\"max\":1}",
+            "{\"min\":1.5,\"max\":3}", "{\"min\":1,\"max\":\"2\"}", "{\"min\":1,\"max\":2147483648}", "{\"min\":1,\"max\":2,\"extra\":1}")) {
+            rejects(() -> DataLoader.mapper.readValue("{\"damage\":" + invalid + "," + fields, Stats.class), "invalid damage: " + invalid);
+        }
         for (float invalid : new float[]{0f, -.25f, Float.NaN, Float.POSITIVE_INFINITY, Float.NEGATIVE_INFINITY}) {
-            rejects(() -> new Stats(10, 0, 0, invalid), "invalid cooldown: " + invalid);
+            rejects(() -> new Stats(damage, 0, 0, invalid), "invalid cooldown: " + invalid);
         }
         rejects(() -> new AnimationData(0, "jab", 0, .125f), "zero speed");
         rejects(() -> new AnimationData(1, "jab", -1, .125f), "negative sound frame");

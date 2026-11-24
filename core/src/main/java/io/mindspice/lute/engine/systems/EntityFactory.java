@@ -7,11 +7,13 @@ import com.badlogic.gdx.graphics.g2d.Animation;
 import com.badlogic.gdx.graphics.g2d.TextureAtlas;
 import com.badlogic.gdx.graphics.g2d.TextureRegion;
 import com.badlogic.gdx.maps.tiled.objects.TiledMapTileMapObject;
+import com.badlogic.gdx.math.Rectangle;
 import com.badlogic.gdx.math.Vector2;
 import com.badlogic.gdx.physics.box2d.Body;
 import com.badlogic.gdx.physics.box2d.BodyDef;
 import com.badlogic.gdx.physics.box2d.CircleShape;
 import com.badlogic.gdx.physics.box2d.FixtureDef;
+import com.badlogic.gdx.physics.box2d.PolygonShape;
 import com.badlogic.gdx.physics.box2d.World;
 import com.badlogic.gdx.utils.GdxRuntimeException;
 import io.mindspice.lute.engine.assets.Asset;
@@ -91,6 +93,35 @@ public class EntityFactory extends EntitySystem {
         entity.add(new CameraFollow());
         entity.add(new Controller(player.loadout().weaponCycle()));
         return entity;
+    }
+
+    /** Stage the actual enemy before replacing the live map. This checks its art, AI, weapons and
+     * native geometry, and measures its solid footprint relative to a logical center at (0,0). */
+    Rectangle enemySpawnFootprint(String key, Facing.Direction facing) {
+        var staged = getMapActor(Vector2.Zero, Actor.Role.ENEMY, key, facing);
+        var body = Physic.MAPPER.get(staged).getBody();
+        try {
+            for (var fixture : body.getFixtureList()) {
+                if (fixture.isSensor()) { continue; }
+                var shape = fixture.getShape();
+                float radius = shape.getRadius(); // Circle radius or the native polygon skin.
+                if (shape instanceof CircleShape circle) {
+                    var c = body.getWorldPoint(circle.getPosition());
+                    return new Rectangle(c.x - radius, c.y - radius, 2 * radius, 2 * radius);
+                }
+                var polygon = (PolygonShape) shape;
+                var vertex = new Vector2();
+                polygon.getVertex(0, vertex);
+                var p = body.getWorldPoint(vertex);
+                var bounds = new Rectangle(p.x, p.y, 0, 0);
+                for (int i = 1; i < polygon.getVertexCount(); i++) {
+                    polygon.getVertex(i, vertex);
+                    bounds.merge(body.getWorldPoint(vertex));
+                }
+                return bounds.set(bounds.x - radius, bounds.y - radius, bounds.width + 2 * radius, bounds.height + 2 * radius);
+            }
+            throw new IllegalStateException("Enemy has no solid feet: " + key);
+        } finally { world.destroyBody(body); } // Never registered with Ashley or stepped.
     }
 
     public Entity getMapActor(Vector2 pixelPosition, Actor.Role role, String spawnKey, Facing.Direction facing) {

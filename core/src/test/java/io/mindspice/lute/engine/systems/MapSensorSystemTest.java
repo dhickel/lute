@@ -1,12 +1,16 @@
 package io.mindspice.lute.engine.systems;
 
+import io.mindspice.lute.engine.data.json.AttackDamage.Scalar;
+
 import com.badlogic.ashley.core.Engine;
 import com.badlogic.ashley.core.Entity;
 import com.badlogic.ashley.core.EntitySystem;
 import com.badlogic.gdx.Application;
 import com.badlogic.gdx.Gdx;
 import com.badlogic.gdx.files.FileHandle;
+import com.badlogic.gdx.graphics.Texture;
 import com.badlogic.gdx.graphics.g2d.Animation;
+import com.badlogic.gdx.graphics.g2d.TextureAtlas;
 import com.badlogic.gdx.graphics.g2d.TextureRegion;
 import com.badlogic.gdx.maps.MapLayer;
 import com.badlogic.gdx.maps.MapObject;
@@ -29,8 +33,10 @@ import com.badlogic.gdx.utils.GdxNativesLoader;
 import io.mindspice.lute.engine.GameCore;
 import io.mindspice.lute.engine.assets.Asset;
 import io.mindspice.lute.engine.assets.AssetService;
+import io.mindspice.lute.engine.assets.CharacterAssets;
 import io.mindspice.lute.engine.assets.MapAssets;
 import io.mindspice.lute.engine.components.Actor;
+import io.mindspice.lute.engine.components.ActorAi;
 import io.mindspice.lute.engine.components.Animation2D;
 import io.mindspice.lute.engine.components.Combat;
 import io.mindspice.lute.engine.components.CombatWeapon;
@@ -40,6 +46,7 @@ import io.mindspice.lute.engine.components.Hurtbox;
 import io.mindspice.lute.engine.components.Loadout;
 import io.mindspice.lute.engine.data.json.CharacterBounds;
 import io.mindspice.lute.engine.data.json.CollisionData;
+import io.mindspice.lute.engine.data.json.DataLoader;
 import io.mindspice.lute.engine.data.json.ProjectilesData.Projectile;
 import io.mindspice.lute.engine.components.Physic;
 import io.mindspice.lute.engine.components.Player;
@@ -64,7 +71,7 @@ public final class MapSensorSystemTest {
     private static final List<String> LOGS = new ArrayList<>();
     private static int checks;
 
-    public static void main(String[] args) {
+    public static void main(String[] args) throws Exception {
         GdxNativesLoader.load();
         Box2D.init();
         var previousApp = Gdx.app;
@@ -99,6 +106,7 @@ public final class MapSensorSystemTest {
             replacementAndSystemCleanup();
             lockedMapCleanupIsRejected();
             initialPlayerAndDataOnlyMarkers();
+            boundedEnemyPlacement();
             replacementAfterExternalPlayerRemoval();
             invalidMapLoadCleansPartialBodies();
             tiledNativeShapesAndRotation();
@@ -304,7 +312,7 @@ public final class MapSensorSystemTest {
             game.load(map(sensor("feet", 2.4f, 4, 1.2f, .6f), sensor("attack-only", 4, 5, .5f, .5f)));
             var player = game.entity(2, 4, true, false, 1);
             var target = game.entity(3.2f, 4.75f, false, false, 2);
-            var attack = new CombatWeapon.Attack("test", 10, 0, .375f,
+            var attack = new CombatWeapon.Attack("test", new Scalar(10), 0, .375f,
                 new Animation2D.Attack("jab", 1, .125f, 0, "attack"), "hit", BoundsType.RECT,
                 new CombatWeapon.Bounds(pixels(1), 0, pixels(3), pixels(2),
                     new Offset(0, 0), new Offset(0, 0), new Offset(0, 0), new Offset(0, 0)),
@@ -436,8 +444,10 @@ public final class MapSensorSystemTest {
             game.engine.addSystem(factory);
             var area = rectangle("npc-area", "SpawnArea", 30, 30, 3, 3);
             area.getProperties().put("spawnType", "NPC");
+            area.getProperties().put("behaviorKey", "NULL");
             var playerArea = rectangle("player-area", "SpawnArea", 35, 35, 3, 3);
             playerArea.getProperties().put("spawnType", "PLAYER");
+            playerArea.getProperties().put("behaviorKey", "NULL");
             game.load(map(point("start", "PLAYER", 6, 7), point("portal-point", "TELEPORT", 20, 20),
                 point("npc-point", "NPC", 25, 25), point("enemy-point", "ENEMY", 27, 27),
                 point("item-point", "ITEM", 28, 28), area, playerArea,
@@ -462,6 +472,90 @@ public final class MapSensorSystemTest {
             check(factory.calls == 2 && game.engine.getEntities().size() == 1,
                 "Map replacement removes the previous map-owned player and actors before installing the next player");
             check(game.world.getBodyCount() == 2, "Map-owned player replacement leaves one player and boundary");
+        }
+    }
+
+    private static void boundedEnemyPlacement() throws ReflectiveOperationException {
+        var files = Gdx.files;
+        var field = GameCore.class.getDeclaredField("gameData");
+        field.setAccessible(true);
+        var previous = field.get(GameCore.INSTANCE);
+        var atlases = new java.util.HashMap<String, TextureAtlas>();
+        try (var game = new Harness()) {
+            Gdx.files = (com.badlogic.gdx.Files) Proxy.newProxyInstance(com.badlogic.gdx.Files.class.getClassLoader(),
+                new Class<?>[]{com.badlogic.gdx.Files.class}, (proxy, method, args) -> new FileHandle("assets/" + args[0]));
+            field.set(GameCore.INSTANCE, DataLoader.loadGameData());
+            for (var asset : List.of(CharacterAssets.ENEMIES, CharacterAssets.WEAPONS)) {
+                var atlas = new TextureAtlas();
+                atlases.put(asset.id(), atlas);
+                var file = new FileHandle("assets/" + asset.path());
+                for (var region : new TextureAtlas.TextureAtlasData(file, file.parent(), false).getRegions()) {
+                    var texture = new Texture() {
+                        @Override public int getWidth() { return (int) region.page.width; }
+                        @Override public int getHeight() { return (int) region.page.height; }
+                        @Override public void dispose() { }
+                    };
+                    atlas.addRegion(region.name, texture, region.left, region.top, region.width, region.height).index = region.index;
+                }
+            }
+            var assets = new AssetService(FileHandle::new) {
+                @Override public <T> T get(Class<T> type, String id) { return type.cast(atlases.get(id)); }
+            };
+            game.engine.addSystem(new EntityFactory(game.world, assets));
+            var awareness = new AwarenessSystem(game.world);
+            game.engine.addSystem(awareness);
+            var marker = rectangle("SpawnArea1", "SpawnArea", 10, 10, 6, 6);
+            var props = marker.getProperties();
+            props.put("spawnType", "ENEMY");
+            props.put("behaviorKey", "agroWanderingHoard");
+            props.put("spawnKey", "brainless_undead");
+            props.put("facing", "RIGHT");
+            game.load(map(marker, sensor("sensor-not-solid", 10, 10, 6, 6)));
+            var triggers = game.tiled.getMapTriggers();
+            var area = triggers.requireEnemyArea("SpawnArea1", "agroWanderingHoard");
+            rejects(() -> HoardSystem.arena("hoard_mode", triggers), "The arena requires a polygon, not a rectangle");
+            var center = new java.util.Random(0) {
+                int draws;
+                @Override public float nextFloat() { draws++; return .5f; }
+            };
+            // Only the feet overlap (not the logical center at 13,13). Sensors alone must not veto it.
+            var blocker = game.entity(12, 12, false, false, 1);
+            int bodies = game.world.getBodyCount();
+            check(game.tiled.trySpawnAreaEnemy(area, center) == null && center.draws == 64
+                && game.world.getBodyCount() == bodies, "Solid feet collision exhausts bounded retries without leaking bodies");
+            game.engine.removeEntity(blocker);
+            var actor = game.tiled.trySpawnAreaEnemy(area, center);
+            check(actor != null && Actor.MAPPER.get(actor).role() == Actor.Role.ENEMY
+                && Facing.MAPPER.get(actor).getDirection() == Facing.Direction.RIGHT, "Area materializes a normal map actor");
+            check(Health.MAPPER.get(actor).getMaximum() == 50 && Health.MAPPER.get(actor).getCurrent() == 50,
+                "Factory uses the selected enemy's initial and maximum HP");
+            position(actor, 12, 12, "Logical center converted once from area world space to factory pixels");
+            check(game.tiled.trySpawnAreaEnemy(area, center) == null, "New actor blocks another placement before physics steps");
+            var ai = ActorAi.MAPPER.get(actor);
+            awareness.update(STEP);
+            check(ai.mode() == ActorAi.Mode.WANDER, "Area-spawned actor starts wandering");
+            var player = game.createEntity(15, 12, true, false, 1).add(new Actor(Actor.Role.PLAYER, 1f, .25f));
+            game.engine.addEntity(player);
+            awareness.update(STEP);
+            check(ai.mode() == ActorAi.Mode.ENGAGE, "Existing sight and pursuit graph acquires a visible player");
+            game.engine.removeEntity(player);
+            var enemyAtlas = atlases.get(CharacterAssets.ENEMIES.id());
+            var missing = enemyAtlas.findRegion("brainless_undead/death_up", 7);
+            enemyAtlas.getRegions().removeValue(missing, true);
+            int beforeRejection = game.world.getBodyCount();
+            rejects(() -> game.load(map(marker)), "Invalid batch enemy art rejects the staged destination");
+            check(game.tiled.getMapTriggers().areas().getFirst() == area && game.world.getBodyCount() == beforeRejection,
+                "Failed enemy preflight retains the old runtime and leaks no bodies");
+            enemyAtlas.getRegions().add(missing);
+            game.load(map());
+            check(!game.engine.getEntities().contains(actor, true) && game.world.getBodyCount() == 1,
+                "Replacement removes spawned actor, fixtures and sensors");
+            rejects(() -> game.tiled.trySpawnAreaEnemy(area, center), "Stale area cannot spawn after replacement");
+            assets.dispose();
+        } finally {
+            atlases.values().forEach(TextureAtlas::dispose);
+            field.set(GameCore.INSTANCE, previous);
+            Gdx.files = files;
         }
     }
 
@@ -1103,7 +1197,9 @@ public final class MapSensorSystemTest {
         final Engine engine = new Engine() {
             @Override public <T extends EntitySystem> T getSystem(Class<T> type) {
                 // Ashley indexes exact system classes; expose the factory double under its runtime lookup key.
-                if (type == EntityFactory.class) { return type.cast(super.getSystem(FakeFactory.class)); }
+                if (type == EntityFactory.class && super.getSystem(FakeFactory.class) != null) {
+                    return type.cast(super.getSystem(FakeFactory.class));
+                }
                 return super.getSystem(type);
             }
         };

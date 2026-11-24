@@ -35,6 +35,13 @@ tasks.register('worldTimeSystemTest', JavaExec) {
 }
 check.dependsOn worldTimeSystemTest
 
+tasks.register('hoardRunTest', JavaExec) {
+  dependsOn testClasses
+  classpath = sourceSets.test.runtimeClasspath
+  mainClass = 'io.mindspice.lute.gameplay.HoardRunTest'
+}
+check.dependsOn hoardRunTest
+
 tasks.register('inputSystemTest', JavaExec) {
   dependsOn testClasses
   classpath = sourceSets.test.runtimeClasspath

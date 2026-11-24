@@ -12,13 +12,15 @@ import io.mindspice.lute.engine.components.*;
 import io.mindspice.lute.engine.components.Transform;
 import io.mindspice.lute.engine.data.json.WeaponsData.WeaponData.CollisionType;
 import io.mindspice.lute.engine.data.json.ProjectilesData.Projectile;
+import io.mindspice.lute.engine.events.Event;
+import io.mindspice.lute.engine.events.EventEmitter;
 
 import java.util.ArrayList;
 import java.util.IdentityHashMap;
 import java.util.List;
 import java.util.Map;
 
-public class CombatSystem extends IteratingSystem implements ContactListener, EntityListener {
+public class CombatSystem extends IteratingSystem implements ContactListener, EntityListener, EventEmitter {
     private final World world;
     private final List<ArrowFlight> arrows = new ArrayList<>();
     private final Projectile arrowType;
@@ -30,7 +32,7 @@ public class CombatSystem extends IteratingSystem implements ContactListener, En
         if (combat == null || combat.isCoolingDown(weapon.id(), Combat.AttackSlot.PRIMARY)
             || combat.hasAttackRequest()) { return; }
         // Bow input runs before combat. Resolve contacts from the preceding physics step first.
-        applyPendingHits();
+        applyPendingHits(null);
         var health = Health.MAPPER.get(owner);
         if (health != null && !health.isAlive()) { return; }
         if (combat.isAttacking()) { stopAttack(owner); }
@@ -40,7 +42,7 @@ public class CombatSystem extends IteratingSystem implements ContactListener, En
     }
 
     void launch(Entity owner, BowAim aim) {
-        applyPendingHits();
+        applyPendingHits(null);
         var health = Health.MAPPER.get(owner);
         if (health != null && !health.isAlive()) {
             aim.cancel();
@@ -108,22 +110,28 @@ public class CombatSystem extends IteratingSystem implements ContactListener, En
             feedback.advance(deltaTime);
             if (feedback.numbers.isEmpty()) { victim.remove(DamageFeedback.class); }
         }
-        applyPendingHits();
+        applyPendingHits(null);
         var awareness = getEngine().getSystem(AwarenessSystem.class);
         arrows.removeIf(arrow -> {
             if (!arrow.finished(world, deltaTime)) { return false; }
-            if (awareness != null && arrow.survivingVictim != null) {
-                awareness.arrowDamaged(arrow.survivingVictim, arrow.owner);
+            var victim = arrow.damagedVictim;
+            if (victim != null) {
+                if (!Health.MAPPER.get(victim).isAlive()) { creditKill(arrow.owner, victim); }
+                else if (awareness != null) { awareness.arrowDamaged(victim, arrow.owner); }
             }
             return true;
         });
         super.update(deltaTime);
     }
 
-    private void applyPendingHits() {
+    /** Drain unlocked, in contact order. Only the arena's fixed-tick drain can hit a still-registering enemy. */
+    List<Entity> applyPendingHits(TiledSystem arena) {
+        if (pendingHits.isEmpty()) { return List.of(); }
+        var killed = new ArrayList<Entity>();
+        var entities = getEngine().getEntities();
         for (var hit : pendingHits) {
-            if (!getEngine().getEntities().contains(hit.attacker(), true)
-                || !getEngine().getEntities().contains(hit.target(), true)) {
+            if (!entities.contains(hit.attacker(), true)) { continue; }
+            if (!entities.contains(hit.target(), true) && (arena == null || !arena.ownsArrivingEnemy(hit.target()))) {
                 continue;
             }
             var combat = Combat.MAPPER.get(hit.attacker());
@@ -134,9 +142,22 @@ public class CombatSystem extends IteratingSystem implements ContactListener, En
                 && combat != null && combat.isAttacking() && combat.getAttackId() == hit.attackId()
                 && health != null && health.isAlive() && combat.markHit(hit.target())) {
                 DamageFeedback.land(hit.target(), health, combat.getActiveAttack().damage(), 1, combat.getAttackFacing());
+                if (!health.isAlive()) {
+                    killed.add(hit.target());
+                    creditKill(hit.attacker(), hit.target());
+                }
             }
         }
         pendingHits.clear();
+        return killed;
+    }
+
+    private void creditKill(Entity attacker, Entity victim) {
+        var source = Actor.MAPPER.get(attacker);
+        var target = Actor.MAPPER.get(victim);
+        if (source != null && source.role() == Actor.Role.PLAYER && target != null && target.role() == Actor.Role.ENEMY) {
+            eventEmitter.accept(new Event.Player.KilledEnemy(attacker, victim));
+        }
     }
 
     @Override
