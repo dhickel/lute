@@ -14,6 +14,8 @@ import com.badlogic.gdx.maps.objects.PointMapObject;
 import com.badlogic.gdx.maps.objects.PolygonMapObject;
 import com.badlogic.gdx.maps.tiled.TiledMap;
 import com.badlogic.gdx.math.MathUtils;
+import com.badlogic.gdx.math.Rectangle;
+import com.badlogic.gdx.math.Vector2;
 import io.mindspice.lute.engine.GameCore;
 import io.mindspice.lute.engine.components.*;
 import io.mindspice.lute.engine.events.Event;
@@ -48,6 +50,7 @@ public final class HoardArenaTest extends ApplicationAdapter {
     }
 
     private void exercise() {
+        verifyRoundHealthSampling();
         GAME.create();
         initialized = true;
         GAME.resize(Gdx.graphics.getWidth(), Gdx.graphics.getHeight());
@@ -112,7 +115,11 @@ public final class HoardArenaTest extends ApplicationAdapter {
         require(pickups.size() == 1 && pickups.first().getComponent(Pickup.class).rule().amount() == 500, "one round reward");
         var center = Physic.MAPPER.get(pickups.first()).getBody().getPosition().cpy();
         var ellipse = tiled.getMapTriggers().areas().stream().filter(a -> "round_health_spawn".equals(a.behaviorKey())).findFirst().orElseThrow();
-        require(center.epsilonEquals(ellipse.bounds().getCenter(new com.badlogic.gdx.math.Vector2()), .0001f), "round pack at authored center");
+        var dredgeMarker = tiled.getMapTriggers().points().stream().filter(p -> "idle_dredge".equals(p.behaviorKey()))
+            .findFirst().orElseThrow();
+        require(ellipseRadiusSquared(ellipse.bounds(), center) < 1.00001f, "round pack is inside the authored ellipse");
+        require(center.dst(dredgeMarker.position().cpy().scl(GameConsts.UNIT_SCALE)) >= GameConsts.UNIT_SCALE - .0001f,
+            "round pack is clear of the Dredge spawn point");
         var playerActor = Actor.MAPPER.get(player());
         Physic.MAPPER.get(player()).getBody().setTransform(center.x - playerActor.feetX(), center.y - playerActor.feetY(), 0);
         Physic.MAPPER.get(player()).getBody().setAwake(true);
@@ -198,6 +205,35 @@ public final class HoardArenaTest extends ApplicationAdapter {
         int batched = reinforcementHp(tiled, hoard, true);
         System.out.printf("HoardArenaTest: reinforcement HP after two physics ticks: split=%d, batched=%d%n", split, batched);
         require(split > 0 && batched == split, "one real sword hit regardless of physics frame batching");
+    }
+
+    private static void verifyRoundHealthSampling() {
+        var bounds = new Rectangle(4, 7, 12, 8);
+        var marker = bounds.getCenter(new Vector2());
+        var scripted = new Random(0) {
+            private final float[] draws = {0, 0, .5f, .5f, .75f, .5f};
+            private int index;
+            @Override public float nextFloat() { return draws[index++]; }
+        };
+        require(HoardSystem.sampleRoundHealth(bounds, marker, scripted).equals(new Vector2(13, 11)),
+            "reject rectangle corners and the exact Dredge spawn, then use the next valid sample");
+
+        var seeded = new Random(537);
+        double radiusSum = 0;
+        int samples = 4096;
+        for (int i = 0; i < samples; i++) {
+            var point = HoardSystem.sampleRoundHealth(bounds, marker, seeded);
+            float radiusSquared = ellipseRadiusSquared(bounds, point);
+            require(radiusSquared < 1 && point.dst(marker) > GameConsts.UNIT_SCALE, "sample stays in the allowed area");
+            radiusSum += radiusSquared;
+        }
+        require(Math.abs(radiusSum / samples - .5) < .02, "area-uniform samples have mean normalized squared radius near 1/2");
+    }
+
+    private static float ellipseRadiusSquared(Rectangle bounds, Vector2 point) {
+        float x = 2 * (point.x - bounds.x) / bounds.width - 1;
+        float y = 2 * (point.y - bounds.y) / bounds.height - 1;
+        return x * x + y * y;
     }
 
     private void verifyVisitInventory(Loadout ordinary) {
