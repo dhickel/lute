@@ -569,6 +569,9 @@ public final class MapTravelTest extends ApplicationAdapter {
             "Both actors physically wander after their initial wait without attacking out of range");
         body(enemy).setTransform(-100, -100, 0);
         Facing.MAPPER.get(enemy).setDirection(Facing.Direction.RIGHT);
+        var physicsOverlay = new PhysicDebugRenderSystem(body(enemy).getWorld(), GAME.getCamera());
+        try { physicsOverlay.update(0f); }
+        finally { physicsOverlay.dispose(); }
         body(player).setTransform(-100 + 80f * GameConsts.UNIT_SCALE, -100, 0);
         var originalHealth = Health.MAPPER.get(player);
         var testHealth = new Health(100); // The pursuit check needs a survivor independently of authored player HP.
@@ -638,6 +641,8 @@ public final class MapTravelTest extends ApplicationAdapter {
             require(ActorAi.MAPPER.get(enemy).recovering() && Health.MAPPER.get(player).getCurrent() == hp,
                 "The committed swing whiffs");
             long swing = combat.getAttackId();
+            // Keep the enemy looking away from the player's approach during the counter.
+            Facing.MAPPER.get(enemy).setDirection(Facing.Direction.LEFT);
             input.offer(InputAction.MOVE_LEFT, 1);
             screen.render(dt);
             input.offer(InputAction.ATTACK_PRIMARY, 1);
@@ -645,6 +650,8 @@ public final class MapTravelTest extends ApplicationAdapter {
             for (int i = 0; i < 25 && enemyHealth.getCurrent() == before; i++) { screen.render(dt); }
             require(enemyHealth.getCurrent() < before && combat.getAttackId() == swing
                 && Health.MAPPER.get(player).getCurrent() == hp, "Walk back in and land a normal sword counter before the reset");
+            require(ActorAi.MAPPER.get(enemy).retaliationTarget() == player,
+                "A confirmed sword hit from behind immediately makes the player the enemy's retaliation target");
         } finally {
             input.offer(InputAction.ATTACK_PRIMARY, 0);
             input.offer(InputAction.MOVE_LEFT, 0);

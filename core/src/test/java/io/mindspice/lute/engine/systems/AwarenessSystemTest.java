@@ -317,7 +317,7 @@ public final class AwarenessSystemTest {
             fire(shooter, 1, .25f);
             int hp = Health.MAPPER.get(victim).getCurrent();
             impact();
-            awareness.arrowDamaged(victim, victim);
+            awareness.retaliateAfterDamage(victim, victim);
             check(Health.MAPPER.get(victim).getCurrent() == hp && ai.retaliationTarget() == null, "Zero damage and self leads are ignored");
             Health.MAPPER.get(shooter).damage(100);
             fire(shooter, 10, 1);
@@ -347,17 +347,13 @@ public final class AwarenessSystemTest {
             awareness.processEntity(enemy, 0f);
             awareness.processEntity(enemy, .35f);
             check(melee.requestedTarget() == player, "Normal enemy vision queues melee against the live nearby player");
-            awareness.arrowDamaged(enemy, shooter);
-            check(ai.retaliationTarget() == null && melee.requestedTarget() == player,
-                "An enemy does not identify a shooter behind its semicircle");
-            body(shooter).setTransform(12, 0, 0);
             combat.arrows().add(new ArrowFlight(shooter, type, new Vector2(18, 0), new Vector2(20, 0), new Scalar(10), 1));
             impact();
             check(ai.retaliationTarget() == shooter && melee.getAttackId() == 0 && !melee.hasAttackRequest(),
-                "A new retaliation lead invalidates the old target's queued melee before it commits");
+                "A damaging rear shot immediately retargets the enemy before its queued melee commits");
             awareness.processEntity(enemy, 0f);
-            check(!melee.hasAttackRequest() && Move.MAPPER.get(enemy).getDirection().equals(new Vector2(-8, 0)),
-                "Enemy pursues the actual shooter rather than attacking the unrelated player");
+            check(!melee.hasAttackRequest() && Move.MAPPER.get(enemy).getDirection().equals(new Vector2(-8, -1)),
+                "Enemy pursues the actual shooter behind it rather than attacking the unrelated player");
             body(shooter).setTransform(7, 0, 0);
             awareness.processEntity(enemy, 0f);
             awareness.processEntity(enemy, .35f);

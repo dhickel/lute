@@ -131,7 +131,7 @@ public class CombatSystem extends IteratingSystem implements ContactListener, En
             var victim = arrow.damagedVictim;
             if (victim != null) {
                 if (!Health.MAPPER.get(victim).isAlive()) { creditKill(arrow.owner, victim); }
-                else if (awareness != null) { awareness.arrowDamaged(victim, arrow.owner); }
+                else if (awareness != null) { awareness.retaliateAfterDamage(victim, arrow.owner); }
             }
             return true;
         });
@@ -143,6 +143,7 @@ public class CombatSystem extends IteratingSystem implements ContactListener, En
         if (pendingHits.isEmpty()) { return List.of(); }
         var killed = new ArrayList<Entity>();
         var entities = getEngine().getEntities();
+        var awareness = getEngine().getSystem(AwarenessSystem.class);
         for (var hit : pendingHits) {
             if (!entities.contains(hit.attacker(), true)) { continue; }
             if (!entities.contains(hit.target(), true) && (arena == null || !arena.ownsArrivingEnemy(hit.target()))) {
@@ -155,10 +156,14 @@ public class CombatSystem extends IteratingSystem implements ContactListener, En
             if ((attackerHealth == null || attackerHealth.isAlive())
                 && combat != null && combat.isAttacking() && combat.getAttackId() == hit.attackId()
                 && health != null && health.isAlive() && combat.markHit(hit.target())) {
-                HealthFeedback.land(hit.target(), health, combat.getActiveAttack().damage(), 1, combat.getAttackFacing());
+                int damage = HealthFeedback.land(hit.target(), health, combat.getActiveAttack().damage(), 1, combat.getAttackFacing());
                 if (!health.isAlive()) {
                     killed.add(hit.target());
                     creditKill(hit.attacker(), hit.target());
+                } else if (damage > 0 && awareness != null && Actor.MAPPER.has(hit.attacker())
+                    && Actor.MAPPER.get(hit.attacker()).role() == Actor.Role.PLAYER && Actor.MAPPER.has(hit.target())
+                    && Actor.MAPPER.get(hit.target()).role() == Actor.Role.ENEMY) {
+                    awareness.retaliateAfterDamage(hit.target(), hit.attacker());
                 }
             }
         }

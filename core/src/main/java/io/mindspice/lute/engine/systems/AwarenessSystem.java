@@ -97,7 +97,7 @@ public final class AwarenessSystem extends IteratingSystem {
         else { followTarget.perform(actor, state); }
     }
 
-    void arrowDamaged(Entity victim, Entity shooter) {
+    void retaliateAfterDamage(Entity victim, Entity shooter) {
         var ai = ActorAi.MAPPER.get(victim);
         if (ai == null || !livingActor(victim) || Actor.MAPPER.get(victim).role() == Actor.Role.PLAYER) { return; }
         if (victim.getComponent(ArenaGuard.class) != null) { return; }
@@ -114,7 +114,6 @@ public final class AwarenessSystem extends IteratingSystem {
     private Vector2 retaliationFeet(Entity victim, Entity shooter, Vector2 from) {
         if (shooter == victim || !livingActor(shooter)) { return null; }
         var to = feet(shooter);
-        if (Actor.MAPPER.get(victim).role() == Actor.Role.ENEMY && !withinFieldOfView(victim, from, to)) { return null; }
         for (var fixture : Physic.MAPPER.get(victim).getBody().getFixtureList()) {
             if (fixture.getUserData() != SENSOR_TAG) { continue; }
             double radius = 3d * ((CircleShape) fixture.getShape()).getRadius();
@@ -197,8 +196,13 @@ public final class AwarenessSystem extends IteratingSystem {
         return null;
     }
 
+    static boolean usesForwardVision(Entity owner) {
+        return Actor.MAPPER.has(owner) && Actor.MAPPER.get(owner).role() == Actor.Role.ENEMY
+            && !FullCircleVision.MAPPER.has(owner);
+    }
+
     private static boolean withinFieldOfView(Entity owner, Vector2 from, Vector2 to) {
-        if (FullCircleVision.MAPPER.has(owner)) { return true; }
+        if (!usesForwardVision(owner)) { return true; }
         // Cardinal facing defines an inclusive half-plane through the physical feet center.
         return switch (Facing.MAPPER.get(owner).getDirection()) {
             case UP -> to.y >= from.y;
