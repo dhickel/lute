@@ -9,7 +9,6 @@ import io.mindspice.lute.engine.tiled.MapTriggers;
 import io.mindspice.lute.gameplay.HoardRun;
 
 import com.badlogic.ashley.core.Component;
-import com.badlogic.gdx.math.Ellipse;
 import com.badlogic.gdx.math.Vector2;
 import io.mindspice.lute.engine.components.*;
 import io.mindspice.lute.engine.singletons.GameConsts;
@@ -79,13 +78,12 @@ public final class HoardSystem extends EntitySystem implements EventListener {
         var marker = dredgePoint(triggers);
         var center = healthArea(triggers);
         var box = center.bounds();
-        var territory = new Ellipse(box.x + box.width / 2, box.y + box.height / 2, box.width, box.height);
         run = new HoardRun(random, round -> {
             if (round > 1) { drop(tiled, box.getCenter(new Vector2()), center.spawnKey()); }
             if (round % 5 == 0) {
                 var boss = getEngine().getSystem(EntityFactory.class).getMapActor(marker.position(), Actor.Role.ENEMY,
                     marker.spawnKey(), marker.facing());
-                boss.add(new ArenaGuard(territory, Physic.MAPPER.get(boss).getBody().getPosition().cpy()));
+                boss.add(new ArenaGuard(Physic.MAPPER.get(boss).getBody().getPosition().cpy()));
                 boss.add(new Bounty(DREDGE_POINTS));
                 tiled.addArenaEntity(boss);
             }

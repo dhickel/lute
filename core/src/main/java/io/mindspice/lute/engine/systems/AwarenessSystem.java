@@ -12,7 +12,10 @@ import io.mindspice.lute.engine.behaviorgraph.BehaviorGraphs;
 import io.mindspice.lute.engine.behaviorgraph.FocusState;
 import io.mindspice.lute.engine.components.Actor;
 import io.mindspice.lute.engine.components.ActorAi;
+import io.mindspice.lute.engine.components.ArenaGuard;
 import io.mindspice.lute.engine.components.Combat;
+import io.mindspice.lute.engine.components.Facing;
+import io.mindspice.lute.engine.components.FullCircleVision;
 import io.mindspice.lute.engine.components.Health;
 import io.mindspice.lute.engine.components.Physic;
 
@@ -24,6 +27,7 @@ public final class AwarenessSystem extends IteratingSystem {
     private static final Family ACTORS = Family.all(Actor.class, Physic.class).get();
     private final World world;
     private final Action stop = Action.stop();
+    private final Action followTarget = Action.followTarget();
 
     public AwarenessSystem(World world) {
         super(ACTORS);
@@ -41,22 +45,9 @@ public final class AwarenessSystem extends IteratingSystem {
             stop.perform(actor, state);
             return;
         }
-        var guard = actor.getComponent(io.mindspice.lute.engine.components.ArenaGuard.class);
+        var guard = actor.getComponent(ArenaGuard.class);
         if (guard != null) {
-            var player = getEngine().getSystem(TiledSystem.class).activePlayer();
-            if (livingActor(player) && guard.territory().contains(feet(player))) {
-                state.setVisibleTarget(player);
-                state.setTargetOffset(ai.updateTarget(feet(actor), feet(player), deltaTime));
-                if (BehaviorGraphs.attackLocksMovement(actor)) { stop.perform(actor, state); }
-                else { BehaviorGraphs.pursuit(ActorAi.Mode.ENGAGE).travel(actor, state); }
-            } else {
-                ai.forgetTarget();
-                Combat.MAPPER.get(actor).consumeAttackRequest();
-                var offset = guard.home().cpy().sub(Physic.MAPPER.get(actor).getBody().getPosition());
-                state.setTargetOffset(offset);
-                if (offset.len2() < .01f || BehaviorGraphs.attackLocksMovement(actor)) { stop.perform(actor, state); }
-                else { Action.followTarget().perform(actor, state); }
-            }
+            updateGuard(actor, ai, guard, state);
             return;
         }
         var graphs = BehaviorGraphs.forKey(ai.behaviorGraphKey());
@@ -87,10 +78,29 @@ public final class AwarenessSystem extends IteratingSystem {
         graph.travel(actor, state);
     }
 
+    private void updateGuard(Entity actor, ActorAi ai, ArenaGuard guard, FocusState state) {
+        var from = feet(actor);
+        var player = visiblePlayer(actor, from);
+        if (player != null) {
+            state.setVisibleTarget(player);
+            state.setTargetOffset(ai.updateTarget(from, feet(player), state.deltaTime()));
+            if (BehaviorGraphs.attackLocksMovement(actor)) { stop.perform(actor, state); }
+            else { BehaviorGraphs.pursuit(ActorAi.Mode.ENGAGE).travel(actor, state); }
+            return;
+        }
+
+        ai.forgetTarget();
+        Combat.MAPPER.get(actor).consumeAttackRequest();
+        var offset = guard.home().cpy().sub(Physic.MAPPER.get(actor).getBody().getPosition());
+        state.setTargetOffset(offset);
+        if (offset.len2() < .01f || BehaviorGraphs.attackLocksMovement(actor)) { stop.perform(actor, state); }
+        else { followTarget.perform(actor, state); }
+    }
+
     void arrowDamaged(Entity victim, Entity shooter) {
         var ai = ActorAi.MAPPER.get(victim);
         if (ai == null || !livingActor(victim) || Actor.MAPPER.get(victim).role() == Actor.Role.PLAYER) { return; }
-        if (victim.getComponent(io.mindspice.lute.engine.components.ArenaGuard.class) != null) { return; }
+        if (victim.getComponent(ArenaGuard.class) != null) { return; }
         var from = feet(victim);
         var to = retaliationFeet(victim, shooter, from);
         if (to != null) {
@@ -104,6 +114,7 @@ public final class AwarenessSystem extends IteratingSystem {
     private Vector2 retaliationFeet(Entity victim, Entity shooter, Vector2 from) {
         if (shooter == victim || !livingActor(shooter)) { return null; }
         var to = feet(shooter);
+        if (Actor.MAPPER.get(victim).role() == Actor.Role.ENEMY && !withinFieldOfView(victim, from, to)) { return null; }
         for (var fixture : Physic.MAPPER.get(victim).getBody().getFixtureList()) {
             if (fixture.getUserData() != SENSOR_TAG) { continue; }
             double radius = 3d * ((CircleShape) fixture.getShape()).getRadius();
@@ -179,8 +190,21 @@ public final class AwarenessSystem extends IteratingSystem {
 
     private Entity visiblePlayer(Entity owner, Vector2 from) {
         for (var player : inRange(owner, Actor.Role.PLAYER)) {
-            if (Health.MAPPER.get(player).isAlive() && clearSight(from, feet(player))) { return player; }
+            if (!livingActor(player)) { continue; }
+            var to = feet(player);
+            if (withinFieldOfView(owner, from, to) && clearSight(from, to)) { return player; }
         }
         return null;
+    }
+
+    private static boolean withinFieldOfView(Entity owner, Vector2 from, Vector2 to) {
+        if (FullCircleVision.MAPPER.has(owner)) { return true; }
+        // Cardinal facing defines an inclusive half-plane through the physical feet center.
+        return switch (Facing.MAPPER.get(owner).getDirection()) {
+            case UP -> to.y >= from.y;
+            case DOWN -> to.y <= from.y;
+            case LEFT -> to.x <= from.x;
+            case RIGHT -> to.x >= from.x;
+        };
     }
 }

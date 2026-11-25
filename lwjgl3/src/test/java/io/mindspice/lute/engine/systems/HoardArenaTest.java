@@ -14,6 +14,9 @@ import com.badlogic.gdx.maps.objects.PointMapObject;
 import com.badlogic.gdx.maps.objects.PolygonMapObject;
 import com.badlogic.gdx.maps.tiled.TiledMap;
 import com.badlogic.gdx.math.MathUtils;
+import com.badlogic.gdx.math.Vector2;
+import com.badlogic.gdx.physics.box2d.BodyDef;
+import com.badlogic.gdx.physics.box2d.PolygonShape;
 import io.mindspice.lute.engine.GameCore;
 import io.mindspice.lute.engine.components.*;
 import io.mindspice.lute.engine.events.Event;
@@ -296,6 +299,7 @@ public final class HoardArenaTest extends ApplicationAdapter {
         boolean bow = BowAim.MAPPER.has(enemy);
         try {
             enemyBody.setTransform(-100, -100, 0);
+            Facing.MAPPER.get(enemy).setDirection(Facing.Direction.RIGHT);
             // Archers must attack well outside melee range, melee fighters must close it.
             playerBody.setTransform(-100 + (bow ? 2f : .85f), -100, 0);
             var combat = Combat.MAPPER.get(enemy);
@@ -341,20 +345,10 @@ public final class HoardArenaTest extends ApplicationAdapter {
             var playerBody = Physic.MAPPER.get(player()).getBody();
             var original = playerBody.getPosition().cpy();
             var actor = Actor.MAPPER.get(player());
-            var zone = guard.territory();
-            playerBody.setTransform(zone.x - actor.feetX(), zone.y - actor.feetY(), 0);
-            var awareness = engine.getSystem(AwarenessSystem.class);
-            awareness.processEntity(boss, .01f);
-            require(ActorAi.MAPPER.get(boss).mode() == ActorAi.Mode.ENGAGE, "player inside ellipse is acquired");
-            playerBody.setTransform(zone.x - zone.width / 2 - actor.feetX(), zone.y - zone.height / 2 - actor.feetY(), 0);
-            awareness.processEntity(boss, .01f);
-            require(ActorAi.MAPPER.get(boss).mode() != ActorAi.Mode.ENGAGE && Move.MAPPER.get(boss).getDirection().isZero(),
-                "corner of ellipse bounding box is outside; guard at home waits");
-            var bossBody = Physic.MAPPER.get(boss).getBody();
-            bossBody.setTransform(guard.home().x + 1, guard.home().y, 0);
-            awareness.processEntity(boss, .01f);
-            require(Move.MAPPER.get(boss).getDirection().x < 0, "guard returns to its own spawn");
-            verifyGuardVolley(zone.x, zone.y, enemies);
+            var center = tiled.getMapTriggers().areas().stream()
+                .filter(a -> "round_health_spawn".equals(a.behaviorKey())).findFirst().orElseThrow().bounds();
+            verifyGuardVision(boss, guard, center.x + center.width);
+            verifyGuardVolley(center.x + center.width / 2, center.y + center.height / 2, enemies);
             Health.MAPPER.get(boss).damage(Integer.MAX_VALUE);
             engine.getSystem(DeathSystem.class).processEntity(boss, 0);
             var objects = engine.getEntitiesFor(Family.all(Pickup.class).get());
@@ -420,6 +414,53 @@ public final class HoardArenaTest extends ApplicationAdapter {
         }
     }
 
+    private void verifyGuardVision(Entity boss, ArenaGuard guard, float healthAreaRightEdge) {
+        var engine = GAME.getEngine();
+        var awareness = engine.getSystem(AwarenessSystem.class);
+        var bossBody = Physic.MAPPER.get(boss).getBody();
+        var playerBody = Physic.MAPPER.get(player()).getBody();
+        var bossActor = Actor.MAPPER.get(boss);
+        var playerActor = Actor.MAPPER.get(player());
+        var bossFeet = bossBody.getWorldPoint(new Vector2(bossActor.feetX(), bossActor.feetY())).cpy();
+        var playerAt = bossFeet.cpy().add(3f - playerActor.feetX(), -playerActor.feetY());
+        require(playerAt.x + playerActor.feetX() > healthAreaRightEdge, "Dredge chase fixture is outside the health area");
+        playerBody.setTransform(playerAt, 0);
+        var facing = Facing.MAPPER.get(boss);
+        facing.setDirection(Facing.Direction.LEFT);
+        awareness.processEntity(boss, .01f);
+        var ai = ActorAi.MAPPER.get(boss);
+        var move = Move.MAPPER.get(boss).getDirection();
+        require(ai.mode() == ActorAi.Mode.ENGAGE && move.x > 0, "Dredge pursues a player behind it outside the health area");
+        engine.getSystem(FacingSystem.class).update(0);
+        require(facing.getDirection() == Facing.Direction.RIGHT, "Dredge turns toward the pursuit direction");
+
+        bossBody.setTransform(guard.home().x + 1, guard.home().y, 0);
+        var world = bossBody.getWorld();
+        var wall = world.createBody(new BodyDef());
+        var shape = new PolygonShape();
+        try {
+            wall.setTransform(bossFeet.x + 2, bossFeet.y, 0);
+            shape.setAsBox(.125f, 1f);
+            wall.createFixture(shape, 0);
+            awareness.processEntity(boss, .01f);
+            require(ai.mode() != ActorAi.Mode.ENGAGE && move.equals(new Vector2(-1, 0)),
+                "Solid cover breaks Dredge's chase and it heads home, not to the last seen point");
+        } finally {
+            shape.dispose();
+            world.destroyBody(wall);
+        }
+        awareness.processEntity(boss, .01f);
+        require(ai.mode() == ActorAi.Mode.ENGAGE && move.x > 0, "Dredge reacquires a visible player on the way home");
+        playerBody.setTransform(playerAt.x + 10, playerAt.y, 0);
+        awareness.processEntity(boss, .01f);
+        require(ai.mode() != ActorAi.Mode.ENGAGE && move.x < 0, "Leaving detection range also sends Dredge home");
+        bossBody.setTransform(guard.home(), 0);
+        for (int i = 0; i < 5; i++) {
+            awareness.processEntity(boss, 1f);
+            require(move.isZero(), "Dredge waits at spawn instead of wandering");
+        }
+    }
+
     /** Same opening for all three real hammer guards. Run decision/animation/combat without pushing bodies apart. */
     private void verifyGuardVolley(float x, float y, com.badlogic.ashley.utils.ImmutableArray<Entity> guards) {
         var engine = GAME.getEngine();
@@ -433,7 +474,7 @@ public final class HoardArenaTest extends ApplicationAdapter {
         float dt = 1f / 60f;
         int first = -1, last = -1, peak = 0;
         for (int tick = 0; tick < 135; tick++) {
-            if (tick == 24) { playerBody.setTransform(x + 10f, y, 0); } // Leave territory AFTER all three commits.
+            if (tick == 24) { playerBody.setTransform(x + 10f, y, 0); } // Leave detection range AFTER all three commits.
             engine.getSystem(AwarenessSystem.class).update(dt);
             engine.getSystem(AnimationPlayerSystem.class).update(dt);
             engine.getSystem(AnimationSystem.class).update(dt);
@@ -443,6 +484,11 @@ public final class HoardArenaTest extends ApplicationAdapter {
                 var combat = Combat.MAPPER.get(guard);
                 if (combat.getAttackId() > 0) { committed++; }
                 if (combat.getSensor() != null) { active++; }
+                if (tick >= 24 && combat.isAttacking()) {
+                    require(combat.getAttackFacing() == Facing.Direction.RIGHT
+                        && Facing.MAPPER.get(guard).getDirection() == Facing.Direction.RIGHT
+                        && Move.MAPPER.get(guard).getDirection().isZero(), "Losing sight leaves committed hammer swings planted");
+                }
                 if (tick < 9) { require(combat.getAttackId() == 0, "Dredge respects decision delay"); }
                 if (tick < 44) { require(combat.getSensor() == null, "Dredge keeps its slow authored windup"); }
             }
@@ -454,7 +500,7 @@ public final class HoardArenaTest extends ApplicationAdapter {
         for (var guard : guards) {
             var combat = Combat.MAPPER.get(guard);
             require(!combat.isAttacking() && combat.getAttackId() == 1 && !ActorAi.MAPPER.get(guard).recovering(),
-                "Territory exit cannot cancel a whiff or start another hammer attack");
+                "Leaving detection range cannot cancel a whiff or start another hammer attack");
         }
     }
 

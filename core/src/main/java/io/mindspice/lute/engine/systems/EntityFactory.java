@@ -178,6 +178,9 @@ public class EntityFactory extends EntitySystem {
             .add(new CompositeCharacter(region.getRegionWidth(), region.getRegionHeight()));
         entity.add(new Health(definition.maxHealth()));
         entity.add(new ActorAi(definition.behaviorGraph(), definition.detectionBounds().radius() * GameConsts.UNIT_SCALE));
+        if (enemy && "dredge".equals(spawnKey)) {
+            entity.add(new FullCircleVision());
+        }
         if (BehaviorGraphs.ARCHER.equals(definition.behaviorGraph())) {
             entity.add(new BowAim(transform.getSize().x, transform.getSize().y));
         }

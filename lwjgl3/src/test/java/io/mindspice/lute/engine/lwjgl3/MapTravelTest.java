@@ -23,6 +23,7 @@ import com.badlogic.gdx.physics.box2d.Body;
 import com.badlogic.gdx.physics.box2d.BodyDef;
 import com.badlogic.gdx.physics.box2d.CircleShape;
 import com.badlogic.gdx.physics.box2d.Fixture;
+import com.badlogic.gdx.physics.box2d.PolygonShape;
 import com.badlogic.gdx.physics.box2d.World;
 import com.badlogic.gdx.utils.Array;
 import io.mindspice.lute.engine.GameCore;
@@ -42,6 +43,7 @@ import io.mindspice.lute.engine.systems.CombatSystem;
 import io.mindspice.lute.engine.systems.DamageFeedbackProbe;
 import io.mindspice.lute.engine.systems.EventSystem;
 import io.mindspice.lute.engine.systems.EntityFactory;
+import io.mindspice.lute.engine.systems.HoardSystem;
 import io.mindspice.lute.engine.systems.PhysicDebugRenderSystem;
 import io.mindspice.lute.engine.systems.TriggerDebugRenderSystem;
 import io.mindspice.lute.engine.systems.TiledSystem;
@@ -140,6 +142,7 @@ public final class MapTravelTest extends ApplicationAdapter {
             "Player is detectable without owning a third fixture");
         require(ActorAi.MAPPER.get(oldNpc).behaviorGraphKey().equals(npc.behaviorGraph())
             && ActorAi.MAPPER.get(oldEnemy).behaviorGraphKey().equals(enemy.behaviorGraph()), "Spawned actors use their authored graph keys");
+        verifyDredgeVision(player, awareness);
         verifyActorAi(oldNpc, oldEnemy, player, awareness);
         var oldNpcBody = body(oldNpc);
         var oldEnemyBody = body(oldEnemy);
@@ -498,6 +501,54 @@ public final class MapTravelTest extends ApplicationAdapter {
         } finally { white.dispose(); }
     }
 
+    private void verifyDredgeVision(Entity player, AwarenessSystem awareness) {
+        var engine = GAME.getEngine();
+        require(!engine.getSystem(HoardSystem.class).isActive(), "Dredge vision is tested outside Hoard");
+        float unit = GameConsts.UNIT_SCALE;
+        // Use the real authored enemy on test_tiled, positioned away from map geometry.
+        var dredge = engine.getSystem(EntityFactory.class).getMapActor(new Vector2(-200 / unit, -200 / unit),
+            Actor.Role.ENEMY, "dredge", Facing.Direction.LEFT);
+        engine.addEntity(dredge);
+        var playerBody = body(player);
+        var original = playerBody.getPosition().cpy();
+        try {
+            require(dredge.getComponent(ArenaGuard.class) == null, "Ordinary Dredge has no arena home");
+            var actor = Actor.MAPPER.get(dredge);
+            var playerActor = Actor.MAPPER.get(player);
+            var feet = body(dredge).getWorldPoint(new Vector2(actor.feetX(), actor.feetY())).cpy();
+            var rear = feet.cpy().add(72 * unit - playerActor.feetX(), -playerActor.feetY());
+            playerBody.setTransform(rear, 0);
+            require(awareness.inRange(dredge, Actor.Role.PLAYER).equals(List.of(player)),
+                "The rear player is in Dredge's authored detection range");
+            var ai = ActorAi.MAPPER.get(dredge);
+            awareness.update(0f);
+            require(ai.mode() == ActorAi.Mode.ENGAGE && Move.MAPPER.get(dredge).getDirection().x > 0f,
+                "Actual Dredge outside Hoard pursues a visible player behind it");
+
+            var wall = world.createBody(new BodyDef());
+            var shape = new PolygonShape();
+            try {
+                wall.setTransform(feet.x + 36 * unit, feet.y, 0);
+                shape.setAsBox(4 * unit, 24 * unit);
+                wall.createFixture(shape, 0);
+                awareness.update(0f);
+                require(ai.mode() == ActorAi.Mode.INVESTIGATE, "Solid cover breaks sight and ordinary Dredge investigates");
+            } finally {
+                shape.dispose();
+                world.destroyBody(wall);
+            }
+            Facing.MAPPER.get(dredge).setDirection(Facing.Direction.LEFT);
+            awareness.update(0f);
+            require(ai.mode() == ActorAi.Mode.ENGAGE, "Ordinary Dredge reacquires behind itself when cover clears");
+            playerBody.setTransform(rear.cpy().add(ai.detectionRadius(), 0), 0);
+            awareness.update(0f);
+            require(ai.mode() == ActorAi.Mode.INVESTIGATE, "Full-circle vision still respects Dredge's detection radius");
+        } finally {
+            playerBody.setTransform(original, 0);
+            engine.removeEntity(dredge);
+        }
+    }
+
     private void verifyActorAi(Entity npc, Entity enemy, Entity player, AwarenessSystem awareness) {
         var npcPosition = body(npc).getPosition().cpy();
         var enemyPosition = body(enemy).getPosition().cpy();
@@ -517,6 +568,7 @@ public final class MapTravelTest extends ApplicationAdapter {
         require(npcMoved && enemyMoved && combat.getAttackId() == 0,
             "Both actors physically wander after their initial wait without attacking out of range");
         body(enemy).setTransform(-100, -100, 0);
+        Facing.MAPPER.get(enemy).setDirection(Facing.Direction.RIGHT);
         body(player).setTransform(-100 + 80f * GameConsts.UNIT_SCALE, -100, 0);
         var originalHealth = Health.MAPPER.get(player);
         var testHealth = new Health(100); // The pursuit check needs a survivor independently of authored player HP.
@@ -536,7 +588,7 @@ public final class MapTravelTest extends ApplicationAdapter {
                 && testHealth.getCurrent() <= testHealth.getMaximum() - 15
                 && body(enemy).getLinearVelocity().isZero() && DamageFeedbackProbe.count(player) == 1,
                 "Enemy deals one weapon hit and creates one player feedback number while standing still");
-            var retreat = body(enemy).getPosition().cpy().add(-2.5f, .5f);
+            var retreat = body(enemy).getPosition().cpy().add(.5f, 2.5f);
             body(player).setTransform(retreat, 0);
             for (int i = 0; i < 90 && combat.isAttacking(); i++) { screen.render(1f / 60f); }
             for (int i = 0; i < 8; i++) { screen.render(1f / 60f); }
@@ -544,7 +596,7 @@ public final class MapTravelTest extends ApplicationAdapter {
                 "After the sensor disappears, there is time to approach safely");
             for (int i = 0; i < 8; i++) { screen.render(1f / 60f); }
             require(!combat.isAttacking() && body(enemy).getLinearVelocity().y > 0f
-                && body(enemy).getLinearVelocity().x < 0f && Facing.MAPPER.get(enemy).getDirection() == Facing.Direction.LEFT,
+                && body(enemy).getLinearVelocity().x > 0f && Facing.MAPPER.get(enemy).getDirection() == Facing.Direction.UP,
                 "Enemy resumes pursuit and faces the retreating player after recovery");
             verifyWalkingCounter(enemy, player);
         } finally {
