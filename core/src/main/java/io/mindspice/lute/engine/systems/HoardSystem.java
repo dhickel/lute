@@ -5,6 +5,7 @@ import com.badlogic.ashley.core.Entity;
 import com.badlogic.ashley.core.EntitySystem;
 import io.mindspice.lute.engine.events.Event;
 import io.mindspice.lute.engine.events.EventListener;
+import io.mindspice.lute.engine.input.InputManager;
 import io.mindspice.lute.engine.tiled.MapTriggers;
 import io.mindspice.lute.gameplay.HoardRun;
 
@@ -44,6 +45,9 @@ public final class HoardSystem extends EntitySystem implements EventListener {
     }
 
     private static final int DREDGE_BASE_XP = 100;
+    private static final float SPRINT_MULTIPLIER = 1.6f;
+    private static final double SPRINT_SECONDS = 2d;
+    private static final double REFILL_PER_SECOND = 0.7d / 6d;
     private record Bounty(int baseXp) implements Component { }
 
     private static int waveBaseXp(String key) {
@@ -61,6 +65,9 @@ public final class HoardSystem extends EntitySystem implements EventListener {
     private final RandomGenerator roundHealthRandom = RandomGenerator.getDefault();
     private RandomGenerator dropRandom;
     private HoardRun run;
+    private final InputManager input;
+    private double stamina = 1d;
+    private long exhaustedPress;
     private final Consumer<Event.Player.KilledEnemy> onKill = event -> {
         // The bus drains on the next update, possibly after named travel or hide/show.
         if (run == null || run.isGameOver()) { return; }
@@ -72,6 +79,10 @@ public final class HoardSystem extends EntitySystem implements EventListener {
         run.enemyKilled(bounty.baseXp());
         if (dropRandom.nextInt(10) == 0) { drop(tiled, feet(enemy), "health_pack_1"); }
     };
+
+    public HoardSystem(InputManager input) {
+        this.input = input;
+    }
 
     static List<MapTriggers.SpawnArea> arena(String mapId, MapTriggers triggers) {
         if (!"hoard_mode".equals(mapId)) { return null; }
@@ -107,6 +118,8 @@ public final class HoardSystem extends EntitySystem implements EventListener {
     }
 
     void bind(TiledSystem tiled, List<MapTriggers.SpawnArea> areas, RandomGenerator random) {
+        stamina = 1d;
+        exhaustedPress = 0;
         if (areas == null) { run = null; return; }
         dropRandom = random;
         var triggers = tiled.getMapTriggers();
@@ -181,6 +194,53 @@ public final class HoardSystem extends EntitySystem implements EventListener {
 
     public boolean isActive() { return run != null; }
     HoardRun run() { return run; }
+
+    double stamina() { return stamina; }
+
+    long beforeSprintStep(float interval, boolean wasBoosted) {
+        if (run == null || run.isGameOver()) { return 0; }
+        var player = getEngine().getSystem(TiledSystem.class).activePlayer();
+        if (!Health.MAPPER.get(player).isAlive() || !Controller.MAPPER.has(player)) { return 0; }
+
+        var move = Move.MAPPER.get(player);
+        var aim = BowAim.MAPPER.get(player);
+        long press = input.arenaSprintPress();
+        if (press != 0 && press != exhaustedPress && !move.isRooted() && !move.getDirection().isZero()
+            && (aim == null || !aim.isAiming())) {
+            // Blend the last partial tick so a sliver of stamina can't buy a whole sprint tick.
+            float fraction = (float) Math.min(1d, stamina * SPRINT_SECONDS / interval);
+            float multiplier = 1f + (SPRINT_MULTIPLIER - 1f) * fraction;
+            getEngine().getSystem(PhysicMoveSystem.class).applyMovement(player, multiplier);
+            return press;
+        }
+        // Ordinary movement is already applied once per frame. Restore it only when
+        // leaving a boosted tick in this batch, then let contacts carry velocity forward.
+        if (wasBoosted) { getEngine().getSystem(PhysicMoveSystem.class).applyMovement(player, 1f); }
+        refill(interval);
+        return 0;
+    }
+
+    // Measure the actual step before sensor teleports can change the player's position.
+    void finishSprintStep(float interval, long boostedPress) {
+        var player = getEngine().getSystem(TiledSystem.class).activePlayer();
+        var physics = Physic.MAPPER.get(player);
+        var before = physics.getPrevPos();
+        var after = physics.getBody().getPosition();
+        var direction = Move.MAPPER.get(player).getDirection();
+        float progress = direction.dot(after.x - before.x, after.y - before.y);
+        if (progress > 0.00001f) {
+            float runningTime = (float) Math.min(interval, stamina * SPRINT_SECONDS);
+            stamina = Math.max(0d, stamina - interval / SPRINT_SECONDS);
+            if (stamina == 0d) { exhaustedPress = boostedPress; }
+            getEngine().getSystem(AnimationSystem.class).advanceSprintWalk(player, runningTime);
+        } else {
+            refill(interval);
+        }
+    }
+
+    private void refill(float interval) {
+        stamina = Math.min(1d, stamina + interval * REFILL_PER_SECOND);
+    }
 
     // PhysicSystem has committed this tick; fixture queries and new bodies are safe here.
     void afterPhysicsStep(float interval) {

@@ -30,7 +30,7 @@ final class GameplayHud {
         this.white = white;
     }
 
-    void draw(Batch batch, Engine engine, Viewport viewport, Health player, int minute, HoardRun run) {
+    void draw(Batch batch, Engine engine, Viewport viewport, Health player, int minute, HoardRun run, double stamina) {
         batch.setProjectionMatrix(projection.setToOrtho2D(0, 0, viewport.getScreenWidth(), viewport.getScreenHeight()));
         for (var entity : engine.getEntitiesFor(HealthFeedback.FAMILY)) {
             for (var number : HealthFeedback.MAPPER.get(entity).numbers) {
@@ -60,19 +60,25 @@ final class GameplayHud {
                 }
             }
         }
-        drawBar(batch, viewport.getScreenWidth(), viewport.getScreenHeight(), player, minute, run);
+        int width = viewport.getScreenWidth(), top = viewport.getScreenHeight();
+        String status = statusText(minute, run);
+        if (run == null) {
+            drawRow(batch, width, top, player, status, false);
+        } else {
+            drawRow(batch, width, top, null, status, false);
+            drawRow(batch, width, top - BAR_HEIGHT, player, staminaText(stamina), stamina == 0d);
+        }
     }
 
-    private void drawBar(Batch batch, int width, int top, Health player, int minute, HoardRun run) {
+    private void drawRow(Batch batch, int width, int top, Health player, String label, boolean depleted) {
         int bottom = top - BAR_HEIGHT;
         batch.setColor(.10f, .10f, .10f, 1);
         batch.draw(white, 0, bottom, width, BAR_HEIGHT);
         batch.setColor(.14f, .14f, .14f, 1);
         batch.draw(white, 0, bottom + 15, width, 13);
 
-        String time = statusText(minute, run);
-        measure.setText(font, time);
-        float timeWidth = measure.width;
+        measure.setText(font, label);
+        float labelWidth = measure.width;
         String hp = player == null ? null : healthText(player);
         float hpWidth = 0;
         if (hp != null) {
@@ -82,8 +88,8 @@ final class GameplayHud {
 
         // Keep native-size glyphs if a tighter gap is enough; otherwise shrink the entire group, not just one label.
         float available = width - 2 * Math.min(SIDE_INSET, width / 4f);
-        float gap = hp == null ? 0 : Math.clamp(available - hpWidth - timeWidth, MIN_LABEL_GAP, LABEL_GAP);
-        float groupWidth = hpWidth + gap + timeWidth;
+        float gap = hp == null ? 0 : Math.clamp(available - hpWidth - labelWidth, MIN_LABEL_GAP, LABEL_GAP);
+        float groupWidth = hpWidth + gap + labelWidth;
         float scale = Math.min(1, available / groupWidth);
         float x = (width - groupWidth * scale) / 2;
         if (scale < 1) {
@@ -99,7 +105,11 @@ final class GameplayHud {
                 x += (hpWidth + gap) * scale;
             }
             batch.setColor(Color.WHITE);
-            drawText(batch, time, x, y, Align.left, .61f, .79f, .86f, 1);
+            if (depleted) {
+                drawText(batch, label, x, y, Align.left, 1f, .55f, .32f, 1);
+            } else {
+                drawText(batch, label, x, y, Align.left, .61f, .79f, .86f, 1);
+            }
         } finally {
             if (scale < 1) {
                 font.getData().setScale(1);
@@ -117,6 +127,11 @@ final class GameplayHud {
         return "Round " + run.round()
             + "   " + left / 60 + ":" + (left % 60 < 10 ? "0" : "") + left % 60
             + " left   Kills " + run.kills() + "   Score " + run.score();
+    }
+
+    static String staminaText(double stamina) {
+        int percent = stamina == 0d ? 0 : Math.max(1, (int) (stamina * 100));
+        return "Stamina " + percent + "%";
     }
 
     static String healthText(Health health) {

@@ -19,6 +19,10 @@ public class PhysicMoveSystem extends IteratingSystem {
 
     @Override
     protected void processEntity(Entity entity, float deltaTime) {
+        applyMovement(entity, 1f);
+    }
+
+    void applyMovement(Entity entity, float speedMultiplier) {
         Move move = Move.MAPPER.get(entity);
         Body body = Physic.MAPPER.get(entity).getBody();
         if (move.isRooted() || move.getDirection().isZero()
@@ -28,9 +32,7 @@ public class PhysicMoveSystem extends IteratingSystem {
         }
 
         normalizedDir.set(move.getDirection()).nor();
-        body.setLinearVelocity( //TODO use force/impulse
-            move.getMaxSpeed() * normalizedDir.x,
-            move.getMaxSpeed() * normalizedDir.y
-        );
+        float speed = move.getMaxSpeed() * speedMultiplier;
+        body.setLinearVelocity(speed * normalizedDir.x, speed * normalizedDir.y);
     }
 }

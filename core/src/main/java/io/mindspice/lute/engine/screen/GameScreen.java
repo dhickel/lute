@@ -48,7 +48,7 @@ public class GameScreen extends ScreenAdapter {
         try {
             addSystem(new WorldTimeSystem(GameConsts.DAY_LENGTH_MINUTES));
             addSystem(new EventSystem());
-            hoard = new HoardSystem();
+            hoard = new HoardSystem(inputManager);
             addSystem(hoard);
             addSystem(new AttackCooldownSystem());
             addSystem(new ControllerSystem());

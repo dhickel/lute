@@ -1,5 +1,14 @@
 # Durable Decisions
 
+## Hoard sprint prototype
+
+- **Decision:** On `hoard-mode-sprint-test`, based on `hoard-mode-alpha`, holding controller B while moving runs the Hoard player at 1.6× normal speed. Full stamina permits 2 seconds of running and refills at 70% of the original rate, taking about 8.57 seconds when not running. Running doubles the walk animation speed only while advancing. Stamina drains only when the physics step makes actual progress in the movement direction. Once exhausted, the player must release and press B again to run as stamina refills.
+- **Presentation and scope:** The Hoard HUD places health and stamina in a centered row below the arena stats. Sprint and this HUD layout are Hoard-only. This prototype adds no backpedaling, dash, or other gameplay changes; existing dash prototypes remain on separate branches.
+- **Justification and tradeoff:** A hold-to-run stamina meter provides bounded speed without charging for blocked movement. Requiring a fresh press after exhaustion prevents automatic resumption from the same hold.
+- **Affected specifications:** The Hoard arena run decision below and its HUD and movement behavior on this prototype branch.
+- **Source:** User-directed sprint prototype and its implementation on `hoard-mode-sprint-test`.
+- **Review timing:** Revisit if the prototype's movement or stamina rules change.
+
 ## Hoard arena run
 
 - **Decision:** The map ID `hoard_mode` starts a map-scoped arena run using the required enemy polygons `SpawnArea1` through `SpawnArea4`. The player starts at 1,000 health with a maximum of 1,000. Death is terminal for the arena visit; ordinary-map respawn is unchanged.

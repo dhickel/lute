@@ -21,7 +21,7 @@ import static io.mindspice.lute.engine.input.InputSystemTest.near;
 
 final class GamepadInputTest {
     // Deliberately not the SDL codes, and UP also matches a real keyboard keycode.
-    private static final int UP = Input.Keys.W, DOWN = 8, LEFT = 9, RIGHT = 30, SOUTH = 0, WEST = 3, NORTH = 14;
+    private static final int UP = Input.Keys.W, DOWN = 8, LEFT = 9, RIGHT = 30, SOUTH = 0, WEST = 3, NORTH = 14, EAST = 17;
     private static final int X = 4, Y = 5;
     private static final ControllerMapping MAPPED = new TestMapping(UP, DOWN, LEFT, RIGHT, SOUTH, WEST, X, Y);
     private static final int UNDEFINED = ControllerMapping.UNDEFINED;
@@ -33,6 +33,7 @@ final class GamepadInputTest {
         configuredButtons();
         digitalStick();
         weaponCycleRouting();
+        sprintHold();
         resetAndFailover();
         disconnectDuringRead();
         gameplayRouting();
@@ -200,6 +201,37 @@ final class GamepadInputTest {
         fixture.expect("Y release balances its press", release(CYCLE_ARENA_WEAPON));
     }
 
+    private static void sprintHold() {
+        var fixture = new Fixture(defaults());
+        var pad = fixture.addPad(MAPPED);
+        pad.buttons[EAST] = true;
+        fixture.expect("held B at first sample does not dispatch other actions");
+        equal(0L, fixture.gamepad.arenaSprintPress(), "held B at baseline is suppressed");
+        pad.buttons[EAST] = false;
+        fixture.expect("B release is quiet");
+        pad.buttons[EAST] = true;
+        fixture.expect("native B uses the mapped button without a queued action");
+        long first = fixture.gamepad.arenaSprintPress();
+        equal(true, first != 0, "fresh B press holds sprint");
+        fixture.expect("B hold is quiet");
+        equal(first, fixture.gamepad.arenaSprintPress(), "hold identity stays constant");
+        fixture.gamepad.releaseHeldInputs();
+        equal(0L, fixture.gamepad.arenaSprintPress(), "invalidation cancels B immediately");
+        fixture.expect("still-held B cannot rearm on resume");
+        equal(0L, fixture.gamepad.arenaSprintPress(), "re-baseline suppresses held B");
+        pad.buttons[EAST] = false;
+        fixture.expect("release after invalidation");
+        pad.buttons[EAST] = true;
+        fixture.expect("fresh B re-arms");
+        long next = fixture.gamepad.arenaSprintPress();
+        equal(true, next != 0 && next != first, "fresh B has a distinct hold identity");
+        pad.connected = false;
+        var replacement = fixture.addPad(MAPPED);
+        replacement.buttons[EAST] = true;
+        fixture.expect("held B on failover is quiet");
+        equal(0L, fixture.gamepad.arenaSprintPress(), "failover cancels old B and ignores held replacement B");
+    }
+
     private static InputMap defaults() {
         return InputSettings.load(new FileHandle("assets/input.setting.json"));
     }
@@ -259,8 +291,9 @@ final class GamepadInputTest {
 
     private static final class TestMapping extends ControllerMapping {
         TestMapping(int up, int down, int left, int right, int south, int west, int x, int y) {
-            super(x, y, UNDEFINED, UNDEFINED, south, UNDEFINED, west, south == UNDEFINED ? UNDEFINED : NORTH, UNDEFINED, UNDEFINED,
-                UNDEFINED, UNDEFINED, UNDEFINED, UNDEFINED, UNDEFINED, UNDEFINED, up, down, left, right);
+            super(x, y, UNDEFINED, UNDEFINED, south, south == UNDEFINED ? UNDEFINED : EAST, west,
+                south == UNDEFINED ? UNDEFINED : NORTH, UNDEFINED, UNDEFINED, UNDEFINED, UNDEFINED, UNDEFINED,
+                UNDEFINED, UNDEFINED, UNDEFINED, up, down, left, right);
         }
     }
 }

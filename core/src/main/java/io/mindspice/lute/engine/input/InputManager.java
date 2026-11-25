@@ -123,6 +123,8 @@ public class InputManager extends InputAdapter implements Disposable {
         }
     }
 
+    public long arenaSprintPress() { return gamepad.arenaSprintPress(); }
+
     public void releaseHeldInputs() {
         mouseManager.releaseHeldInputs();
         keyManager.releaseHeldInputs();

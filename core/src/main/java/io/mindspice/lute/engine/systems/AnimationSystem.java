@@ -71,6 +71,15 @@ public class AnimationSystem extends IteratingSystem implements EventEmitter {
         Graphic.MAPPER.get(entity).setRegion(keyFrame);
     }
 
+    // The normal frame pass has already advanced playback at walk speed. Add only
+    // the time actually spent running, without replaying attack cues or other poses.
+    void advanceSprintWalk(Entity entity, float runningTime) {
+        var anim = Animation2D.MAPPER.get(entity);
+        if (anim.getType() != Animation2D.AnimationType.WALK || anim.isDirty()) { return; }
+        float stateTime = anim.incAndGetStateTime(runningTime);
+        Graphic.MAPPER.get(entity).setRegion(anim.getAnimation().getKeyFrame(stateTime));
+    }
+
     public static void validateAttackFrames(Animation2D anim2d, TextureAtlas atlas) {
         if (anim2d.getRequiredAttackFrames().isEmpty()) { return; }
         var reference = atlas.findRegion(anim2d.regionKey("idle", Facing.Direction.RIGHT));

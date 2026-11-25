@@ -169,7 +169,8 @@ public class RenderSystem extends SortedIteratingSystem implements Disposable {
                     hud = new GameplayHud(overlayWhite(state));
                 }
                 var clock = getEngine().getSystem(WorldTimeSystem.class);
-                hud.draw(batch, getEngine(), viewport, tiled.playerHealth(), (int) clock.getMinuteOfDay(), run);
+                hud.draw(batch, getEngine(), viewport, tiled.playerHealth(), (int) clock.getMinuteOfDay(), run,
+                    run == null ? 0d : hoard.stamina());
             }
             batch.end();
         } finally {

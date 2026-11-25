@@ -19,6 +19,9 @@ final class GamepadInput {
     private final boolean[] sample;
     private Controller active;
     private boolean baseline = true;
+    private boolean sprintDown;
+    private long sprintPressSequence;
+    private long arenaSprintPress;
 
     GamepadInput(InputMap map, KeyManager actions) {
         this.actions = actions;
@@ -64,6 +67,8 @@ final class GamepadInput {
                 }
             };
         }
+        int b = mapping.buttonB;
+        boolean sprintSample = b != ControllerMapping.UNDEFINED && active.getButton(b);
         // A device can disappear during a native read. Do not dispatch a partial snapshot.
         if (!controllers.contains(active, true) || !active.isConnected()) {
             releaseHeldInputs();
@@ -83,8 +88,17 @@ final class GamepadInput {
             }
             down[i] = sample[i];
         }
+        if (!sprintSample) {
+            arenaSprintPress = 0;
+        } else if (!baseline && !sprintDown) {
+            arenaSprintPress = ++sprintPressSequence;
+        }
+        sprintDown = sprintSample;
         baseline = false;
     }
+
+    // Zero means no valid hold. A fresh press has a new identity even between physics ticks.
+    long arenaSprintPress() { return arenaSprintPress; }
 
     private boolean supportsBinding(ControllerMapping mapping) {
         if (mapping == null) { return false; }
@@ -111,6 +125,7 @@ final class GamepadInput {
                 actions.dispatch(bindings[i], 0);
             }
         }
+        arenaSprintPress = 0;
         baseline = true;
     }
 }

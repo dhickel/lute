@@ -9,6 +9,12 @@ This project was generated with a template including simple application launcher
 - `core`: Main module with the application logic shared by all platforms.
 - `lwjgl3`: Primary desktop platform using LWJGL3; was called 'desktop' in older docs.
 
+## Hoard sprint prototype
+
+On `hoard-mode-sprint-test`, hold controller B while moving to run at 1.6× normal speed in Hoard mode. A full stamina meter provides 2 seconds of running and refills at 70% of the original rate, taking about 8.57 seconds when not running. Running doubles the walk animation speed only while advancing. Stamina does not drain without actual forward movement, such as when blocked. After exhaustion, release and press B again to run as stamina refills. The Hoard HUD shows health and stamina together in a centered row below the arena stats; other maps retain their existing HUD and movement.
+
+This prototype is based on `hoard-mode-alpha` and adds neither backpedaling nor a dash. The existing dash prototypes remain on separate branches.
+
 ## Weapon hitbox editor
 
 Launch the standalone JavaFX editor from the repository root with `./gradlew :weapon-tester:run`. It is a standalone included build registered in `settings.gradle`. Provision the ignored `raw_assets/` tree first: the editor uses raw player and weapon data and raw character, equipment, and weapon sprites rather than generated runtime assets.

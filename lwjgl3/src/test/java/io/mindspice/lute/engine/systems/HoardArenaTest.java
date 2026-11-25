@@ -9,6 +9,10 @@ import com.badlogic.gdx.Input;
 import com.badlogic.gdx.backends.lwjgl3.Lwjgl3Application;
 import com.badlogic.gdx.backends.lwjgl3.Lwjgl3ApplicationConfiguration;
 import com.badlogic.gdx.graphics.Pixmap;
+import com.badlogic.gdx.graphics.glutils.HdpiUtils;
+import com.badlogic.gdx.controllers.ControllerManagerStub;
+import com.badlogic.gdx.controllers.ControllerMapping;
+import com.badlogic.gdx.controllers.Controllers;
 import com.badlogic.gdx.maps.MapLayer;
 import com.badlogic.gdx.maps.objects.PointMapObject;
 import com.badlogic.gdx.maps.objects.PolygonMapObject;
@@ -27,6 +31,7 @@ import io.mindspice.lute.engine.input.InputAction;
 import io.mindspice.lute.engine.singletons.GameConsts;
 import io.mindspice.lute.engine.tiled.ManifestLoader;
 
+import java.lang.reflect.Proxy;
 import java.util.Arrays;
 import java.util.HashSet;
 import java.util.List;
@@ -39,13 +44,14 @@ public final class HoardArenaTest extends ApplicationAdapter {
     private boolean initialized;
 
     public static void main(String[] args) {
+        Controllers.preferredManager = ControllerManagerStub.class.getName();
         var config = new Lwjgl3ApplicationConfiguration();
         config.setWindowedMode(640, 400);
         config.setInitialVisible(false);
         config.disableAudio(true);
         new Lwjgl3Application(new HoardArenaTest(), config);
         if (failure != null) { throw new AssertionError("Hoard arena", failure); }
-        System.out.println("HoardArenaTest: real arena, batches, HP, lighting, game over, corpse expiry, pause and remount passed");
+        System.out.println("HoardArenaTest: arena, baseline walk, sprint movement, animation, stamina and HUD, batches, HP, lighting, death, pause and remount passed");
     }
 
     @Override public void create() {
@@ -64,6 +70,7 @@ public final class HoardArenaTest extends ApplicationAdapter {
         var tiled = engine.getSystem(TiledSystem.class);
         for (int i = 0; i < 200 && tiled.getCurrentMap() == null; i++) { GAME.render(); }
         var hoard = engine.getSystem(HoardSystem.class);
+        verifySprint(tiled, hoard);
         var run = hoard.run();
         var enemies = engine.getEntitiesFor(Family.all(ActorAi.class).get());
         require(run != null && run.round() == 1 && enemies.size() == 10, "ten wave enemies at arena mount");
@@ -903,6 +910,302 @@ public final class HoardArenaTest extends ApplicationAdapter {
             && enemies.size() == waveSize, "lethal sword contact beats the same tick's heal and opening batch");
         require(Animation2D.MAPPER.get(player).getType() == Animation2D.AnimationType.DEATH
             && !Physic.MAPPER.get(player).getBody().isActive(), "death is visible without another frame");
+    }
+
+    private void verifyBaselineWalk(TiledSystem tiled, HoardSystem hoard) {
+        var engine = GAME.getEngine();
+        var locomotion = engine.getSystem(PhysicMoveSystem.class);
+        var physics = engine.getSystem(PhysicSystem.class);
+        var player = player();
+        var body = Physic.MAPPER.get(player).getBody();
+        var move = Move.MAPPER.get(player);
+        float dt = GameConsts.PHYSIC_INTERVAL;
+        physics.resetClock();
+        // Outside the map, the player's feet can push a real wave enemy with no other contacts.
+        body.setTransform(-100, -100, 0);
+        body.setLinearVelocity(0, 0);
+        move.getDirection().set(1, 0);
+        long steps = physics.completedSteps();
+        locomotion.update(0f);
+        physics.update(0f);
+        require(physics.completedSteps() == steps && body.getLinearVelocity().x == move.getMaxSpeed(),
+            "Hoard walk sets velocity even on a frame with no fixed tick");
+
+        var enemy = engine.getEntitiesFor(Family.all(ActorAi.class, Physic.class, Move.class).get()).first();
+        var other = Physic.MAPPER.get(enemy).getBody();
+        var feet = Actor.MAPPER.get(player);
+        var otherFeet = Actor.MAPPER.get(enemy);
+        other.setTransform(-100 + feet.feetX() - otherFeet.feetX() + .65f,
+            -100 + feet.feetY() - otherFeet.feetY(), 0);
+        other.setLinearVelocity(0, 0);
+        Move.MAPPER.get(enemy).getDirection().setZero();
+        for (int i = 0; i < 10; i++) {
+            locomotion.update(dt);
+            physics.update(dt);
+        }
+        require(body.getLinearVelocity().x < move.getMaxSpeed() - .01f && other.getLinearVelocity().x > .01f,
+            "walk probe must have sustained solid enemy contact");
+        steps = physics.completedSteps();
+        locomotion.update(2 * dt);
+        float momentum = body.getMass() * body.getLinearVelocity().x + other.getMass() * other.getLinearVelocity().x;
+        physics.update(2 * dt);
+        float after = body.getMass() * body.getLinearVelocity().x + other.getMass() * other.getLinearVelocity().x;
+        require(physics.completedSteps() == steps + 2 && Math.abs(after - momentum) < .001f,
+            "two-tick Hoard walk retains collision impulses rather than reapplying velocity");
+        remountArena(tiled, hoard);
+    }
+
+    private void updateSprintFrame(float delta) {
+        var engine = GAME.getEngine();
+        engine.getSystem(AnimationPlayerSystem.class).update(delta);
+        engine.getSystem(AnimationSystem.class).update(delta);
+        engine.getSystem(PhysicMoveSystem.class).update(delta);
+        engine.getSystem(PhysicSystem.class).update(delta);
+    }
+
+    private void verifySprint(TiledSystem tiled, HoardSystem hoard) {
+        verifyBaselineWalk(tiled, hoard);
+        var engine = GAME.getEngine();
+        var physics = engine.getSystem(PhysicSystem.class);
+        var renderer = engine.getSystem(RenderSystem.class);
+        var input = GAME.getInputManager();
+        var pads = Controllers.getControllers();
+        boolean[] held = {false};
+        int unused = ControllerMapping.UNDEFINED;
+        var mapping = new ControllerMapping(0, unused, unused, unused, unused, 7, unused, unused, unused, unused,
+            unused, unused, unused, unused, unused, unused, unused, unused, unused, unused) { };
+        var padType = com.badlogic.gdx.controllers.Controller.class;
+        var pad = (com.badlogic.gdx.controllers.Controller) Proxy.newProxyInstance(padType.getClassLoader(),
+            new Class<?>[]{padType}, (proxy, method, args) -> switch (method.getName()) {
+                case "getMapping" -> mapping;
+                case "isConnected" -> true;
+                case "getAxis" -> 0f;
+                case "getButton" -> (int) args[0] == 7 && held[0];
+                default -> throw new AssertionError("Unexpected controller call: " + method.getName());
+            });
+        pads.add(pad);
+        input.updateGamepad();
+        GAME.render(); // initialize the renderer's frame for direct HUD draws
+        var player = player();
+        var move = Move.MAPPER.get(player);
+        var body = Physic.MAPPER.get(player).getBody();
+        var origin = body.getPosition().cpy();
+        var animation = Animation2D.MAPPER.get(player);
+        float dt = GameConsts.PHYSIC_INTERVAL, walk = move.getMaxSpeed(), walkFrameTime = dt * animation.getSpeed();
+        physics.resetClock();
+        require(GameplayHud.staminaText(hoard.stamina()).equals("Stamina 100%"), "new arena starts full");
+        verifySprintHud(renderer, false);
+
+        Gdx.input.getInputProcessor().keyDown(Input.Keys.B);
+        move.getDirection().set(1, 1);
+        updateSprintFrame(0f); // Install the walk poses before measuring playback.
+        updateSprintFrame(dt);
+        require(Math.abs(body.getLinearVelocity().len() - walk) < .001f && hoard.stamina() == 1d, "keyboard B does not sprint");
+        require(animation.getType() == Animation2D.AnimationType.WALK
+            && Math.abs(animation.getStateTime() - walkFrameTime) < .00001f, "ordinary walk plays at the authored rate");
+        Gdx.input.getInputProcessor().keyUp(Input.Keys.B);
+        body.setTransform(origin, 0);
+        held[0] = true;
+        input.updateGamepad();
+        move.getDirection().setZero();
+        updateSprintFrame(0f);
+        updateSprintFrame(dt);
+        require(body.getLinearVelocity().isZero() && hoard.stamina() == 1d, "stationary hold costs nothing");
+        require(animation.getType() == Animation2D.AnimationType.IDLE
+            && Math.abs(animation.getStateTime() - walkFrameTime) < .00001f, "held B does not speed up idle");
+        move.getDirection().set(1, 1);
+        updateSprintFrame(0f);
+        updateSprintFrame(dt / 2);
+        require(hoard.stamina() == 1d && Math.abs(animation.getStateTime() - walkFrameTime / 2) < .00001f,
+            "a frame with no fixed tick adds no sprint playback or drain");
+        updateSprintFrame(dt / 2);
+        require(Math.abs(body.getLinearVelocity().len() - 1.6f * walk) < .001f && move.getMaxSpeed() == walk,
+            "sprint boosts normalized diagonal speed without changing walk speed");
+        require(Math.abs(animation.getStateTime() - 2 * walkFrameTime) < .00001f, "a completed sprint tick adds one walk tick");
+        float before = animation.getStateTime();
+        long steps = physics.completedSteps();
+        updateSprintFrame(2 * dt);
+        require(physics.completedSteps() == steps + 2
+            && Math.abs(animation.getStateTime() - before - 4 * walkFrameTime) < .00001f
+            && Graphic.MAPPER.get(player).getRegion() == animation.getAnimation().getKeyFrame(animation.getStateTime()),
+            "two running ticks in one frame double the walk clock and publish the new pose");
+        double first = hoard.stamina();
+        move.setRooted(true);
+        updateSprintFrame(dt);
+        require(hoard.stamina() > first && body.getLinearVelocity().isZero(), "rooted hold neither moves nor drains");
+        move.setRooted(false);
+        var aim = BowAim.MAPPER.get(player);
+        var loadouts = engine.getSystem(LoadoutSystem.class);
+        var initialWeapon = Loadout.MAPPER.get(player).getWeapon().id();
+        loadouts.equipWeapon(player, "basic_bow");
+        engine.getSystem(CombatSystem.class).drawBow(player, aim, Loadout.MAPPER.get(player).getWeapon());
+        require(aim.isAiming(), "bow draw active");
+        first = hoard.stamina();
+        engine.getSystem(ControllerSystem.class).update(0f);
+        updateSprintFrame(0f);
+        updateSprintFrame(dt);
+        require(hoard.stamina() > first && body.getLinearVelocity().isZero(), "aiming hold neither moves nor drains");
+        require(animation.getType() == Animation2D.AnimationType.ATTACK
+            && Math.abs(animation.getStateTime() - dt * animation.getSpeed()) < .00001f, "held B does not speed up bow draw");
+        aim.cancel();
+        loadouts.equipWeapon(player, initialWeapon);
+
+        // A solid wall stops the boosted body just like the normal velocity path.
+        body.setTransform(origin, 0);
+        var wall = body.getWorld().createBody(new BodyDef());
+        var feet = Actor.MAPPER.get(player);
+        wall.setTransform(origin.x + feet.feetX() + .75f, origin.y + feet.feetY(), 0);
+        var shape = new PolygonShape();
+        shape.setAsBox(.05f, 1f);
+        wall.createFixture(shape, 0);
+        shape.dispose();
+        move.getDirection().set(1, 0);
+        for (int i = 0; i < 30; i++) { updateSprintFrame(dt); }
+        require(body.getPosition().x + feet.feetX() < wall.getPosition().x, "sprint respects solid collision");
+        double blocked = hoard.stamina();
+        before = animation.getStateTime();
+        updateSprintFrame(dt);
+        require(hoard.stamina() >= blocked && Math.abs(animation.getStateTime() - before - walkFrameTime) < .00001f,
+            "pushing against a wall without moving neither drains nor speeds up playback");
+        body.getWorld().destroyBody(wall);
+
+        int sprintTicks = 0;
+        double startingStamina = hoard.stamina();
+        while (hoard.stamina() > 0d && sprintTicks * dt < 2.1f) {
+            body.setTransform(origin, 0);
+            updateSprintFrame(dt);
+            sprintTicks++;
+        }
+        require(Math.abs(sprintTicks * dt - 2 * startingStamina) <= dt + .00001 && hoard.stamina() == 0d,
+            "stamina exhausts at the two-second sprint rate");
+        require(GameplayHud.staminaText(hoard.stamina()).equals("Stamina 0%"), "HUD reports depletion");
+        verifySprintHud(renderer, true);
+        body.setTransform(origin, 0);
+        before = animation.getStateTime();
+        updateSprintFrame(dt);
+        double perTickRegen = dt * (.7d / 6d);
+        require(Math.abs(body.getLinearVelocity().len() - walk) < .001f
+            && Math.abs(animation.getStateTime() - before - walkFrameTime) < .00001f
+            && Math.abs(hoard.stamina() - perTickRegen) < .0000001d,
+            "exhausted hold walks and refills at 70% of the old rate");
+
+        held[0] = false;
+        input.updateGamepad();
+        held[0] = true;
+        input.updateGamepad();
+        float partialRunTime = (float) (2d * hoard.stamina());
+        before = animation.getStateTime();
+        body.setTransform(origin, 0);
+        steps = physics.completedSteps();
+        updateSprintFrame(2 * dt);
+        require(physics.completedSteps() == steps + 2 && Math.abs(body.getLinearVelocity().len() - walk) < .001f
+            && Math.abs(animation.getStateTime() - before - 2 * walkFrameTime - partialRunTime * animation.getSpeed()) < .00001f
+            && Math.abs(hoard.stamina() - perTickRegen) < .0000001d,
+            "a partial sprint tick exhausts, then the next tick in the same frame walks and refills");
+
+        int refillTicks = 1;
+        while (hoard.stamina() < 1d && refillTicks * dt < 8.7f) {
+            body.setTransform(origin, 0);
+            updateSprintFrame(dt);
+            refillTicks++;
+        }
+        require(refillTicks == (int) Math.ceil((6d / .7d) / dt) && hoard.stamina() == 1d
+            && Math.abs(body.getLinearVelocity().len() - walk) < .001f, "full refill takes about 8.57s and still requires release");
+        held[0] = false;
+        input.updateGamepad();
+        held[0] = true;
+        input.updateGamepad();
+        updateSprintFrame(dt);
+        require(hoard.stamina() < 1d, "release and repress between ticks re-arms sprint");
+        double partial = hoard.stamina();
+        GAME.pause();
+        GAME.render();
+        require(hoard.stamina() == partial && input.arenaSprintPress() == 0, "pause freezes stamina and clears input");
+        GAME.resume();
+        input.updateGamepad();
+        move.getDirection().set(1, 0);
+        updateSprintFrame(dt);
+        require(hoard.stamina() > partial && input.arenaSprintPress() == 0, "resume with B held cannot sprint");
+
+        held[0] = false;
+        input.updateGamepad();
+        held[0] = true;
+        input.updateGamepad();
+        loadouts.equipWeapon(player, "basic_sword");
+        Combat.MAPPER.get(player).requestAttack(Combat.AttackSlot.PRIMARY);
+        engine.getSystem(CombatSystem.class).update(0f);
+        updateSprintFrame(0f);
+        before = animation.getStateTime();
+        partial = hoard.stamina();
+        updateSprintFrame(dt);
+        require(hoard.stamina() < partial && animation.getType() == Animation2D.AnimationType.ATTACK
+            && Math.abs(animation.getStateTime() - before - dt * animation.getSpeed()) < .00001f,
+            "melee plays at its authored rate even while the player is sprinting");
+        partial = hoard.stamina();
+        Health.MAPPER.get(player).damage(1000);
+        engine.getSystem(DeathSystem.class).update(0f);
+        physics.update(dt);
+        require(hoard.run().isGameOver() && hoard.stamina() == partial, "terminal stamina freezes at death");
+        remountArena(tiled, hoard);
+        input.updateGamepad();
+        require(hoard.stamina() == 1d && input.arenaSprintPress() == 0, "arena remount resets stamina and invalidates held B");
+        require(tiled.requestTravel(player(), "test_tiled", "PlayerSpawn"), "leave sprint arena for ordinary map");
+        tiled.applyPendingTravel();
+        held[0] = false;
+        input.updateGamepad();
+        held[0] = true;
+        input.updateGamepad();
+        var ordinaryPlayer = player();
+        var ordinaryMove = Move.MAPPER.get(ordinaryPlayer);
+        Physic.MAPPER.get(ordinaryPlayer).getBody().setTransform(-100, -100, 0);
+        ordinaryMove.getDirection().set(1, 0);
+        updateSprintFrame(0f);
+        var ordinaryAnimation = Animation2D.MAPPER.get(ordinaryPlayer);
+        updateSprintFrame(dt);
+        require(!hoard.isActive() && input.arenaSprintPress() != 0 && Physic.MAPPER.get(ordinaryPlayer).getBody()
+            .getLinearVelocity().len() == ordinaryMove.getMaxSpeed()
+            && ordinaryAnimation.getType() == Animation2D.AnimationType.WALK
+            && Math.abs(ordinaryAnimation.getStateTime() - dt * ordinaryAnimation.getSpeed()) < .00001f,
+            "ordinary map ignores held B and preserves walk speed and playback");
+        require(tiled.requestTravel(ordinaryPlayer, "hoard_mode", "PlayerSpawn"), "return to sprint arena");
+        tiled.applyPendingTravel();
+        input.updateGamepad();
+        require(hoard.stamina() == 1d && input.arenaSprintPress() == 0, "named travel starts fresh without carrying held B");
+        pads.removeValue(pad, true);
+        input.updateGamepad();
+    }
+
+    private static void verifySprintHud(RenderSystem renderer, boolean depleted) {
+        renderer.update(0f);
+        var viewport = GAME.getViewport();
+        int width = HdpiUtils.toBackBufferX(viewport.getScreenWidth());
+        int top = HdpiUtils.toBackBufferY(viewport.getScreenY() + viewport.getScreenHeight());
+        int height = HdpiUtils.toBackBufferY(28);
+        var pixels = Pixmap.createFromFrameBuffer(HdpiUtils.toBackBufferX(viewport.getScreenX()), top - 2 * height, width, 2 * height);
+        try {
+            for (int row = 0; row < 2; row++) {
+                int left = width, right = -1;
+                boolean blue = false, hp = false, empty = false;
+                for (int y = row * height; y < (row + 1) * height; y++) {
+                    for (int x = 0; x < width; x++) {
+                        int pixel = pixels.getPixel(x, y);
+                        int r = pixel >>> 24, g = pixel >>> 16 & 255, b = pixel >>> 8 & 255;
+                        if (Math.max(r, Math.max(g, b)) < 90) { continue; }
+                        blue |= b > r + 30 && g > r + 30;
+                        hp |= g > 170 && r < 30 && b < 30;
+                        empty |= r > 190 && g > 70 && g < 160 && b < 105;
+                        left = Math.min(left, x);
+                        right = Math.max(right, x);
+                    }
+                }
+                require(right > left && Math.abs(left + right - width) <= 4, "each HUD row is independently centered");
+                require(row == 1 ? blue && !hp && !empty : hp && (depleted ? empty && !blue : blue && !empty),
+                    "status above, HP and visible stamina below; depleted stamina uses distinct ink: row " + row
+                        + ", blue=" + blue + ", HP=" + hp + ", depleted ink=" + empty);
+            }
+        } finally {
+            pixels.dispose();
+        }
     }
 
     private void verifyTerminalRun(TiledSystem tiled, HoardSystem hoard) {
