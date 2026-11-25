@@ -9,6 +9,12 @@ This project was generated with a template including simple application launcher
 - `core`: Main module with the application logic shared by all platforms.
 - `lwjgl3`: Primary desktop platform using LWJGL3; was called 'desktop' in older docs.
 
+## Weapon hitbox editor
+
+Launch the standalone JavaFX editor from the repository root with `./gradlew :weapon-tester:run`. It is a standalone included build registered in `settings.gradle`. Provision the ignored `raw_assets/` tree first: the editor uses raw player and weapon data and raw character, equipment, and weapon sprites rather than generated runtime assets.
+
+The editor previews all four facing directions and overlays the weapon attack hitbox separately from the player's damage-receiving hurtbox and physical collider. Edit the attack shape, extents, and directional offsets; for a weapon with a projectile primary attack, only its secondary attack is editable. Save explicitly to write changes to `raw_assets/data/weapons.json`. Saving does not generate runtime assets: run `./generate-runtime-assets.sh` separately before using the changes in the game.
+
 ## Runtime assets
 
 Both `raw_assets/` and `assets/` are local and ignored by Git; their contents are not included in the current tracked tree or new checkouts. Existing Git history retains old asset objects; it has not been purged. In a new checkout, provide the complete current `raw_assets/` tree externally, including settings, data, audio, maps, tilesets, sprites, and the Tiled project. Edit source assets in `raw_assets/`, not the generated files in `assets/`. Shared settings and the Tiled project live at the source root; `data/` and `audio/` contain shared game data and sounds. Each map directory, such as `raw_assets/maps/test_tiled/`, contains a matching TMX and manifest and an `objects/` directory with source images and `pack.json`. Shared terrain tilesets live under `raw_assets/tilesets/` and can be referenced by multiple maps. The manifest must name `<map>.atlas` and `<map>/<map>.tmx`, and include `music_assets` and `sound_assets` objects, even when empty.
