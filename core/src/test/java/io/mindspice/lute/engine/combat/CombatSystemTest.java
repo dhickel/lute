@@ -71,8 +71,9 @@ public final class CombatSystemTest {
         attackSlotsAndLoadout();
         testWeaponCycle();
         heldBow();
-        enemyBow(0f);
-        enemyBow(4f);
+        enemyBow(0f, false);
+        enemyBow(4f, false);
+        enemyBow(4f, true);
         cardinalBowShots();
         ArrowFlightTest.run();
         cooldownBetweenBowAndMelee();
@@ -509,7 +510,7 @@ public final class CombatSystemTest {
         }
     }
 
-    private static void enemyBow(float releaseSpeed) {
+    private static void enemyBow(float releaseSpeed, boolean dodge) {
         try (var game = new Harness(1, 2, 1)) {
             var shot = attack("bow", "shot", 1, 2, 1, BoundsType.RECT, CollisionType.PROJECTILE);
             game.selectWeapon(new CombatWeapon.Weapon("bow", "ranged/bow", shot, shot));
@@ -527,19 +528,35 @@ public final class CombatSystemTest {
             sight.setVisibleTarget(target);
             sight.setTargetOffset(new Vector2(3, 0));
             var graph = BehaviorGraphs.forKey(BehaviorGraphs.ARCHER).get(ActorAi.Mode.ENGAGE);
-            graph.travel(archer, sight);
-            game.update(STEP);
-            check(aim.isAiming(), "Live sight starts enemy draw");
-            game.update(STEP);
-            check(!aim.isAiming() && !game.combat().isCoolingDown("bow", Combat.AttackSlot.PRIMARY),
+            for (int i = 0; i < 23 && !aim.isAiming(); i++) { graph.travel(archer, sight); game.update(STEP); }
+            check(aim.isAiming(), "Live sight starts enemy draw after decision");
+            for (int i = 0; i < 30 && !aim.isLocked(); i++) { graph.travel(archer, sight); game.update(STEP); }
+            check(aim.isLocked(), "Even a committed aim point still needs live sight to release");
+            ActorAi.MAPPER.get(archer).updateTarget(Vector2.Zero, null, STEP);
+            game.update(.5f);
+            check(!aim.isAiming() && !aim.isLocked() && !game.combat().isCoolingDown("bow", Combat.AttackSlot.PRIMARY),
                 "Lost sight cancels draw without starting cooldown");
-            for (int i = 0; i < 60 && !game.combat().isAttacking(); i++) {
-                if (i == 20) { body.setLinearVelocity(0, releaseSpeed); }
+            boolean locked = false;
+            float lockX = 0, lockY = 0;
+            int lockedFrames = 0;
+            body.setLinearVelocity(0, releaseSpeed);
+            for (int i = 0; i < 70 && !game.combat().isAttacking(); i++) {
+                if (aim.isLocked()) {
+                    if (!locked) {
+                        locked = true;
+                        lockX = aim.getTargetX(); lockY = aim.getTargetY();
+                        if (dodge) { body.setLinearVelocity(0, -releaseSpeed); }
+                    }
+                    near(lockX, aim.getTargetX(), "No late X tracking");
+                    near(lockY, aim.getTargetY(), "No late Y tracking");
+                    lockedFrames++;
+                }
                 graph.travel(archer, sight);
                 game.update(STEP);
             }
             check(!aim.isAiming() && game.combat().isCoolingDown("bow", Combat.AttackSlot.PRIMARY),
                 "Enemy releases and starts primary cooldown");
+            check(lockedFrames >= 14, "Aim stays committed for the second half of the draw");
             long firstShot = game.combat().getAttackId();
             for (int i = 0; i < 90; i++) {
                 // Keep the moving-target case single-shot to test lead at the original release.
@@ -552,8 +569,8 @@ public final class CombatSystemTest {
             if (releaseSpeed == 0f) {
                 check(game.combat().getAttackId() > firstShot, "Continuous inner sight produces another release");
             }
-            check(Health.MAPPER.get(target).getCurrent() < 100,
-                "Real enemy arrow hits target moving at release speed " + releaseSpeed);
+            check((Health.MAPPER.get(target).getCurrent() == 100) == dodge,
+                "Real arrow hits steady motion, misses a reversal after lock: speed=" + releaseSpeed + " dodge=" + dodge);
         }
     }
 

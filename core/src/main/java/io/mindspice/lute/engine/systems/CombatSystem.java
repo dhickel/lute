@@ -205,18 +205,19 @@ public class CombatSystem extends IteratingSystem implements ContactListener, En
                 requested = null;
             }
         }
-        if (aim != null && ActorAi.MAPPER.has(entity)) {
+        var ai = ActorAi.MAPPER.get(entity);
+        if (aim != null && ai != null) {
             var weapon = Loadout.MAPPER.get(entity).getWeapon();
             if (alive && requested == Combat.AttackSlot.PRIMARY && target != null
                 && weapon.primary().collisionType() == CollisionType.PROJECTILE) {
                 if (!aim.isAiming() || aim.getWeapon() != weapon) {
                     aim.cancel();
                     drawBow(entity, aim, weapon);
-                } else if (animation.hasReachedFrame(BowAim.FULL_DRAW_FRAME)) {
-                    var body = Physic.MAPPER.get(target).getBody();
-                    var center = body.getPosition().cpy().mulAdd(Transform.MAPPER.get(target).getSize(), .5f);
-                    aim.aimAt(ArrowFlight.intercept(arrowType, launchCenter(entity), center, body.getLinearVelocity()));
+                } else if (!aim.isLocked() && animation.hasReachedFrame(BowAim.FULL_DRAW_FRAME / 2)) {
+                    lockEnemyAim(entity, aim, target, animation);
+                } else if (aim.isLocked() && aim.advanceLock(deltaTime) && animation.hasReachedFrame(BowAim.FULL_DRAW_FRAME)) {
                     launch(entity, aim);
+                    ai.clearOpportunity();
                 }
                 return;
             }
@@ -235,6 +236,11 @@ public class CombatSystem extends IteratingSystem implements ContactListener, En
                     return;
                 }
                 animation.queueAttack(next.animation());
+                if (ai != null && next.collisionType() == CollisionType.MELEE) {
+                    ai.clearOpportunity();
+                    float hitSeconds = next.hitFrame() * next.animation().frameInterval() / next.animation().speed();
+                    animation.holdOpeningPose(Math.max(0f, .28f - hitSeconds));
+                }
                 combat.beginAttack(requested, next, Facing.MAPPER.get(entity).getDirection());
                 mountedCombat.put(entity, combat);
                 return;
@@ -242,10 +248,27 @@ public class CombatSystem extends IteratingSystem implements ContactListener, En
         }
         if (!combat.isAttacking()) { return; }
         if (!alive || (animation.isAttackReady() && animation.isFinished())) {
+            if (alive && ai != null && combat.getActiveAttack().collisionType() == CollisionType.MELEE) {
+                // The authored follow-through already counts. Never extend the damaging fixture into recovery.
+                float frame = animation.getFrameDuration() / animation.getSpeed();
+                float tail = (float) animation.getPlaybackDuration() - combat.getActiveAttack().hitFrame() * frame;
+                ai.recover(Math.max(.16f, .4f - tail));
+            }
             stopAttack(entity);
             return;
         }
         activateMeleeSensor(entity, combat, animation);
+    }
+
+    private void lockEnemyAim(Entity archer, BowAim aim, Entity target, Animation2D animation) {
+        // Snapshot once, including the remaining draw as well as flight. A late direction change beats the lead.
+        float remaining = (BowAim.FULL_DRAW_FRAME / 2) * animation.getFrameDuration() / animation.getSpeed();
+        var body = Physic.MAPPER.get(target).getBody();
+        var center = body.getPosition().cpy().mulAdd(Transform.MAPPER.get(target).getSize(), .5f);
+        var start = launchCenter(archer);
+        var point = ArrowFlight.intercept(arrowType, start, center, body.getLinearVelocity(), remaining);
+        aim.lockAt(point, remaining);
+        Facing.MAPPER.get(archer).faceAlong(point.cpy().sub(start));
     }
 
     private long physicsStep() {
@@ -320,6 +343,8 @@ public class CombatSystem extends IteratingSystem implements ContactListener, En
     }
 
     void cancelCombat(Entity entity) {
+        var ai = ActorAi.MAPPER.get(entity);
+        if (ai != null) { ai.clearOpportunity(); ai.recover(0f); }
         arrows.removeIf(arrow -> arrow.owner == entity);
         pendingHits.removeIf(hit -> hit.attacker() == entity || hit.target() == entity);
         var aim = BowAim.MAPPER.get(entity);

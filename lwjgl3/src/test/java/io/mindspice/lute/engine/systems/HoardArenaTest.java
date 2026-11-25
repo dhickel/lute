@@ -267,6 +267,7 @@ public final class HoardArenaTest extends ApplicationAdapter {
                     points = 5 * (zone + 1);
                 }
                 if (observed.add(key)) {
+                    if (!key.equals("dredge")) { verifyRosterAttack(enemy, key); }
                     var run = hoard.run();
                     long prior = run.score();
                     bus.emitEvent(new Event.Player.KilledEnemy(player(), enemy));
@@ -283,6 +284,32 @@ public final class HoardArenaTest extends ApplicationAdapter {
             hoard.run().advance(120);
         }
         require(observed.size() == 9, "all eight non-Dredges and Dredge appeared: " + observed);
+    }
+
+    private void verifyRosterAttack(Entity enemy, String key) {
+        var engine = GAME.getEngine();
+        var awareness = engine.getSystem(AwarenessSystem.class);
+        var enemyBody = Physic.MAPPER.get(enemy).getBody();
+        var playerBody = Physic.MAPPER.get(player()).getBody();
+        var home = enemyBody.getPosition().cpy();
+        var original = playerBody.getPosition().cpy();
+        boolean bow = BowAim.MAPPER.has(enemy);
+        try {
+            enemyBody.setTransform(-100, -100, 0);
+            // Archers must attack well outside melee range, melee fighters must close it.
+            playerBody.setTransform(-100 + (bow ? 2f : .85f), -100, 0);
+            var combat = Combat.MAPPER.get(enemy);
+            awareness.processEntity(enemy, 0);
+            require(!combat.hasAttackRequest(), "no instant attack from " + key);
+            awareness.processEntity(enemy, .35f);
+            require(combat.requestedTarget() == player(), "authored profile found an attack for " + key);
+            engine.getSystem(CombatSystem.class).processEntity(enemy, 0);
+            require(bow ? BowAim.MAPPER.get(enemy).isAiming() && !combat.isAttacking()
+                : combat.isAttacking() && combat.getSensor() == null, "draw or committed windup for " + key);
+        } finally {
+            enemyBody.setTransform(home, 0);
+            playerBody.setTransform(original, 0);
+        }
     }
 
     private int reinforcementHp(TiledSystem tiled, HoardSystem hoard, boolean batched) {
@@ -327,6 +354,7 @@ public final class HoardArenaTest extends ApplicationAdapter {
             bossBody.setTransform(guard.home().x + 1, guard.home().y, 0);
             awareness.processEntity(boss, .01f);
             require(Move.MAPPER.get(boss).getDirection().x < 0, "guard returns to its own spawn");
+            verifyGuardVolley(zone.x, zone.y, enemies);
             Health.MAPPER.get(boss).damage(Integer.MAX_VALUE);
             engine.getSystem(DeathSystem.class).processEntity(boss, 0);
             var objects = engine.getEntitiesFor(Family.all(Pickup.class).get());
@@ -389,6 +417,44 @@ public final class HoardArenaTest extends ApplicationAdapter {
             tiled.hideMap();
             map.dispose();
             require(enemies.size() == 0 && !hoard.isActive(), "no reinforcement survives unmount");
+        }
+    }
+
+    /** Same opening for all three real hammer guards. Run decision/animation/combat without pushing bodies apart. */
+    private void verifyGuardVolley(float x, float y, com.badlogic.ashley.utils.ImmutableArray<Entity> guards) {
+        var engine = GAME.getEngine();
+        var actor = Actor.MAPPER.get(player());
+        var playerBody = Physic.MAPPER.get(player()).getBody();
+        playerBody.setTransform(x - actor.feetX(), y - actor.feetY(), 0);
+        for (var guard : guards) {
+            var feet = Actor.MAPPER.get(guard);
+            Physic.MAPPER.get(guard).getBody().setTransform(x - feet.feetX() - .75f, y - feet.feetY(), 0);
+        }
+        float dt = 1f / 60f;
+        int first = -1, last = -1, peak = 0;
+        for (int tick = 0; tick < 135; tick++) {
+            if (tick == 24) { playerBody.setTransform(x + 10f, y, 0); } // Leave territory AFTER all three commits.
+            engine.getSystem(AwarenessSystem.class).update(dt);
+            engine.getSystem(AnimationPlayerSystem.class).update(dt);
+            engine.getSystem(AnimationSystem.class).update(dt);
+            engine.getSystem(CombatSystem.class).update(dt);
+            int committed = 0, active = 0;
+            for (var guard : guards) {
+                var combat = Combat.MAPPER.get(guard);
+                if (combat.getAttackId() > 0) { committed++; }
+                if (combat.getSensor() != null) { active++; }
+                if (tick < 9) { require(combat.getAttackId() == 0, "Dredge respects decision delay"); }
+                if (tick < 44) { require(combat.getSensor() == null, "Dredge keeps its slow authored windup"); }
+            }
+            if (committed > 0 && first < 0) { first = tick; }
+            if (committed == guards.size() && last < 0) { last = tick; }
+            peak = Math.max(peak, active);
+        }
+        require(first >= 9 && last >= first && last <= 22 && peak == 3, "Every eligible guard commits; active swings can overlap");
+        for (var guard : guards) {
+            var combat = Combat.MAPPER.get(guard);
+            require(!combat.isAttacking() && combat.getAttackId() == 1 && !ActorAi.MAPPER.get(guard).recovering(),
+                "Territory exit cannot cancel a whiff or start another hammer attack");
         }
     }
 

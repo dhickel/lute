@@ -64,6 +64,8 @@ public final class AwarenessSystemTest {
             "bow", Map.of("bow", bow), _ -> { }));
         var combat = Combat.MAPPER.get(enemy);
         engine.update(0);
+        check(!combat.hasAttackRequest() && body(enemy).getLinearVelocity().x > 0, "Outer archer approaches while deciding");
+        engine.update(.35f);
         check(combat.requestedTarget() == player && Move.MAPPER.get(enemy).getDirection().isZero(),
             "Archer chooses its ranged engage graph instead of chasing");
         combat.consumeAttackRequest();
@@ -79,9 +81,13 @@ public final class AwarenessSystemTest {
         engine.update(0);
         check(body(enemy).getLinearVelocity().x > 0, "Approach resumes when the visible player moves out");
         combat.tickCooldown(shot.cooldownSeconds());
+        engine.update(.35f);
+        check(!combat.hasAttackRequest(), "Ready slot cannot truncate release playback");
+        combat.endAttack();
         engine.update(0);
+        engine.update(.35f);
         check(body(enemy).getLinearVelocity().isZero() && combat.requestedTarget() == player,
-            "Ready bow stops to draw again even before release playback finishes");
+            "Ready bow stops for a new opportunity after recovery");
         combat.consumeAttackRequest();
         var wall = world.createBody(new BodyDef());
         wall.setTransform(51, 50, 0);
@@ -113,6 +119,17 @@ public final class AwarenessSystemTest {
         check(awareness.inRange(enemy, Actor.Role.PLAYER).equals(List.of(player)), "Boundary is inclusive");
         engine.update(0);
         var combat = Combat.MAPPER.get(enemy);
+        for (int i = 0; i < 100; i++) { engine.update(0); }
+        engine.update(.149f);
+        check(!combat.hasAttackRequest() && Move.MAPPER.get(enemy).getDirection().x > 0,
+            "No tick-based rolls: step in before the minimum decision time");
+        body(player).setTransform(4.1f, 0, 0);
+        engine.update(.3f);
+        body(player).setTransform(4, 0, 0);
+        engine.update(.3f);
+        engine.update(.149f);
+        check(!combat.hasAttackRequest(), "Leaving range cancels, reacquisition starts a fresh opportunity");
+        engine.update(.202f);
         check(facing.getDirection() == Facing.Direction.RIGHT && combat.consumeAttackRequest() == Combat.AttackSlot.PRIMARY
             && Move.MAPPER.get(enemy).getDirection().isZero(), "Enemy stops and attacks at the inclusive limit through other actor bodies");
         check(!Combat.MAPPER.get(npc).hasAttackRequest(), "Wander-only graph does not attack a nearby player");
@@ -127,6 +144,7 @@ public final class AwarenessSystemTest {
         check(!combat.hasAttackRequest(), "Solid scenery blocks ray");
         wall.setSensor(true);
         engine.update(0);
+        engine.update(.35f);
         check(facing.getDirection() == Facing.Direction.UP && combat.consumeAttackRequest() == Combat.AttackSlot.PRIMARY,
             "World sensors do not block ray");
         wall.setSensor(false);
@@ -137,6 +155,7 @@ public final class AwarenessSystemTest {
         body(player).setTransform(20, 20, 0);
         body(enemy).setTransform(22, 20, 0);
         engine.update(0);
+        engine.update(.35f);
         check(facing.getDirection() == Facing.Direction.LEFT && combat.consumeAttackRequest() == Combat.AttackSlot.PRIMARY,
             "Moving the body moves the attached circle");
         Health.MAPPER.get(player).damage(100);
@@ -230,6 +249,7 @@ public final class AwarenessSystemTest {
                 "Lost sight uses the old point and never attacks a hidden shooter in melee range");
             cover.setSensor(true);
             awareness.processEntity(victim, 0);
+            awareness.processEntity(victim, .35f);
             check(ai.mode() == Mode.ENGAGE && melee.consumeAttackRequest() == Combat.AttackSlot.PRIMARY,
                 "NPC with the unarmed loadout can attack on live reacquisition");
             var unarmed = Loadout.MAPPER.get(victim).getWeapon().primary();
@@ -280,6 +300,7 @@ public final class AwarenessSystemTest {
             var ai = ActorAi.MAPPER.get(enemy);
             var melee = Combat.MAPPER.get(enemy);
             awareness.processEntity(enemy, 0f);
+            awareness.processEntity(enemy, .35f);
             check(melee.requestedTarget() == player, "Normal enemy vision queues melee against the live nearby player");
             combat.arrows().add(new ArrowFlight(shooter, type, new Vector2(18, 0), new Vector2(20, 0), new Scalar(10), 1));
             impact();
@@ -290,6 +311,7 @@ public final class AwarenessSystemTest {
                 "Enemy pursues the actual shooter rather than attacking the unrelated player");
             body(shooter).setTransform(20, -13, 0);
             awareness.processEntity(enemy, 0f);
+            awareness.processEntity(enemy, .35f);
             check(ai.retaliationTarget() == null && melee.requestedTarget() == player,
                 "Losing the shooter does not mask normal live enemy detection");
             Health.MAPPER.get(player).damage(100);
@@ -298,6 +320,8 @@ public final class AwarenessSystemTest {
             engine.removeEntity(player);
             var replacement = actor(engine, world, Actor.Role.PLAYER, 20, 3);
             awareness.processEntity(enemy, 0f);
+            check(!melee.hasAttackRequest(), "A replacement target cannot inherit the previous decision");
+            awareness.processEntity(enemy, .35f);
             check(melee.requestedTarget() == replacement, "Vision acquires the replacement without retaining the retired player");
             combat.update(0f);
             check(melee.getAttackId() == 1 && melee.isAttacking(), "Live sight still commits an attack through the combat system");
@@ -402,7 +426,8 @@ public final class AwarenessSystemTest {
         entity.add(new Actor(role, 0, 0)).add(new Physic(body, def.position.cpy()))
             .add(new Facing(Facing.Direction.DOWN)).add(new Health(100));
         if (role != Actor.Role.PLAYER) {
-            var attack = new CombatWeapon.Attack("unarmed", new Scalar(10), 0, .3f, null, null, null, null, CollisionType.MELEE);
+            var attack = new CombatWeapon.Attack("unarmed", new Scalar(10), 0, .3f,
+                new Animation2D.Attack("jab", 1, .125f, 0, "jab"), null, null, null, CollisionType.MELEE);
             var weapon = new CombatWeapon.Weapon("unarmed", "", attack, attack);
             entity.add(new ActorAi(role == Actor.Role.ENEMY ? "wander_attack" : "wander", 4f))
                 .add(new Combat()).add(new Move(1f))

@@ -159,14 +159,14 @@ public final class ArrowFlightTest {
 
     private static void verifyIntercept(World world) {
         var center = new Vector2(3, -1);
-        require(ArrowFlight.intercept(TYPE, Vector2.Zero, center, Vector2.Zero).equals(center),
+        require(ArrowFlight.intercept(TYPE, Vector2.Zero, center, Vector2.Zero, .25f).equals(center),
             "Stationary target needs no lead");
-        require(ArrowFlight.intercept(TYPE, center, center, new Vector2(2, 3)).equals(center),
+        require(ArrowFlight.intercept(TYPE, center, center, new Vector2(2, 3), .25f).equals(center),
             "Coincident target does not invent a lead direction");
-        require(ArrowFlight.intercept(TYPE, Vector2.Zero, center, new Vector2(20, 0)).equals(center),
+        require(ArrowFlight.intercept(TYPE, Vector2.Zero, center, new Vector2(20, 0), .25f).equals(center),
             "An outrunning target gets a direct shot");
         var velocity = new Vector2(0, 4);
-        var aim = ArrowFlight.intercept(TYPE, Vector2.Zero, center, velocity);
+        var aim = ArrowFlight.intercept(TYPE, Vector2.Zero, center, velocity, 0);
         float time = (aim.y - center.y) / velocity.y;
         var arrow = launch(TYPE, aim);
         require(time > 0 && !arrow.finished(world, time) && arrow.tip.epsilonEquals(aim, .0001f),

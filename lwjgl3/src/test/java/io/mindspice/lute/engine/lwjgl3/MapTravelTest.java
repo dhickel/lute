@@ -32,6 +32,7 @@ import io.mindspice.lute.engine.components.*;
 import io.mindspice.lute.engine.data.json.DataLoader;
 import io.mindspice.lute.engine.data.json.GameData;
 import io.mindspice.lute.engine.data.json.ObjectData;
+import io.mindspice.lute.engine.input.InputAction;
 import io.mindspice.lute.engine.screen.GameScreen;
 import io.mindspice.lute.engine.screen.ScreenManager;
 import io.mindspice.lute.engine.singletons.GameConsts;
@@ -502,14 +503,15 @@ public final class MapTravelTest extends ApplicationAdapter {
         var enemyPosition = body(enemy).getPosition().cpy();
         var playerPosition = body(player).getPosition().cpy();
         var combat = Combat.MAPPER.get(enemy);
-        // Use empty space to verify actor steering and weapon damage independent of fixture placement on the demo map.
-        body(npc).setTransform(-110, -100, 0);
+        // Keep live Box2D combat in open space and the wandering NPC out of both the pursuit and retreat paths.
+        var npcStart = new Vector2(-110, -160);
+        body(npc).setTransform(npcStart, 0);
         body(enemy).setTransform(-100, -100, 0);
         body(player).setTransform(-90, -100, 0);
         boolean npcMoved = false, enemyMoved = false;
         for (int i = 0; i < 190 && !(npcMoved && enemyMoved); i++) {
             screen.render(1f / 60f);
-            npcMoved |= !body(npc).getPosition().epsilonEquals(-110, -100, .01f);
+            npcMoved |= !body(npc).getPosition().epsilonEquals(npcStart, .01f);
             enemyMoved |= !body(enemy).getPosition().epsilonEquals(-100, -100, .01f);
         }
         require(npcMoved && enemyMoved && combat.getAttackId() == 0,
@@ -526,7 +528,10 @@ public final class MapTravelTest extends ApplicationAdapter {
                 && body(enemy).getLinearVelocity().x > 0, "Enemy faces and pursues a detected player outside melee range");
             for (int i = 0; i < 120 && !combat.isAttacking(); i++) { screen.render(1f / 60f); }
             require(combat.isAttacking(), "Enemy closes the gap and starts the attack without repositioning the player");
-            for (int i = 0; i < 5; i++) { screen.render(1f / 60f); }
+            for (int i = 0; i < 15; i++) { screen.render(1f / 60f); }
+            require(testHealth.getCurrent() == testHealth.getMaximum() && combat.getSensor() == null,
+                "Visible planted swing gives at least 250 ms before hit");
+            for (int i = 0; i < 12; i++) { screen.render(1f / 60f); }
             require(testHealth.getCurrent() >= testHealth.getMaximum() - 20
                 && testHealth.getCurrent() <= testHealth.getMaximum() - 15
                 && body(enemy).getLinearVelocity().isZero() && DamageFeedbackProbe.count(player) == 1,
@@ -534,15 +539,68 @@ public final class MapTravelTest extends ApplicationAdapter {
             var retreat = body(enemy).getPosition().cpy().add(-2.5f, .5f);
             body(player).setTransform(retreat, 0);
             for (int i = 0; i < 90 && combat.isAttacking(); i++) { screen.render(1f / 60f); }
-            screen.render(1f / 60f);
+            for (int i = 0; i < 8; i++) { screen.render(1f / 60f); }
+            require(!combat.isAttacking() && combat.getSensor() == null && body(enemy).getLinearVelocity().isZero(),
+                "After the sensor disappears, there is time to approach safely");
+            for (int i = 0; i < 8; i++) { screen.render(1f / 60f); }
             require(!combat.isAttacking() && body(enemy).getLinearVelocity().y > 0f
                 && body(enemy).getLinearVelocity().x < 0f && Facing.MAPPER.get(enemy).getDirection() == Facing.Direction.LEFT,
-                "Enemy resumes pursuit and faces the retreating player once the swing finishes");
+                "Enemy resumes pursuit and faces the retreating player after recovery");
+            verifyWalkingCounter(enemy, player);
         } finally {
             player.add(originalHealth);
             body(npc).setTransform(npcPosition, 0);
             body(enemy).setTransform(enemyPosition, 0);
             body(player).setTransform(playerPosition, 0);
+        }
+    }
+
+    private void verifyWalkingCounter(Entity enemy, Entity player) {
+        var combat = Combat.MAPPER.get(enemy);
+        var hp = Health.MAPPER.get(player).getCurrent();
+        var loadout = Loadout.MAPPER.get(player);
+        var previous = loadout.getWeaponId();
+        var input = Controller.MAPPER.get(player).getInputListener();
+        var enemyHealth = Health.MAPPER.get(enemy);
+        float dt = 1f / 60f;
+        long firstSwing = combat.getAttackId();
+        var enemyActor = Actor.MAPPER.get(enemy);
+        var playerActor = Actor.MAPPER.get(player);
+        float unit = GameConsts.UNIT_SCALE;
+        // Start inside planted range without overlapping the feet fixtures. Pursuit was tested above.
+        var bait = body(enemy).getPosition().cpy().add(
+            enemyActor.feetX() - playerActor.feetX() + 22 * unit,
+            enemyActor.feetY() - playerActor.feetY() + 8 * unit);
+        body(player).setTransform(bait, 0);
+        loadout.setWeapon("basic_sword");
+        try {
+            for (int i = 0; i < 60 && !combat.isAttacking(); i++) { screen.render(dt); }
+            require(combat.isAttacking() && combat.getAttackId() > firstSwing, "Bait a second swing");
+            require(combat.getAttackFacing() == Facing.Direction.RIGHT, "Second swing commits toward the bait");
+            input.offer(InputAction.MOVE_RIGHT, 1);
+            for (int i = 0; i < 20; i++) { screen.render(dt); }
+            input.offer(InputAction.MOVE_RIGHT, 0);
+            require(combat.getSensor() != null && combat.getAttackFacing() == Facing.Direction.RIGHT,
+                "Walking out during the cue does not cancel or turn the swing");
+            for (int i = 0; i < 90 && combat.isAttacking(); i++) { screen.render(dt); }
+            require(ActorAi.MAPPER.get(enemy).recovering() && Health.MAPPER.get(player).getCurrent() == hp,
+                "The committed swing whiffs");
+            long swing = combat.getAttackId();
+            input.offer(InputAction.MOVE_LEFT, 1);
+            screen.render(dt);
+            input.offer(InputAction.ATTACK_PRIMARY, 1);
+            int before = enemyHealth.getCurrent();
+            for (int i = 0; i < 25 && enemyHealth.getCurrent() == before; i++) { screen.render(dt); }
+            require(enemyHealth.getCurrent() < before && combat.getAttackId() == swing
+                && Health.MAPPER.get(player).getCurrent() == hp, "Walk back in and land a normal sword counter before the reset");
+        } finally {
+            input.offer(InputAction.ATTACK_PRIMARY, 0);
+            input.offer(InputAction.MOVE_LEFT, 0);
+            input.offer(InputAction.MOVE_RIGHT, 0);
+            body(player).setTransform(-90, -100, 0);
+            for (int i = 0; i < 60; i++) { screen.render(dt); }
+            loadout.setWeapon(previous);
+            enemyHealth.restore();
         }
     }
 

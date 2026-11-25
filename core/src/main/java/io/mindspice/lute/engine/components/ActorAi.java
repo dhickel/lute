@@ -21,6 +21,10 @@ public final class ActorAi implements Component {
     private final Vector2 lastSeenFeet = new Vector2();
     private float investigateTimeLeft;
     private Entity retaliateAgainst;
+    private Entity opportunityTarget;
+    private CombatWeapon.Weapon opportunityWeapon;
+    private float decisionTimeLeft;
+    private float recoveryLeft;
     // Start with a wait so the authored spawn facing is visible.
     private float wanderTimeLeft = wanderPhaseSeconds();
 
@@ -36,6 +40,25 @@ public final class ActorAi implements Component {
     public String behaviorGraphKey() { return behaviorGraphKey; }
     public Mode mode() { return mode; }
 
+    /** Start the clock only on entry: time before eligibility does not count. */
+    public boolean decisionDue(Entity target, CombatWeapon.Weapon weapon, float delta) {
+        if (target == null) { clearOpportunity(); return false; }
+        if (target != opportunityTarget || weapon != opportunityWeapon) {
+            opportunityTarget = target;
+            opportunityWeapon = weapon;
+            decisionTimeLeft = ThreadLocalRandom.current().nextFloat(.15f, .35f);
+        } else {
+            decisionTimeLeft -= delta;
+        }
+        return decisionTimeLeft <= 0f;
+    }
+
+    public void clearOpportunity() { opportunityTarget = null; opportunityWeapon = null; }
+
+    public void recover(float seconds) { recoveryLeft = seconds; }
+    public void tickRecovery(float delta) { recoveryLeft = Math.max(0f, recoveryLeft - delta); }
+    public boolean recovering() { return recoveryLeft > 0f; }
+
     public Entity retaliationTarget() { return retaliateAgainst; }
 
     public void retaliateAgainst(Entity shooter) { retaliateAgainst = shooter; }
@@ -47,6 +70,7 @@ public final class ActorAi implements Component {
             mode = Mode.ENGAGE;
             return visibleFeet.cpy().sub(feet);
         }
+        clearOpportunity();
         if (mode == Mode.WANDER) { return null; }
         if (mode == Mode.ENGAGE) {
             mode = Mode.INVESTIGATE;
@@ -64,6 +88,7 @@ public final class ActorAi implements Component {
     }
 
     public void forgetTarget() {
+        clearOpportunity();
         mode = Mode.WANDER;
         retaliateAgainst = null;
         lastSeenFeet.setZero();

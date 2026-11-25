@@ -34,6 +34,7 @@ public final class AwarenessSystem extends IteratingSystem {
     protected void processEntity(Entity actor, float deltaTime) {
         var ai = ActorAi.MAPPER.get(actor);
         if (ai == null) { return; }
+        ai.tickRecovery(deltaTime);
         var state = new FocusState(deltaTime);
         if (!Health.MAPPER.get(actor).isAlive()) {
             ai.forgetTarget();

@@ -22,6 +22,7 @@ public class Animation2D implements Component {
     private float stateTime;
     private double deathSeconds;
     private boolean bowReleased;
+    private float openingHold;
     private Animation<TextureRegion> animation;
     boolean dirty;
     private Attack attack;
@@ -34,7 +35,10 @@ public class Animation2D implements Component {
     public void configureAttack(Attack attack) { this.attack = attack; }
 
     // Keep the rendered pose and its metadata in sync until the next animation pass.
-    public void queueAttack(Attack attack) { queuedAttack = attack; }
+    public void queueAttack(Attack attack) { queuedAttack = attack; openingHold = 0f; }
+
+    /** Show the authored first pose without advancing hit frames during a short AI windup. */
+    public void holdOpeningPose(float seconds) { openingHold = seconds; }
 
     public void restartQueuedAttack() {
         if (queuedAttack == null) { return; }
@@ -66,7 +70,7 @@ public class Animation2D implements Component {
     }
 
     public boolean hasReachedFrame(int frame) {
-        return isAttackReady() && stateTime >= frame * frameDuration;
+        return isAttackReady() && openingHold <= 0f && stateTime >= frame * frameDuration;
     }
 
     public String consumeAttackSound() {
@@ -178,6 +182,11 @@ public class Animation2D implements Component {
             stateTime = (BowAim.FULL_DRAW_FRAME + 1) * frameDuration;
             bowReleased = false;
         } else {
+            if (type == AnimationType.ATTACK && openingHold > 0f) {
+                float held = Math.min(delta, openingHold);
+                openingHold -= held;
+                delta -= held;
+            }
             incAndGetStateTime(delta);
             if (drawingBow) { stateTime = Math.min(stateTime, BowAim.FULL_DRAW_FRAME * frameDuration); }
         }

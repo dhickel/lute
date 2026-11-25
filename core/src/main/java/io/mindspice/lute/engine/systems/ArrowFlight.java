@@ -78,18 +78,18 @@ final class ArrowFlight {
 
     // Find a point the arrow and a constant-velocity target reach at the same time.
     // If the lifetime is too short, take a direct shot rather than leading beyond reach.
-    static Vector2 intercept(Projectile type, Vector2 start, Vector2 center, Vector2 velocity) {
+    static Vector2 intercept(Projectile type, Vector2 start, Vector2 center, Vector2 velocity, float beforeRelease) {
         if (velocity.isZero() || center.equals(start)) { return center.cpy(); }
         float low = 0, high = type.lifetime();
-        var point = center.cpy().mulAdd(velocity, high);
+        var point = center.cpy().mulAdd(velocity, beforeRelease + high);
         if (secondsToAim(type, start, point) > high) { return center.cpy(); }
         for (int i = 0; i < 24; i++) {
             float time = (low + high) * .5f;
-            point.set(center).mulAdd(velocity, time);
+            point.set(center).mulAdd(velocity, beforeRelease + time);
             if (secondsToAim(type, start, point) > time) { low = time; }
             else { high = time; }
         }
-        return point.set(center).mulAdd(velocity, high);
+        return point.set(center).mulAdd(velocity, beforeRelease + high);
     }
 
     private static double secondsToAim(Projectile type, Vector2 start, Vector2 point) {
