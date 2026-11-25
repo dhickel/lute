@@ -75,8 +75,10 @@ public final class HoardArenaTest extends ApplicationAdapter {
         require(health.getCurrent() == 1000 && health.getMaximum() == 1000, "arena HP");
         var pickups = engine.getEntitiesFor(Family.all(Pickup.class).get());
         require(pickups.size() == 0, "no initial pack");
-        require(Controller.MAPPER.get(player()).getWeaponCycle().equals(java.util.List.of(Loadout.MAPPER.get(player()).getWeapon().id())),
-            "visit inventory starts with equipped weapon only");
+        var equippedId = Loadout.MAPPER.get(player()).getWeapon().id();
+        var starterCycle = new java.util.LinkedHashSet<>(java.util.List.of(equippedId, "basic_sword", "basic_bow"));
+        require(Controller.MAPPER.get(player()).getWeaponCycle().equals(java.util.List.copyOf(starterCycle)),
+            "visit inventory starts with the basic sword and bow, without duplicating the equipped weapon");
         health.damage(101);
         Health.MAPPER.get(survivor).damage(7);
 
