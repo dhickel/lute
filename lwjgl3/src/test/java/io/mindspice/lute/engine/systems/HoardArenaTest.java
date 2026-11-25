@@ -294,7 +294,15 @@ public final class HoardArenaTest extends ApplicationAdapter {
         for (int round = 1; round <= 35; round++) {
             int currentRound = round;
             int count = (int) unlockRounds.stream().filter(unlock -> unlock <= currentRound).count();
-            require(HoardSystem.unlockedRoster(round).equals(expected.subList(0, count)), "shared pool at round " + round);
+            var roster = HoardSystem.unlockedRoster(round);
+            require(roster.equals(expected.subList(0, count)), "shared pool at round " + round);
+            var tickets = HoardSystem.spawnTickets(roster);
+            require(roster.containsAll(tickets), "only unlocked types can be rolled");
+            for (var key : roster) {
+                boolean archer = List.of("undead_archer", "cultist_archer", "viper").contains(key);
+                require(java.util.Collections.frequency(tickets, key) == (archer ? 1 : 2),
+                    "archers receive half the spawn weight of melee at round " + round);
+            }
         }
         var observed = new HashSet<String>();
         hoard.bind(tiled, areas, new Random(537) {
@@ -689,14 +697,14 @@ public final class HoardArenaTest extends ApplicationAdapter {
                         && Facing.MAPPER.get(guard).getDirection() == Facing.Direction.RIGHT
                         && Move.MAPPER.get(guard).getDirection().isZero(), "Losing sight leaves committed hammer swings planted");
                 }
-                if (tick < 3) { require(combat.getAttackId() == 0, "Dredge respects melee decision delay"); }
-                if (tick < 38) { require(combat.getSensor() == null, "Dredge keeps its slow authored windup"); }
+                if (tick < 2) { require(combat.getAttackId() == 0, "Dredge respects melee decision delay"); }
+                if (tick < 36) { require(combat.getSensor() == null, "Dredge keeps its slow authored windup"); }
             }
             if (committed > 0 && first < 0) { first = tick; }
             if (committed == guards.size() && last < 0) { last = tick; }
             peak = Math.max(peak, active);
         }
-        require(first >= 3 && last >= first && last <= 16 && peak == 3, "Every eligible guard commits; active swings can overlap");
+        require(first >= 2 && last >= first && last <= 7 && peak == 3, "Every eligible guard commits; active swings can overlap");
         for (var guard : guards) {
             var combat = Combat.MAPPER.get(guard);
             require(!combat.isAttacking() && combat.getAttackId() == 1 && !ActorAi.MAPPER.get(guard).recovering(),
@@ -762,7 +770,7 @@ public final class HoardArenaTest extends ApplicationAdapter {
             int drops;
             @Override public int nextInt(int bound) {
                 return switch (bound) {
-                    case 2 -> slot < archer.length ? (archer[slot++] ? 1 : 0) : super.nextInt(bound);
+                    case 3 -> slot < archer.length ? (archer[slot++] ? 2 : 0) : super.nextInt(bound);
                     case 4 -> 0;
                     case 10 -> drops++ == 0 ? 9 : 0;
                     default -> super.nextInt(bound);

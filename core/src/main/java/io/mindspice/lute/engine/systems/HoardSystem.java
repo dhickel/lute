@@ -31,6 +31,18 @@ public final class HoardSystem extends EntitySystem implements EventListener {
         if (round < 30) { return WAVE_ROSTER.subList(0, 7); }
         return WAVE_ROSTER;
     }
+    static List<String> spawnTickets(List<String> roster) {
+        var tickets = new ArrayList<String>();
+        for (var key : roster) {
+            tickets.add(key);
+            switch (key) {
+                case "undead_archer", "cultist_archer", "viper" -> { }
+                default -> tickets.add(key);
+            }
+        }
+        return tickets;
+    }
+
     private static final int DREDGE_BASE_XP = 100;
     private record Bounty(int baseXp) implements Component { }
 
@@ -116,11 +128,11 @@ public final class HoardSystem extends EntitySystem implements EventListener {
                 tiled.addArenaEntity(boss);
             }
         }, (amount, round) -> {
-            var roster = unlockedRoster(round);
+            var tickets = spawnTickets(unlockedRoster(round));
             int count = areas.size();
             int next = random.nextInt(count);
             for (int i = 0; i < amount; i++) {
-                String key = roster.get(random.nextInt(roster.size()));
+                String key = tickets.get(random.nextInt(tickets.size()));
                 int baseXp = waveBaseXp(key);
                 for (int attempt = 0; attempt < count; attempt++) {
                     int zone = next;

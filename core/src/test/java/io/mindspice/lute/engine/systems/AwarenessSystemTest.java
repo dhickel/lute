@@ -109,7 +109,7 @@ public final class AwarenessSystemTest {
         check(!combat.hasAttackRequest() && body(enemy).getLinearVelocity().x > 0, "Outer archer approaches while deciding");
         engine.update(.14f);
         check(!combat.hasAttackRequest(), "Archer keeps the 150 ms minimum decision delay");
-        engine.update(.21f);
+        engine.update(.161f);
         check(combat.requestedTarget() == player && Move.MAPPER.get(enemy).getDirection().isZero(),
             "Archer chooses its ranged engage graph instead of chasing");
         combat.consumeAttackRequest();
@@ -164,16 +164,16 @@ public final class AwarenessSystemTest {
         engine.update(0);
         var combat = Combat.MAPPER.get(enemy);
         for (int i = 0; i < 100; i++) { engine.update(0); }
-        engine.update(.049f);
+        engine.update(.024f);
         check(!combat.hasAttackRequest() && Move.MAPPER.get(enemy).getDirection().x > 0,
             "No tick-based rolls: step in before the minimum decision time");
         body(player).setTransform(4.1f, 0, 0);
         engine.update(.3f);
         body(player).setTransform(4, 0, 0);
         engine.update(.3f);
-        engine.update(.049f);
+        engine.update(.024f);
         check(!combat.hasAttackRequest(), "Leaving range cancels, reacquisition starts a fresh opportunity");
-        engine.update(.202f);
+        engine.update(.077f);
         check(facing.getDirection() == Facing.Direction.RIGHT && combat.consumeAttackRequest() == Combat.AttackSlot.PRIMARY
             && Move.MAPPER.get(enemy).getDirection().isZero(), "Enemy stops and attacks at the inclusive limit through other actor bodies");
         check(!Combat.MAPPER.get(npc).hasAttackRequest(), "Wander-only graph does not attack a nearby player");
@@ -189,9 +189,9 @@ public final class AwarenessSystemTest {
         check(!combat.hasAttackRequest(), "Solid scenery blocks ray");
         wall.setSensor(true);
         engine.update(0);
-        engine.update(.049f);
-        check(!combat.hasAttackRequest(), "Melee waits at least 50 ms after gaining sight");
-        engine.update(.201f);
+        engine.update(.024f);
+        check(!combat.hasAttackRequest(), "Melee waits at least 25 ms after gaining sight");
+        engine.update(.077f);
         check(facing.getDirection() == Facing.Direction.UP && combat.consumeAttackRequest() == Combat.AttackSlot.PRIMARY,
             "World sensors do not block ray");
         wall.setSensor(false);

@@ -17,8 +17,8 @@ import java.util.function.Supplier;
 
 public final class BehaviorGraphs {
     public static final String ARCHER = "wander_archer";
-    private static final DoubleSupplier MELEE_DELAY = () -> ThreadLocalRandom.current().nextFloat(.05f, .25f);
-    private static final DoubleSupplier ARCHER_DELAY = () -> ThreadLocalRandom.current().nextFloat(.15f, .35f);
+    private static final DoubleSupplier MELEE_DELAY = () -> ThreadLocalRandom.current().nextFloat(.025f, .10f);
+    private static final DoubleSupplier ARCHER_DELAY = () -> ThreadLocalRandom.current().nextFloat(.15f, .30f);
     public static final Supplier<RootNode> BASE_MELEE = BehaviorGraphs::engage;
     public static final Supplier<RootNode> BASE_ARCHER = BehaviorGraphs::archer;
     private static final RootNode WANDER = actionGraph("Wander", Action.wander());
