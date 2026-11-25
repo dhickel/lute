@@ -24,7 +24,12 @@ public final class HoardSystem extends EntitySystem implements EventListener {
         "cultist", "cultist_archer", "viper", "reaper", "raider");
 
     static List<String> unlockedRoster(int round) {
-        return WAVE_ROSTER.subList(0, Math.min(WAVE_ROSTER.size(), 2 + round / 5));
+        if (round < 5) { return WAVE_ROSTER.subList(0, 2); }
+        if (round < 10) { return WAVE_ROSTER.subList(0, 3); }
+        if (round < 20) { return WAVE_ROSTER.subList(0, 5); } // Both Cultists join at round 10.
+        if (round < 25) { return WAVE_ROSTER.subList(0, 6); }
+        if (round < 30) { return WAVE_ROSTER.subList(0, 7); }
+        return WAVE_ROSTER;
     }
     // Dredge is a center guard, not a zone enemy; its independent base bounty is five points.
     private static final int DREDGE_POINTS = 5;

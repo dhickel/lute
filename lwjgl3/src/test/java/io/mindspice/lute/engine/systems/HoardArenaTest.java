@@ -289,9 +289,11 @@ public final class HoardArenaTest extends ApplicationAdapter {
         var marker = tiled.getMapTriggers().points().stream().filter(p -> p.name().equals("Dredge")).findFirst().orElseThrow();
         var expected = List.of("brainless_undead", "undead_archer", "bone_soldier", "cultist",
             "cultist_archer", "viper", "reaper", "raider");
+        var unlockRounds = List.of(1, 1, 5, 10, 10, 20, 25, 30);
         for (int round = 1; round <= 35; round++) {
-            var unlocked = expected.subList(0, Math.min(8, 2 + round / 5));
-            require(HoardSystem.unlockedRoster(round).equals(unlocked), "shared pool at round " + round);
+            int currentRound = round;
+            int count = (int) unlockRounds.stream().filter(unlock -> unlock <= currentRound).count();
+            require(HoardSystem.unlockedRoster(round).equals(expected.subList(0, count)), "shared pool at round " + round);
         }
         var observed = new HashSet<String>();
         hoard.bind(tiled, areas, new Random(537) {
@@ -316,7 +318,7 @@ public final class HoardArenaTest extends ApplicationAdapter {
                     points = 5;
                 } else {
                     int zone = spawnArea(areas, enemy);
-                    require(zone < areas.size() && expected.subList(0, Math.min(8, 2 + round / 5)).contains(key),
+                    require(zone < areas.size() && expected.contains(key) && unlockRounds.get(expected.indexOf(key)) <= round,
                         "round " + round + " uses only the unlocked shared roster: " + key);
                     if (key.equals("viper")) { require(BowAim.MAPPER.has(enemy), "Viper can use its authored bow"); }
                     points = 5 * (zone + 1);
