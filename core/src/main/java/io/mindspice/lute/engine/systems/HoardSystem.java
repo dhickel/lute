@@ -46,6 +46,8 @@ public final class HoardSystem extends EntitySystem implements EventListener {
 
     private static final int DREDGE_BASE_XP = 100;
     private static final float SPRINT_MULTIPLIER = 1.6f;
+    private static final float SPRINT_RAMP_UP_SECONDS = .25f;
+    private static final float SPRINT_RAMP_DOWN_SECONDS = .10f;
     private static final double SPRINT_SECONDS = 2d;
     private static final double REFILL_PER_SECOND = 0.7d / 6d;
     private record Bounty(int baseXp) implements Component { }
@@ -68,6 +70,8 @@ public final class HoardSystem extends EntitySystem implements EventListener {
     private final InputManager input;
     private double stamina = 1d;
     private long exhaustedPress;
+    private long sprintPress;
+    private float sprintBoost;
     private final Consumer<Event.Player.KilledEnemy> onKill = event -> {
         // The bus drains on the next update, possibly after named travel or hide/show.
         if (run == null || run.isGameOver()) { return; }
@@ -120,6 +124,7 @@ public final class HoardSystem extends EntitySystem implements EventListener {
     void bind(TiledSystem tiled, List<MapTriggers.SpawnArea> areas, RandomGenerator random) {
         stamina = 1d;
         exhaustedPress = 0;
+        clearSprintMomentum();
         if (areas == null) { run = null; return; }
         dropRandom = random;
         var triggers = tiled.getMapTriggers();
@@ -197,6 +202,11 @@ public final class HoardSystem extends EntitySystem implements EventListener {
 
     double stamina() { return stamina; }
 
+    public void clearSprintMomentum() {
+        sprintPress = 0;
+        sprintBoost = 0f;
+    }
+
     long beforeSprintStep(float interval, boolean wasBoosted) {
         if (run == null || run.isGameOver()) { return 0; }
         var player = getEngine().getSystem(TiledSystem.class).activePlayer();
@@ -205,14 +215,22 @@ public final class HoardSystem extends EntitySystem implements EventListener {
         var move = Move.MAPPER.get(player);
         var aim = BowAim.MAPPER.get(player);
         long press = input.arenaSprintPress();
-        if (press != 0 && press != exhaustedPress && !move.isRooted() && !move.getDirection().isZero()
-            && (aim == null || !aim.isAiming())) {
-            // Blend the last partial tick so a sliver of stamina can't buy a whole sprint tick.
-            float fraction = (float) Math.min(1d, stamina * SPRINT_SECONDS / interval);
-            float multiplier = 1f + (SPRINT_MULTIPLIER - 1f) * fraction;
-            getEngine().getSystem(PhysicMoveSystem.class).applyMovement(player, multiplier);
-            return press;
+        if (move.isRooted() || move.getDirection().isZero() || (aim != null && aim.isAiming())) {
+            clearSprintMomentum();
+        } else if (press != 0 && press != exhaustedPress && stamina > 0d) {
+            sprintPress = press;
+            // A sliver of stamina buys only its share of this tick's acceleration.
+            float poweredTime = (float) Math.min(interval, stamina * SPRINT_SECONDS);
+            sprintBoost = Math.min(1f, sprintBoost + poweredTime / SPRINT_RAMP_UP_SECONDS);
+        } else {
+            sprintBoost = Math.max(0f, sprintBoost - interval / SPRINT_RAMP_DOWN_SECONDS);
         }
+        if (sprintBoost > .000001f) {
+            float multiplier = 1f + (SPRINT_MULTIPLIER - 1f) * sprintBoost;
+            getEngine().getSystem(PhysicMoveSystem.class).applyMovement(player, multiplier);
+            return sprintPress;
+        }
+        clearSprintMomentum();
         // Ordinary movement is already applied once per frame. Restore it only when
         // leaving a boosted tick in this batch, then let contacts carry velocity forward.
         if (wasBoosted) { getEngine().getSystem(PhysicMoveSystem.class).applyMovement(player, 1f); }
@@ -229,11 +247,15 @@ public final class HoardSystem extends EntitySystem implements EventListener {
         var direction = Move.MAPPER.get(player).getDirection();
         float progress = direction.dot(after.x - before.x, after.y - before.y);
         if (progress > 0.00001f) {
-            float runningTime = (float) Math.min(interval, stamina * SPRINT_SECONDS);
-            stamina = Math.max(0d, stamina - interval / SPRINT_SECONDS);
-            if (stamina == 0d) { exhaustedPress = boostedPress; }
-            getEngine().getSystem(AnimationSystem.class).advanceSprintWalk(player, runningTime);
+            // The release tail still costs stamina while it provides extra movement.
+            if (stamina > 0d) {
+                stamina = Math.max(0d, stamina - interval / SPRINT_SECONDS);
+                if (stamina == 0d) { exhaustedPress = boostedPress; }
+            }
+            getEngine().getSystem(AnimationSystem.class).advanceSprintWalk(player, interval * sprintBoost);
         } else {
+            // Don't bank a full-speed start by holding B against a wall.
+            clearSprintMomentum();
             refill(interval);
         }
     }

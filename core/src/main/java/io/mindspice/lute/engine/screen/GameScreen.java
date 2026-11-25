@@ -110,6 +110,7 @@ public class GameScreen extends ScreenAdapter {
         if (!visible || paused) { return; }
         inputManager.unRegKeyListener(lightingInput);
         paused = true;
+        hoard.clearSprintMomentum();
         inputManager.releaseHeldInputs();
         engine.getSystem(ControllerSystem.class).update(0f);
     }

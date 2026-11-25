@@ -1019,16 +1019,43 @@ public final class HoardArenaTest extends ApplicationAdapter {
         require(hoard.stamina() == 1d && Math.abs(animation.getStateTime() - walkFrameTime / 2) < .00001f,
             "a frame with no fixed tick adds no sprint playback or drain");
         updateSprintFrame(dt / 2);
-        require(Math.abs(body.getLinearVelocity().len() - 1.6f * walk) < .001f && move.getMaxSpeed() == walk,
-            "sprint boosts normalized diagonal speed without changing walk speed");
-        require(Math.abs(animation.getStateTime() - 2 * walkFrameTime) < .00001f, "a completed sprint tick adds one walk tick");
+        require(Math.abs(body.getLinearVelocity().len() - 1.04f * walk) < .001f && move.getMaxSpeed() == walk,
+            "first sprint tick adds only a small normalized boost");
+        require(Math.abs(animation.getStateTime() - (1f + 1f / 15f) * walkFrameTime) < .00001f,
+            "walk playback follows the current boost");
         float before = animation.getStateTime();
         long steps = physics.completedSteps();
         updateSprintFrame(2 * dt);
         require(physics.completedSteps() == steps + 2
-            && Math.abs(animation.getStateTime() - before - 4 * walkFrameTime) < .00001f
+            && Math.abs(animation.getStateTime() - before - (2f + 5f / 15f) * walkFrameTime) < .00001f
             && Graphic.MAPPER.get(player).getRegion() == animation.getAnimation().getKeyFrame(animation.getStateTime()),
-            "two running ticks in one frame double the walk clock and publish the new pose");
+            "two running ticks in one frame advance both the ramp and walk clock");
+        for (int i = 4; i <= 15; i++) {
+            body.setTransform(origin, 0);
+            updateSprintFrame(dt);
+            require(Math.abs(body.getLinearVelocity().len() - (1f + .04f * i) * walk) < .001f,
+                "held B reaches full speed only after 15 ticks");
+        }
+        held[0] = false;
+        input.updateGamepad();
+        double beforeRelease = hoard.stamina();
+        for (int i = 1; i <= 6; i++) {
+            body.setTransform(origin, 0);
+            updateSprintFrame(dt);
+            require(Math.abs(body.getLinearVelocity().len() - (1.6f - .1f * i) * walk) < .001f,
+                "release returns to normal walking speed over six ticks");
+        }
+        require(hoard.stamina() < beforeRelease, "release tail costs stamina rather than granting a free boost");
+        held[0] = true;
+        input.updateGamepad();
+        updateSprintFrame(dt);
+        require(Math.abs(body.getLinearVelocity().len() - 1.04f * walk) < .001f, "a fresh tap starts at minimum boost");
+        held[0] = false;
+        input.updateGamepad();
+        updateSprintFrame(dt);
+        require(Math.abs(body.getLinearVelocity().len() - walk) < .001f, "a one-tick tap cannot produce a lingering boost");
+        held[0] = true;
+        input.updateGamepad();
         double first = hoard.stamina();
         move.setRooted(true);
         updateSprintFrame(dt);
@@ -1080,6 +1107,12 @@ public final class HoardArenaTest extends ApplicationAdapter {
             "stamina exhausts at the two-second sprint rate");
         require(GameplayHud.staminaText(hoard.stamina()).equals("Stamina 0%"), "HUD reports depletion");
         verifySprintHud(renderer, true);
+        for (int i = 1; i < 6; i++) {
+            body.setTransform(origin, 0);
+            updateSprintFrame(dt);
+            require(Math.abs(body.getLinearVelocity().len() - (1.6f - .1f * i) * walk) < .001f
+                && hoard.stamina() == 0d, "exhaustion eases off through the same ramp without refilling mid-boost");
+        }
         body.setTransform(origin, 0);
         before = animation.getStateTime();
         updateSprintFrame(dt);
@@ -1099,7 +1132,7 @@ public final class HoardArenaTest extends ApplicationAdapter {
         steps = physics.completedSteps();
         updateSprintFrame(2 * dt);
         require(physics.completedSteps() == steps + 2 && Math.abs(body.getLinearVelocity().len() - walk) < .001f
-            && Math.abs(animation.getStateTime() - before - 2 * walkFrameTime - partialRunTime * animation.getSpeed()) < .00001f
+            && Math.abs(animation.getStateTime() - before - (2f + partialRunTime / .25f) * walkFrameTime) < .00001f
             && Math.abs(hoard.stamina() - perTickRegen) < .0000001d,
             "a partial sprint tick exhausts, then the next tick in the same frame walks and refills");
 
