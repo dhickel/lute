@@ -27,6 +27,7 @@ import io.mindspice.lute.engine.input.InputAction;
 import io.mindspice.lute.engine.singletons.GameConsts;
 import io.mindspice.lute.engine.tiled.ManifestLoader;
 
+import java.util.Arrays;
 import java.util.HashSet;
 import java.util.List;
 import java.util.Random;
@@ -688,36 +689,64 @@ public final class HoardArenaTest extends ApplicationAdapter {
     /** Same opening for all three real hammer guards. Run decision/animation/combat without pushing bodies apart. */
     private void verifyGuardVolley(float x, float y, List<Entity> guards) {
         var engine = GAME.getEngine();
+        var awareness = engine.getSystem(AwarenessSystem.class);
         var actor = Actor.MAPPER.get(player());
         var playerBody = Physic.MAPPER.get(player()).getBody();
         playerBody.setTransform(x - actor.feetX(), y - actor.feetY(), 0);
         for (var guard : guards) {
+            require(Loadout.MAPPER.get(guard).getWeaponId().equals("black_hammer"), "Dredge volley uses authored hammers");
             var feet = Actor.MAPPER.get(guard);
             Physic.MAPPER.get(guard).getBody().setTransform(x - feet.feetX() - .75f, y - feet.feetY(), 0);
         }
         float dt = 1f / 60f;
+        var primary = Loadout.MAPPER.get(guards.getFirst()).getWeapon().primary();
+        var animation = primary.animation();
+        float windup = Math.max(.28f, primary.hitFrame() * animation.frameInterval() / animation.speed());
+        // The first tick after commitment installs the animation without advancing its clock.
+        // Allow floating-point rounding at a whole playback tick.
+        double playbackTicks = windup / dt;
+        int earliestHitOffset = 1 + (int) Math.ceil(playbackTicks - .0001);
+        int latestHitOffset = 1 + (int) Math.ceil(playbackTicks + .0001);
+        int[] commitTicks = new int[guards.size()];
+        Arrays.fill(commitTicks, -1);
         int first = -1, last = -1, peak = 0;
         for (int tick = 0; tick < 135; tick++) {
-            if (tick == 24) { playerBody.setTransform(x + 10f, y, 0); } // Leave detection range AFTER all three commits.
-            engine.getSystem(AwarenessSystem.class).update(dt);
+            awareness.update(dt);
             engine.getSystem(AnimationPlayerSystem.class).update(dt);
             engine.getSystem(AnimationSystem.class).update(dt);
             engine.getSystem(CombatSystem.class).update(dt);
             int committed = 0, active = 0;
-            for (var guard : guards) {
+            for (int i = 0; i < guards.size(); i++) {
+                var guard = guards.get(i);
                 var combat = Combat.MAPPER.get(guard);
-                if (combat.getAttackId() > 0) { committed++; }
-                if (combat.getSensor() != null) { active++; }
-                if (tick >= 24 && combat.isAttacking()) {
+                if (combat.getAttackId() > 0) {
+                    if (commitTicks[i] < 0) { commitTicks[i] = tick; }
+                    committed++;
+                }
+                var sensor = combat.getSensor();
+                if (sensor != null) { active++; }
+                if (last >= 0 && combat.isAttacking()) {
                     require(combat.getAttackFacing() == Facing.Direction.RIGHT
                         && Facing.MAPPER.get(guard).getDirection() == Facing.Direction.RIGHT
                         && Move.MAPPER.get(guard).getDirection().isZero(), "Losing sight leaves committed hammer swings planted");
                 }
                 if (tick < 2) { require(combat.getAttackId() == 0, "Dredge respects melee decision delay"); }
-                if (tick < 36) { require(combat.getSensor() == null, "Dredge keeps its slow authored windup"); }
+                int sinceCommit = tick - commitTicks[i];
+                if (commitTicks[i] < 0 || sinceCommit < earliestHitOffset) {
+                    require(sensor == null, "Dredge keeps its authored pre-hit windup");
+                } else if (sinceCommit == latestHitOffset) {
+                    require(sensor != null, "Dredge reaches its authored hit frame after the player leaves");
+                }
             }
             if (committed > 0 && first < 0) { first = tick; }
-            if (committed == guards.size() && last < 0) { last = tick; }
+            if (committed == guards.size() && last < 0) {
+                require(active == 0 && guards.stream().allMatch(guard -> Combat.MAPPER.get(guard).isAttacking()),
+                    "All guards have committed but not hit when the player retreats");
+                last = tick;
+                playerBody.setTransform(x + 10f, y, 0);
+                require(guards.stream().allMatch(guard -> awareness.inRange(guard, Actor.Role.PLAYER).isEmpty()),
+                    "Player retreats beyond every guard's detection range");
+            }
             peak = Math.max(peak, active);
         }
         require(first >= 2 && last >= first && last <= 7 && peak == 3, "Every eligible guard commits; active swings can overlap");
