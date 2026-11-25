@@ -108,8 +108,8 @@ public class CombatSystem extends IteratingSystem implements ContactListener, En
         arrows.clear();
         engine.removeEntityListener(this);
         pendingHits.clear();
-        var victims = engine.getEntitiesFor(DamageFeedback.FAMILY);
-        for (int i = victims.size() - 1; i >= 0; i--) { victims.get(i).remove(DamageFeedback.class); }
+        var marked = engine.getEntitiesFor(HealthFeedback.FAMILY);
+        for (int i = marked.size() - 1; i >= 0; i--) { marked.get(i).remove(HealthFeedback.class); }
         super.removedFromEngine(engine);
     }
 
@@ -117,12 +117,12 @@ public class CombatSystem extends IteratingSystem implements ContactListener, En
     public void update(float deltaTime) {
         // Box2D callbacks only queue data. Health changes and fixture mutations happen unlocked.
         if (world.isLocked()) { return; }
-        var victims = getEngine().getEntitiesFor(DamageFeedback.FAMILY);
-        for (int i = victims.size() - 1; i >= 0; i--) {
-            var victim = victims.get(i);
-            var feedback = DamageFeedback.MAPPER.get(victim);
+        var marked = getEngine().getEntitiesFor(HealthFeedback.FAMILY);
+        for (int i = marked.size() - 1; i >= 0; i--) {
+            var entity = marked.get(i);
+            var feedback = HealthFeedback.MAPPER.get(entity);
             feedback.advance(deltaTime);
-            if (feedback.numbers.isEmpty()) { victim.remove(DamageFeedback.class); }
+            if (feedback.numbers.isEmpty()) { entity.remove(HealthFeedback.class); }
         }
         applyPendingHits(null);
         var awareness = getEngine().getSystem(AwarenessSystem.class);
@@ -155,7 +155,7 @@ public class CombatSystem extends IteratingSystem implements ContactListener, En
             if ((attackerHealth == null || attackerHealth.isAlive())
                 && combat != null && combat.isAttacking() && combat.getAttackId() == hit.attackId()
                 && health != null && health.isAlive() && combat.markHit(hit.target())) {
-                DamageFeedback.land(hit.target(), health, combat.getActiveAttack().damage(), 1, combat.getAttackFacing());
+                HealthFeedback.land(hit.target(), health, combat.getActiveAttack().damage(), 1, combat.getAttackFacing());
                 if (!health.isAlive()) {
                     killed.add(hit.target());
                     creditKill(hit.attacker(), hit.target());

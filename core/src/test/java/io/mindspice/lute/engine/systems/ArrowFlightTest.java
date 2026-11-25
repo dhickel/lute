@@ -42,17 +42,17 @@ public final class ArrowFlightTest {
             var target = hurtbox(world, aim);
             var arrow = launch(TYPE, aim);
             Facing.MAPPER.get(arrow.owner).setDirection(Facing.Direction.DOWN);
-            DamageFeedback.land(target, Health.MAPPER.get(target), new AttackDamage.Scalar(1), .25f, Facing.Direction.RIGHT);
-            require(Health.MAPPER.get(target).getCurrent() == 100 && DamageFeedback.MAPPER.get(target) == null,
+            HealthFeedback.land(target, Health.MAPPER.get(target), new AttackDamage.Scalar(1), .25f, Facing.Direction.RIGHT);
+            require(Health.MAPPER.get(target).getCurrent() == 100 && HealthFeedback.MAPPER.get(target) == null,
                 "A hit rounded to zero consumes no HP and creates no number");
             require(arrow.finished(world, 2f) && oneHit(target), "One long update sweeps through the exact crosshair");
-            var feedback = DamageFeedback.MAPPER.get(target);
+            var feedback = HealthFeedback.MAPPER.get(target);
             var hit = feedback.numbers.getFirst();
             var health = Health.MAPPER.get(target);
             require(hit.facing == Facing.Direction.RIGHT && hit.amount == 100 - health.getCurrent()
                 && hit.remaining == health.getCurrent() / 100f, "Feedback snapshots release facing and effective hit");
             feedback.advance(.25f);
-            DamageFeedback.land(target, health, new AttackDamage.Scalar(500), 1, Facing.Direction.LEFT);
+            HealthFeedback.land(target, health, new AttackDamage.Scalar(500), 1, Facing.Direction.LEFT);
             var kill = feedback.numbers.getLast();
             require(kill.remaining == 0 && kill.amount == 100 - hit.amount, "Killing hit reports only remaining HP");
             require(GameplayHud.healthText(health).equals("HP 0/100") && GameplayHud.clockText(6 * 60 + 4).equals("06:04"), "Dead player's clock and health");
@@ -102,7 +102,7 @@ public final class ArrowFlightTest {
             var health = new Health(500);
             int remaining = 500;
             for (int i = 0; i < 20; i++) {
-                DamageFeedback.land(target, health, new AttackDamage.Scalar(10), 1, Facing.Direction.UP);
+                HealthFeedback.land(target, health, new AttackDamage.Scalar(10), 1, Facing.Direction.UP);
                 remaining -= Math.round(10 * (.9f + (1.1f - .9f) * expected.nextFloat()));
                 require(remaining == health.getCurrent(), "Fresh uniform sample for each hit");
             }

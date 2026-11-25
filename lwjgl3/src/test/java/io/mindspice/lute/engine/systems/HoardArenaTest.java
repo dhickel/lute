@@ -78,6 +78,7 @@ public final class HoardArenaTest extends ApplicationAdapter {
         }
         var health = Health.MAPPER.get(player());
         require(health.getCurrent() == 1000 && health.getMaximum() == 1000, "arena HP");
+        require(HealthFeedback.MAPPER.get(player()) == null, "arena spawn does not show healing text");
         var pickups = engine.getEntitiesFor(Family.all(Pickup.class).get());
         require(pickups.size() == 0, "no initial pack");
         var equippedId = Loadout.MAPPER.get(player()).getWeapon().id();
@@ -127,10 +128,12 @@ public final class HoardArenaTest extends ApplicationAdapter {
         Physic.MAPPER.get(player()).getBody().setAwake(true);
         health.restore();
         physics.update(.04f);
-        require(pickups.size() == 1, "full HP leaves pack untouched");
+        require(pickups.size() == 1 && HealthFeedback.MAPPER.get(player()) == null,
+            "reset and full-HP contact do not show healing text or consume the pack");
         health.damage(101);
         physics.update(.04f);
         require(pickups.size() == 0 && health.getCurrent() == 1000, "continued contact collects and caps round heal");
+        requireHealMarker(player(), 101);
 
         // Isolate a genuine, lethal sword contact from wandering and the authored scenery.
         engine.getSystem(AwarenessSystem.class).setProcessing(false);
@@ -435,7 +438,7 @@ public final class HoardArenaTest extends ApplicationAdapter {
             var health = Health.MAPPER.get(enemy);
             int hp = health.getCurrent();
             if (hp != health.getMaximum()) {
-                require(DamageFeedback.MAPPER.get(enemy).numbers.size() == 1, "one damage application per sword swing");
+                require(HealthFeedback.MAPPER.get(enemy).numbers.size() == 1, "one damage application per sword swing");
             }
             engine.update(dt);
             require(health.getCurrent() == hp, "no deferred or repeated damage on the third tick");
@@ -632,8 +635,21 @@ public final class HoardArenaTest extends ApplicationAdapter {
         body.getWorld().step(GameConsts.PHYSIC_INTERVAL, 6, 2);
         tiled.collectPickups();
         require(pickups.size() == 0 && Health.MAPPER.get(player()).getCurrent() == 990, "small pack heals exactly 50 on contact");
+        requireHealMarker(player(), 50);
         body.setTransform(position, 0);
         return victim;
+    }
+
+    private static void requireHealMarker(Entity player, int amount) {
+        var feedback = HealthFeedback.MAPPER.get(player);
+        require(feedback != null && feedback.numbers.size() == 1, "pickup creates exactly one marker");
+        var number = feedback.numbers.getFirst();
+        var position = Physic.MAPPER.get(player).getBody().getPosition();
+        var size = Transform.MAPPER.get(player).getSize();
+        require(number.isHeal() && number.amount == amount && number.age == 0,
+            "fresh marker reports actual HP gained: " + amount);
+        require(number.x == position.x + size.x / 2 && number.y == position.y + size.y,
+            "marker is anchored at the player's position when collected");
     }
 
     private void verifyLethalContactAtRollover(HoardSystem hoard, Entity attacker) {

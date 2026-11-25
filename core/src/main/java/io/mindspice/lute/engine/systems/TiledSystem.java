@@ -141,7 +141,7 @@ public class TiledSystem extends EntitySystem implements EventEmitter {
             var pickup = object.getComponent(Pickup.class);
             if (pickup == null || object.isScheduledForRemoval() || collected.contains(object)) { continue; }
             switch (pickup.rule().type()) {
-                case HEAL -> { if (!playerHealth().heal(pickup.rule().amount())) { continue; } }
+                case HEAL -> { if (!HealthFeedback.healPlayer(active.player, pickup.rule().amount())) { continue; } }
                 case WEAPON_BAG -> Controller.MAPPER.get(active.player).collectWeapon(pickup.weapon());
             }
             collected.add(object);
@@ -424,7 +424,7 @@ public class TiledSystem extends EntitySystem implements EventEmitter {
     private void removeEntity(Engine engine, Entity entity) {
         detachController(entity);
         engine.removeEntity(entity);
-        entity.remove(DamageFeedback.class);
+        entity.remove(HealthFeedback.class);
     }
 
     private static void detachPlayerState(Entity player) {
