@@ -9,6 +9,7 @@ import io.mindspice.lute.engine.tiled.MapTriggers;
 import io.mindspice.lute.gameplay.HoardRun;
 
 import com.badlogic.ashley.core.Component;
+import com.badlogic.gdx.math.Rectangle;
 import com.badlogic.gdx.math.Vector2;
 import io.mindspice.lute.engine.components.*;
 import io.mindspice.lute.engine.singletons.GameConsts;
@@ -24,6 +25,8 @@ public final class HoardSystem extends EntitySystem implements EventListener {
     // Dredge is a center guard, not a zone enemy; its independent base bounty is five points.
     private static final int DREDGE_POINTS = 5;
     private record Bounty(int points) implements Component { }
+    // Placement must not consume random draws used for waves or kill drops.
+    private final RandomGenerator roundHealthRandom = RandomGenerator.getDefault();
     private RandomGenerator dropRandom;
     private HoardRun run;
     private final Consumer<Event.Player.KilledEnemy> onKill = event -> {
@@ -78,8 +81,11 @@ public final class HoardSystem extends EntitySystem implements EventListener {
         var marker = dredgePoint(triggers);
         var center = healthArea(triggers);
         var box = center.bounds();
+        var dredgeSpawn = marker.position().cpy().scl(GameConsts.UNIT_SCALE);
         run = new HoardRun(random, round -> {
-            if (round > 1) { drop(tiled, box.getCenter(new Vector2()), center.spawnKey()); }
+            if (round > 1) {
+                drop(tiled, sampleRoundHealth(box, dredgeSpawn, roundHealthRandom), center.spawnKey());
+            }
             if (round % 5 == 0) {
                 var boss = getEngine().getSystem(EntityFactory.class).getMapActor(marker.position(), Actor.Role.ENEMY,
                     marker.spawnKey(), marker.facing());
@@ -100,6 +106,22 @@ public final class HoardSystem extends EntitySystem implements EventListener {
                 }
             }
         });
+    }
+
+    static Vector2 sampleRoundHealth(Rectangle bounds, Vector2 dredgeSpawn, RandomGenerator random) {
+        float rx = bounds.width / 2, ry = bounds.height / 2;
+        float cx = bounds.x + rx, cy = bounds.y + ry;
+        // Keep a one-pixel gap from the marker, capped so a tiny ellipse still has room.
+        float clearance = Math.min(GameConsts.UNIT_SCALE, Math.max(rx, ry) / 2);
+        while (true) {
+            // Rejection from a uniform square gives a uniform disk, then scale to the ellipse.
+            float x = 2 * random.nextFloat() - 1, y = 2 * random.nextFloat() - 1;
+            if (x * x + y * y >= 1) { continue; }
+            float worldX = cx + x * rx, worldY = cy + y * ry;
+            if (dredgeSpawn.dst2(worldX, worldY) > clearance * clearance) {
+                return new Vector2(worldX, worldY);
+            }
+        }
     }
 
     void dredgeDied(Entity enemy) {
