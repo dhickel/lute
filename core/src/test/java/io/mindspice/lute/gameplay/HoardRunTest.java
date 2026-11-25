@@ -26,10 +26,10 @@ public final class HoardRunTest {
             };
             var batches = new ArrayList<Integer>();
             var heals = new ArrayList<Integer>();
-            var activeAreas = new ArrayList<Integer>();
-            var run = new HoardRun(random, round -> heals.add(batches.size()), (amount, count) -> {
+            var batchRounds = new ArrayList<Integer>();
+            var run = new HoardRun(random, round -> heals.add(batches.size()), (amount, round) -> {
                 batches.add(amount);
-                activeAreas.add(count);
+                batchRounds.add(round);
             });
             require(run.round() == 1 && run.remainingSeconds() == 120 && batches.equals(java.util.List.of(5)), "opening round");
             run.advance(delay - .25);
@@ -56,7 +56,7 @@ public final class HoardRunTest {
                 long roundPercent = 100 + 5L * r;
                 int count = r < 6 ? 1 : r < 11 ? 2 : r < 16 ? 3 : 4;
                 int baseline = 4 + count;
-                require(activeAreas.get(heals.get(r - 1)) == count, "opening area count at round " + r);
+                require(batchRounds.get(heals.get(r - 1)) == r, "opening batch receives current round " + r);
                 long opening = baseline * roundPercent;
                 require(batches.get(heals.get(r - 1)) == (opening + 50) / 100,
                     "opening scaling and rounding at round " + r);
@@ -64,7 +64,7 @@ public final class HoardRunTest {
                 int firstExtra = heals.get(r - 1) + 1;
                 require(heals.get(r) - firstExtra == 119 / delay, "scheduled reinforcement count");
                 for (int i = firstExtra; i < heals.get(r); i++) {
-                    require(activeAreas.get(i) == count, "reinforcement area count at round " + r);
+                    require(batchRounds.get(i) == r, "reinforcement receives current round " + r);
                     long extra = (long) baseline * rolls.get(roll++) * roundPercent;
                     require(batches.get(i) == (extra + 5_000) / 10_000,
                         "reinforcement scaling and rounding at roll " + roll);

@@ -322,7 +322,7 @@ public class TiledSystem extends EntitySystem implements EventEmitter {
                     var footprints = new HashMap<String, Rectangle>();
                     footprints.put(area.spawnKey(), factory.enemySpawnFootprint(area.spawnKey(), area.facing()));
                     if (next.arena != null && next.arena.contains(area)) {
-                        for (var key : HoardSystem.TIERS.get(next.arena.indexOf(area))) {
+                        for (var key : HoardSystem.WAVE_ROSTER) {
                             footprints.put(key, factory.enemySpawnFootprint(key, area.facing()));
                         }
                     }

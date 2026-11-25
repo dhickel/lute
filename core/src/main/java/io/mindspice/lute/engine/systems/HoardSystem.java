@@ -18,10 +18,14 @@ import java.util.List;
 import java.util.function.Consumer;
 import java.util.random.RandomGenerator;
 
-/** Adapts one map-scoped run to the simulation clock, combat events and unlocked map placement. */
+/** Adapts one map-scoped run to the simulation clock, combat events and map placement. */
 public final class HoardSystem extends EntitySystem implements EventListener {
-    static final List<List<String>> TIERS = List.of(List.of("brainless_undead", "undead_archer"),
-        List.of("bone_soldier", "cultist"), List.of("cultist_archer", "viper"), List.of("reaper", "raider"));
+    static final List<String> WAVE_ROSTER = List.of("brainless_undead", "undead_archer", "bone_soldier",
+        "cultist", "cultist_archer", "viper", "reaper", "raider");
+
+    static List<String> unlockedRoster(int round) {
+        return WAVE_ROSTER.subList(0, Math.min(WAVE_ROSTER.size(), 2 + round / 5));
+    }
     // Dredge is a center guard, not a zone enemy; its independent base bounty is five points.
     private static final int DREDGE_POINTS = 5;
     private record Bounty(int points) implements Component { }
@@ -93,15 +97,16 @@ public final class HoardSystem extends EntitySystem implements EventListener {
                 boss.add(new Bounty(DREDGE_POINTS));
                 tiled.addArenaEntity(boss);
             }
-        }, (amount, activeAreas) -> {
-            int count = Math.min(activeAreas, areas.size());
+        }, (amount, round) -> {
+            var roster = unlockedRoster(round);
+            int count = areas.size();
             int next = random.nextInt(count);
             for (int i = 0; i < amount; i++) {
-                int variant = random.nextBoolean() ? 1 : 0;
+                String key = roster.get(random.nextInt(roster.size()));
                 for (int attempt = 0; attempt < count; attempt++) {
                     int zone = next;
                     next = (next + 1) % count;
-                    var enemy = tiled.trySpawnAreaEnemy(areas.get(zone), TIERS.get(zone).get(variant), random);
+                    var enemy = tiled.trySpawnAreaEnemy(areas.get(zone), key, random);
                     if (enemy != null) { enemy.add(new Bounty(5 * (zone + 1))); break; }
                 }
             }

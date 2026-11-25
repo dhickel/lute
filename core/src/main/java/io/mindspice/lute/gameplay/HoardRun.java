@@ -52,10 +52,10 @@ public final class HoardRun {
 
     private void spawnBatch(boolean opening) {
         int sizePercent = opening ? 100 : random.nextInt(25, 51);
-        int activeAreas = Math.min(4, 1 + (round - 1) / 5);
-        int baseline = BASE_BATCH + activeAreas - 1;
+        // Preserve wave-size progression independently of area availability.
+        int baseline = BASE_BATCH + Math.min(3, (round - 1) / 5);
         long units = (long) baseline * sizePercent * roundPercent();
-        spawn.accept((int) ((units + BATCH_UNITS / 2) / BATCH_UNITS), activeAreas);
+        spawn.accept((int) ((units + BATCH_UNITS / 2) / BATCH_UNITS), round);
     }
 
     private long roundPercent() { return 100L + ROUND_BONUS_PERCENT * (long) round; }
