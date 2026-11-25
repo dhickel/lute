@@ -11,9 +11,9 @@ This project was generated with a template including simple application launcher
 
 ## Hoard sprint prototype
 
-On `hoard-mode-sprint-test`, hold controller B while moving to run at 1.6× normal speed in Hoard mode. A full stamina meter provides 2 seconds of running and refills at 70% of the original rate, taking about 8.57 seconds when not running. Running doubles the walk animation speed only while advancing. Stamina does not drain without actual forward movement, such as when blocked. After exhaustion, release and press B again to run as stamina refills. The Hoard HUD shows health and stamina together in a centered row below the arena stats; other maps retain their existing HUD and movement.
+On `hoard-mode-alpha`, hold controller B while moving to run at 1.6× normal speed in Hoard mode. A full stamina meter provides 2 seconds of running and refills at 70% of the original rate, taking about 8.57 seconds when not running. Running doubles the walk animation speed only while advancing. Stamina does not drain without actual forward movement, such as when blocked. After exhaustion, release and press B again to run as stamina refills. The Hoard HUD shows health and stamina together in a centered row below the arena stats; other maps retain their existing HUD and movement.
 
-This prototype is based on `hoard-mode-alpha` and adds neither backpedaling nor a dash. The existing dash prototypes remain on separate branches.
+This prototype originated on `hoard-mode-sprint-test`, based on `hoard-mode-alpha`, and adds neither backpedaling nor a dash. The existing dash prototypes remain on separate branches.
 
 ## Weapon hitbox editor
 
