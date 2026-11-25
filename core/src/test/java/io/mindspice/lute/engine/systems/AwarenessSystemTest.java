@@ -11,6 +11,7 @@ import com.badlogic.gdx.utils.GdxNativesLoader;
 import io.mindspice.lute.engine.behaviorgraph.BehaviorGraphs;
 import io.mindspice.lute.engine.components.Actor;
 import io.mindspice.lute.engine.components.ActorAi;
+import io.mindspice.lute.engine.components.BowAim;
 import io.mindspice.lute.engine.components.ActorAi.Mode;
 import io.mindspice.lute.engine.components.Animation2D;
 import io.mindspice.lute.engine.components.Combat;
@@ -101,12 +102,14 @@ public final class AwarenessSystemTest {
         var bow = new CombatWeapon.Weapon("bow", "", shot, shot);
         body(enemy).setType(BodyDef.BodyType.DynamicBody);
         engine.addSystem(new PhysicMoveSystem());
-        enemy.add(new ActorAi(BehaviorGraphs.ARCHER, 4f)).add(new Loadout(new Loadout.Equipment(null, null, null, null),
+        enemy.add(new ActorAi(BehaviorGraphs.ARCHER, 4f)).add(new BowAim(1, 1)).add(new Loadout(new Loadout.Equipment(null, null, null, null),
             "bow", Map.of("bow", bow), _ -> { }));
         var combat = Combat.MAPPER.get(enemy);
         engine.update(0);
         check(!combat.hasAttackRequest() && body(enemy).getLinearVelocity().x > 0, "Outer archer approaches while deciding");
-        engine.update(.35f);
+        engine.update(.14f);
+        check(!combat.hasAttackRequest(), "Archer keeps the 150 ms minimum decision delay");
+        engine.update(.21f);
         check(combat.requestedTarget() == player && Move.MAPPER.get(enemy).getDirection().isZero(),
             "Archer chooses its ranged engage graph instead of chasing");
         combat.consumeAttackRequest();
@@ -186,7 +189,9 @@ public final class AwarenessSystemTest {
         check(!combat.hasAttackRequest(), "Solid scenery blocks ray");
         wall.setSensor(true);
         engine.update(0);
-        engine.update(.35f);
+        engine.update(.049f);
+        check(!combat.hasAttackRequest(), "Melee waits at least 50 ms after gaining sight");
+        engine.update(.201f);
         check(facing.getDirection() == Facing.Direction.UP && combat.consumeAttackRequest() == Combat.AttackSlot.PRIMARY,
             "World sensors do not block ray");
         wall.setSensor(false);

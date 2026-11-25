@@ -17,6 +17,8 @@ Ordinary enemies filter their feet-centered detection circle to the inclusive fo
 
 ## Project Relevance
 
+`BehaviorGraphs.BASE_MELEE` and `BehaviorGraphs.BASE_ARCHER` are suppliers that construct reusable engage subgraphs. Archer composition requires `BowAim`; the existing `wander_archer` factory supplies it. The default/base melee and archer decision delays are sampled once per eligible opportunity, at 50–250 ms and 150–350 ms respectively; these are AI timings, not player attack timings.
+
 `AwarenessSystem` samples perception, updates the mode in `ActorAi`, and traverses the selected shared graph. Investigation arrival depends on the current feet position, not the steering offset from the last update. The circular range query itself remains unfiltered by facing: apply the semicircle check to ordinary enemy sight, not retaliation, `dredge` enemies, general role queries, or NPC retaliation. The physics debug overlay shows the ordinary enemy detection semicircle without occlusion; other circles remain unchanged. For deterministic marker positioning and weapon/render comparisons, isolate AI and exercise it separately with live Box2D and combat updates. Validate retaliation at impact using the attacker's current position, living state, range, and solid cover; exercise nonlethal player melee and arrows from behind as well as sight loss, cooldown, committed windups, unarmed NPC arrow retaliation, and the absence of default NPC aggression. Check independently timed wander and pause intervals for multiple actors.
 
 ## Open Questions

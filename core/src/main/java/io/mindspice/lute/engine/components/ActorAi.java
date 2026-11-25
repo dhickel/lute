@@ -7,6 +7,7 @@ import com.badlogic.gdx.math.Vector2;
 import io.mindspice.lute.engine.singletons.GameConsts;
 
 import java.util.concurrent.ThreadLocalRandom;
+import java.util.function.DoubleSupplier;
 
 public final class ActorAi implements Component {
     public static final ComponentMapper<ActorAi> MAPPER = ComponentMapper.getFor(ActorAi.class);
@@ -41,12 +42,12 @@ public final class ActorAi implements Component {
     public Mode mode() { return mode; }
 
     /** Start the clock only on entry: time before eligibility does not count. */
-    public boolean decisionDue(Entity target, CombatWeapon.Weapon weapon, float delta) {
+    public boolean decisionDue(Entity target, CombatWeapon.Weapon weapon, float delta, DoubleSupplier delaySeconds) {
         if (target == null) { clearOpportunity(); return false; }
         if (target != opportunityTarget || weapon != opportunityWeapon) {
             opportunityTarget = target;
             opportunityWeapon = weapon;
-            decisionTimeLeft = ThreadLocalRandom.current().nextFloat(.15f, .35f);
+            decisionTimeLeft = (float) delaySeconds.getAsDouble();
         } else {
             decisionTimeLeft -= delta;
         }

@@ -550,14 +550,14 @@ public final class HoardArenaTest extends ApplicationAdapter {
                         && Facing.MAPPER.get(guard).getDirection() == Facing.Direction.RIGHT
                         && Move.MAPPER.get(guard).getDirection().isZero(), "Losing sight leaves committed hammer swings planted");
                 }
-                if (tick < 9) { require(combat.getAttackId() == 0, "Dredge respects decision delay"); }
-                if (tick < 44) { require(combat.getSensor() == null, "Dredge keeps its slow authored windup"); }
+                if (tick < 3) { require(combat.getAttackId() == 0, "Dredge respects melee decision delay"); }
+                if (tick < 38) { require(combat.getSensor() == null, "Dredge keeps its slow authored windup"); }
             }
             if (committed > 0 && first < 0) { first = tick; }
             if (committed == guards.size() && last < 0) { last = tick; }
             peak = Math.max(peak, active);
         }
-        require(first >= 9 && last >= first && last <= 22 && peak == 3, "Every eligible guard commits; active swings can overlap");
+        require(first >= 3 && last >= first && last <= 16 && peak == 3, "Every eligible guard commits; active swings can overlap");
         for (var guard : guards) {
             var combat = Combat.MAPPER.get(guard);
             require(!combat.isAttacking() && combat.getAttackId() == 1 && !ActorAi.MAPPER.get(guard).recovering(),

@@ -11,15 +11,22 @@ import io.mindspice.lute.engine.data.json.WeaponsData.WeaponData.CollisionType;
 
 import java.util.List;
 import java.util.Map;
+import java.util.concurrent.ThreadLocalRandom;
+import java.util.function.DoubleSupplier;
+import java.util.function.Supplier;
 
 public final class BehaviorGraphs {
     public static final String ARCHER = "wander_archer";
+    private static final DoubleSupplier MELEE_DELAY = () -> ThreadLocalRandom.current().nextFloat(.05f, .25f);
+    private static final DoubleSupplier ARCHER_DELAY = () -> ThreadLocalRandom.current().nextFloat(.15f, .35f);
+    public static final Supplier<RootNode> BASE_MELEE = BehaviorGraphs::engage;
+    public static final Supplier<RootNode> BASE_ARCHER = BehaviorGraphs::archer;
     private static final RootNode WANDER = actionGraph("Wander", Action.wander());
-    private static final Map<Mode, RootNode> PURSUIT = Map.of(Mode.WANDER, WANDER, Mode.ENGAGE, engage(),
+    private static final Map<Mode, RootNode> PURSUIT = Map.of(Mode.WANDER, WANDER, Mode.ENGAGE, BASE_MELEE.get(),
         Mode.INVESTIGATE, actionGraph("Investigate last seen position", Action.followTarget()));
     private static final Map<String, Map<Mode, RootNode>> PROFILES = Map.of(
         "wander", Map.of(Mode.WANDER, WANDER), "wander_attack", PURSUIT,
-        ARCHER, Map.of(Mode.WANDER, WANDER, Mode.ENGAGE, archer(), Mode.INVESTIGATE, PURSUIT.get(Mode.INVESTIGATE))
+        ARCHER, Map.of(Mode.WANDER, WANDER, Mode.ENGAGE, BASE_ARCHER.get(), Mode.INVESTIGATE, PURSUIT.get(Mode.INVESTIGATE))
     );
 
     private BehaviorGraphs() { }
@@ -46,11 +53,11 @@ public final class BehaviorGraphs {
         var ai = ActorAi.MAPPER.get(entity);
         if (ai != null && ai.recovering()) { return true; }
         if (combat == null || !combat.isAttacking()) { return false; }
-        return ai == null || ai.mode() != Mode.ENGAGE || !ARCHER.equals(ai.behaviorGraphKey())
+        return ai == null || ai.mode() != Mode.ENGAGE || !BowAim.MAPPER.has(entity)
             || combat.getActiveAttack().collisionType() != CollisionType.PROJECTILE;
     }
 
-    private static Decision primaryDue() {
+    private static Decision primaryDue(DoubleSupplier delaySeconds) {
         var ready = Decision.attackReady(AttackSlot.PRIMARY);
         return (entity, state) -> {
             var ai = ActorAi.MAPPER.get(entity);
@@ -58,7 +65,7 @@ public final class BehaviorGraphs {
                 ai.clearOpportunity();
                 return false;
             }
-            return ai.decisionDue(state.visibleTarget(), Loadout.MAPPER.get(entity).getWeapon(), state.deltaTime());
+            return ai.decisionDue(state.visibleTarget(), Loadout.MAPPER.get(entity).getWeapon(), state.deltaTime(), delaySeconds);
         };
     }
 
@@ -72,7 +79,7 @@ public final class BehaviorGraphs {
             if (!Combat.MAPPER.get(entity).isAttacking() && (aim == null || !aim.isLocked())) { face.perform(entity, state); }
         };
         var plant = Action.stop().andThen(track);
-        var ready = DecisionNode.of("Bow opportunity", List.of(primaryDue()));
+        var ready = DecisionNode.of("Bow opportunity", List.of(primaryDue(ARCHER_DELAY)));
         ready.addEdgeNode(ActionNode.of("Plant and draw", plant.andThen(Action.attack(AttackSlot.PRIMARY))));
         bow.addEdgeNode(ready);
         var near = DecisionNode.of("Within half detection radius", List.of((entity, state) -> {
@@ -83,7 +90,7 @@ public final class BehaviorGraphs {
         bow.addEdgeNode(near);
         bow.addEdgeNode(ActionNode.of("Approach between shots", Action.followTarget()));
         root.addEdgeNode(bow);
-        root.addEdgeNode(PURSUIT.get(Mode.ENGAGE));
+        root.addEdgeNode(BASE_MELEE.get());
         return root;
     }
 
@@ -92,7 +99,7 @@ public final class BehaviorGraphs {
         var inRange = DecisionNode.of("Player in melee range", List.of(
             Decision.hasPrimaryMelee(), Decision.targetWithinPixels(32f)));
         var stopAndFace = Action.stop().andThen(Action.faceTarget());
-        var ready = DecisionNode.of("Primary opportunity", List.of(primaryDue()));
+        var ready = DecisionNode.of("Primary opportunity", List.of(primaryDue(MELEE_DELAY)));
         ready.addEdgeNode(ActionNode.of("Attack", stopAndFace.andThen(Action.attack(AttackSlot.PRIMARY))));
         inRange.addEdgeNode(ready);
         var planted = Decision.targetWithinPixels(24f);
