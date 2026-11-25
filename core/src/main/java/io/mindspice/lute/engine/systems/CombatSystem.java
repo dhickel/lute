@@ -115,7 +115,7 @@ public class CombatSystem extends IteratingSystem implements ContactListener, En
 
     @Override
     public void update(float deltaTime) {
-        // Box2D callbacks only queue data. Health changes and fixture mutations happen unlocked.
+        // Contact damage is queued. Health changes and fixture mutations happen unlocked.
         if (world.isLocked()) { return; }
         var marked = getEngine().getEntitiesFor(HealthFeedback.FAMILY);
         for (int i = marked.size() - 1; i >= 0; i--) {
@@ -131,7 +131,7 @@ public class CombatSystem extends IteratingSystem implements ContactListener, En
             var victim = arrow.damagedVictim;
             if (victim != null) {
                 if (!Health.MAPPER.get(victim).isAlive()) { creditKill(arrow.owner, victim); }
-                else if (awareness != null) { awareness.retaliateAfterDamage(victim, arrow.owner); }
+                else if (awareness != null) { awareness.retaliateAfterArrow(victim, arrow.owner); }
             }
             return true;
         });
@@ -314,10 +314,13 @@ public class CombatSystem extends IteratingSystem implements ContactListener, En
 
     @Override
     public void beginContact(Contact contact) {
+        var a = contact.getFixtureA();
+        var b = contact.getFixtureB();
         var sensors = getEngine() == null ? null : getEngine().getSystem(MapSensorSystem.class);
-        if (sensors != null) { sensors.contact(contact.getFixtureA(), contact.getFixtureB(), true); }
-        queueHit(contact.getFixtureA(), contact.getFixtureB());
-        queueHit(contact.getFixtureB(), contact.getFixtureA());
+        if (sensors != null) { sensors.contact(a, b, true); }
+        AwarenessSystem.guardBodyContact(a, b);
+        queueHit(a, b);
+        queueHit(b, a);
     }
 
     private void queueHit(Fixture sensor, Fixture target) {

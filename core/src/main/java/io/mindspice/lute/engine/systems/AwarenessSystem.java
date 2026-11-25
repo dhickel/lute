@@ -80,6 +80,14 @@ public final class AwarenessSystem extends IteratingSystem {
 
     private void updateGuard(Entity actor, ActorAi ai, ArenaGuard guard, FocusState state) {
         var from = feet(actor);
+        var attacker = ai.retaliationTarget();
+        if (attacker != null && livingActor(attacker)) {
+            state.setTargetOffset(ai.updateTarget(from, feet(attacker), state.deltaTime()));
+            if (BehaviorGraphs.attackLocksMovement(actor)) { stop.perform(actor, state); }
+            else { followTarget.perform(actor, state); }
+            return;
+        }
+        ai.retaliateAgainst(null);
         var player = visiblePlayer(actor, from);
         if (player != null) {
             state.setVisibleTarget(player);
@@ -95,6 +103,47 @@ public final class AwarenessSystem extends IteratingSystem {
         state.setTargetOffset(offset);
         if (offset.len2() < .01f || BehaviorGraphs.attackLocksMovement(actor)) { stop.perform(actor, state); }
         else { followTarget.perform(actor, state); }
+    }
+
+    private boolean feetContact(Entity first, Entity second) {
+        var firstBody = Physic.MAPPER.get(first).getBody();
+        var secondBody = Physic.MAPPER.get(second).getBody();
+        for (var contact : world.getContactList()) {
+            if (!contact.isTouching()) { continue; }
+            var a = contact.getFixtureA();
+            var b = contact.getFixtureB();
+            if (!a.isSensor() && !b.isSensor() && (a.getBody() == firstBody && b.getBody() == secondBody
+                || a.getBody() == secondBody && b.getBody() == firstBody)) { return true; }
+        }
+        return false;
+    }
+
+    static void guardBodyContact(Fixture a, Fixture b) {
+        if (a.isSensor() || b.isSensor()
+            || !(a.getBody().getUserData() instanceof Entity first)
+            || !(b.getBody().getUserData() instanceof Entity second)) { return; }
+        endGuardPursuit(first, second);
+        endGuardPursuit(second, first);
+    }
+
+    private static void endGuardPursuit(Entity guard, Entity other) {
+        if (guard.getComponent(ArenaGuard.class) == null) { return; }
+        var ai = ActorAi.MAPPER.get(guard);
+        if (ai.retaliationTarget() == other) { ai.retaliateAgainst(null); }
+    }
+
+    void retaliateAfterArrow(Entity victim, Entity shooter) {
+        if (victim.getComponent(ArenaGuard.class) == null) {
+            retaliateAfterDamage(victim, shooter);
+            return;
+        }
+        if (!livingActor(victim) || !livingActor(shooter) || Actor.MAPPER.get(shooter).role() != Actor.Role.PLAYER
+            || feetContact(victim, shooter)) { return; }
+        var ai = ActorAi.MAPPER.get(victim);
+        ai.retaliateAgainst(shooter);
+        ai.clearOpportunity();
+        // Arrow impact is resolved after awareness, but before combat commits its requests.
+        Combat.MAPPER.get(victim).consumeAttackRequest();
     }
 
     void retaliateAfterDamage(Entity victim, Entity shooter) {

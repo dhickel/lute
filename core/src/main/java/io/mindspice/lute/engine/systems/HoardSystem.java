@@ -98,6 +98,8 @@ public final class HoardSystem extends EntitySystem implements EventListener {
             if (round % 5 == 0) {
                 var boss = getEngine().getSystem(EntityFactory.class).getMapActor(marker.position(), Actor.Role.ENEMY,
                     marker.spawnKey(), marker.facing());
+                int baseHealth = Health.MAPPER.get(boss).getMaximum();
+                boss.add(new Health((int) Math.min(Integer.MAX_VALUE, baseHealth + 5L * round)));
                 boss.add(new ArenaGuard(Physic.MAPPER.get(boss).getBody().getPosition().cpy()));
                 boss.add(new Bounty(DREDGE_POINTS));
                 tiled.addArenaEntity(boss);

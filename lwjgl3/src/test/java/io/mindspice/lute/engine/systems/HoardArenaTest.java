@@ -16,6 +16,7 @@ import com.badlogic.gdx.maps.tiled.TiledMap;
 import com.badlogic.gdx.math.MathUtils;
 import com.badlogic.gdx.math.Rectangle;
 import com.badlogic.gdx.math.Vector2;
+import com.badlogic.gdx.physics.box2d.Body;
 import com.badlogic.gdx.physics.box2d.BodyDef;
 import com.badlogic.gdx.physics.box2d.PolygonShape;
 import io.mindspice.lute.engine.GameCore;
@@ -119,7 +120,7 @@ public final class HoardArenaTest extends ApplicationAdapter {
         require(run.round() == 2 && health.getCurrent() == 899 && enemies.contains(survivor, true)
             && Health.MAPPER.get(survivor).getCurrent() == 43, "round drops a pack instead of healing and keeps survivors");
 
-        require(pickups.size() == 1 && pickups.first().getComponent(Pickup.class).rule().amount() == 500, "one round reward");
+        require(pickups.size() == 1 && pickups.first().getComponent(Pickup.class).rule().amount() == 250, "one 250 HP round reward");
         var center = Physic.MAPPER.get(pickups.first()).getBody().getPosition().cpy();
         var ellipse = tiled.getMapTriggers().areas().stream().filter(a -> "round_health_spawn".equals(a.behaviorKey())).findFirst().orElseThrow();
         var dredgeMarker = tiled.getMapTriggers().points().stream().filter(p -> "idle_dredge".equals(p.behaviorKey()))
@@ -311,6 +312,9 @@ public final class HoardArenaTest extends ApplicationAdapter {
                 int points;
                 if (key.equals("dredge")) {
                     bosses++;
+                    var health = Health.MAPPER.get(enemy);
+                    require(health.getCurrent() == 300 + 5 * round && health.getMaximum() == health.getCurrent(),
+                        "Dredge starts at full scaled health in round " + round);
                     require(enemy.getComponent(ArenaGuard.class) != null
                         && Math.abs(transform.centerX() / GameConsts.UNIT_SCALE - marker.position().x) < .01f
                         && Math.abs(transform.centerY() / GameConsts.UNIT_SCALE - marker.position().y) < .01f,
@@ -410,6 +414,7 @@ public final class HoardArenaTest extends ApplicationAdapter {
             var center = tiled.getMapTriggers().areas().stream()
                 .filter(a -> "round_health_spawn".equals(a.behaviorKey())).findFirst().orElseThrow().bounds();
             verifyGuardVision(boss, guard, center.x + center.width);
+            verifyGuardArrowChase(boss, guard);
             verifyGuardVolley(center.x + center.width / 2, center.y + center.height / 2, guards);
             Health.MAPPER.get(boss).damage(Integer.MAX_VALUE);
             engine.getSystem(DeathSystem.class).processEntity(boss, 0);
@@ -520,6 +525,137 @@ public final class HoardArenaTest extends ApplicationAdapter {
             awareness.processEntity(boss, 1f);
             require(move.isZero(), "Dredge waits at spawn instead of wandering");
         }
+    }
+
+    private void verifyGuardArrowChase(Entity boss, ArenaGuard guard) {
+        var engine = GAME.getEngine();
+        var awareness = engine.getSystem(AwarenessSystem.class);
+        var combat = engine.getSystem(CombatSystem.class);
+        var player = player();
+        var playerBody = Physic.MAPPER.get(player).getBody();
+        var bossBody = Physic.MAPPER.get(boss).getBody();
+        var savedPlayer = playerBody.getPosition().cpy();
+        var playerTransform = Transform.MAPPER.get(player);
+        var savedTransform = playerTransform.getPosition().cpy();
+        var loadout = Loadout.MAPPER.get(player);
+        var savedWeapon = loadout.getWeaponId();
+        var facing = Facing.MAPPER.get(player);
+        var savedFacing = facing.getDirection();
+        var ai = ActorAi.MAPPER.get(boss);
+        var health = Health.MAPPER.get(boss);
+        var bossCombat = Combat.MAPPER.get(boss);
+        var move = Move.MAPPER.get(boss).getDirection();
+        var world = bossBody.getWorld();
+        float dt = GameConsts.PHYSIC_INTERVAL;
+        try {
+            bossBody.setTransform(-100, -100, 0);
+            float nearX = -100 + ai.detectionRadius() - 1;
+            float farX = nearX + 2;
+            float feetY = -100 + Actor.MAPPER.get(boss).feetY();
+            float playerY = feetY - Actor.MAPPER.get(player).feetY();
+            playerBody.setLinearVelocity(0, 0);
+            // This low wall blocks feet-to-feet sight but is below the shot at hurtbox height.
+            var wall = world.createBody(new BodyDef());
+            var shape = new PolygonShape();
+            try {
+                wall.setTransform(-100 + ai.detectionRadius() / 2, feetY, 0);
+                shape.setAsBox(.125f, .15f);
+                wall.createFixture(shape, 0);
+                playerBody.setTransform(nearX, playerY, 0);
+                require(awareness.inRange(boss, Actor.Role.PLAYER).contains(player), "shooter can stand in range behind cover");
+                awareness.processEntity(boss, dt);
+                require(ai.mode() == ActorAi.Mode.WANDER, "cover conceals the unprovoking player from the guard");
+
+                playerBody.setTransform(farX, playerY, 0);
+                require(awareness.inRange(boss, Actor.Role.PLAYER).isEmpty(), "bow fixture starts outside guard detection");
+                int before = health.getCurrent();
+                launchGuardArrow(combat, player, bossBody);
+                for (int i = 0; i < 120 && !combat.arrows().isEmpty(); i++) { combat.update(dt); }
+                require(health.getCurrent() < before, "released player arrow hits the Dredge hurtbox");
+                require(ai.retaliationTarget() == player, "an unseen player beyond detection range provokes the guard");
+                awareness.processEntity(boss, dt);
+                require(move.x > 0 && ai.mode() == ActorAi.Mode.ENGAGE, "provoked guard pursues beyond detection range");
+
+                playerBody.setTransform(nearX, playerY, 0);
+                awareness.processEntity(boss, dt);
+                require(move.x > 0 && ai.retaliationTarget() == player, "cover does not drop arrow pursuit in range");
+            } finally {
+                shape.dispose();
+                world.destroyBody(wall);
+            }
+            playerBody.setTransform(farX + 1, playerY, 0);
+            awareness.processEntity(boss, dt);
+            require(move.x > 0 && ai.retaliationTarget() == player, "moving farther away does not drop arrow pursuit");
+
+            boolean sensorContact = false;
+            for (int i = 0; i < 240 && !touching(bossBody, playerBody, false); i++) {
+                sensorContact |= touching(bossBody, playerBody, true);
+                awareness.processEntity(boss, dt);
+                require(ai.retaliationTarget() == player && !bossCombat.hasAttackRequest(),
+                    "the guard closes the gap without requesting melee before solid contact");
+                engine.getSystem(PhysicMoveSystem.class).processEntity(boss, dt);
+                world.step(dt, 6, 2);
+            }
+            require(sensorContact && touching(bossBody, playerBody, false), "pursuit passes sensor overlap and reaches solid feet");
+            require(ai.retaliationTarget() == null, "solid contact ends forced pursuit during the physics step");
+            awareness.processEntity(boss, 0);
+            require(!bossCombat.hasAttackRequest(), "ordinary melee starts a fresh decision after contact");
+            awareness.processEntity(boss, .25f);
+            require(bossCombat.requestedTarget() == player, "normal melee resumes after contact");
+
+            // Awareness runs before Combat: a new arrow can land on the tick a melee request is due.
+            bossBody.setLinearVelocity(0, 0);
+            playerBody.setLinearVelocity(0, 0);
+            playerBody.setTransform(bossBody.getPosition().x + .9f, playerY, 0);
+            world.step(dt, 6, 2);
+            require(!touching(bossBody, playerBody, false), "second shot starts in melee range without solid contact");
+            combat.cancelCombat(player);
+            Combat.MAPPER.get(player).tickCooldown(5);
+            launchGuardArrow(combat, player, bossBody);
+            int before = health.getCurrent();
+            combat.update(.25f);
+            require(health.getCurrent() < before && ai.retaliationTarget() == player, "second shot provokes the guard");
+            require(!bossCombat.isAttacking() && !bossCombat.hasAttackRequest(),
+                "arrow impact supersedes a melee request that has not committed yet");
+        } finally {
+            combat.cancelCombat(player);
+            loadout.setWeapon(savedWeapon);
+            facing.setDirection(savedFacing);
+            playerTransform.getPosition().set(savedTransform);
+            bossCombat.consumeAttackRequest();
+            ai.forgetTarget();
+            move.setZero();
+            bossBody.setLinearVelocity(0, 0);
+            bossBody.setTransform(guard.home(), 0);
+            playerBody.setLinearVelocity(0, 0);
+            playerBody.setTransform(savedPlayer, 0);
+        }
+    }
+
+    private static void launchGuardArrow(CombatSystem combat, Entity player, Body target) {
+        // Launch uses the render transform, which has not been updated since we teleported the player.
+        Transform.MAPPER.get(player).getPosition().set(Physic.MAPPER.get(player).getBody().getPosition());
+        var loadout = Loadout.MAPPER.get(player);
+        loadout.setWeapon("basic_bow");
+        Facing.MAPPER.get(player).setDirection(Facing.Direction.LEFT);
+        var aim = BowAim.MAPPER.get(player);
+        combat.drawBow(player, aim, loadout.getWeapon());
+        require(aim.isAiming(), "player draws the equipped bow");
+        var bounds = GAME.getGameData().actorsData().enemies().get("dredge").hitboxBounds();
+        aim.lockAt(target.getWorldPoint(new Vector2(bounds.x1() + bounds.x2(), bounds.y1() + bounds.y2())
+            .scl(.5f * GameConsts.UNIT_SCALE)), 0);
+        combat.launch(player, aim);
+    }
+
+    private static boolean touching(Body first, Body second, boolean sensor) {
+        for (var contact : first.getWorld().getContactList()) {
+            if (!contact.isTouching()) { continue; }
+            var a = contact.getFixtureA();
+            var b = contact.getFixtureB();
+            if ((a.isSensor() || b.isSensor()) == sensor && (a.getBody() == first && b.getBody() == second
+                || a.getBody() == second && b.getBody() == first)) { return true; }
+        }
+        return false;
     }
 
     /** Same opening for all three real hammer guards. Run decision/animation/combat without pushing bodies apart. */
