@@ -5,6 +5,7 @@ import com.badlogic.gdx.files.FileHandle;
 import io.mindspice.lute.engine.assets.Asset;
 import io.mindspice.lute.engine.assets.CharacterAssets;
 import io.mindspice.lute.engine.assets.WeaponAssets;
+import io.mindspice.lute.engine.data.json.MapActorData.EnemyDetectionBounds.Shape;
 import io.mindspice.lute.engine.data.json.WeaponsData.WeaponData;
 import io.mindspice.lute.engine.data.json.WeaponsData.WeaponData.*;
 import io.mindspice.lute.engine.singletons.GameConsts;
@@ -23,6 +24,11 @@ public final class DataLoaderTest {
         try {
             useAssets();
             GameConsts.loadSettings();
+            if (List.of(args).equals(List.of("--actors-only"))) {
+                actorsSchema();
+                System.out.println("DataLoaderTest: actor schema passed");
+                return;
+            }
             var settings = DataLoader.mapper.readTree(Path.of("assets/game.settings.json").toFile());
             check(GameConsts.VIEW_WIDTH == settings.required("viewWidth").floatValue()
                 && GameConsts.UNIT_SCALE == settings.required("unitScale").floatValue(), "settings constants match authored values");
@@ -147,7 +153,8 @@ public final class DataLoaderTest {
             "detection_bounds": {"radius": 72}
             """;
         String npc = "{\"name\":\"Town Guard\"," + common + ",\"behavior_graph\":\"wander\",\"loadout\":{\"body\":\"basic\",\"weapon\":\"basic_bow\"}}";
-        String enemy = "{\"name\":\"Undead Guard\"," + common.replace("72}", "192.5}") + ",\"behavior_graph\":\"wander_attack\",\"weapon\":\"basic_sword\"}";
+        String enemy = "{\"name\":\"Undead Guard\"," + common.replace("72}", "192.5, \"shape\": \"FORWARD_SEMICIRCLE\"}")
+            + ",\"behavior_graph\":\"wander_attack\",\"weapon\":\"basic_sword\"}";
         String npcs = "{\"guard\":" + npc + ",\"merchant\":" + npc.replace("Town Guard", "Merchant").replace("80", "60") + "}";
         String entry = "{\"guard\":%s}";
         try {
@@ -162,7 +169,8 @@ public final class DataLoaderTest {
             Files.delete(enemies);
             Files.writeString(characters, npcs);
             rejects(DataLoader::loadGameData, "Missing enemies file");
-            Files.writeString(enemies, entry.formatted(enemy));
+            Files.writeString(enemies, "{\"guard\":" + enemy + ",\"sentinel\":"
+                + enemy.replace("FORWARD_SEMICIRCLE", "FULL_CIRCLE") + "}");
             var data = DataLoader.loadGameData().actorsData();
             var merchant = data.npc().get("merchant");
             check(merchant.maxHealth() == 60 && merchant.name().equals("Merchant"), "Multiple NPC IDs resolve independently");
@@ -174,6 +182,9 @@ public final class DataLoaderTest {
             check(undead.weapon().equals("basic_sword") && guard.detectionBounds().radius() == 72
                 && undead.detectionBounds().radius() == 192.5f && guard.behaviorGraph().equals("wander")
                 && undead.behaviorGraph().equals("wander_attack"), "Role-scoped IDs bind distinct radii and graph keys");
+            check(undead.detectionBounds().shape() == Shape.FORWARD_SEMICIRCLE
+                && data.enemies().get("sentinel").detectionBounds().shape() == Shape.FULL_CIRCLE,
+                "Both authored shapes bind independently of spawn key");
             check(guard.name().equals("Town Guard") && undead.name().equals("Undead Guard")
                 && guard.maxHealth() == 80 && undead.maxHealth() == 80, "Both catalogues bind name and maximum health");
             Files.writeString(characters, "{}");
@@ -185,7 +196,11 @@ public final class DataLoaderTest {
             Files.writeString(characters, npcs);
             for (String invalid : new String[]{npc, enemy.replace(",\"weapon\":\"basic_sword\"", ""),
                     enemy.replace("basic_sword", "unknown_weapon"), enemy.replace("192.5", "0"),
-                    enemy.replace("192.5", "1e100"), enemy.replace("\"radius\": 192.5", ""),
+                    enemy.replace("192.5", "1e100"), enemy.replace("\"radius\": 192.5, ", ""),
+                    enemy.replace(", \"shape\": \"FORWARD_SEMICIRCLE\"", ""),
+                    enemy.replace("\"FORWARD_SEMICIRCLE\"", "null"),
+                    enemy.replace("\"FORWARD_SEMICIRCLE\"", "0"),
+                    enemy.replace("FORWARD_SEMICIRCLE", ""), enemy.replace("FORWARD_SEMICIRCLE", "TRIANGLE"),
                     enemy.replace("\"x2\": 50", "\"x2\": 100"), "null",
                     enemy.replace(",\"behavior_graph\":\"wander_attack\"", ""),
                     enemy.replace("wander_attack", ""), enemy.replace("wander_attack", "unknown_graph"),
@@ -195,7 +210,8 @@ public final class DataLoaderTest {
             }
             Files.writeString(enemies, entry.formatted(enemy));
             for (String invalid : new String[]{"null", "{\"\":" + npc + "}", "{} {}",
-                    "{\"guard\":" + npc + ",\"guard\":" + npc + "}", entry.formatted(enemy)}) {
+                    "{\"guard\":" + npc + ",\"guard\":" + npc + "}", entry.formatted(enemy),
+                    entry.formatted(npc.replace("\"radius\": 72", "\"radius\": 72, \"shape\": \"FULL_CIRCLE\""))}) {
                 Files.writeString(characters, invalid);
                 rejects(DataLoader::loadGameData, "Invalid character catalogue: " + invalid);
             }

@@ -177,8 +177,10 @@ public class EntityFactory extends EntitySystem {
             .add(new Graphic(region, Color.WHITE.cpy()))
             .add(new CompositeCharacter(region.getRegionWidth(), region.getRegionHeight()));
         entity.add(new Health(definition.maxHealth()));
-        entity.add(new ActorAi(definition.behaviorGraph(), definition.detectionBounds().radius() * GameConsts.UNIT_SCALE));
-        if (enemy && "dredge".equals(spawnKey)) {
+        float detectionRadius = definition.detectionRadius();
+        entity.add(new ActorAi(definition.behaviorGraph(), detectionRadius * GameConsts.UNIT_SCALE));
+        if (definition instanceof MapActorData.Enemy enemyData
+            && enemyData.detectionBounds().shape() == MapActorData.EnemyDetectionBounds.Shape.FULL_CIRCLE) {
             entity.add(new FullCircleVision());
         }
         if (BehaviorGraphs.ARCHER.equals(definition.behaviorGraph())) {
@@ -188,7 +190,7 @@ public class EntityFactory extends EntitySystem {
         entity.add(new Combat());
         entity.add(new AnimationPlayer(entity));
         entity.add(createCharacterPhysics(transform.getPosition(), entity, BodyDef.BodyType.DynamicBody,
-            definition.collision(), definition.hitboxBounds(), role, definition.detectionBounds().radius()));
+            definition.collision(), definition.hitboxBounds(), role, detectionRadius));
         return entity;
     }
 

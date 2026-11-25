@@ -11,8 +11,11 @@ import com.badlogic.gdx.audio.Sound;
 import com.badlogic.gdx.backends.lwjgl3.Lwjgl3Application;
 import com.badlogic.gdx.backends.lwjgl3.Lwjgl3ApplicationConfiguration;
 import com.badlogic.gdx.backends.lwjgl3.Lwjgl3ApplicationLogger;
+import com.badlogic.gdx.graphics.GL20;
+import com.badlogic.gdx.graphics.OrthographicCamera;
 import com.badlogic.gdx.graphics.Pixmap;
 import com.badlogic.gdx.graphics.Texture;
+import com.badlogic.gdx.graphics.glutils.FrameBuffer;
 import com.badlogic.gdx.graphics.glutils.HdpiUtils;
 import com.badlogic.gdx.graphics.g2d.TextureAtlas;
 import com.badlogic.gdx.maps.objects.RectangleMapObject;
@@ -30,8 +33,12 @@ import io.mindspice.lute.engine.GameCore;
 import io.mindspice.lute.engine.assets.CharacterAssets;
 import io.mindspice.lute.engine.assets.ObjectAssets;
 import io.mindspice.lute.engine.components.*;
+import io.mindspice.lute.engine.data.json.ActorsData;
 import io.mindspice.lute.engine.data.json.DataLoader;
 import io.mindspice.lute.engine.data.json.GameData;
+import io.mindspice.lute.engine.data.json.MapActorData.Enemy;
+import io.mindspice.lute.engine.data.json.MapActorData.EnemyDetectionBounds;
+import io.mindspice.lute.engine.data.json.MapActorData.EnemyDetectionBounds.Shape;
 import io.mindspice.lute.engine.data.json.ObjectData;
 import io.mindspice.lute.engine.input.InputAction;
 import io.mindspice.lute.engine.screen.GameScreen;
@@ -143,6 +150,7 @@ public final class MapTravelTest extends ApplicationAdapter {
         require(ActorAi.MAPPER.get(oldNpc).behaviorGraphKey().equals(npc.behaviorGraph())
             && ActorAi.MAPPER.get(oldEnemy).behaviorGraphKey().equals(enemy.behaviorGraph()), "Spawned actors use their authored graph keys");
         verifyDredgeVision(player, awareness);
+        verifyAuthoredVisionShapes(player, awareness);
         verifyActorAi(oldNpc, oldEnemy, player, awareness);
         var oldNpcBody = body(oldNpc);
         var oldEnemyBody = body(oldEnemy);
@@ -549,6 +557,90 @@ public final class MapTravelTest extends ApplicationAdapter {
         }
     }
 
+    private void verifyAuthoredVisionShapes(Entity player, AwarenessSystem awareness) throws ReflectiveOperationException {
+        var original = GAME.getGameData();
+        var enemies = new HashMap<>(original.actorsData().enemies());
+        // Keep the spawn keys and all other fields; change only the authored shape.
+        enemies.compute("brainless_undead", (_, enemy) -> withVisionShape(enemy, Shape.FULL_CIRCLE));
+        enemies.compute("dredge", (_, enemy) -> withVisionShape(enemy, Shape.FORWARD_SEMICIRCLE));
+        var gameDataField = field(GameCore.class, "gameData");
+        gameDataField.set(GAME, new GameData(original.playerData(), original.weaponsData(), original.projectilesData(),
+            new ActorsData(original.actorsData().npc(), enemies), original.objectsData()));
+        var playerBody = body(player);
+        var start = playerBody.getPosition().cpy();
+        try {
+            var engine = GAME.getEngine();
+            var factory = engine.getSystem(EntityFactory.class);
+            var playerActor = Actor.MAPPER.get(player);
+            float unit = GameConsts.UNIT_SCALE;
+            for (String key : List.of("brainless_undead", "dredge")) {
+                boolean fullCircle = enemies.get(key).detectionBounds().shape() == Shape.FULL_CIRCLE;
+                var enemy = factory.getMapActor(new Vector2(-200 / unit, -200 / unit), Actor.Role.ENEMY, key, Facing.Direction.LEFT);
+                engine.addEntity(enemy);
+                try {
+                    var actor = Actor.MAPPER.get(enemy);
+                    var feet = body(enemy).getWorldPoint(new Vector2(actor.feetX(), actor.feetY())).cpy();
+                    var aligned = feet.cpy().sub(playerActor.feetX(), playerActor.feetY());
+                    playerBody.setTransform(aligned.cpy().add(72 * unit, 0), 0);
+                    require(awareness.inRange(enemy, Actor.Role.PLAYER).equals(List.of(player)), key + " still queries the full circle");
+                    var ai = ActorAi.MAPPER.get(enemy);
+                    checkVisionOutline(feet, ai.detectionRadius(), fullCircle); // Still facing left, before AI can turn.
+                    awareness.update(0f);
+                    require(ai.mode() == (fullCircle ? ActorAi.Mode.ENGAGE : ActorAi.Mode.WANDER),
+                        key + " rear acquisition follows the edited shape, not the spawn key");
+                    if (!fullCircle) {
+                        playerBody.setTransform(aligned.sub(72 * unit, 0), 0);
+                        awareness.update(0f);
+                        require(ai.mode() == ActorAi.Mode.ENGAGE, key + " still acquires in front");
+                    }
+                } finally { engine.removeEntity(enemy); }
+            }
+        } finally {
+            playerBody.setTransform(start, 0);
+            gameDataField.set(GAME, original);
+        }
+    }
+
+    private static Enemy withVisionShape(Enemy enemy, Shape shape) {
+        return new Enemy(enemy.name(), enemy.moveSpeed(), enemy.maxHealth(), enemy.weapon(), enemy.animation(),
+            enemy.sounds(), enemy.logicalSize(), enemy.collision(), enemy.hitboxBounds(),
+            new EnemyDetectionBounds(enemy.detectionRadius(), shape), enemy.behaviorGraph());
+    }
+
+    private void checkVisionOutline(Vector2 feet, float radius, boolean fullCircle) {
+        int size = 128;
+        var camera = new OrthographicCamera(3 * radius, 3 * radius);
+        camera.position.set(feet.x, feet.y, 0);
+        camera.update();
+        var target = new FrameBuffer(Pixmap.Format.RGBA8888, size, size, false);
+        var overlay = new PhysicDebugRenderSystem(world, camera);
+        target.begin();
+        try {
+            Gdx.gl.glClearColor(0, 0, 0, 1);
+            Gdx.gl.glClear(GL20.GL_COLOR_BUFFER_BIT);
+            overlay.update(0f);
+            var image = Pixmap.createFromFrameBuffer(0, 0, size, size);
+            try {
+                require(hasOutline(image, size / 6, size / 2), "Debug draws the front arc for either shape");
+                require(hasOutline(image, 5 * size / 6, size / 2) == fullCircle,
+                    "Debug draws the rear arc only for full-circle vision");
+            } finally { image.dispose(); }
+        } finally {
+            target.end();
+            overlay.dispose();
+            target.dispose();
+        }
+    }
+
+    private static boolean hasOutline(Pixmap image, int x, int y) {
+        for (int dy = -2; dy <= 2; dy++) {
+            for (int dx = -2; dx <= 2; dx++) {
+                if ((image.getPixel(x + dx, y + dy) >>> 8) != 0) { return true; }
+            }
+        }
+        return false;
+    }
+
     private void verifyActorAi(Entity npc, Entity enemy, Entity player, AwarenessSystem awareness) {
         var npcPosition = body(npc).getPosition().cpy();
         var enemyPosition = body(enemy).getPosition().cpy();
@@ -569,9 +661,6 @@ public final class MapTravelTest extends ApplicationAdapter {
             "Both actors physically wander after their initial wait without attacking out of range");
         body(enemy).setTransform(-100, -100, 0);
         Facing.MAPPER.get(enemy).setDirection(Facing.Direction.RIGHT);
-        var physicsOverlay = new PhysicDebugRenderSystem(body(enemy).getWorld(), GAME.getCamera());
-        try { physicsOverlay.update(0f); }
-        finally { physicsOverlay.dispose(); }
         body(player).setTransform(-100 + 80f * GameConsts.UNIT_SCALE, -100, 0);
         var originalHealth = Health.MAPPER.get(player);
         var testHealth = new Health(100); // The pursuit check needs a survivor independently of authored player HP.
