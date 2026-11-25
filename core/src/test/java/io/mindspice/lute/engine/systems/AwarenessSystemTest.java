@@ -164,14 +164,14 @@ public final class AwarenessSystemTest {
         engine.update(0);
         var combat = Combat.MAPPER.get(enemy);
         for (int i = 0; i < 100; i++) { engine.update(0); }
-        engine.update(.149f);
+        engine.update(.049f);
         check(!combat.hasAttackRequest() && Move.MAPPER.get(enemy).getDirection().x > 0,
             "No tick-based rolls: step in before the minimum decision time");
         body(player).setTransform(4.1f, 0, 0);
         engine.update(.3f);
         body(player).setTransform(4, 0, 0);
         engine.update(.3f);
-        engine.update(.149f);
+        engine.update(.049f);
         check(!combat.hasAttackRequest(), "Leaving range cancels, reacquisition starts a fresh opportunity");
         engine.update(.202f);
         check(facing.getDirection() == Facing.Direction.RIGHT && combat.consumeAttackRequest() == Combat.AttackSlot.PRIMARY
