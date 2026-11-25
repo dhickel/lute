@@ -9,7 +9,7 @@ public final class HoardRun {
     public static final int PLAYER_HEALTH = 1000;
     private static final int ROUND_SECONDS = 120;
     private static final int STARTING_BATCH = 10;
-    private static final int REFRESH_BATCH = 5;
+    private static final int ROUNDS_PER_BASE_BONUS = 20; // +5% of base per round
 
     private final RandomGenerator random;
     private final IntConsumer roundStarted;
@@ -36,8 +36,9 @@ public final class HoardRun {
                 elapsed -= ROUND_SECONDS;
                 startRound();
             } else {
-                spawn.accept(REFRESH_BATCH, round);
-                nextBatch += random.nextInt(20, 41);
+                int base = random.nextInt(4, 9);
+                spawn.accept((int) scaleForRound(base, round), round);
+                nextBatch += random.nextInt(30, 51);
             }
         }
     }
@@ -45,18 +46,23 @@ public final class HoardRun {
     private void startRound() {
         round++;
         roundStarted.accept(round);
-        spawn.accept(round == 1 ? STARTING_BATCH : REFRESH_BATCH, round);
-        nextBatch = random.nextInt(20, 41);
+        spawn.accept(round == 1 ? STARTING_BATCH : (int) scaleForRound(STARTING_BATCH, round), round);
+        nextBatch = random.nextInt(30, 51);
+    }
+
+    /** Apply a linear round bonus and round to the nearest whole number, with ties up. */
+    public static long scaleForRound(int base, int round) {
+        return base + ((long) base * round + ROUNDS_PER_BASE_BONUS / 2) / ROUNDS_PER_BASE_BONUS;
     }
 
     public void end() { gameOver = true; }
     public boolean isGameOver() { return gameOver; }
 
     // Credit is committed on delivery. Even a kill queued before death cannot revise the final score.
-    public void enemyKilled(int points) {
+    public void enemyKilled(int baseXp) {
         if (gameOver) { return; }
         kills++;
-        score += points;
+        score += scaleForRound(baseXp, round);
     }
 
     public long aliveSeconds() { return (round - 1L) * ROUND_SECONDS + (long) elapsed; }

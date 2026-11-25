@@ -31,9 +31,20 @@ public final class HoardSystem extends EntitySystem implements EventListener {
         if (round < 30) { return WAVE_ROSTER.subList(0, 7); }
         return WAVE_ROSTER;
     }
-    // Dredge is a center guard, not a zone enemy; its independent base bounty is five points.
-    private static final int DREDGE_POINTS = 5;
-    private record Bounty(int points) implements Component { }
+    private static final int DREDGE_BASE_XP = 100;
+    private record Bounty(int baseXp) implements Component { }
+
+    private static int waveBaseXp(String key) {
+        return switch (key) {
+            case "brainless_undead", "undead_archer" -> 5;
+            case "bone_soldier" -> 10;
+            case "cultist", "cultist_archer" -> 15;
+            case "viper" -> 20;
+            case "reaper" -> 25;
+            case "raider" -> 30;
+            default -> throw new IllegalArgumentException("Unknown Hoard enemy: " + key);
+        };
+    }
     // Placement must not consume random draws used for waves or kill drops.
     private final RandomGenerator roundHealthRandom = RandomGenerator.getDefault();
     private RandomGenerator dropRandom;
@@ -46,7 +57,7 @@ public final class HoardSystem extends EntitySystem implements EventListener {
         if (event.player() != tiled.activePlayer() || !tiled.owns(enemy)) { return; }
         var bounty = enemy.getComponent(Bounty.class);
         if (bounty == null) { return; }
-        run.enemyKilled(bounty.points());
+        run.enemyKilled(bounty.baseXp());
         if (dropRandom.nextInt(10) == 0) { drop(tiled, feet(enemy), "health_pack_1"); }
     };
 
@@ -99,9 +110,9 @@ public final class HoardSystem extends EntitySystem implements EventListener {
                 var boss = getEngine().getSystem(EntityFactory.class).getMapActor(marker.position(), Actor.Role.ENEMY,
                     marker.spawnKey(), marker.facing());
                 int baseHealth = Health.MAPPER.get(boss).getMaximum();
-                boss.add(new Health((int) Math.min(Integer.MAX_VALUE, baseHealth + 5L * round)));
+                boss.add(new Health((int) Math.min(Integer.MAX_VALUE, HoardRun.scaleForRound(baseHealth, round))));
                 boss.add(new ArenaGuard(Physic.MAPPER.get(boss).getBody().getPosition().cpy()));
-                boss.add(new Bounty(DREDGE_POINTS));
+                boss.add(new Bounty(DREDGE_BASE_XP));
                 tiled.addArenaEntity(boss);
             }
         }, (amount, round) -> {
@@ -110,11 +121,12 @@ public final class HoardSystem extends EntitySystem implements EventListener {
             int next = random.nextInt(count);
             for (int i = 0; i < amount; i++) {
                 String key = roster.get(random.nextInt(roster.size()));
+                int baseXp = waveBaseXp(key);
                 for (int attempt = 0; attempt < count; attempt++) {
                     int zone = next;
                     next = (next + 1) % count;
                     var enemy = tiled.trySpawnAreaEnemy(areas.get(zone), key, random);
-                    if (enemy != null) { enemy.add(new Bounty(5 * (zone + 1))); break; }
+                    if (enemy != null) { enemy.add(new Bounty(baseXp)); break; }
                 }
             }
         });
