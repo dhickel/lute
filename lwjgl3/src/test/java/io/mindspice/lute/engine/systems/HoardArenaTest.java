@@ -337,6 +337,7 @@ public final class HoardArenaTest extends ApplicationAdapter {
                 }
                 boolean firstOfType = observed.add(key);
                 if (firstOfType || key.equals("dredge")) {
+                    if (firstOfType) { verifyAuthoredMoveSpeed(enemy, key); }
                     if (firstOfType && !key.equals("dredge")) { verifyRosterAttack(enemy, key); }
                     var run = hoard.run();
                     long prior = run.score();
@@ -355,6 +356,21 @@ public final class HoardArenaTest extends ApplicationAdapter {
             hoard.run().advance(120);
         }
         require(observed.size() == 9, "all eight non-Dredges and Dredge appeared: " + observed);
+    }
+
+    private void verifyAuthoredMoveSpeed(Entity enemy, String key) {
+        float expected = GAME.getGameData().actorsData().enemies().get(key).moveSpeed();
+        var move = Move.MAPPER.get(enemy);
+        var body = Physic.MAPPER.get(enemy).getBody();
+        try {
+            move.getDirection().set(3, 4);
+            GAME.getEngine().getSystem(PhysicMoveSystem.class).processEntity(enemy, 0);
+            require(Math.abs(body.getLinearVelocity().len() - expected) < .0001f,
+                key + " uses its authored move_speed as the Box2D velocity magnitude");
+        } finally {
+            move.getDirection().setZero();
+            body.setLinearVelocity(0, 0);
+        }
     }
 
     private void verifyRosterAttack(Entity enemy, String key) {
