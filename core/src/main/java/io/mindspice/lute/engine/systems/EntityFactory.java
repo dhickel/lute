@@ -281,7 +281,7 @@ public class EntityFactory extends EntitySystem {
         Animation2D animation = null;
         TextureRegion region;
         if (definition.animation().isEmpty()) {
-            region = assetService.get(TextureAtlas.class, atlas.id()).findRegion(spawnKey, -1);
+            region = assetService.get(TextureAtlas.class, atlas.id()).findRegion(definition.atlasKey().orElse(spawnKey), -1);
             if (region == null) { throw new IllegalArgumentException("No static object atlas region for " + spawnKey); }
         } else {
             var settings = definition.animation().orElseThrow();
@@ -317,8 +317,18 @@ public class EntityFactory extends EntitySystem {
         }
         // Convert and validate the light's world radius before allocating a staged native body.
         definition.emissive().ifPresent(light -> entity.add(new Emissive(light, unit)));
-        if (definition.collision().isPresent()) {
-            var collision = definition.collision().orElseThrow();
+        definition.pickup().ifPresent(rule -> {
+            String payload = null;
+            if (rule.type() == io.mindspice.lute.engine.data.json.ObjectData.Kind.WEAPON_BAG) {
+                var eligible = GameCore.INSTANCE.getGameData().weaponsData().weapons().keySet().stream()
+                    .filter(key -> !key.equals("basic_bow") && !key.equals("basic_arrow")).toList();
+                if (eligible.isEmpty()) { throw new IllegalArgumentException("Weapon bag has no eligible loaded weapon"); }
+                payload = eligible.get(java.util.concurrent.ThreadLocalRandom.current().nextInt(eligible.size()));
+            }
+            entity.add(new Pickup(rule, payload));
+        });
+        if (definition.collision().isPresent() || definition.pickup().isPresent()) {
+            var collision = definition.collision().orElseGet(() -> CollisionData.ellipse(new CharacterBounds(0, 0, width, height)));
             var bounds = collision.bounds();
             if (bounds.x2() > width || bounds.y2() > height) {
                 throw new IllegalArgumentException("Object collision bounds exceed the sprite canvas for " + spawnKey);
@@ -329,7 +339,7 @@ public class EntityFactory extends EntitySystem {
             bodyDef.angle = (float) Math.toRadians(rotation);
             var body = world.createBody(bodyDef);
             try {
-                CharacterFixtures.create(body, collision, false, width * .5f, height * .5f);
+                CharacterFixtures.create(body, collision, definition.pickup().isPresent(), width * .5f, height * .5f);
                 body.setUserData(entity);
                 entity.add(new Physic(body, position.cpy()));
             } catch (RuntimeException | Error failure) {

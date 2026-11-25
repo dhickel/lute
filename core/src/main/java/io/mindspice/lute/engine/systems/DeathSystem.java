@@ -39,6 +39,8 @@ public final class DeathSystem extends IteratingSystem {
                 var sensors = getEngine().getSystem(MapSensorSystem.class);
                 if (sensors != null) { sensors.forgetPlayer(entity); }
                 if (tiled != null) { tiled.detachController(entity); }
+            } else if (entity.getComponent(ArenaGuard.class) != null) {
+                getEngine().getSystem(HoardSystem.class).dredgeDied(entity);
             }
             var position = Physic.MAPPER.get(entity).getBody().getPosition();
             pose(entity, position.x, position.y, 0d);

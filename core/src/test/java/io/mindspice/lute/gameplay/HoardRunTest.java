@@ -27,7 +27,7 @@ public final class HoardRunTest {
             var batches = new ArrayList<Integer>();
             var heals = new ArrayList<Integer>();
             var activeAreas = new ArrayList<Integer>();
-            var run = new HoardRun(random, () -> heals.add(batches.size()), (amount, count) -> {
+            var run = new HoardRun(random, round -> heals.add(batches.size()), (amount, count) -> {
                 batches.add(amount);
                 activeAreas.add(count);
             }, false);
@@ -37,7 +37,7 @@ public final class HoardRunTest {
             run.advance(.25, false);
             require(rolls.size() == 1 && batches.size() == 2 && batches.getLast() == Math.round(5 * rolls.getFirst() * .0105)
                 && heals.size() == 1, "first reinforcement rolls a smaller batch and does not heal");
-            run.enemyKilled();
+            run.enemyKilled(5);
             run.advance(119.75 - delay, false);
             require(run.round() == 1 && run.remainingSeconds() == 1, "still round one just before 120 seconds");
             run.advance(.25, false);
@@ -46,8 +46,8 @@ public final class HoardRunTest {
             require(batches.getLast() == 6, "round two opens with 5.5 rounded up to six");
             for (int i = 2; i < 10; i++) { run.advance(120, false); }
             require(run.round() == 10 && batches.getLast() == 9, "round ten opens with six scaled to nine");
-            run.enemyKilled();
-            require(run.kills() == 2 && run.score() == 13, "round ten awards eight points without repricing round one");
+            run.enemyKilled(10);
+            require(run.kills() == 2 && run.score() == 15, "origin points do not depend on round");
             for (int i = 10; i < 42; i++) { run.advance(120, i >= 12); }
             int roll = 0;
             require(random.schedules == batches.size() && rolls.size() == batches.size() - heals.size(),
@@ -76,11 +76,11 @@ public final class HoardRunTest {
             int batchCount = batches.size();
             run.end();
             run.advance(.25, false);
-            run.enemyKilled();
+            run.enemyKilled(20);
             run.end();
             run.advance(540, true);
             require(run.isGameOver() && run.round() == 42 && run.remainingSeconds() == 1
-                && run.kills() == 2 && run.score() == 13, "terminal state freezes time and credits");
+                && run.kills() == 2 && run.score() == 15, "terminal state freezes time and credits");
             require(batches.size() == batchCount && heals.size() == 42, "no reinforcements or round heals after death");
         }
         require(!HoardRun.isNight(Math.nextDown(20 * 60.0)) && HoardRun.isNight(20 * 60)

@@ -57,7 +57,7 @@ public class ControllerSystem extends IteratingSystem implements EventEmitter {
                 if (pressed && (aim == null || !aim.isAiming())) {
                     requestAttack(combat, weapon, Combat.AttackSlot.SECONDARY);
                 }
-            } else if (action == InputAction.CYCLE_WEAPON) {
+            } else if (action == InputAction.CYCLE_WEAPON || action == InputAction.CYCLE_ARENA_WEAPON) {
                 if (pressed && alive && weapon != null && (aim == null || !aim.isAiming())) {
                     var cycle = controller.getWeaponCycle();
                     if (!cycle.isEmpty()) {

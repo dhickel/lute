@@ -21,7 +21,7 @@ import static io.mindspice.lute.engine.input.InputSystemTest.near;
 
 final class GamepadInputTest {
     // Deliberately not the SDL codes, and UP also matches a real keyboard keycode.
-    private static final int UP = Input.Keys.W, DOWN = 8, LEFT = 9, RIGHT = 30, SOUTH = 0, WEST = 3;
+    private static final int UP = Input.Keys.W, DOWN = 8, LEFT = 9, RIGHT = 30, SOUTH = 0, WEST = 3, NORTH = 14;
     private static final int X = 4, Y = 5;
     private static final ControllerMapping MAPPED = new TestMapping(UP, DOWN, LEFT, RIGHT, SOUTH, WEST, X, Y);
     private static final int UNDEFINED = ControllerMapping.UNDEFINED;
@@ -32,6 +32,7 @@ final class GamepadInputTest {
         new InputManager(new InputMap()).updateGamepad(); // Empty settings never initialize the native backend.
         configuredButtons();
         digitalStick();
+        weaponCycleRouting();
         resetAndFailover();
         disconnectDuringRead();
         gameplayRouting();
@@ -179,6 +180,26 @@ final class GamepadInputTest {
         equal(null, combat.consumeAttackRequest(), "releases never attack");
     }
 
+    private static void weaponCycleRouting() {
+        var fixture = new Fixture(defaults());
+        var pad = fixture.addPad(MAPPED);
+        var ordinary = new io.mindspice.lute.engine.components.Controller(List.of("first", "second"));
+        var arena = io.mindspice.lute.engine.components.Controller.forArena("first");
+        fixture.input.regKeyListener(ordinary.getInputListener());
+        fixture.input.regKeyListener(arena.getInputListener());
+        fixture.expect("neutral before Y");
+        pad.buttons[NORTH] = true;
+        fixture.expect("native Y maps to arena cycle", press(CYCLE_ARENA_WEAPON));
+        var actions = new ArrayList<InputAction>();
+        ordinary.getInputListener().consume((action, state) -> actions.add(action));
+        equal(List.of(), actions, "ordinary controller ignores Y");
+        arena.getInputListener().consume((action, state) -> actions.add(action));
+        equal(List.of(CYCLE_ARENA_WEAPON), actions, "arena controller receives Y");
+        fixture.expect("held Y does not repeat");
+        pad.buttons[NORTH] = false;
+        fixture.expect("Y release balances its press", release(CYCLE_ARENA_WEAPON));
+    }
+
     private static InputMap defaults() {
         return InputSettings.load(new FileHandle("assets/input.setting.json"));
     }
@@ -238,7 +259,7 @@ final class GamepadInputTest {
 
     private static final class TestMapping extends ControllerMapping {
         TestMapping(int up, int down, int left, int right, int south, int west, int x, int y) {
-            super(x, y, UNDEFINED, UNDEFINED, south, UNDEFINED, west, UNDEFINED, UNDEFINED, UNDEFINED,
+            super(x, y, UNDEFINED, UNDEFINED, south, UNDEFINED, west, south == UNDEFINED ? UNDEFINED : NORTH, UNDEFINED, UNDEFINED,
                 UNDEFINED, UNDEFINED, UNDEFINED, UNDEFINED, UNDEFINED, UNDEFINED, up, down, left, right);
         }
     }

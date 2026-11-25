@@ -7,6 +7,8 @@ import io.mindspice.lute.engine.input.InputAction;
 import io.mindspice.lute.engine.input.InputManager;
 import io.mindspice.lute.engine.input.KeyListener;
 
+import java.util.ArrayList;
+import java.util.Collections;
 import java.util.List;
 
 public class Controller implements Component {
@@ -32,9 +34,15 @@ public class Controller implements Component {
 
     public Controller() { this(List.of()); }
 
-    public Controller(List<String> weaponCycle) {
-        this.weaponCycle = weaponCycle;
-        this.inputListener = new KeyListener(32, List.of(
+    public Controller(List<String> weaponCycle) { this(weaponCycle, false); }
+
+    public static Controller forArena(String initialWeapon) {
+        return new Controller(List.of(initialWeapon), true);
+    }
+
+    private Controller(List<String> weaponCycle, boolean arena) {
+        this.weaponCycle = new ArrayList<>(weaponCycle);
+        var actions = new ArrayList<>(List.of(
             InputAction.MOVE_UP,
             InputAction.MOVE_DOWN,
             InputAction.MOVE_LEFT,
@@ -43,6 +51,8 @@ public class Controller implements Component {
             InputAction.ATTACK_SECONDARY,
             InputAction.CYCLE_WEAPON
         ));
+        if (arena) { actions.add(InputAction.CYCLE_ARENA_WEAPON); }
+        this.inputListener = new KeyListener(32, actions);
     }
 
     public static Controller forInputManager(InputManager inputManager) {
@@ -52,7 +62,11 @@ public class Controller implements Component {
     }
 
 
-    public List<String> getWeaponCycle() { return weaponCycle; }
+    public void collectWeapon(String id) {
+        if (!weaponCycle.contains(id)) { weaponCycle.add(id); }
+    }
+
+    public List<String> getWeaponCycle() { return Collections.unmodifiableList(weaponCycle); }
 
     public KeyListener getInputListener() {
         return inputListener;

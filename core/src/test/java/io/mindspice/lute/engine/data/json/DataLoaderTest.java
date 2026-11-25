@@ -244,8 +244,7 @@ public final class DataLoaderTest {
             var sign = DataLoader.loadGameData().objectsData().get("sign");
             check(sign.animation().isEmpty() && sign.collision().isEmpty() && sign.emissive().isEmpty(),
                 "Object fields accept explicit null");
-            for (String invalid : new String[]{"{\"animation\":null,\"emissive\":null}", "{\"collision\":null,\"emissive\":null}",
-                    "{\"animation\":null,\"collision\":null}", "{\"animation\":null,\"collision_bounds\":null,\"emissive\":null}", "null"}) {
+            for (String invalid : new String[]{"{\"pickup\":{\"type\":\"HEAL\"}}", "{\"pickup\":{\"type\":\"WEAPON_BAG\",\"amount\":2}}",  "{\"animation\":null,\"collision_bounds\":null,\"emissive\":null}", "null"}) {
                 Files.writeString(objects, "{\"sign\":" + invalid + "}");
                 rejects(DataLoader::loadGameData, "Invalid object definition: " + invalid);
             }

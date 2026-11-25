@@ -1,6 +1,7 @@
 package io.mindspice.lute.gameplay;
 
 import java.util.function.BiConsumer;
+import java.util.function.IntConsumer;
 import java.util.random.RandomGenerator;
 
 /** The rules and counters for one visit to the arena. Times are simulation seconds. */
@@ -8,14 +9,13 @@ public final class HoardRun {
     public static final int PLAYER_HEALTH = 1000;
     private static final int ROUND_SECONDS = 120;
     private static final int BASE_BATCH = 5;
-    private static final int BASE_KILL_POINTS = 5;
     private static final int ROUND_BONUS_PERCENT = 5;
     private static final int NIGHT_START_MINUTE = 20 * 60;
     private static final int NIGHT_END_MINUTE = 6 * 60;
     private static final int BATCH_UNITS = 100 * 100 * 100; // size, round and night percentages
 
     private final RandomGenerator random;
-    private final Runnable healPlayer;
+    private final IntConsumer roundStarted;
     private final BiConsumer<Integer, Integer> spawn;
     private boolean gameOver;
     private int round;
@@ -24,9 +24,9 @@ public final class HoardRun {
     private double elapsed;
     private int nextBatch;
 
-    public HoardRun(RandomGenerator random, Runnable healPlayer, BiConsumer<Integer, Integer> spawn, boolean night) {
+    public HoardRun(RandomGenerator random, IntConsumer roundStarted, BiConsumer<Integer, Integer> spawn, boolean night) {
         this.random = random;
-        this.healPlayer = healPlayer;
+        this.roundStarted = roundStarted;
         this.spawn = spawn;
         startRound(night);
     }
@@ -51,7 +51,7 @@ public final class HoardRun {
 
     private void startRound(boolean night) {
         round++;
-        healPlayer.run();
+        roundStarted.accept(round);
         spawnBatch(true, night);
         nextBatch = random.nextInt(20, 41);
     }
@@ -70,12 +70,13 @@ public final class HoardRun {
     public boolean isGameOver() { return gameOver; }
 
     // Credit is committed on delivery. Even a kill queued before death cannot revise the final score.
-    public void enemyKilled() {
+    public void enemyKilled(int points) {
         if (gameOver) { return; }
         kills++;
-        score += (BASE_KILL_POINTS * roundPercent() + 50) / 100;
+        score += points;
     }
 
+    public long aliveSeconds() { return (round - 1L) * ROUND_SECONDS + (long) elapsed; }
     public long kills() { return kills; }
     public long score() { return score; }
     public int round() { return round; }

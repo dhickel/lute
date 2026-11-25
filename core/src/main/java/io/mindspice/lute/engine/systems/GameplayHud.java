@@ -101,8 +101,11 @@ final class GameplayHud {
     static String statusText(int minute, HoardRun run) {
         String clock = clockText(minute);
         if (run == null) { return clock; }
+        if (run.isGameOver()) {
+            return "Game Over   Score " + run.score() + "   Round " + run.round() + "   Alive " + run.aliveSeconds() + "s";
+        }
         int left = run.remainingSeconds();
-        return clock + (run.isGameOver() ? "   Game Over" : "") + "   Round " + run.round()
+        return clock + "   Round " + run.round()
             + "   " + left / 60 + ":" + (left % 60 < 10 ? "0" : "") + left % 60
             + " left   Kills " + run.kills() + "   Score " + run.score();
     }

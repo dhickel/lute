@@ -36,7 +36,18 @@ public final class LightingDataTest {
     private static void catalogueSchema() {
         var empty = object("{\"animation\":null,\"collision\":null,\"emissive\":null}");
         check(empty.animation().isEmpty() && empty.collision().isEmpty() && empty.emissive().isEmpty(), "Explicit nulls bind as empty");
-        requiredMembers(LightingDataTest::object, "\"animation\":null", "\"collision\":null", "\"emissive\":null");
+        check(object("{}").equals(empty), "Omitted capabilities bind as empty");
+        var potion = object("{\"atlas_key\":\"potion\",\"pickup\":{\"type\":\"HEAL\",\"amount\":50}}");
+        check(potion.atlasKey().orElseThrow().equals("potion") && potion.pickup().orElseThrow().amount() == 50
+            && potion.animation().isEmpty() && potion.collision().isEmpty() && potion.emissive().isEmpty(),
+            "Pickup and static art bind without other behaviors");
+        var combined = object("{\"animation\":" + ANIMATION + ",\"emissive\":" + LIGHT + ",\"pickup\":{\"type\":\"WEAPON_BAG\"}}");
+        check(combined.animation().isPresent() && combined.emissive().isPresent() && combined.pickup().isPresent(),
+            "An animated emitter can also be collected");
+        for (String invalid : List.of("{}", "{\"type\":\"HEAL\"}", "{\"type\":\"HEAL\",\"amount\":0}",
+            "{\"type\":\"HEAL\",\"amount\":50.5}", "{\"type\":\"WEAPON_BAG\",\"amount\":5}", "{\"type\":\"OTHER\"}")) {
+            rejects(() -> object("{\"pickup\":" + invalid + "}"), "Invalid pickup: " + invalid);
+        }
         rejects(() -> object("{\"animation\":null,\"collision\":null,\"emssive\":null}"), "emssive is not an alias");
         for (String invalid : List.of("null", "{}", "[]", "{\"fixture\":null}", "{\" \":" + definition(LIGHT) + "}",
             "{\"fixture\":" + definition(LIGHT) + ",\"fixture\":" + definition(LIGHT) + "}", "{\"fixture\":" + definition(LIGHT) + "}{}")) {

@@ -121,6 +121,37 @@ public class TiledSystem extends EntitySystem implements EventEmitter {
         return null;
     }
 
+    Entity activePlayer() { return active.player; }
+
+    void addArenaEntity(Entity entity) {
+        active.entities.add(entity);
+        if (ActorAi.MAPPER.has(entity)) { active.arrivingEnemies.add(entity); }
+        getEngine().addEntity(entity);
+    }
+
+    void collectPickups() {
+        var collected = new ArrayList<Entity>();
+        for (var contact : physicsWorld.getContactList()) {
+            if (!contact.isTouching()) { continue; }
+            var a = contact.getFixtureA();
+            var b = contact.getFixtureB();
+            var other = !a.isSensor() && a.getBody().getUserData() == active.player ? b
+                : !b.isSensor() && b.getBody().getUserData() == active.player ? a : null;
+            if (other == null || !(other.getBody().getUserData() instanceof Entity object)) { continue; }
+            var pickup = object.getComponent(Pickup.class);
+            if (pickup == null || object.isScheduledForRemoval() || collected.contains(object)) { continue; }
+            switch (pickup.rule().type()) {
+                case HEAL -> { if (!playerHealth().heal(pickup.rule().amount())) { continue; } }
+                case WEAPON_BAG -> Controller.MAPPER.get(active.player).collectWeapon(pickup.weapon());
+            }
+            collected.add(object);
+        }
+        for (var object : collected) {
+            active.entities.remove(object);
+            removeEntity(getEngine(), object);
+        }
+    }
+
     public void showMap(MapAssets initialAssets) {
         if (active != null) { return; }
         install(prepare(entry == null ? new Entry(initialAssets, null) : entry));
@@ -287,16 +318,19 @@ public class TiledSystem extends EntitySystem implements EventEmitter {
             }
             var factory = getEngine().getSystem(EntityFactory.class);
             for (var area : triggers.areas()) {
-                if (area.behaviorKey() != null) {
+                if (area.type() == MapTriggers.SpawnType.ENEMY && area.behaviorKey() != null) {
                     var footprints = new HashMap<String, Rectangle>();
                     footprints.put(area.spawnKey(), factory.enemySpawnFootprint(area.spawnKey(), area.facing()));
                     if (next.arena != null && next.arena.contains(area)) {
-                        footprints.put(HoardSystem.WAVE_ARCHER, factory.enemySpawnFootprint(HoardSystem.WAVE_ARCHER, area.facing()));
+                        for (var key : HoardSystem.TIERS.get(next.arena.indexOf(area))) {
+                            footprints.put(key, factory.enemySpawnFootprint(key, area.facing()));
+                        }
                     }
                     next.enemyFootprints.put(area, footprints);
                 }
             }
             for (var marker : triggers.points()) {
+                if (next.arena != null && "idle_dredge".equals(marker.behaviorKey())) { continue; }
                 switch (marker.type()) {
                     case NPC, ENEMY -> {
                         var role = marker.type() == MapTriggers.SpawnType.NPC ? Actor.Role.NPC : Actor.Role.ENEMY;
@@ -438,9 +472,12 @@ public class TiledSystem extends EntitySystem implements EventEmitter {
 
     private Entity createPlayer(RuntimeMap runtime, MapTriggers.SpawnPoint point) {
         var player = getEngine().getSystem(EntityFactory.class).getPlayerEntity(point.position(), playerState, point.facing());
-        // Travel retains the ordinary session components; arena health belongs to this map runtime.
+        // Keep ordinary health and equipment out of the visit's temporary inventory and health pool.
         runtime.sessionPlayer = PlayerState.of(player);
-        if (runtime.arenaHealth != null) { player.add(runtime.arenaHealth); }
+        if (runtime.arenaHealth != null) {
+            var loadout = runtime.sessionPlayer.loadout().copy();
+            player.add(runtime.arenaHealth).add(loadout).add(Controller.forArena(loadout.getWeapon().id()));
+        }
         var properties = runtime.map.getProperties();
         player.add(new BowAim(properties.get("tilewidth", Integer.class) * GameConsts.UNIT_SCALE,
             properties.get("tileheight", Integer.class) * GameConsts.UNIT_SCALE));

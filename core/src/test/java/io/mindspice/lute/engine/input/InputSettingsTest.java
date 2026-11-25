@@ -33,6 +33,7 @@ final class InputSettingsTest {
         equal(InputAction.MOVE_UP, defaults.getGamepad(GamepadControl.DPAD_UP), "D-pad default");
         equal(InputAction.ATTACK_PRIMARY, defaults.getGamepad(GamepadControl.FACE_SOUTH), "south face default");
         equal(InputAction.ATTACK_SECONDARY, defaults.getGamepad(GamepadControl.FACE_WEST), "west face default");
+        equal(InputAction.CYCLE_ARENA_WEAPON, defaults.getGamepad(GamepadControl.FACE_NORTH), "north face cycles arena weapons");
         equal(InputAction.MOVE_LEFT, defaults.getGamepad(GamepadControl.LEFT_STICK_LEFT), "left stick default");
 
         var custom = load("""

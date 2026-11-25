@@ -57,6 +57,8 @@ public class DataLoader {
 
     public static Map<String, ObjectData> parseObjectDefinitions(InputStream file) {
         return readDefinitions(file, "objects.json", definitionsReader(ObjectData.class)
+            .with(DeserializationFeature.FAIL_ON_TRAILING_TOKENS)
+            .without(DeserializationFeature.ACCEPT_FLOAT_AS_INT)
             .with(JsonNodeFeature.USE_BIG_DECIMAL_FOR_FLOATS));
     }
 

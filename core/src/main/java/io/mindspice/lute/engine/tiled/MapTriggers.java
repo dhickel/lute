@@ -30,7 +30,7 @@ public record MapTriggers(List<Sensor> sensors, List<SpawnPoint> points, List<Sp
     }
     public record Sensor(String name, SensorType type, DetectorGeometry geometry, String targetMap, String targetSpawn) { }
     public record SpawnInfo(String name, SpawnType type) { }
-    public record SpawnPoint(SpawnInfo info, Vector2 position, String spawnKey, Facing.Direction facing) {
+    public record SpawnPoint(SpawnInfo info, Vector2 position, String spawnKey, Facing.Direction facing, String behaviorKey) {
         public String name() { return info.name(); }
         public SpawnType type() { return info.type(); }
     }
@@ -181,7 +181,7 @@ public record MapTriggers(List<Sensor> sensors, List<SpawnPoint> points, List<Sp
                     case PLAYER, NPC, ENEMY, OBJECT, ITEM -> enumValue(object, "facing", properties.get("facing"), Facing.Direction.class);
                     case TELEPORT -> null;
                 };
-                points.add(new SpawnPoint(info, position, spawnKey, facing));
+                points.add(new SpawnPoint(info, position, spawnKey, facing, properties.get("behaviorKey", String.class)));
             }
             case "SpawnArea" -> {
                 var properties = spawnProperties(object);
@@ -192,7 +192,8 @@ public record MapTriggers(List<Sensor> sensors, List<SpawnPoint> points, List<Sp
                 String key = null;
                 Facing.Direction facing = null;
                 if (behavior != null) {
-                    if (info.type() != SpawnType.ENEMY) { throw invalid(object, "behaviorKey requires an ENEMY area"); }
+                    if (info.type() != SpawnType.ENEMY && !(info.type() == SpawnType.ITEM && "round_health_spawn".equals(behavior)
+                        && object instanceof com.badlogic.gdx.maps.objects.EllipseMapObject)) { throw invalid(object, "behaviorKey requires an ENEMY area"); }
                     key = requiredSpawnKey(object, properties.get("spawnKey"), false);
                     facing = enumValue(object, "facing", properties.get("facing"), Facing.Direction.class);
                 }
@@ -226,10 +227,16 @@ public record MapTriggers(List<Sensor> sensors, List<SpawnPoint> points, List<Sp
     }
 
     private static Rectangle bounds(MapObject object) {
-        if (object.getClass() != RectangleMapObject.class) {
+        Rectangle bounds;
+        if (object instanceof com.badlogic.gdx.maps.objects.EllipseMapObject ellipse &&
+            "round_health_spawn".equals(spawnProperties(object).get("behaviorKey"))) {
+            var e = ellipse.getEllipse();
+            bounds = new Rectangle(e.x, e.y, e.width, e.height);
+        } else if (object.getClass() == RectangleMapObject.class) {
+            bounds = new Rectangle(((RectangleMapObject) object).getRectangle());
+        } else {
             throw invalid(object, "requires rectangle geometry");
         }
-        var bounds = new Rectangle(((RectangleMapObject) object).getRectangle());
         validateBounds(object, bounds);
         bounds.set(bounds.x * GameConsts.UNIT_SCALE, bounds.y * GameConsts.UNIT_SCALE,
             bounds.width * GameConsts.UNIT_SCALE, bounds.height * GameConsts.UNIT_SCALE);

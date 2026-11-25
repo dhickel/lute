@@ -40,6 +40,24 @@ public final class AwarenessSystem extends IteratingSystem {
             stop.perform(actor, state);
             return;
         }
+        var guard = actor.getComponent(io.mindspice.lute.engine.components.ArenaGuard.class);
+        if (guard != null) {
+            var player = getEngine().getSystem(TiledSystem.class).activePlayer();
+            if (livingActor(player) && guard.territory().contains(feet(player))) {
+                state.setVisibleTarget(player);
+                state.setTargetOffset(ai.updateTarget(feet(actor), feet(player), deltaTime));
+                if (BehaviorGraphs.attackLocksMovement(actor)) { stop.perform(actor, state); }
+                else { BehaviorGraphs.pursuit(ActorAi.Mode.ENGAGE).travel(actor, state); }
+            } else {
+                ai.forgetTarget();
+                Combat.MAPPER.get(actor).consumeAttackRequest();
+                var offset = guard.home().cpy().sub(Physic.MAPPER.get(actor).getBody().getPosition());
+                state.setTargetOffset(offset);
+                if (offset.len2() < .01f || BehaviorGraphs.attackLocksMovement(actor)) { stop.perform(actor, state); }
+                else { Action.followTarget().perform(actor, state); }
+            }
+            return;
+        }
         var graphs = BehaviorGraphs.forKey(ai.behaviorGraphKey());
         var shooter = ai.retaliationTarget();
         boolean detectsPlayer = Actor.MAPPER.get(actor).role() == Actor.Role.ENEMY
@@ -71,6 +89,7 @@ public final class AwarenessSystem extends IteratingSystem {
     void arrowDamaged(Entity victim, Entity shooter) {
         var ai = ActorAi.MAPPER.get(victim);
         if (ai == null || !livingActor(victim) || Actor.MAPPER.get(victim).role() == Actor.Role.PLAYER) { return; }
+        if (victim.getComponent(io.mindspice.lute.engine.components.ArenaGuard.class) != null) { return; }
         var from = feet(victim);
         var to = retaliationFeet(victim, shooter, from);
         if (to != null) {

@@ -8,6 +8,11 @@ import io.mindspice.lute.engine.events.EventListener;
 import io.mindspice.lute.engine.tiled.MapTriggers;
 import io.mindspice.lute.gameplay.HoardRun;
 
+import com.badlogic.ashley.core.Component;
+import com.badlogic.gdx.math.Ellipse;
+import com.badlogic.gdx.math.Vector2;
+import io.mindspice.lute.engine.components.*;
+import io.mindspice.lute.engine.singletons.GameConsts;
 import java.util.ArrayList;
 import java.util.List;
 import java.util.function.Consumer;
@@ -15,15 +20,29 @@ import java.util.random.RandomGenerator;
 
 /** Adapts one map-scoped run to the simulation clock, combat events and unlocked map placement. */
 public final class HoardSystem extends EntitySystem implements EventListener {
-    static final String WAVE_ARCHER = "undead_archer";
+    static final List<List<String>> TIERS = List.of(List.of("brainless_undead", "undead_archer"),
+        List.of("bone_soldier", "cultist"), List.of("cultist_archer", "viper"), List.of("reaper", "raider"));
+    // Dredge is a center guard, not a zone enemy; its independent base bounty is five points.
+    private static final int DREDGE_POINTS = 5;
+    private record Bounty(int points) implements Component { }
+    private RandomGenerator dropRandom;
     private HoardRun run;
     private final Consumer<Event.Player.KilledEnemy> onKill = event -> {
         // The bus drains on the next update, possibly after named travel or hide/show.
-        if (run != null && getEngine().getSystem(TiledSystem.class).owns(event.enemy())) { run.enemyKilled(); }
+        if (run == null || run.isGameOver()) { return; }
+        var tiled = getEngine().getSystem(TiledSystem.class);
+        var enemy = event.enemy();
+        if (event.player() != tiled.activePlayer() || !tiled.owns(enemy)) { return; }
+        var bounty = enemy.getComponent(Bounty.class);
+        if (bounty == null) { return; }
+        run.enemyKilled(bounty.points());
+        if (dropRandom.nextInt(10) == 0) { drop(tiled, feet(enemy), "health_pack_1"); }
     };
 
     static List<MapTriggers.SpawnArea> arena(String mapId, MapTriggers triggers) {
         if (!"hoard_mode".equals(mapId)) { return null; }
+        dredgePoint(triggers);
+        healthArea(triggers);
         var areas = new ArrayList<MapTriggers.SpawnArea>();
         for (int i = 1; i <= 4; i++) {
             var area = triggers.requireEnemyArea("SpawnArea" + i, "agroWanderingHoard");
@@ -35,21 +54,69 @@ public final class HoardSystem extends EntitySystem implements EventListener {
         return List.copyOf(areas);
     }
 
+    private static MapTriggers.SpawnPoint dredgePoint(MapTriggers triggers) {
+        var points = triggers.points().stream().filter(p -> "idle_dredge".equals(p.behaviorKey())).toList();
+        if (points.size() != 1 || points.getFirst().type() != MapTriggers.SpawnType.ENEMY
+            || !"dredge".equals(points.getFirst().spawnKey())) {
+            throw new IllegalArgumentException("Arena requires one idle_dredge ENEMY point with spawnKey dredge");
+        }
+        return points.getFirst();
+    }
+
+    private static MapTriggers.SpawnArea healthArea(MapTriggers triggers) {
+        var areas = triggers.areas().stream().filter(a -> "round_health_spawn".equals(a.behaviorKey())).toList();
+        if (areas.size() != 1 || areas.getFirst().type() != MapTriggers.SpawnType.ITEM
+            || !"health_pack_2".equals(areas.getFirst().spawnKey())) {
+            throw new IllegalArgumentException("Arena requires one round_health_spawn ITEM ellipse with spawnKey health_pack_2");
+        }
+        return areas.getFirst();
+    }
+
     void bind(TiledSystem tiled, List<MapTriggers.SpawnArea> areas, RandomGenerator random) {
         if (areas == null) { run = null; return; }
-        run = new HoardRun(random, tiled.playerHealth()::restore, (amount, activeAreas) -> {
+        dropRandom = random;
+        var triggers = tiled.getMapTriggers();
+        var marker = dredgePoint(triggers);
+        var center = healthArea(triggers);
+        var box = center.bounds();
+        var territory = new Ellipse(box.x + box.width / 2, box.y + box.height / 2, box.width, box.height);
+        run = new HoardRun(random, round -> {
+            if (round > 1) { drop(tiled, box.getCenter(new Vector2()), center.spawnKey()); }
+            if (round % 5 == 0) {
+                var boss = getEngine().getSystem(EntityFactory.class).getMapActor(marker.position(), Actor.Role.ENEMY,
+                    marker.spawnKey(), marker.facing());
+                boss.add(new ArenaGuard(territory, Physic.MAPPER.get(boss).getBody().getPosition().cpy()));
+                boss.add(new Bounty(DREDGE_POINTS));
+                tiled.addArenaEntity(boss);
+            }
+        }, (amount, activeAreas) -> {
             int count = Math.min(activeAreas, areas.size());
             int next = random.nextInt(count);
             for (int i = 0; i < amount; i++) {
-                boolean archer = random.nextBoolean();
+                int variant = random.nextBoolean() ? 1 : 0;
                 for (int attempt = 0; attempt < count; attempt++) {
-                    var area = areas.get(next);
+                    int zone = next;
                     next = (next + 1) % count;
-                    String key = archer ? WAVE_ARCHER : area.spawnKey();
-                    if (tiled.trySpawnAreaEnemy(area, key, random) != null) { break; }
+                    var enemy = tiled.trySpawnAreaEnemy(areas.get(zone), TIERS.get(zone).get(variant), random);
+                    if (enemy != null) { enemy.add(new Bounty(5 * (zone + 1))); break; }
                 }
             }
         }, clockNight());
+    }
+
+    void dredgeDied(Entity enemy) {
+        var tiled = getEngine().getSystem(TiledSystem.class);
+        if (isActive() && tiled.owns(enemy)) { drop(tiled, feet(enemy), "weapon_bag"); }
+    }
+
+    private static Vector2 feet(Entity enemy) {
+        var actor = Actor.MAPPER.get(enemy);
+        return Physic.MAPPER.get(enemy).getBody().getWorldPoint(new Vector2(actor.feetX(), actor.feetY()));
+    }
+
+    private void drop(TiledSystem tiled, Vector2 world, String key) {
+        var pixels = world.cpy().scl(1f / GameConsts.UNIT_SCALE);
+        tiled.addArenaEntity(getEngine().getSystem(EntityFactory.class).getSpawnedObject(pixels, key, Facing.Direction.DOWN));
     }
 
     void playerDied(Entity player) {
@@ -75,7 +142,10 @@ public final class HoardSystem extends EntitySystem implements EventListener {
             var death = engine.getSystem(DeathSystem.class);
             if (death.getFamily().matches(victim)) { death.processEntity(victim, 0f); }
         }
-        if (!run.isGameOver()) { run.advance(interval, clockNight()); }
+        if (!run.isGameOver()) {
+            engine.getSystem(TiledSystem.class).collectPickups();
+            run.advance(interval, clockNight());
+        }
     }
 
     @Override
