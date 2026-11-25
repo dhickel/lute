@@ -202,7 +202,7 @@ final class ArrowFlight {
             Math.max(tip.x, next.x) + collisionPad, Math.max(tip.y, next.y) + collisionPad);
         var health = nearest.target == null ? null : Health.MAPPER.get(nearest.target);
         if (health != null && health.isAlive()
-            && DamageFeedback.land(nearest.target, health, damage, drawScale, launchFacing) > 0) {
+            && HealthFeedback.land(nearest.target, health, damage, drawScale, launchFacing) > 0) {
             damagedVictim = nearest.target;
         }
         return Float.isFinite(nearest.distance);

@@ -32,22 +32,32 @@ final class GameplayHud {
 
     void draw(Batch batch, Engine engine, Viewport viewport, Health player, int minute, HoardRun run) {
         batch.setProjectionMatrix(projection.setToOrtho2D(0, 0, viewport.getScreenWidth(), viewport.getScreenHeight()));
-        for (var victim : engine.getEntitiesFor(DamageFeedback.FAMILY)) {
-            for (var hit : DamageFeedback.MAPPER.get(victim).numbers) {
-                viewport.project(point.set(hit.x, hit.y));
+        for (var entity : engine.getEntitiesFor(HealthFeedback.FAMILY)) {
+            for (var number : HealthFeedback.MAPPER.get(entity).numbers) {
+                viewport.project(point.set(number.x, number.y));
                 // Projection includes the letterbox offset; this batch draws inside the viewport.
                 float x = point.x - viewport.getScreenX();
-                float y = point.y - viewport.getScreenY() + font.getLineHeight();
-                float t = hit.age / DamageFeedback.DURATION;
-                // Rise even on a southbound hit; its outward component reduces the rise.
+                float t = number.age / HealthFeedback.DURATION;
+                float scale = number.isHeal() ? 2 : 1;
+                float y = point.y - viewport.getScreenY() + font.getLineHeight() * scale;
                 y += 30 * t;
-                switch (hit.facing) {
-                    case LEFT -> x -= 35 * t;
-                    case RIGHT -> x += 35 * t;
-                    case UP -> y += 12 * t;
-                    case DOWN -> y -= 12 * t;
+                if (number.isHeal()) {
+                    font.getData().setScale(scale);
+                    try {
+                        drawText(batch, "+" + number.amount + " HP", x, y, Align.center, 0, 1, 0, 1 - t);
+                    } finally {
+                        font.getData().setScale(1);
+                    }
+                } else {
+                    // Rise even on a southbound hit; its outward component reduces the rise.
+                    switch (number.facing) {
+                        case LEFT -> x -= 35 * t;
+                        case RIGHT -> x += 35 * t;
+                        case UP -> y += 12 * t;
+                        case DOWN -> y -= 12 * t;
+                    }
+                    drawHealthText(batch, Integer.toString(number.amount), x, y, Align.center, number.remaining, 1 - t);
                 }
-                drawHealthText(batch, Integer.toString(hit.amount), x, y, Align.center, hit.remaining, 1 - t);
             }
         }
         drawBar(batch, viewport.getScreenWidth(), viewport.getScreenHeight(), player, minute, run);
