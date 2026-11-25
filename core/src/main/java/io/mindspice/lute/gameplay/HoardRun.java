@@ -8,9 +8,8 @@ import java.util.random.RandomGenerator;
 public final class HoardRun {
     public static final int PLAYER_HEALTH = 1000;
     private static final int ROUND_SECONDS = 120;
-    private static final int BASE_BATCH = 5;
-    private static final int ROUND_BONUS_PERCENT = 5;
-    private static final int BATCH_UNITS = 100 * 100; // size and round percentages
+    private static final int STARTING_BATCH = 10;
+    private static final int REFRESH_BATCH = 5;
 
     private final RandomGenerator random;
     private final IntConsumer roundStarted;
@@ -37,7 +36,7 @@ public final class HoardRun {
                 elapsed -= ROUND_SECONDS;
                 startRound();
             } else {
-                spawnBatch(false);
+                spawn.accept(REFRESH_BATCH, round);
                 nextBatch += random.nextInt(20, 41);
             }
         }
@@ -46,19 +45,9 @@ public final class HoardRun {
     private void startRound() {
         round++;
         roundStarted.accept(round);
-        spawnBatch(true);
+        spawn.accept(round == 1 ? STARTING_BATCH : REFRESH_BATCH, round);
         nextBatch = random.nextInt(20, 41);
     }
-
-    private void spawnBatch(boolean opening) {
-        int sizePercent = opening ? 100 : random.nextInt(25, 51);
-        // Preserve wave-size progression independently of area availability.
-        int baseline = BASE_BATCH + Math.min(3, (round - 1) / 5);
-        long units = (long) baseline * sizePercent * roundPercent();
-        spawn.accept((int) ((units + BATCH_UNITS / 2) / BATCH_UNITS), round);
-    }
-
-    private long roundPercent() { return 100L + ROUND_BONUS_PERCENT * (long) round; }
 
     public void end() { gameOver = true; }
     public boolean isGameOver() { return gameOver; }

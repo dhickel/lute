@@ -64,7 +64,7 @@ public final class HoardArenaTest extends ApplicationAdapter {
         var hoard = engine.getSystem(HoardSystem.class);
         var run = hoard.run();
         var enemies = engine.getEntitiesFor(Family.all(ActorAi.class).get());
-        require(run != null && run.round() == 1 && enemies.size() == 5, "five wave enemies at arena mount");
+        require(run != null && run.round() == 1 && enemies.size() == 10, "ten wave enemies at arena mount");
         var clock = engine.getSystem(WorldTimeSystem.class);
         require(GameplayHud.statusText((int) clock.getMinuteOfDay(), run).equals("Round 1   2:00 left   Kills 0   Score 0"), "arena HUD");
         var areas = HoardSystem.arena("hoard_mode", tiled.getMapTriggers());
@@ -113,7 +113,7 @@ public final class HoardArenaTest extends ApplicationAdapter {
         // Advance real Box2D fixed ticks without rendering thousands of intermediate frames.
         var physics = engine.getSystem(PhysicSystem.class);
         physics.update(40.01f);
-        require(enemies.size() > 5 && enemies.size() <= 11 && health.getCurrent() == 899,
+        require(enemies.size() >= 15 && enemies.size() <= 20 && health.getCurrent() == 899,
             "one or two smaller daylight reinforcements without healing");
         physics.update(80.02f);
         require(run.round() == 2 && health.getCurrent() == 899 && enemies.contains(survivor, true)
@@ -181,7 +181,7 @@ public final class HoardArenaTest extends ApplicationAdapter {
         require(tiled.requestTravel(player(), "hoard_mode", "PlayerSpawn"), "reenter arena");
         tiled.applyPendingTravel();
         bus.update(0);
-        require(hoard.run() != priorRun && hoard.run().round() == 1 && hoard.run().score() == 0 && enemies.size() == 5,
+        require(hoard.run() != priorRun && hoard.run().round() == 1 && hoard.run().score() == 0 && enemies.size() == 10,
             "new run ignores late kills from prior arena");
         before = clock.getTotalInGameSeconds();
         clock.update(1f);
@@ -391,9 +391,8 @@ public final class HoardArenaTest extends ApplicationAdapter {
                 @Override public int nextInt(int bound) { return 0; }
                 @Override public float nextFloat() { return .5f; }
                 @Override public int nextInt(int origin, int bound) {
-                    if (origin == 20 && bound == 41) { return 20; }
-                    require(origin == 25 && bound == 51, "reinforcement percentage roll");
-                    return 50;
+                    require(origin == 20 && bound == 41, "reinforcement interval roll");
+                    return 20;
                 }
             });
             hoard.run().advance(15 * 120 - 1);
@@ -617,7 +616,7 @@ public final class HoardArenaTest extends ApplicationAdapter {
         var engine = GAME.getEngine();
         var enemies = engine.getEntitiesFor(Family.all(ActorAi.class).get());
         int start = enemies.size();
-        boolean[] archer = {true, true, false, true, false, false, false, true};
+        boolean[] archer = {true, true, false, true, false, false, false, true, true, false, false, true, false, true, false};
         var area = HoardSystem.arena("hoard_mode", tiled.getMapTriggers());
         hoard.bind(tiled, area, new Random(37) {
             int slot;
@@ -632,9 +631,9 @@ public final class HoardArenaTest extends ApplicationAdapter {
             }
             @Override public int nextInt(int origin, int bound) { return bound - 1; }
         });
-        require(enemies.size() == start + 5, "five scripted opening slots");
+        require(enemies.size() == start + 10, "ten scripted opening slots");
         hoard.run().advance(40);
-        require(enemies.size() == start + archer.length, "three scripted reinforcement slots");
+        require(enemies.size() == start + archer.length, "five scripted reinforcement slots");
         for (int i = 0; i < archer.length; i++) {
             var enemy = enemies.get(start + i);
             require(tiled.owns(enemy) && BowAim.MAPPER.has(enemy) == archer[i]
@@ -767,7 +766,7 @@ public final class HoardArenaTest extends ApplicationAdapter {
         tiled.showMap(ManifestLoader.parseMapManifest("hoard_mode"));
         var fresh = hoard.run();
         require(fresh != previous && !fresh.isGameOver() && fresh.round() == 1 && fresh.remainingSeconds() == 120
-            && fresh.kills() == 0 && fresh.score() == 0 && enemies.size() == 5, "fresh arena counters and opening batch");
+            && fresh.kills() == 0 && fresh.score() == 0 && enemies.size() == 10, "fresh arena counters and opening batch");
         require(Health.MAPPER.get(player()).getCurrent() == 1000 && Controller.MAPPER.has(player())
             && Physic.MAPPER.get(player()).getBody().isActive(), "fresh live, controllable arena player");
     }
