@@ -6,6 +6,10 @@ This is a hobbyist project. Keep the code simple, grokkable, and easy to follow.
 
 Format code for readability, with consistent indentation, sensible line breaks, and whitespace that separates logical steps. Favor clear names and straightforward expressions over clever or compressed code.
 
+## Gameplay Scope
+
+Preserve existing gameplay behavior outside the requested scope. Obtain explicit user approval before any unspecified gameplay change, including indirect effects on existing balance, scaling, spawn rules, scoring, or timing. If such a change is needed to deliver the request, explain the exact change and wait for approval before implementing it.
+
 ## Pull Request Workflow
 
 For PR work, use and stay on the PR branch in the user's usual checkout for testing. Do not merge the PR locally or remotely or switch away from its branch unless the user explicitly asks. Opening, updating, or testing a PR does not authorize a merge.
