@@ -11,6 +11,7 @@ import com.badlogic.gdx.utils.GdxRuntimeException;
 import io.mindspice.lute.engine.assets.AssetService;
 import io.mindspice.lute.engine.components.Animation2D;
 import io.mindspice.lute.engine.components.BowAim;
+import io.mindspice.lute.engine.components.Combat;
 import io.mindspice.lute.engine.components.Facing;
 import io.mindspice.lute.engine.components.Graphic;
 
@@ -34,6 +35,12 @@ public class AnimationSystem extends IteratingSystem implements EventEmitter {
 
     @Override
     protected void processEntity(Entity entity, float deltaTime) {
+        if (!CombatSystem.isDredgeSwing(entity, Combat.MAPPER.get(entity))) {
+            advancePlayback(entity, deltaTime);
+        }
+    }
+
+    void advancePlayback(Entity entity, float deltaTime) {
         Animation2D anim2d = Animation2D.MAPPER.get(entity);
         Facing.Direction fDirection = Facing.MAPPER.get(entity).getDirection();
 

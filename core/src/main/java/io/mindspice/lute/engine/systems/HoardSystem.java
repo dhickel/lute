@@ -50,6 +50,7 @@ public final class HoardSystem extends EntitySystem implements EventListener {
     private static final float SPRINT_RAMP_DOWN_SECONDS = .10f;
     private static final double SPRINT_SECONDS = 2d;
     private static final double REFILL_PER_SECOND = 0.7d / 6d;
+    private static final double REFILL_DELAY_SECONDS = 2d;
     private record Bounty(int baseXp) implements Component { }
 
     private static int waveBaseXp(String key) {
@@ -69,6 +70,7 @@ public final class HoardSystem extends EntitySystem implements EventListener {
     private HoardRun run;
     private final InputManager input;
     private double stamina = 1d;
+    private double refillDelay;
     private long exhaustedPress;
     private long sprintPress;
     private float sprintBoost;
@@ -123,6 +125,7 @@ public final class HoardSystem extends EntitySystem implements EventListener {
 
     void bind(TiledSystem tiled, List<MapTriggers.SpawnArea> areas, RandomGenerator random) {
         stamina = 1d;
+        refillDelay = 0d;
         exhaustedPress = 0;
         clearSprintMomentum();
         if (areas == null) { run = null; return; }
@@ -142,6 +145,7 @@ public final class HoardSystem extends EntitySystem implements EventListener {
                 int baseHealth = Health.MAPPER.get(boss).getMaximum();
                 boss.add(new Health((int) Math.min(Integer.MAX_VALUE, HoardRun.scaleForRound(baseHealth, round))));
                 boss.add(new ArenaGuard(Physic.MAPPER.get(boss).getBody().getPosition().cpy()));
+                boss.add(new DredgeLunge());
                 boss.add(new Bounty(DREDGE_BASE_XP));
                 tiled.addArenaEntity(boss);
             }
@@ -251,6 +255,9 @@ public final class HoardSystem extends EntitySystem implements EventListener {
             if (stamina > 0d) {
                 stamina = Math.max(0d, stamina - interval / SPRINT_SECONDS);
                 if (stamina == 0d) { exhaustedPress = boostedPress; }
+                refillDelay = REFILL_DELAY_SECONDS;
+            } else {
+                refill(interval);
             }
             getEngine().getSystem(AnimationSystem.class).advanceSprintWalk(player, interval * sprintBoost);
         } else {
@@ -261,14 +268,16 @@ public final class HoardSystem extends EntitySystem implements EventListener {
     }
 
     private void refill(float interval) {
-        stamina = Math.min(1d, stamina + interval * REFILL_PER_SECOND);
+        double refillTime = Math.max(0d, interval - refillDelay);
+        refillDelay = Math.max(0d, refillDelay - interval);
+        stamina = Math.min(1d, stamina + refillTime * REFILL_PER_SECOND);
     }
 
     // PhysicSystem has committed this tick; fixture queries and new bodies are safe here.
     void afterPhysicsStep(float interval) {
         if (run == null || run.isGameOver()) { return; }
-        // Resolve this tick's contacts before a batch or heal. Arrows and attack playback
-        // already had their frame update; neither should advance again on a fixed tick.
+        // Resolve contacts at this tick's positions, before a lunge ends, a wave spawns or a pickup heals.
+        // Use the arena-aware drain so a hit can reach an enemy still registering from the prior tick.
         var engine = getEngine();
         var killed = engine.getSystem(CombatSystem.class).applyPendingHits(engine.getSystem(TiledSystem.class));
         for (var victim : killed) {

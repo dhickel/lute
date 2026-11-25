@@ -8,6 +8,7 @@ import com.badlogic.ashley.systems.IteratingSystem;
 import com.badlogic.gdx.math.MathUtils;
 import com.badlogic.gdx.physics.box2d.BodyDef;
 import com.badlogic.gdx.physics.box2d.World;
+import io.mindspice.lute.engine.components.DredgeLunge;
 import io.mindspice.lute.engine.components.Physic;
 import io.mindspice.lute.engine.components.Transform;
 
@@ -76,6 +77,10 @@ public class PhysicSystem extends IteratingSystem implements EntityListener {
     protected void processEntity(Entity entity, float deltaTime) {
         Physic physic = Physic.MAPPER.get(entity);
         physic.getPrevPos().set(physic.getBody().getPosition());
+        var lunge = entity.getComponent(DredgeLunge.class);
+        if (lunge != null) {
+            getEngine().getSystem(CombatSystem.class).beforeLungeStep(entity, lunge, interval);
+        }
     }
 
     private void interpolateEntity(Entity entity, float alpha) {

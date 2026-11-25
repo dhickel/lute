@@ -155,7 +155,7 @@ public class CombatSystem extends IteratingSystem implements ContactListener, En
             var attackerHealth = Health.MAPPER.get(hit.attacker());
             if ((attackerHealth == null || attackerHealth.isAlive())
                 && combat != null && combat.isAttacking() && combat.getAttackId() == hit.attackId()
-                && health != null && health.isAlive() && combat.markHit(hit.target())) {
+                && health != null && health.isAlive() && clearOfDredgeCover(hit) && combat.markHit(hit.target())) {
                 int damage = HealthFeedback.land(hit.target(), health, combat.getActiveAttack().damage(), 1, combat.getAttackFacing());
                 if (!health.isAlive()) {
                     killed.add(hit.target());
@@ -169,6 +169,11 @@ public class CombatSystem extends IteratingSystem implements ContactListener, En
         }
         pendingHits.clear();
         return killed;
+    }
+
+    private boolean clearOfDredgeCover(Hit hit) {
+        return !hit.dredgeSwing() || !Actor.MAPPER.has(hit.target())
+            || AwarenessSystem.clearSight(world, AwarenessSystem.feet(hit.attacker()), AwarenessSystem.feet(hit.target()));
     }
 
     private void creditKill(Entity attacker, Entity victim) {
@@ -251,7 +256,35 @@ public class CombatSystem extends IteratingSystem implements ContactListener, En
                 return;
             }
         }
-        if (!combat.isAttacking()) { return; }
+        if (!combat.isAttacking() || isDredgeSwing(entity, combat)) { return; }
+        updateActiveAttack(entity, combat, animation, alive, ai);
+    }
+
+    static boolean isDredgeSwing(Entity entity, Combat combat) {
+        return entity.getComponent(DredgeLunge.class) != null && combat != null && combat.isAttacking()
+            && combat.getActiveAttack().collisionType() == CollisionType.MELEE;
+    }
+
+    void beforeLungeStep(Entity entity, DredgeLunge lunge, float interval) {
+        var combat = Combat.MAPPER.get(entity);
+        if (!isDredgeSwing(entity, combat)) { return; }
+        if (!Health.MAPPER.get(entity).isAlive()) {
+            stopAttack(entity);
+            return;
+        }
+        var animation = Animation2D.MAPPER.get(entity);
+        if (lunge.beginStep(combat.getAttackId())) {
+            // The first playback tick installs frame zero, even within a batched update.
+            if (animation.getType() != Animation2D.AnimationType.ATTACK) {
+                AnimationPlayer.MAPPER.get(entity).getAnimationFsm().changeState(AnimationState.ATTACK);
+            }
+            getEngine().getSystem(AnimationSystem.class).advancePlayback(entity, interval);
+            updateActiveAttack(entity, combat, animation, true, ActorAi.MAPPER.get(entity));
+        }
+        lunge.driveStep(Physic.MAPPER.get(entity).getBody(), combat, animation, interval);
+    }
+
+    private void updateActiveAttack(Entity entity, Combat combat, Animation2D animation, boolean alive, ActorAi ai) {
         if (!alive || (animation.isAttackReady() && animation.isFinished())) {
             if (alive && ai != null && combat.getActiveAttack().collisionType() == CollisionType.MELEE) {
                 // The authored follow-through already counts. Never extend the damaging fixture into recovery.
@@ -298,7 +331,7 @@ public class CombatSystem extends IteratingSystem implements ContactListener, En
             var sensor = body.createFixture(definition);
             body.setAwake(true);
             combat.setSensor(sensor, physicsStep());
-            sensor.setUserData(new AttackSensor(entity, combat.getAttackId()));
+            sensor.setUserData(new AttackSensor(entity, combat.getAttackId(), isDredgeSwing(entity, combat)));
         } finally {
             shape.dispose();
         }
@@ -308,7 +341,11 @@ public class CombatSystem extends IteratingSystem implements ContactListener, En
         var combat = mountedCombat.get(entity);
         if (combat == null || !combat.isAttacking()) { return; }
         var sensor = combat.getSensor();
-        if (sensor != null) { sensor.getBody().destroyFixture(sensor); }
+        if (sensor != null) {
+            var body = sensor.getBody();
+            body.destroyFixture(sensor);
+            if (isDredgeSwing(entity, combat)) { body.setLinearVelocity(0f, 0f); }
+        }
         combat.endAttack();
     }
 
@@ -333,7 +370,7 @@ public class CombatSystem extends IteratingSystem implements ContactListener, En
                 if (fixture.getUserData() == Hurtbox.INSTANCE) { return; }
             }
         }
-        pendingHits.add(new Hit(attack.attacker(), entity, attack.attackId()));
+        pendingHits.add(new Hit(attack.attacker(), entity, attack.attackId(), attack.dredgeSwing()));
     }
 
     @Override
@@ -364,6 +401,6 @@ public class CombatSystem extends IteratingSystem implements ContactListener, En
         mountedCombat.remove(entity);
     }
 
-    private record AttackSensor(Entity attacker, long attackId) { }
-    private record Hit(Entity attacker, Entity target, long attackId) { }
+    private record AttackSensor(Entity attacker, long attackId, boolean dredgeSwing) { }
+    private record Hit(Entity attacker, Entity target, long attackId, boolean dredgeSwing) { }
 }

@@ -7,6 +7,7 @@ import io.mindspice.lute.engine.components.BowAim;
 import io.mindspice.lute.engine.components.Combat;
 import io.mindspice.lute.engine.components.Combat.AttackSlot;
 import io.mindspice.lute.engine.components.Loadout;
+import io.mindspice.lute.engine.components.DredgeLunge;
 import io.mindspice.lute.engine.data.json.WeaponsData.WeaponData.CollisionType;
 
 import java.util.List;
@@ -96,8 +97,10 @@ public final class BehaviorGraphs {
 
     private static RootNode engage() {
         var root = new RootNode();
-        var inRange = DecisionNode.of("Player in melee range", List.of(
-            Decision.hasPrimaryMelee(), Decision.targetWithinPixels(32f)));
+        var meleeRange = Decision.targetWithinPixels(32f);
+        var lungeRange = Decision.targetWithinPixels(DredgeLunge.COMMIT_RANGE);
+        var inRange = DecisionNode.of("Player in melee range", List.of(Decision.hasPrimaryMelee(),
+            (entity, state) -> (entity.getComponent(DredgeLunge.class) == null ? meleeRange : lungeRange).eval(entity, state)));
         var stopAndFace = Action.stop().andThen(Action.faceTarget());
         var ready = DecisionNode.of("Primary opportunity", List.of(primaryDue(MELEE_DELAY)));
         ready.addEdgeNode(ActionNode.of("Attack", stopAndFace.andThen(Action.attack(AttackSlot.PRIMARY))));

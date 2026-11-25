@@ -520,7 +520,8 @@ public final class MapTravelTest extends ApplicationAdapter {
         var playerBody = body(player);
         var original = playerBody.getPosition().cpy();
         try {
-            require(dredge.getComponent(ArenaGuard.class) == null, "Ordinary Dredge has no arena home");
+            require(dredge.getComponent(ArenaGuard.class) == null && dredge.getComponent(DredgeLunge.class) == null,
+                "Ordinary Dredge has neither arena home nor lunge");
             var actor = Actor.MAPPER.get(dredge);
             var playerActor = Actor.MAPPER.get(player);
             var feet = body(dredge).getWorldPoint(new Vector2(actor.feetX(), actor.feetY())).cpy();
@@ -532,6 +533,15 @@ public final class MapTravelTest extends ApplicationAdapter {
             awareness.update(0f);
             require(ai.mode() == ActorAi.Mode.ENGAGE && Move.MAPPER.get(dredge).getDirection().x > 0f,
                 "Actual Dredge outside Hoard pursues a visible player behind it");
+            var combat = Combat.MAPPER.get(dredge);
+            awareness.update(.25f);
+            require(!combat.hasAttackRequest(), "Ordinary Dredge cannot commit from lunge range");
+            playerBody.setTransform(rear.cpy().sub(44 * unit, 0), 0);
+            awareness.update(0f);
+            awareness.update(.25f);
+            require(combat.requestedTarget() == player, "Ordinary Dredge can still commit at normal melee range");
+            combat.consumeAttackRequest();
+            playerBody.setTransform(rear, 0);
 
             var wall = world.createBody(new BodyDef());
             var shape = new PolygonShape();

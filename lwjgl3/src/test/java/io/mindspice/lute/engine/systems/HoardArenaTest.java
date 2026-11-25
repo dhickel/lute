@@ -22,6 +22,7 @@ import com.badlogic.gdx.math.Rectangle;
 import com.badlogic.gdx.math.Vector2;
 import com.badlogic.gdx.physics.box2d.Body;
 import com.badlogic.gdx.physics.box2d.BodyDef;
+import com.badlogic.gdx.physics.box2d.Fixture;
 import com.badlogic.gdx.physics.box2d.PolygonShape;
 import io.mindspice.lute.engine.GameCore;
 import io.mindspice.lute.engine.tiled.MapTriggers;
@@ -51,7 +52,7 @@ public final class HoardArenaTest extends ApplicationAdapter {
         config.disableAudio(true);
         new Lwjgl3Application(new HoardArenaTest(), config);
         if (failure != null) { throw new AssertionError("Hoard arena", failure); }
-        System.out.println("HoardArenaTest: arena, baseline walk, sprint movement, animation, stamina and HUD, batches, HP, lighting, death, pause and remount passed");
+        System.out.println("HoardArenaTest: arena, baseline walk, sprint movement, animation, stamina and HUD, Dredge lunge, batches, HP, lighting, death, pause and remount passed");
     }
 
     @Override public void create() {
@@ -83,6 +84,7 @@ public final class HoardArenaTest extends ApplicationAdapter {
             int area = spawnArea(areas, enemy);
             require(area < areas.size(), "opening enemy is inside an authored spawn area");
             openingAreas.add(area);
+            require(enemy.getComponent(DredgeLunge.class) == null, "ordinary waves have no Dredge lunge");
             require(Health.MAPPER.get(enemy).getCurrent() == 50 && Health.MAPPER.get(enemy).getMaximum() == 50
                 && ActorAi.MAPPER.get(enemy).behaviorGraphKey().equals(BowAim.MAPPER.has(enemy) ? "wander_archer" : "wander_attack"),
                 "wave enemy has its own behavior inside the polygon");
@@ -434,7 +436,8 @@ public final class HoardArenaTest extends ApplicationAdapter {
                     return 30;
                 }
             });
-            hoard.run().advance(15 * 120 - 1);
+            hoard.run().advance(14 * 120);
+            long roundStartStep = physics.completedSteps();
             var guards = new java.util.ArrayList<Entity>();
             for (var enemy : enemies) {
                 if (enemy.getComponent(ArenaGuard.class) != null) { guards.add(enemy); }
@@ -450,7 +453,14 @@ public final class HoardArenaTest extends ApplicationAdapter {
                 .filter(a -> "round_health_spawn".equals(a.behaviorKey())).findFirst().orElseThrow().bounds();
             verifyGuardVision(boss, guard, center.x + center.width);
             verifyGuardArrowChase(boss, guard);
-            verifyGuardVolley(center.x + center.width / 2, center.y + center.height / 2, guards);
+            var awareness = engine.getSystem(AwarenessSystem.class);
+            awareness.setProcessing(true);
+            try {
+                verifyGuardVolley(guards);
+                verifyGuardLunge(boss);
+            } finally {
+                awareness.setProcessing(false);
+            }
             Health.MAPPER.get(boss).damage(Integer.MAX_VALUE);
             engine.getSystem(DeathSystem.class).processEntity(boss, 0);
             var objects = engine.getEntitiesFor(Family.all(Pickup.class).get());
@@ -468,7 +478,11 @@ public final class HoardArenaTest extends ApplicationAdapter {
             require(!objects.contains(bag, true) && Controller.MAPPER.get(player()).getWeaponCycle().contains(id)
                 && Loadout.MAPPER.get(player()).getWeapon() == equipped, "bag collected without replacing equipped weapon");
             playerBody.setTransform(original, 0);
-            hoard.run().advance(1);
+            // The guard exercises ran real fixed ticks in round 15. Advance only the rest of that round.
+            float dt = GameConsts.PHYSIC_INTERVAL;
+            double guardTime = (physics.completedSteps() - roundStartStep) * (double) dt;
+            hoard.run().advance(120 - guardTime + .000001);
+            require(hoard.run().round() == 16, "reinforcement fixture starts at the next round boundary");
             // Empty the arena so the sword can only contact the first reinforcement.
             for (int i = enemies.size() - 1; i >= 0; i--) {
                 var opening = enemies.get(i);
@@ -481,7 +495,6 @@ public final class HoardArenaTest extends ApplicationAdapter {
             var attack = Combat.MAPPER.get(player);
             physics.setProcessing(false);
             attack.requestAttack(Combat.AttackSlot.PRIMARY);
-            float dt = GameConsts.PHYSIC_INTERVAL;
             for (int i = 0; i < 60 && attack.getSensor() == null; i++) { engine.update(dt); }
             require(attack.getSensor() != null, "armed before the reinforcement tick");
             hoard.run().advance(30 - dt / 2);
@@ -513,6 +526,152 @@ public final class HoardArenaTest extends ApplicationAdapter {
             map.dispose();
             require(enemies.size() == 0 && !hoard.isActive(), "no reinforcement survives unmount");
         }
+    }
+
+    private enum LungeTrial { HIT, DODGE, COVER, FREE }
+
+    private void verifyGuardLunge(Entity boss) {
+        require(boss.getComponent(DredgeLunge.class) != null, "Hoard guard has lunge");
+        float dt = GameConsts.PHYSIC_INTERVAL;
+        verifyGuardSwing(boss, LungeTrial.HIT, dt);
+        verifyGuardSwing(boss, LungeTrial.HIT, 2 * dt);
+        verifyGuardSwing(boss, LungeTrial.DODGE, dt);
+        verifyGuardSwing(boss, LungeTrial.COVER, dt);
+        for (float frame : new float[]{dt / 2, dt, 2 * dt}) {
+            float travel = verifyGuardSwing(boss, LungeTrial.FREE, frame);
+            require(Math.abs(travel - 61.511f) < .01f, "demo lunge travel at frame delta " + frame + ": " + travel);
+        }
+    }
+
+    private float verifyGuardSwing(Entity boss, LungeTrial trial, float frame) {
+        var engine = GAME.getEngine();
+        var physics = engine.getSystem(PhysicSystem.class);
+        var player = player();
+        var playerBody = Physic.MAPPER.get(player).getBody();
+        var bossBody = Physic.MAPPER.get(boss).getBody();
+        var savedPlayer = playerBody.getPosition().cpy();
+        var savedBoss = bossBody.getPosition().cpy();
+        var attack = Combat.MAPPER.get(boss);
+        var animation = Animation2D.MAPPER.get(boss);
+        var health = Health.MAPPER.get(player);
+        var ai = ActorAi.MAPPER.get(boss);
+        int hp = health.getCurrent();
+        float dt = GameConsts.PHYSIC_INTERVAL, scale = GameConsts.UNIT_SCALE;
+        var input = Gdx.input.getInputProcessor();
+        Body wall = null;
+        try {
+            attack.tickCooldown(1f);
+            ai.recover(0f);
+            ai.forgetTarget();
+            bossBody.setTransform(-100, -100, 0);
+            var feet = AwarenessSystem.feet(boss);
+            var playerActor = Actor.MAPPER.get(player);
+            playerBody.setTransform(feet.x + 76 * scale - playerActor.feetX(), feet.y - playerActor.feetY(), 0);
+            physics.resetClock();
+            long previousAttack = attack.getAttackId();
+            for (int i = 0; i < 10 && !attack.isAttacking(); i++) { engine.update(dt); }
+            require(attack.getAttackId() == previousAttack + 1 && attack.isAttacking(), "guard commits at extended range");
+            require(AwarenessSystem.feet(player).x - AwarenessSystem.feet(boss).x > 60 * scale,
+                "commit well outside planted range");
+            var start = bossBody.getPosition().cpy();
+            // Equalize the gap after the randomized approach ticks, without changing the committed direction.
+            float playerY = playerBody.getPosition().y;
+            playerBody.setTransform(AwarenessSystem.feet(boss).x + 76 * scale - playerActor.feetX(), playerY, 0);
+            switch (trial) {
+                case HIT -> { }
+                case DODGE -> input.keyDown(Input.Keys.W);
+                case COVER -> wall = lungeWall(bossBody, AwarenessSystem.feet(player).x - 18 * scale, feet.y);
+                case FREE -> playerBody.setTransform(playerBody.getPosition().x + 100 * scale, playerBody.getPosition().y, 0);
+            }
+            int startup = 0, active = 0;
+            boolean hammerContact = false;
+            float lastStride = Float.POSITIVE_INFINITY;
+            for (int i = 0; i < 120 && attack.isAttacking(); i++) {
+                long step = physics.completedSteps();
+                float x = bossBody.getPosition().x;
+                engine.update(frame);
+                int stepped = (int) (physics.completedSteps() - step);
+                if (!attack.isAttacking()) { break; }
+                require(attack.getAttackFacing() == Facing.Direction.RIGHT
+                    && Facing.MAPPER.get(boss).getDirection() == Facing.Direction.RIGHT, "lunge direction stays committed");
+                var sensor = attack.getSensor();
+                require((sensor != null) == animation.hasReachedFrame(attack.getActiveAttack().hitFrame()),
+                    "damage sensor starts at the authored frame");
+                if (sensor == null) {
+                    startup += stepped;
+                    require(bossBody.getPosition().equals(start) && health.getCurrent() == hp, "Dredge plants for windup");
+                } else {
+                    active += stepped;
+                    require(sensor.getBody() == bossBody, "active hitbox moves with Dredge");
+                    if (trial == LungeTrial.DODGE) {
+                        require(bossBody.getPosition().y == start.y, "sidestep cannot steer the lunge");
+                    } else if (trial == LungeTrial.HIT || trial == LungeTrial.COVER) {
+                        hammerContact |= overlapsHurtbox(sensor, playerBody);
+                        if (trial == LungeTrial.HIT && hammerContact) {
+                            require(health.getCurrent() < hp, "damage resolves on the contact tick, not on the next frame");
+                        }
+                    } else if (trial == LungeTrial.FREE && stepped > 0) {
+                        float stride = (bossBody.getPosition().x - x) / stepped;
+                        require(stride > 0 && stride < lastStride, "free lunge eases forward on each active batch");
+                        lastStride = stride;
+                    }
+                }
+            }
+            require(startup == 20 && active == 12, "fixed windup and active window: " + startup + "/" + active);
+            require(!attack.isAttacking() && attack.getSensor() == null && ai.recovering(), "fixture is gone in recovery");
+            float travel = (bossBody.getPosition().x - start.x) / scale;
+            require(travel > 35f, "Dredge closes the gap: " + travel);
+            if (trial == LungeTrial.COVER) {
+                require(hammerContact && AwarenessSystem.feet(boss).x < wall.getPosition().x && travel < 50f,
+                    "thin wall stops the lunge and shields a player overlapping the hammer sensor");
+            }
+            if (trial == LungeTrial.FREE || trial == LungeTrial.DODGE) {
+                require(bossBody.getLinearVelocity().isZero(), "lunge drive ends before recovery");
+            }
+            if (trial == LungeTrial.DODGE) {
+                require(playerBody.getPosition().y - playerY > 16 * scale, "player sidesteps using live input");
+            }
+            var feedback = HealthFeedback.MAPPER.get(player);
+            if (trial == LungeTrial.HIT) {
+                require(hammerContact && health.getCurrent() < hp && feedback != null && feedback.numbers.size() == 1,
+                    "stationary player takes exactly one hit: hp " + hp + " -> " + health.getCurrent()
+                        + ", feedback count " + (feedback == null ? 0 : feedback.numbers.size()) + ", dt " + frame + ", travel " + travel);
+            } else {
+                require(health.getCurrent() == hp, trial + " takes no lunge damage");
+            }
+            return travel;
+        } finally {
+            if (trial == LungeTrial.DODGE) { input.keyUp(Input.Keys.W); }
+            if (wall != null) { wall.getWorld().destroyBody(wall); }
+            health.heal(hp - health.getCurrent());
+            player.remove(HealthFeedback.class);
+            playerBody.setLinearVelocity(0, 0);
+            bossBody.setLinearVelocity(0, 0);
+            playerBody.setTransform(savedPlayer, 0);
+            bossBody.setTransform(savedBoss, 0);
+        }
+    }
+
+    private static boolean overlapsHurtbox(Fixture hammer, Body target) {
+        for (var contact : target.getWorld().getContactList()) {
+            if (!contact.isTouching()) { continue; }
+            var a = contact.getFixtureA();
+            var b = contact.getFixtureB();
+            var other = a == hammer ? b : b == hammer ? a : null;
+            if (other != null && other.getBody() == target && other.getUserData() == Hurtbox.INSTANCE) { return true; }
+        }
+        return false;
+    }
+
+    private static Body lungeWall(Body owner, float x, float y) {
+        var wall = owner.getWorld().createBody(new BodyDef());
+        wall.setTransform(x, y, 0);
+        var shape = new PolygonShape();
+        try {
+            shape.setAsBox(.08f, 4f);
+            wall.createFixture(shape, 0);
+        } finally { shape.dispose(); }
+        return wall;
     }
 
     private void verifyGuardVision(Entity boss, ArenaGuard guard, float healthAreaRightEdge) {
@@ -693,24 +852,28 @@ public final class HoardArenaTest extends ApplicationAdapter {
         return false;
     }
 
-    /** Same opening for all three real hammer guards. Run decision/animation/combat without pushing bodies apart. */
-    private void verifyGuardVolley(float x, float y, List<Entity> guards) {
+    /** Same opening for all three real hammer guards, in separated lanes outside the map. */
+    private void verifyGuardVolley(List<Entity> guards) {
+        float x = -100f, y = -100f;
         var engine = GAME.getEngine();
         var awareness = engine.getSystem(AwarenessSystem.class);
         var actor = Actor.MAPPER.get(player());
         var playerBody = Physic.MAPPER.get(player()).getBody();
+        var original = playerBody.getPosition().cpy();
         playerBody.setTransform(x - actor.feetX(), y - actor.feetY(), 0);
-        for (var guard : guards) {
+        for (int i = 0; i < guards.size(); i++) {
+            var guard = guards.get(i);
             require(Loadout.MAPPER.get(guard).getWeaponId().equals("black_hammer"), "Dredge volley uses authored hammers");
             var feet = Actor.MAPPER.get(guard);
-            Physic.MAPPER.get(guard).getBody().setTransform(x - feet.feetX() - .75f, y - feet.feetY(), 0);
+            Physic.MAPPER.get(guard).getBody().setTransform(x - feet.feetX() - 1.5f, y - feet.feetY() + (i - 1) * .6f, 0);
         }
-        float dt = 1f / 60f;
+        float dt = GameConsts.PHYSIC_INTERVAL;
+        engine.getSystem(PhysicSystem.class).resetClock();
         var primary = Loadout.MAPPER.get(guards.getFirst()).getWeapon().primary();
         var animation = primary.animation();
         float windup = Math.max(.28f, primary.hitFrame() * animation.frameInterval() / animation.speed());
-        // The first tick after commitment installs the animation without advancing its clock.
-        // Allow floating-point rounding at a whole playback tick.
+        // The commitment tick does not sample playback. The next tick installs frame zero.
+        // Allow floating-point rounding if the authored hit lies on an exact tick boundary.
         double playbackTicks = windup / dt;
         int earliestHitOffset = 1 + (int) Math.ceil(playbackTicks - .0001);
         int latestHitOffset = 1 + (int) Math.ceil(playbackTicks + .0001);
@@ -718,10 +881,7 @@ public final class HoardArenaTest extends ApplicationAdapter {
         Arrays.fill(commitTicks, -1);
         int first = -1, last = -1, peak = 0;
         for (int tick = 0; tick < 135; tick++) {
-            awareness.update(dt);
-            engine.getSystem(AnimationPlayerSystem.class).update(dt);
-            engine.getSystem(AnimationSystem.class).update(dt);
-            engine.getSystem(CombatSystem.class).update(dt);
+            engine.update(dt);
             int committed = 0, active = 0;
             for (int i = 0; i < guards.size(); i++) {
                 var guard = guards.get(i);
@@ -735,7 +895,7 @@ public final class HoardArenaTest extends ApplicationAdapter {
                 if (last >= 0 && combat.isAttacking()) {
                     require(combat.getAttackFacing() == Facing.Direction.RIGHT
                         && Facing.MAPPER.get(guard).getDirection() == Facing.Direction.RIGHT
-                        && Move.MAPPER.get(guard).getDirection().isZero(), "Losing sight leaves committed hammer swings planted");
+                        && Move.MAPPER.get(guard).getDirection().isZero(), "Losing sight cannot steer a committed hammer swing");
                 }
                 if (tick < 2) { require(combat.getAttackId() == 0, "Dredge respects melee decision delay"); }
                 int sinceCommit = tick - commitTicks[i];
@@ -761,7 +921,11 @@ public final class HoardArenaTest extends ApplicationAdapter {
             var combat = Combat.MAPPER.get(guard);
             require(!combat.isAttacking() && combat.getAttackId() == 1 && !ActorAi.MAPPER.get(guard).recovering(),
                 "Leaving detection range cannot cancel a whiff or start another hammer attack");
+            var body = Physic.MAPPER.get(guard).getBody();
+            body.setTransform(guard.getComponent(ArenaGuard.class).home(), 0);
+            body.setLinearVelocity(0, 0);
         }
+        playerBody.setTransform(original, 0);
     }
 
     private static TiledMap contactArena() {
@@ -1059,7 +1223,7 @@ public final class HoardArenaTest extends ApplicationAdapter {
         double first = hoard.stamina();
         move.setRooted(true);
         updateSprintFrame(dt);
-        require(hoard.stamina() > first && body.getLinearVelocity().isZero(), "rooted hold neither moves nor drains");
+        require(hoard.stamina() == first && body.getLinearVelocity().isZero(), "rooted hold neither moves nor drains");
         move.setRooted(false);
         var aim = BowAim.MAPPER.get(player);
         var loadouts = engine.getSystem(LoadoutSystem.class);
@@ -1071,7 +1235,7 @@ public final class HoardArenaTest extends ApplicationAdapter {
         engine.getSystem(ControllerSystem.class).update(0f);
         updateSprintFrame(0f);
         updateSprintFrame(dt);
-        require(hoard.stamina() > first && body.getLinearVelocity().isZero(), "aiming hold neither moves nor drains");
+        require(hoard.stamina() == first && body.getLinearVelocity().isZero(), "aiming hold neither moves nor drains");
         require(animation.getType() == Animation2D.AnimationType.ATTACK
             && Math.abs(animation.getStateTime() - dt * animation.getSpeed()) < .00001f, "held B does not speed up bow draw");
         aim.cancel();
@@ -1119,8 +1283,16 @@ public final class HoardArenaTest extends ApplicationAdapter {
         double perTickRegen = dt * (.7d / 6d);
         require(Math.abs(body.getLinearVelocity().len() - walk) < .001f
             && Math.abs(animation.getStateTime() - before - walkFrameTime) < .00001f
-            && Math.abs(hoard.stamina() - perTickRegen) < .0000001d,
-            "exhausted hold walks and refills at 70% of the old rate");
+            && hoard.stamina() == 0d, "exhausted hold walks without immediate refill");
+        for (int i = 6; i < 120; i++) {
+            require(hoard.stamina() == 0d, "no refill before two seconds since last drain");
+            body.setTransform(origin, 0);
+            updateSprintFrame(dt);
+        }
+        body.setTransform(origin, 0);
+        updateSprintFrame(dt);
+        require(Math.abs(hoard.stamina() - perTickRegen) < .0000001d,
+            "refill starts at the unchanged rate after two seconds");
 
         held[0] = false;
         input.updateGamepad();
@@ -1133,17 +1305,17 @@ public final class HoardArenaTest extends ApplicationAdapter {
         updateSprintFrame(2 * dt);
         require(physics.completedSteps() == steps + 2 && Math.abs(body.getLinearVelocity().len() - walk) < .001f
             && Math.abs(animation.getStateTime() - before - (2f + partialRunTime / .25f) * walkFrameTime) < .00001f
-            && Math.abs(hoard.stamina() - perTickRegen) < .0000001d,
-            "a partial sprint tick exhausts, then the next tick in the same frame walks and refills");
+            && hoard.stamina() == 0d,
+            "a partial sprint tick exhausts and restarts the delay even within a batched frame");
 
         int refillTicks = 1;
-        while (hoard.stamina() < 1d && refillTicks * dt < 8.7f) {
+        while (hoard.stamina() < 1d && refillTicks * dt < 10.7f) {
             body.setTransform(origin, 0);
             updateSprintFrame(dt);
             refillTicks++;
         }
-        require(refillTicks == (int) Math.ceil((6d / .7d) / dt) && hoard.stamina() == 1d
-            && Math.abs(body.getLinearVelocity().len() - walk) < .001f, "full refill takes about 8.57s and still requires release");
+        require(refillTicks == (int) Math.ceil((2d + 6d / .7d) / dt) && hoard.stamina() == 1d
+            && Math.abs(body.getLinearVelocity().len() - walk) < .001f, "full refill takes about 10.57s including the delay and still requires release");
         held[0] = false;
         input.updateGamepad();
         held[0] = true;
@@ -1158,7 +1330,7 @@ public final class HoardArenaTest extends ApplicationAdapter {
         input.updateGamepad();
         move.getDirection().set(1, 0);
         updateSprintFrame(dt);
-        require(hoard.stamina() > partial && input.arenaSprintPress() == 0, "resume with B held cannot sprint");
+        require(hoard.stamina() == partial && input.arenaSprintPress() == 0, "resume preserves the refill delay and invalidates held B");
 
         held[0] = false;
         input.updateGamepad();

@@ -168,7 +168,7 @@ public final class AwarenessSystem extends IteratingSystem {
             double radius = 3d * ((CircleShape) fixture.getShape()).getRadius();
             double dx = (double) to.x - from.x;
             double dy = (double) to.y - from.y;
-            return dx * dx + dy * dy <= radius * radius && clearSight(from, to) ? to : null;
+            return dx * dx + dy * dy <= radius * radius && clearSight(world, from, to) ? to : null;
         }
         return null;
     }
@@ -209,7 +209,7 @@ public final class AwarenessSystem extends IteratingSystem {
         return List.of();
     }
 
-    private static Vector2 feet(Entity entity) {
+    static Vector2 feet(Entity entity) {
         var actor = Actor.MAPPER.get(entity);
         return Physic.MAPPER.get(entity).getBody().getWorldPoint(new Vector2(actor.feetX(), actor.feetY()));
     }
@@ -220,7 +220,7 @@ public final class AwarenessSystem extends IteratingSystem {
             && Actor.MAPPER.has(entity));
     }
 
-    private boolean clearSight(Vector2 from, Vector2 to) {
+    static boolean clearSight(World world, Vector2 from, Vector2 to) {
         // Box2D ray casts ignore shapes containing the ray origin.
         boolean[] blocked = {false};
         world.QueryAABB(fixture -> {
@@ -240,7 +240,7 @@ public final class AwarenessSystem extends IteratingSystem {
         for (var player : inRange(owner, Actor.Role.PLAYER)) {
             if (!livingActor(player)) { continue; }
             var to = feet(player);
-            if (withinFieldOfView(owner, from, to) && clearSight(from, to)) { return player; }
+            if (withinFieldOfView(owner, from, to) && clearSight(world, from, to)) { return player; }
         }
         return null;
     }
