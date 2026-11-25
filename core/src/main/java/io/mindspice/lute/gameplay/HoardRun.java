@@ -10,9 +10,7 @@ public final class HoardRun {
     private static final int ROUND_SECONDS = 120;
     private static final int BASE_BATCH = 5;
     private static final int ROUND_BONUS_PERCENT = 5;
-    private static final int NIGHT_START_MINUTE = 20 * 60;
-    private static final int NIGHT_END_MINUTE = 6 * 60;
-    private static final int BATCH_UNITS = 100 * 100 * 100; // size, round and night percentages
+    private static final int BATCH_UNITS = 100 * 100; // size and round percentages
 
     private final RandomGenerator random;
     private final IntConsumer roundStarted;
@@ -24,43 +22,39 @@ public final class HoardRun {
     private double elapsed;
     private int nextBatch;
 
-    public HoardRun(RandomGenerator random, IntConsumer roundStarted, BiConsumer<Integer, Integer> spawn, boolean night) {
+    public HoardRun(RandomGenerator random, IntConsumer roundStarted, BiConsumer<Integer, Integer> spawn) {
         this.random = random;
         this.roundStarted = roundStarted;
         this.spawn = spawn;
-        startRound(night);
+        startRound();
     }
 
-    public static boolean isNight(double minuteOfDay) {
-        return minuteOfDay >= NIGHT_START_MINUTE || minuteOfDay < NIGHT_END_MINUTE;
-    }
-
-    public void advance(double seconds, boolean night) {
+    public void advance(double seconds) {
         if (gameOver) { return; }
         elapsed += seconds;
         while (elapsed >= Math.min(nextBatch, ROUND_SECONDS)) {
             if (nextBatch >= ROUND_SECONDS) {
                 elapsed -= ROUND_SECONDS;
-                startRound(night);
+                startRound();
             } else {
-                spawnBatch(false, night);
+                spawnBatch(false);
                 nextBatch += random.nextInt(20, 41);
             }
         }
     }
 
-    private void startRound(boolean night) {
+    private void startRound() {
         round++;
         roundStarted.accept(round);
-        spawnBatch(true, night);
+        spawnBatch(true);
         nextBatch = random.nextInt(20, 41);
     }
 
-    private void spawnBatch(boolean opening, boolean night) {
+    private void spawnBatch(boolean opening) {
         int sizePercent = opening ? 100 : random.nextInt(25, 51);
         int activeAreas = Math.min(4, 1 + (round - 1) / 5);
         int baseline = BASE_BATCH + activeAreas - 1;
-        long units = (long) baseline * sizePercent * roundPercent() * (night ? 115 : 100);
+        long units = (long) baseline * sizePercent * roundPercent();
         spawn.accept((int) ((units + BATCH_UNITS / 2) / BATCH_UNITS), activeAreas);
     }
 

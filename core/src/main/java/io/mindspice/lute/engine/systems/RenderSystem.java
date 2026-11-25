@@ -143,7 +143,7 @@ public class RenderSystem extends SortedIteratingSystem implements Disposable {
             fgLayers.forEach(mapRenderer::renderMapLayer);
             var hoard = getEngine().getSystem(HoardSystem.class);
             var run = hoard == null ? null : hoard.run();
-            if (run != null ? hoard.clockNight() : night) {
+            if (run == null && night) {
                 batch.end();
                 if (lighting == null) { lighting = new NightLighting(pixels[2], pixels[3], state); }
                 lighting.render(world, getEngine().getEntitiesFor(LIGHTS), ambient, sessionSeconds, camera, pixels, state,

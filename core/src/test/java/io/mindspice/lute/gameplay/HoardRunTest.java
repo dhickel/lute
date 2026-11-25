@@ -30,25 +30,25 @@ public final class HoardRunTest {
             var run = new HoardRun(random, round -> heals.add(batches.size()), (amount, count) -> {
                 batches.add(amount);
                 activeAreas.add(count);
-            }, false);
+            });
             require(run.round() == 1 && run.remainingSeconds() == 120 && batches.equals(java.util.List.of(5)), "opening round");
-            run.advance(delay - .25, false);
+            run.advance(delay - .25);
             require(batches.size() == 1 && run.remainingSeconds() == 121 - delay, "wait for batch; round time rounds up");
-            run.advance(.25, false);
+            run.advance(.25);
             require(rolls.size() == 1 && batches.size() == 2 && batches.getLast() == Math.round(5 * rolls.getFirst() * .0105)
                 && heals.size() == 1, "first reinforcement rolls a smaller batch and does not heal");
             run.enemyKilled(5);
-            run.advance(119.75 - delay, false);
+            run.advance(119.75 - delay);
             require(run.round() == 1 && run.remainingSeconds() == 1, "still round one just before 120 seconds");
-            run.advance(.25, false);
+            run.advance(.25);
             require(run.round() == 2 && run.remainingSeconds() == 120 && run.kills() == 1 && run.score() == 5, "round rollover");
             require(heals.equals(java.util.List.of(0, 1 + 119 / delay)), "opening batch takes precedence over simultaneous reinforcement");
             require(batches.getLast() == 6, "round two opens with 5.5 rounded up to six");
-            for (int i = 2; i < 10; i++) { run.advance(120, false); }
+            for (int i = 2; i < 10; i++) { run.advance(120); }
             require(run.round() == 10 && batches.getLast() == 9, "round ten opens with six scaled to nine");
             run.enemyKilled(10);
             require(run.kills() == 2 && run.score() == 15, "origin points do not depend on round");
-            for (int i = 10; i < 42; i++) { run.advance(120, i >= 12); }
+            for (int i = 10; i < 42; i++) { run.advance(120); }
             int roll = 0;
             require(random.schedules == batches.size() && rolls.size() == batches.size() - heals.size(),
                 "fresh interval after every batch; size rolled only for reinforcements");
@@ -57,36 +57,33 @@ public final class HoardRunTest {
                 int count = r < 6 ? 1 : r < 11 ? 2 : r < 16 ? 3 : 4;
                 int baseline = 4 + count;
                 require(activeAreas.get(heals.get(r - 1)) == count, "opening area count at round " + r);
-                long opening = baseline * roundPercent * (r >= 13 ? 115 : 100);
-                require(batches.get(heals.get(r - 1)) == (opening + 5_000) / 10_000,
+                long opening = baseline * roundPercent;
+                require(batches.get(heals.get(r - 1)) == (opening + 50) / 100,
                     "opening scaling and rounding at round " + r);
                 if (r == 42) { break; }
                 int firstExtra = heals.get(r - 1) + 1;
                 require(heals.get(r) - firstExtra == 119 / delay, "scheduled reinforcement count");
                 for (int i = firstExtra; i < heals.get(r); i++) {
                     require(activeAreas.get(i) == count, "reinforcement area count at round " + r);
-                    long extra = (long) baseline * rolls.get(roll++) * roundPercent * (r >= 12 ? 115 : 100);
-                    require(batches.get(i) == (extra + 500_000) / 1_000_000,
+                    long extra = (long) baseline * rolls.get(roll++) * roundPercent;
+                    require(batches.get(i) == (extra + 5_000) / 10_000,
                         "reinforcement scaling and rounding at roll " + roll);
                 }
             }
 
-            run.advance(119.75, false);
+            run.advance(119.75);
             require(!run.isGameOver() && run.remainingSeconds() == 1, "last second before rollover");
             int batchCount = batches.size();
             run.end();
-            run.advance(.25, false);
+            run.advance(.25);
             run.enemyKilled(20);
             run.end();
-            run.advance(540, true);
+            run.advance(540);
             require(run.isGameOver() && run.round() == 42 && run.remainingSeconds() == 1
                 && run.kills() == 2 && run.score() == 15, "terminal state freezes time and credits");
             require(batches.size() == batchCount && heals.size() == 42, "no reinforcements or round heals after death");
         }
-        require(!HoardRun.isNight(Math.nextDown(20 * 60.0)) && HoardRun.isNight(20 * 60)
-            && HoardRun.isNight(0) && HoardRun.isNight(Math.nextDown(6 * 60.0))
-            && !HoardRun.isNight(6 * 60), "overnight [20:00,06:00)");
-        System.out.println("HoardRunTest: schedule, rounding, night, scoring and game over passed");
+        System.out.println("HoardRunTest: schedule, rounding, scoring and game over passed");
     }
 
     private static void require(boolean value, String message) {

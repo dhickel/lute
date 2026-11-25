@@ -101,7 +101,7 @@ public final class HoardSystem extends EntitySystem implements EventListener {
                     if (enemy != null) { enemy.add(new Bounty(5 * (zone + 1))); break; }
                 }
             }
-        }, clockNight());
+        });
     }
 
     void dredgeDied(Entity enemy) {
@@ -126,10 +126,6 @@ public final class HoardSystem extends EntitySystem implements EventListener {
     public boolean isActive() { return run != null; }
     HoardRun run() { return run; }
 
-    boolean clockNight() {
-        return HoardRun.isNight(getEngine().getSystem(WorldTimeSystem.class).getMinuteOfDay());
-    }
-
     // PhysicSystem has committed this tick; fixture queries and new bodies are safe here.
     void afterPhysicsStep(float interval) {
         if (run == null || run.isGameOver()) { return; }
@@ -144,7 +140,7 @@ public final class HoardSystem extends EntitySystem implements EventListener {
         }
         if (!run.isGameOver()) {
             engine.getSystem(TiledSystem.class).collectPickups();
-            run.advance(interval, clockNight());
+            run.advance(interval);
         }
     }
 

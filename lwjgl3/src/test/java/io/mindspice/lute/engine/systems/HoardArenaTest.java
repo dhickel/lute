@@ -60,7 +60,7 @@ public final class HoardArenaTest extends ApplicationAdapter {
         var enemies = engine.getEntitiesFor(Family.all(ActorAi.class).get());
         require(run != null && run.round() == 1 && enemies.size() == 5, "five wave enemies at arena mount");
         var clock = engine.getSystem(WorldTimeSystem.class);
-        require(GameplayHud.statusText((int) clock.getMinuteOfDay(), run).equals("06:00   Round 1   2:00 left   Kills 0   Score 0"), "arena HUD");
+        require(GameplayHud.statusText((int) clock.getMinuteOfDay(), run).equals("Round 1   2:00 left   Kills 0   Score 0"), "arena HUD");
         var areas = HoardSystem.arena("hoard_mode", tiled.getMapTriggers());
         Entity survivor = enemies.first();
         for (var enemy : enemies) {
@@ -84,21 +84,15 @@ public final class HoardArenaTest extends ApplicationAdapter {
 
         GAME.render(); // supplies the renderer with its session and draws the initial daylight
         var renderer = engine.getSystem(RenderSystem.class);
-        require(!hoard.clockNight(), "06:00 is daylight");
         double daylight = brightness();
-        double secondsPerHour = clock.getDayLengthMinutes() * 60 / 24 / 4;
-        clock.update((float) (16 * secondsPerHour)); // 06:00 -> 22:00
-        renderer.update(0f);
-        require(hoard.clockNight(), "22:00 is overnight");
-        double dark = brightness();
+        double arenaClock = clock.getTotalInGameSeconds();
+        clock.update(2_400f);
         Gdx.input.getInputProcessor().keyDown(Input.Keys.N);
         Gdx.input.getInputProcessor().keyUp(Input.Keys.N);
         GAME.render();
-        double afterToggle = brightness();
-        clock.update((float) (14 * secondsPerHour)); // 22:00 -> noon
         renderer.update(0f);
-        require(!hoard.clockNight() && Math.min(daylight, brightness()) > Math.max(dark, afterToggle) * 1.15,
-            "N leaves the arena in clock-driven night until sunrise");
+        require(clock.getTotalInGameSeconds() == arenaClock && brightness() > daylight / 1.15,
+            "Hoard freezes world time and stays in daylight even after pressing N");
         GAME.pause();
         int frozen = run.remainingSeconds();
         double frozenClock = clock.getTotalInGameSeconds();
@@ -175,12 +169,12 @@ public final class HoardArenaTest extends ApplicationAdapter {
             "new run ignores late kills from prior arena");
         before = clock.getTotalInGameSeconds();
         clock.update(1f);
-        require(Math.abs(clock.getTotalInGameSeconds() - before - 4 * ordinaryIncrement) < .001
-            && hoard.run().remainingSeconds() == 120, "only the world clock runs at 4x");
+        require(ordinaryIncrement > 0 && clock.getTotalInGameSeconds() == before
+            && hoard.run().remainingSeconds() == 120, "world time runs only outside Hoard; rounds start at 120 seconds");
         verifyVisitInventory(ordinaryLoadout);
         // This lethal frame does step physics and would have started round two and dropped a pack.
         var lastSecond = hoard.run();
-        lastSecond.advance(119.999, false);
+        lastSecond.advance(119.999);
         int waveSize = enemies.size();
         var dyingPlayer = player();
         var dyingHealth = Health.MAPPER.get(dyingPlayer);
@@ -286,7 +280,7 @@ public final class HoardArenaTest extends ApplicationAdapter {
                 tiled.retireCorpse(enemy);
                 engine.removeEntity(enemy);
             }
-            hoard.run().advance(120, false);
+            hoard.run().advance(120);
         }
         require(observed.size() == 9, "all eight non-Dredges and Dredge appeared: " + observed);
     }
@@ -312,7 +306,7 @@ public final class HoardArenaTest extends ApplicationAdapter {
                     return 50;
                 }
             });
-            hoard.run().advance(15 * 120 - 1, false);
+            hoard.run().advance(15 * 120 - 1);
             require(enemies.size() == 3, "only the three center Dredges spawn through round 15");
             var boss = enemies.first();
             var guard = boss.getComponent(ArenaGuard.class);
@@ -350,7 +344,7 @@ public final class HoardArenaTest extends ApplicationAdapter {
             require(!objects.contains(bag, true) && Controller.MAPPER.get(player()).getWeaponCycle().contains(id)
                 && Loadout.MAPPER.get(player()).getWeapon() == equipped, "bag collected without replacing equipped weapon");
             playerBody.setTransform(original, 0);
-            hoard.run().advance(1, false);
+            hoard.run().advance(1);
             require(enemies.size() == 4, "round 16 opening retries reach newly unlocked SpawnArea4");
             // Empty the arena so the sword can only contact the first reinforcement.
             for (int i = enemies.size() - 1; i >= 0; i--) {
@@ -367,7 +361,7 @@ public final class HoardArenaTest extends ApplicationAdapter {
             float dt = GameConsts.PHYSIC_INTERVAL;
             for (int i = 0; i < 60 && attack.getSensor() == null; i++) { engine.update(dt); }
             require(attack.getSensor() != null, "armed before the reinforcement tick");
-            hoard.run().advance(20 - dt / 2, false);
+            hoard.run().advance(20 - dt / 2);
             physics.setProcessing(true);
             MathUtils.random = new Random(6); // Same primary sword damage roll in both layouts.
             if (batched) {
@@ -459,7 +453,7 @@ public final class HoardArenaTest extends ApplicationAdapter {
             @Override public int nextInt(int origin, int bound) { return bound - 1; }
         });
         require(enemies.size() == start + 5, "five scripted opening slots");
-        hoard.run().advance(40, false);
+        hoard.run().advance(40);
         require(enemies.size() == start + archer.length, "three scripted reinforcement slots");
         for (int i = 0; i < archer.length; i++) {
             var enemy = enemies.get(start + i);
@@ -516,7 +510,7 @@ public final class HoardArenaTest extends ApplicationAdapter {
         require(attack.getSensor() != null && health.getCurrent() == 1, "live player before sword contact");
 
         var run = hoard.run();
-        run.advance(run.remainingSeconds() - .001, false);
+        run.advance(run.remainingSeconds() - .001);
         int waveSize = enemies.size();
         physics.setProcessing(true);
         engine.update(GameConsts.PHYSIC_INTERVAL);
@@ -531,7 +525,7 @@ public final class HoardArenaTest extends ApplicationAdapter {
         var engine = GAME.getEngine();
         var enemies = engine.getEntitiesFor(Family.all(ActorAi.class).get());
         var run = hoard.run();
-        run.advance(run.remainingSeconds() - 1, hoard.clockNight());
+        run.advance(run.remainingSeconds() - 1);
         int waveSize = enemies.size();
         var corpse = player();
         var health = Health.MAPPER.get(corpse);
