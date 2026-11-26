@@ -95,6 +95,15 @@ tasks.register('mapTravelTest', JavaExec) {
   jvmArgs '--enable-native-access=ALL-UNNAMED', '--add-exports=java.base/jdk.internal.misc=ALL-UNNAMED'
 }
 
+tasks.register('menuFlowTest', JavaExec) {
+  dependsOn testClasses
+  classpath = sourceSets.test.runtimeClasspath
+  mainClass = 'io.mindspice.lute.engine.screen.MenuFlowTest'
+  workingDir = rootProject.file('assets')
+  environment 'DISPLAY', System.getenv('DISPLAY') ?: ':0'
+  jvmArgs '--enable-native-access=ALL-UNNAMED', '--add-exports=java.base/jdk.internal.misc=ALL-UNNAMED'
+}
+
 tasks.register('hoardArenaTest', JavaExec) {
   dependsOn testClasses
   classpath = sourceSets.test.runtimeClasspath
@@ -108,6 +117,7 @@ tasks.register('hoardArenaTest', JavaExec) {
 ['hoardArenaTest': 'hoard_mode', 'mapTravelTest': 'test_tiled', 'compositeRenderTest': 'test_tiled',
  'gameScreenLifecycleTest': 'test_tiled'].each { taskName, mapId ->
   tasks.named(taskName, JavaExec) {
+    systemProperty 'luteDirectMap', 'true'
     workingDir = layout.buildDirectory.dir("map-tests/${taskName}").get().asFile
     doFirst {
       workingDir.mkdirs()
@@ -130,6 +140,7 @@ tasks.named('test') {
 def os = System.properties['os.name'].toLowerCase(Locale.ROOT)
 
 run {
+  if (providers.gradleProperty('luteDirectMap').isPresent()) systemProperty 'luteDirectMap', providers.gradleProperty('luteDirectMap').get()
   def debugLayers = providers.gradleProperty('luteDebugLayers')
   if (debugLayers.present) systemProperty 'luteDebugLayers', debugLayers.get()
   workingDir = rootProject.file('assets').path

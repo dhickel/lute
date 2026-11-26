@@ -206,30 +206,30 @@ final class GamepadInputTest {
         var pad = fixture.addPad(MAPPED);
         pad.buttons[EAST] = true;
         fixture.expect("held B at first sample does not dispatch other actions");
-        equal(0L, fixture.gamepad.arenaSprintPress(), "held B at baseline is suppressed");
+        equal(0L, fixture.input.arenaSprintPress(), "held B at baseline is suppressed");
         pad.buttons[EAST] = false;
         fixture.expect("B release is quiet");
         pad.buttons[EAST] = true;
-        fixture.expect("native B uses the mapped button without a queued action");
-        long first = fixture.gamepad.arenaSprintPress();
+        fixture.expect("native B dispatches logical sprint", press(SPRINT));
+        long first = fixture.input.arenaSprintPress();
         equal(true, first != 0, "fresh B press holds sprint");
         fixture.expect("B hold is quiet");
-        equal(first, fixture.gamepad.arenaSprintPress(), "hold identity stays constant");
+        equal(first, fixture.input.arenaSprintPress(), "hold identity stays constant");
         fixture.gamepad.releaseHeldInputs();
-        equal(0L, fixture.gamepad.arenaSprintPress(), "invalidation cancels B immediately");
-        fixture.expect("still-held B cannot rearm on resume");
-        equal(0L, fixture.gamepad.arenaSprintPress(), "re-baseline suppresses held B");
+        equal(0L, fixture.input.arenaSprintPress(), "invalidation cancels B immediately");
+        fixture.expect("still-held B cannot rearm on resume", release(SPRINT));
+        equal(0L, fixture.input.arenaSprintPress(), "re-baseline suppresses held B");
         pad.buttons[EAST] = false;
         fixture.expect("release after invalidation");
         pad.buttons[EAST] = true;
-        fixture.expect("fresh B re-arms");
-        long next = fixture.gamepad.arenaSprintPress();
+        fixture.expect("fresh B re-arms", press(SPRINT));
+        long next = fixture.input.arenaSprintPress();
         equal(true, next != 0 && next != first, "fresh B has a distinct hold identity");
         pad.connected = false;
         var replacement = fixture.addPad(MAPPED);
         replacement.buttons[EAST] = true;
-        fixture.expect("held B on failover is quiet");
-        equal(0L, fixture.gamepad.arenaSprintPress(), "failover cancels old B and ignores held replacement B");
+        fixture.expect("held B on failover is quiet", release(SPRINT));
+        equal(0L, fixture.input.arenaSprintPress(), "failover cancels old B and ignores held replacement B");
     }
 
     private static InputMap defaults() {

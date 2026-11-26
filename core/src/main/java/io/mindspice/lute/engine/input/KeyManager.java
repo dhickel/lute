@@ -54,6 +54,10 @@ public class KeyManager {
         }
     }
 
+    public boolean isKeyDown(int keyCode) {
+        return keyCode >= 0 && keyCode < physicalDown.length && physicalDown[keyCode];
+    }
+
     public void broadcast(int keyCode, int keyAction) {
         if (keyCode < 0 || keyCode >= physicalDown.length) { return; }
         InputAction inputAction;
@@ -75,7 +79,16 @@ public class KeyManager {
         if (inputAction != null) { dispatch(inputAction, keyAction); }
     }
 
+    private int sprintHolds;
+    private long sprintSequence;
+
+    long arenaSprintPress() { return sprintHolds == 0 ? 0 : sprintSequence; }
+
     void dispatch(InputAction inputAction, int keyAction) {
+        if (inputAction == InputAction.SPRINT) {
+            if (keyAction == 1 && sprintHolds++ == 0) { sprintSequence++; }
+            if (keyAction == 0) { sprintHolds--; }
+        }
         for (int i = 0; i < size; i++) {
             KeyListener listener = keyListeners[i];
             if (listener.isListening()) {

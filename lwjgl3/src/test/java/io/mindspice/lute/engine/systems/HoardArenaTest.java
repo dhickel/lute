@@ -331,7 +331,8 @@ public final class HoardArenaTest extends ApplicationAdapter {
                 if (key.equals("dredge")) {
                     bosses++;
                     var health = Health.MAPPER.get(enemy);
-                    require(health.getCurrent() == 300 + 15 * round && health.getMaximum() == health.getCurrent(),
+                    int base = GAME.getGameData().actorsData().enemies().get(key).maxHealth();
+                    require(health.getCurrent() == Math.round(base * (1 + round * .05)) && health.getMaximum() == health.getCurrent(),
                         "Dredge starts at full scaled health in round " + round);
                     require(enemy.getComponent(ArenaGuard.class) != null
                         && Math.abs(transform.centerX() / GameConsts.UNIT_SCALE - marker.position().x) < .01f

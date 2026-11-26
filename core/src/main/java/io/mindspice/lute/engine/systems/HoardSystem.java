@@ -202,7 +202,7 @@ public final class HoardSystem extends EntitySystem implements EventListener {
     }
 
     public boolean isActive() { return run != null; }
-    HoardRun run() { return run; }
+    public HoardRun run() { return run; }
 
     double stamina() { return stamina; }
 

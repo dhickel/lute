@@ -13,6 +13,7 @@ public enum InputAction {
     CYCLE_WEAPON,
     CYCLE_ARENA_WEAPON,
     TOGGLE_NIGHT,
+    SPRINT,
     SCROLL_UP,
     SCROLL_DOWN,
     GUI_UP,

@@ -61,11 +61,11 @@ public class InputMap {
         return getButton(button) != null;
     }
 
-    void setGamepad(GamepadControl control, InputAction action) {
+    public void setGamepad(GamepadControl control, InputAction action) {
         gamepadMap[control.ordinal()] = action;
     }
 
-    InputAction getGamepad(GamepadControl control) {
+    public InputAction getGamepad(GamepadControl control) {
         return gamepadMap[control.ordinal()];
     }
 }

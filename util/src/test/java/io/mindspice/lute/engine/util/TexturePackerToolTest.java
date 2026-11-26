@@ -335,6 +335,8 @@ public final class TexturePackerToolTest {
         Files.writeString(output.resolve("unowned/notes"), "preserve unowned bytes");
         var complete = snapshot(output);
         var ownership = Files.readString(output.resolve(".runtime-assets-owned"));
+        check(ownership.contains("\timages/menu/mainmenubg.jpg\n") && Files.readAllBytes(output.resolve("images/menu/mainmenubg.jpg"))[0] == 42,
+            "Menu artwork is published unchanged and owned");
         for (String name : new String[]{"character", "enemies", "body", "head", "feet", "hands", "weapons"}) {
             check(ownership.contains("\tatlases/" + name + ".atlas\n"), "Complete baseline must own every sprite atlas");
             var atlas = new TextureAtlasData(new FileHandle(output.resolve("atlases/" + name + ".atlas").toFile()),
@@ -717,6 +719,8 @@ public final class TexturePackerToolTest {
     private static void createInputs(Path raw) throws IOException {
         Files.createDirectories(raw.resolve("data"));
         Files.createDirectories(raw.resolve("audio"));
+        Files.createDirectories(raw.resolve("images/menu"));
+        Files.write(raw.resolve("images/menu/mainmenubg.jpg"), new byte[]{42});
         Files.writeString(raw.resolve("game.settings.json"), """
             {"mapsPath":"maps/", "atlasPath":"atlases/", "startupMap":"alpha", "projectPath":"world.tiled-project",
              "debugLayers":{"physics":true,"triggers":true,"rawLightMap":false,"lightingOutlines":false},

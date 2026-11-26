@@ -14,6 +14,9 @@ import io.mindspice.lute.engine.input.KeyListener;
 import io.mindspice.lute.engine.singletons.GameConsts;
 import io.mindspice.lute.engine.systems.*;
 
+import io.mindspice.lute.gameplay.HoardRun;
+
+import java.util.function.Consumer;
 import java.util.ArrayList;
 import java.util.List;
 
@@ -27,7 +30,9 @@ public class GameScreen extends ScreenAdapter {
     private final RenderSystem renderer;
     private final HoardSystem hoard;
     private final GameConsts.NightAmbient ambient = GameConsts.NIGHT_AMBIENT;
-    private final KeyListener lightingInput = new KeyListener(32, List.of(InputAction.TOGGLE_NIGHT));
+    private final Consumer<HoardRun> onDeath;
+    private final KeyListener lightingInput = new KeyListener(32, List.of(InputAction.TOGGLE_NIGHT,
+        InputAction.CLOSE_WINDOW, InputAction.RESIZE_WINDOW));
     private boolean night;
     private double sessionSeconds;
     private final List<EntitySystem> ownedSystems = new ArrayList<>();
@@ -36,7 +41,11 @@ public class GameScreen extends ScreenAdapter {
     private boolean disposed;
 
 
-    public GameScreen(MapAssets mapAssets) {
+    public GameScreen(MapAssets mapAssets) { this(mapAssets, GameConsts.DEBUG_LAYERS, null); }
+
+    public GameScreen(MapAssets mapAssets, GameConsts.DebugLayers debugLayers,
+                      Consumer<HoardRun> onDeath) {
+        this.onDeath = onDeath;
         this.game = GameCore.INSTANCE;
         this.inputManager = this.game.getInputManager();
         this.engine = this.game.getEngine();
@@ -65,7 +74,6 @@ public class GameScreen extends ScreenAdapter {
             addSystem(new PhysicSystem(physicWorld, GameConsts.PHYSIC_INTERVAL));
             addSystem(new AudioSystem(game.getAssetService()));
             addSystem(new CameraSystem(game.getCamera()));
-            var debugLayers = GameConsts.DEBUG_LAYERS;
             renderer = new RenderSystem(game.getBatch(), game.getViewport(), game.getCamera(), game.getAssetService(), debugLayers);
             addSystem(renderer);
             addSystem(new EntityFactory(physicWorld, game.getAssetService()));
@@ -131,12 +139,17 @@ public class GameScreen extends ScreenAdapter {
         // Detach and map replacement mark old transitions; only presses from this context count.
         lightingInput.getQueue().consumePreviousContext((action, state) -> { });
         lightingInput.consume((action, state) -> {
+            if (state == 1) { game.windowAction(action); }
             if (action == InputAction.TOGGLE_NIGHT && state == 1 && !hoard.isActive()) { night = !night; }
         });
         float step = delta > 0f ? Math.min(delta, 1 / 30f) : 0f;
         sessionSeconds += step;
         renderer.gameplayFrame(physicWorld, ambient, night, sessionSeconds);
         engine.update(step);
+        if (onDeath != null && hoard.isActive() && hoard.run().isGameOver()) {
+            onDeath.accept(hoard.run()); // Outside engine.update: it is now safe to tear down the world.
+            return;
+        }
         tiled.applyPendingRespawn();
         tiled.applyPendingTravel();
     }

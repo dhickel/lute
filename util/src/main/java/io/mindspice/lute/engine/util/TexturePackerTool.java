@@ -74,7 +74,7 @@ public final class TexturePackerTool {
             if (project == null || !project.isString() || !project.asString().matches("[^/\\\\\\s:]+\\.tiled-project")) {
                 throw new IllegalArgumentException("projectPath must name a .tiled-project file at the asset root");
             }
-            for (String file : List.of("game.settings.json", project.asString())) {
+            for (String file : List.of("game.settings.json", project.asString(), "images/menu/mainmenubg.jpg")) {
                 copy(raw.resolve(file), stage.resolve(file));
             }
             for (String folder : List.of("data", "audio")) {
