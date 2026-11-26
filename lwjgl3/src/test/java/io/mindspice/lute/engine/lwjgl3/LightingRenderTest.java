@@ -374,7 +374,7 @@ public final class LightingRenderTest extends ApplicationAdapter {
         var launch = CombatSystem.class.getDeclaredMethod("launch", Entity.class, BowAim.class);
         launch.setAccessible(true); launch.invoke(combat, owner, aim);
         aim.start(bow, transform(102.5f, 84.5f, 0, 0, 0), Facing.Direction.RIGHT);
-        engine.addEntity(new Entity().add(aim));
+        engine.addEntity(new Entity().add(aim).add(new Controller()));
         var lamp = lamp(LX, LY, "#ff8040", 64, .65f, null);
         var marker = (QueryCallback) fixture -> true;
         var query = World.class.getDeclaredField("queryCallback"); query.setAccessible(true);
