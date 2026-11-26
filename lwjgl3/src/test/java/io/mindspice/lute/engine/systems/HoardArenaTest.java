@@ -649,6 +649,62 @@ public final class HoardArenaTest extends ApplicationAdapter {
             float travel = verifyGuardSwing(boss, LungeTrial.FREE, frame);
             require(Math.abs(travel - 61.511f) < .01f, "demo lunge travel at frame delta " + frame + ": " + travel);
         }
+        verifyPlayerHammer(boss);
+    }
+
+    private void verifyPlayerHammer(Entity boss) {
+        var engine = GAME.getEngine();
+        var player = player();
+        var playerBody = Physic.MAPPER.get(player).getBody();
+        var bossBody = Physic.MAPPER.get(boss).getBody();
+        var savedPlayer = playerBody.getPosition().cpy();
+        var savedBoss = bossBody.getPosition().cpy();
+        var bossAi = boss.remove(ActorAi.class);
+        var loadout = Loadout.MAPPER.get(player);
+        var originalWeapon = loadout.getWeaponId();
+        var facing = Facing.MAPPER.get(player);
+        var originalFacing = facing.getDirection();
+        var combat = Combat.MAPPER.get(player);
+        var health = Health.MAPPER.get(boss);
+        int hp = health.getCurrent();
+        float dt = GameConsts.PHYSIC_INTERVAL, scale = GameConsts.UNIT_SCALE;
+        try {
+            playerBody.setTransform(-100, -100, 0);
+            bossBody.setTransform(-100 + 76 * scale, -100, 0);
+            Move.MAPPER.get(boss).getDirection().setZero();
+            facing.setDirection(Facing.Direction.RIGHT);
+            engine.getSystem(LoadoutSystem.class).equipWeapon(player, "basic_hammer");
+            var hammer = loadout.getWeapon();
+            require(CombatSystem.attackFor(player, hammer, Combat.AttackSlot.PRIMARY) == hammer.primary(),
+                "hammer primary stays a normal attack");
+            combat.tickCooldown(10f);
+            combat.requestAttack(Combat.AttackSlot.SECONDARY);
+            engine.update(dt);
+            require(CombatSystem.isHammerLunge(player, combat), "player commits hammer secondary as a lunge");
+            require(combat.getActiveAttack().animation() == hammer.primary().animation(), "heavy lunge uses primary animation");
+            require(combat.isCoolingDown(hammer.id(), Combat.AttackSlot.SECONDARY)
+                && !combat.isCoolingDown(hammer.id(), Combat.AttackSlot.PRIMARY), "heavy lunge uses the secondary cooldown slot");
+            float startX = bossBody.getPosition().x;
+            for (int i = 0; i < 120 && combat.isAttacking(); i++) { engine.update(dt); }
+            float pushPixels = (bossBody.getPosition().x - startX) / scale;
+            require(pushPixels > 2 && pushPixels < 60, "player lunge carries enemy a short distance: " + pushPixels);
+            var feedback = HealthFeedback.MAPPER.get(boss);
+            require(health.getCurrent() < hp && feedback != null && feedback.numbers.size() == 1,
+                "player heavy lunge damages its target only once");
+            require(!combat.isAttacking() && combat.getSensor() == null && playerBody.getLinearVelocity().isZero(),
+                "player lunge cleans up drive and sensor");
+        } finally {
+            engine.getSystem(CombatSystem.class).cancelCombat(player);
+            engine.getSystem(LoadoutSystem.class).equipWeapon(player, originalWeapon);
+            facing.setDirection(originalFacing);
+            boss.add(bossAi);
+            boss.remove(HealthFeedback.class);
+            health.heal(hp - health.getCurrent());
+            playerBody.setLinearVelocity(0, 0);
+            bossBody.setLinearVelocity(0, 0);
+            playerBody.setTransform(savedPlayer, 0);
+            bossBody.setTransform(savedBoss, 0);
+        }
     }
 
     private float verifyGuardSwing(Entity boss, LungeTrial trial, float frame) {
@@ -744,6 +800,8 @@ public final class HoardArenaTest extends ApplicationAdapter {
                 require(hammerContact && health.getCurrent() < hp && feedback != null && feedback.numbers.size() == 1,
                     "stationary player takes exactly one hit: hp " + hp + " -> " + health.getCurrent()
                         + ", feedback count " + (feedback == null ? 0 : feedback.numbers.size()) + ", dt " + frame + ", travel " + travel);
+                float pushPixels = (AwarenessSystem.feet(player).x - start.x - Actor.MAPPER.get(boss).feetX()) / scale - 76;
+                require(pushPixels > 2 && pushPixels < 60, "guard lunge carries player a short distance: " + pushPixels);
             } else {
                 require(health.getCurrent() == hp, trial + " takes no lunge damage");
             }

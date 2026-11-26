@@ -79,13 +79,16 @@ public class GameCore extends Game {
             menu = null;
             startMap(GameConsts.STARTUP_MAP);
         } else {
-            menu = new MenuScreen(this, inputMap, () -> startMap("hoard_mode"));
+            menu = new MenuScreen(this, inputMap, () -> startMap("hoard_mode", false),
+                () -> startMap("hoard_mode", true));
             screenManager.loadScreen("Menu", menu);
             screenManager.switchScreens("Menu");
         }
     }
 
-    private void startMap(String mapId) {
+    private void startMap(String mapId) { startMap(mapId, false); }
+
+    private void startMap(String mapId, boolean hammerDemo) {
         if (gameData == null) { gameData = DataLoader.loadGameData(); }
 
         Runnable switchToGameScreen = () -> {
@@ -100,7 +103,7 @@ public class GameCore extends Game {
             initialAssets.addAll(WeaponAssets.of(id, gameData.weaponsData()).all());
         }
         screenManager.loadScreen("GameScreen", menu == null ? new GameScreen(assets)
-            : new GameScreen(assets, menu.layers(), this::finishRun));
+            : new GameScreen(assets, menu.layers(), hammerDemo ? null : this::finishRun, hammerDemo));
         screenManager.loadScreen("InitialLoading", new LoadingScreen(assetService, switchToGameScreen, initialAssets));
 
         screenManager.switchScreens("InitialLoading");

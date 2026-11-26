@@ -67,6 +67,7 @@ public final class HoardSystem extends EntitySystem implements EventListener {
     private final RandomGenerator roundHealthRandom = RandomGenerator.getDefault();
     private RandomGenerator dropRandom;
     private HoardRun run;
+    private boolean hammerDemo;
     private final InputManager input;
     private double stamina = 1d;
     private double refillDelay;
@@ -137,13 +138,24 @@ public final class HoardSystem extends EntitySystem implements EventListener {
     }
 
     void bind(TiledSystem tiled, List<MapTriggers.SpawnArea> areas, RandomGenerator random) {
+        bind(tiled, areas, random, areas == null ? null : tiled.getMapTriggers(), false);
+    }
+
+    void bind(TiledSystem tiled, List<MapTriggers.SpawnArea> areas, RandomGenerator random,
+              MapTriggers triggers, boolean hammerDemo) {
+        this.hammerDemo = false;
         stamina = 1d;
         refillDelay = 0d;
         exhaustedPress = 0;
         clearSprintMomentum();
         if (areas == null) { run = null; return; }
         dropRandom = random;
-        var triggers = tiled.getMapTriggers();
+        if (hammerDemo) {
+            this.hammerDemo = true;
+            startHammerDemo(tiled, areas, dredgePoint(triggers), random);
+            run = null;
+            return;
+        }
         var marker = dredgePoint(triggers);
         var center = healthArea(triggers);
         var box = center.bounds();
@@ -155,6 +167,7 @@ public final class HoardSystem extends EntitySystem implements EventListener {
             if (round % 5 == 0) {
                 var boss = getEngine().getSystem(EntityFactory.class).getMapActor(marker.position(), Actor.Role.ENEMY,
                     marker.spawnKey(), marker.facing());
+                Loadout.MAPPER.get(boss).setWeapon("black_hammer");
                 int baseHealth = Health.MAPPER.get(boss).getMaximum();
                 boss.add(new Health((int) Math.min(Integer.MAX_VALUE, HoardRun.scaleForRound(baseHealth, round))));
                 boss.add(new ArenaGuard(Physic.MAPPER.get(boss).getBody().getPosition().cpy()));
@@ -194,7 +207,24 @@ public final class HoardSystem extends EntitySystem implements EventListener {
         }
     }
 
+    private void startHammerDemo(TiledSystem tiled, List<MapTriggers.SpawnArea> areas,
+                                 MapTriggers.SpawnPoint marker, RandomGenerator random) {
+        var boss = getEngine().getSystem(EntityFactory.class).getMapActor(marker.position(), Actor.Role.ENEMY,
+            marker.spawnKey(), marker.facing());
+        Loadout.MAPPER.get(boss).setWeapon("black_hammer");
+        boss.add(new ArenaGuard(Physic.MAPPER.get(boss).getBody().getPosition().cpy()))
+            .add(new DredgeLunge()).add(new HoardDemoCombatant(HoardDemoCombatant.Side.DREDGE));
+        tiled.addArenaEntity(boss);
+        for (var area : areas) {
+            for (int i = 0; i < 2; i++) {
+                var enemy = tiled.trySpawnAreaEnemy(area, "brainless_undead", random);
+                if (enemy != null) { enemy.add(new HoardDemoCombatant(HoardDemoCombatant.Side.SWARM)); }
+            }
+        }
+    }
+
     void dredgeDied(Entity enemy) {
+        if (hammerDemo) { return; }
         var tiled = getEngine().getSystem(TiledSystem.class);
         if (isActive() && tiled.owns(enemy)) { drop(tiled, feet(enemy), WEAPON_BAG_KEY); }
     }
@@ -213,7 +243,7 @@ public final class HoardSystem extends EntitySystem implements EventListener {
         if (run != null && getEngine().getSystem(TiledSystem.class).owns(player)) { run.end(); }
     }
 
-    public boolean isActive() { return run != null; }
+    public boolean isActive() { return run != null || hammerDemo; }
     public HoardRun run() { return run; }
 
     double stamina() { return stamina; }
@@ -227,6 +257,10 @@ public final class HoardSystem extends EntitySystem implements EventListener {
         if (run == null || run.isGameOver()) { return 0; }
         var player = getEngine().getSystem(TiledSystem.class).activePlayer();
         if (!Health.MAPPER.get(player).isAlive() || !Controller.MAPPER.has(player)) { return 0; }
+        if (CombatSystem.isHammerLunge(player, Combat.MAPPER.get(player))) {
+            clearSprintMomentum();
+            return 0;
+        }
 
         var move = Move.MAPPER.get(player);
         var aim = BowAim.MAPPER.get(player);
@@ -287,14 +321,14 @@ public final class HoardSystem extends EntitySystem implements EventListener {
 
     // PhysicSystem has committed this tick; fixture queries and new bodies are safe here.
     void afterPhysicsStep(float interval) {
-        if (run == null || run.isGameOver()) { return; }
+        if ((run == null && !hammerDemo) || (run != null && run.isGameOver())) { return; }
         // Resolve contacts at this tick's positions, before a lunge ends, a wave spawns or a pickup heals.
         var engine = getEngine();
         var tiled = engine.getSystem(TiledSystem.class);
         engine.getSystem(CombatSystem.class).resolveArenaStepHits(tiled);
-        if (!run.isGameOver()) {
+        if (run == null || !run.isGameOver()) {
             tiled.collectPickups();
-            run.advance(interval);
+            if (run != null) { run.advance(interval); }
         }
     }
 
@@ -307,5 +341,6 @@ public final class HoardSystem extends EntitySystem implements EventListener {
     public void removedFromEngine(Engine engine) {
         eventUnSubscriber.accept(Event.Player.KilledEnemy.class, onKill);
         run = null;
+        hammerDemo = false;
     }
 }

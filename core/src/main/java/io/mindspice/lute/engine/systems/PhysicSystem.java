@@ -37,12 +37,15 @@ public class PhysicSystem extends IteratingSystem implements EntityListener {
         this.accumulator += deltaTime;
 
         var hoard = getEngine().getSystem(HoardSystem.class);
+        var combat = getEngine().getSystem(CombatSystem.class);
         long boostedPress = 0;
         while (accumulator >= interval) {
             accumulator -= interval;
             super.update(deltaTime);
             if (hoard != null) { boostedPress = hoard.beforeSprintStep(interval, boostedPress != 0); }
+            if (combat != null) { combat.beforeLungePushStep(); }
             world.step(interval, 6, 2);
+            if (combat != null) { combat.finishLungePushStep(); }
             completedSteps++;
             if (boostedPress != 0) { hoard.finishSprintStep(interval, boostedPress); }
             var sensors = getEngine().getSystem(MapSensorSystem.class);
@@ -78,9 +81,8 @@ public class PhysicSystem extends IteratingSystem implements EntityListener {
         Physic physic = Physic.MAPPER.get(entity);
         physic.getPrevPos().set(physic.getBody().getPosition());
         var lunge = entity.getComponent(DredgeLunge.class);
-        if (lunge != null) {
-            getEngine().getSystem(CombatSystem.class).beforeLungeStep(entity, lunge, interval);
-        }
+        var combat = getEngine().getSystem(CombatSystem.class);
+        if (lunge != null && combat != null) { combat.beforeLungeStep(entity, lunge, interval); }
     }
 
     private void interpolateEntity(Entity entity, float alpha) {

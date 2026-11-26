@@ -17,6 +17,7 @@ import io.mindspice.lute.engine.components.Combat;
 import io.mindspice.lute.engine.components.Facing;
 import io.mindspice.lute.engine.components.FullCircleVision;
 import io.mindspice.lute.engine.components.Health;
+import io.mindspice.lute.engine.components.HoardDemoCombatant;
 import io.mindspice.lute.engine.components.Physic;
 
 import java.util.ArrayList;
@@ -43,6 +44,11 @@ public final class AwarenessSystem extends IteratingSystem {
         if (!Health.MAPPER.get(actor).isAlive()) {
             ai.forgetTarget();
             stop.perform(actor, state);
+            return;
+        }
+        var demoCombatant = actor.getComponent(HoardDemoCombatant.class);
+        if (demoCombatant != null) {
+            updateDemoCombatant(actor, ai, demoCombatant, state);
             return;
         }
         var guard = actor.getComponent(ArenaGuard.class);
@@ -74,6 +80,26 @@ public final class AwarenessSystem extends IteratingSystem {
             return;
         }
         // Passive wanderers still use ordinary pursuit when retaliating.
+        var graph = graphs.getOrDefault(ai.mode(), BehaviorGraphs.pursuit(ai.mode()));
+        graph.travel(actor, state);
+    }
+
+    private void updateDemoCombatant(Entity actor, ActorAi ai, HoardDemoCombatant demo, FocusState state) {
+        Entity target = null;
+        float closest = Float.POSITIVE_INFINITY;
+        var origin = feet(actor);
+        var opponents = getEngine().getEntitiesFor(Family.all(Actor.class, ActorAi.class, HoardDemoCombatant.class).get());
+        for (var opponent : opponents) {
+            var marker = opponent.getComponent(HoardDemoCombatant.class);
+            if (opponent == actor || marker.side() == demo.side() || !livingActor(opponent)) { continue; }
+            float distance = origin.dst2(feet(opponent));
+            if (distance < closest) { target = opponent; closest = distance; }
+        }
+        Vector2 visible = target == null ? null : feet(target);
+        state.setVisibleTarget(target);
+        state.setTargetOffset(ai.updateTarget(origin, visible, state.deltaTime()));
+        if (BehaviorGraphs.attackLocksMovement(actor)) { stop.perform(actor, state); return; }
+        var graphs = BehaviorGraphs.forKey(ai.behaviorGraphKey());
         var graph = graphs.getOrDefault(ai.mode(), BehaviorGraphs.pursuit(ai.mode()));
         graph.travel(actor, state);
     }

@@ -18,6 +18,7 @@ import com.badlogic.gdx.physics.box2d.BodyDef;
 import com.badlogic.gdx.physics.box2d.PolygonShape;
 import com.badlogic.gdx.physics.box2d.World;
 import com.badlogic.gdx.utils.GdxRuntimeException;
+import io.mindspice.lute.engine.GameCore;
 import io.mindspice.lute.engine.assets.Asset;
 import io.mindspice.lute.gameplay.HoardRun;
 import io.mindspice.lute.engine.assets.AssetService;
@@ -48,6 +49,7 @@ public class TiledSystem extends EntitySystem implements EventEmitter {
     private final World physicsWorld;
     private final InputManager inputManager;
     private final boolean assetValidation;
+    private final boolean hammerDemo;
     private final RandomGenerator arenaRandom = RandomGenerator.getDefault();
     private RuntimeMap active;
     // These outlive a map runtime (including hide/show), but not this gameplay session.
@@ -61,10 +63,16 @@ public class TiledSystem extends EntitySystem implements EventEmitter {
     private final Map<String, Map<String, DeathSystem.Corpse>> offMapCorpses = new HashMap<>();
 
     public TiledSystem(AssetService assetService, World physicsWorld, InputManager inputManager, boolean assetValidation) {
+        this(assetService, physicsWorld, inputManager, assetValidation, false);
+    }
+
+    public TiledSystem(AssetService assetService, World physicsWorld, InputManager inputManager,
+                       boolean assetValidation, boolean hammerDemo) {
         this.assetService = assetService;
         this.physicsWorld = physicsWorld;
         this.inputManager = inputManager;
         this.assetValidation = assetValidation;
+        this.hammerDemo = hammerDemo;
     }
 
     @Override
@@ -305,7 +313,8 @@ public class TiledSystem extends EntitySystem implements EventEmitter {
         if (physicsWorld.isLocked()) { throw new IllegalStateException("Cannot change maps during a physics step"); }
         var triggers = MapTriggers.parse(map);
         var mapId = destination.assets().mapAsset().id();
-        var next = new RuntimeMap(map, destination, triggers, acquired, HoardSystem.arena(mapId, triggers));
+        var arena = HoardSystem.arena(mapId, triggers);
+        var next = new RuntimeMap(map, destination, triggers, acquired, arena, hammerDemo && arena != null);
         var corpses = active != null && active.entry.assets().mapAsset().id().equals(mapId)
             ? activeCorpses() : offMapCorpses.getOrDefault(mapId, Map.of());
         var death = getEngine().getSystem(DeathSystem.class);
@@ -449,7 +458,10 @@ public class TiledSystem extends EntitySystem implements EventEmitter {
 
     private void bindMap(Engine engine, RuntimeMap next) {
         var hoard = engine.getSystem(HoardSystem.class);
-        if (hoard != null) { hoard.bind(this, next == null ? null : next.arena, arenaRandom); }
+        if (hoard != null) {
+            hoard.bind(this, next == null ? null : next.arena, arenaRandom,
+                next == null ? null : next.triggers, next != null && next.hammerDemo);
+        }
         var renderer = engine.getSystem(RenderSystem.class);
         if (renderer != null) { renderer.setMap(next == null ? null : next.map); }
         var camera = engine.getSystem(CameraSystem.class);
@@ -490,7 +502,10 @@ public class TiledSystem extends EntitySystem implements EventEmitter {
         runtime.sessionPlayer = PlayerState.of(player);
         if (runtime.arenaHealth != null) {
             var loadout = runtime.sessionPlayer.loadout().copy();
-            player.add(runtime.arenaHealth).add(loadout).add(Controller.forArena(loadout.getWeapon().id()));
+            var controller = runtime.hammerDemo
+                ? new Controller(GameCore.INSTANCE.getGameData().weaponsData().weapons().keySet().stream().sorted().toList())
+                : Controller.forArena(loadout.getWeapon().id());
+            player.add(runtime.arenaHealth).add(loadout).add(controller).add(new DredgeLunge());
         }
         var properties = runtime.map.getProperties();
         player.add(new BowAim(properties.get("tilewidth", Integer.class) * GameConsts.UNIT_SCALE,
@@ -601,6 +616,7 @@ public class TiledSystem extends EntitySystem implements EventEmitter {
         final Map<Entity, String> actorSpawns = new IdentityHashMap<>();
         List<MapSensorSystem.SensorBody> sensors;
         final List<MapTriggers.SpawnArea> arena;
+        final boolean hammerDemo;
         final Health arenaHealth; // Remains available to the HUD after the corpse is removed.
         Entity player;
         PlayerState sessionPlayer;
@@ -608,8 +624,10 @@ public class TiledSystem extends EntitySystem implements EventEmitter {
         @Override public void entityAdded(Entity entity) { arrivingEnemies.remove(entity); }
         @Override public void entityRemoved(Entity entity) { arrivingEnemies.remove(entity); }
 
-        RuntimeMap(TiledMap map, Entry entry, MapTriggers triggers, List<Asset<?>> ownedAssets, List<MapTriggers.SpawnArea> arena) {
+        RuntimeMap(TiledMap map, Entry entry, MapTriggers triggers, List<Asset<?>> ownedAssets,
+                   List<MapTriggers.SpawnArea> arena, boolean hammerDemo) {
             this.arena = arena;
+            this.hammerDemo = hammerDemo;
             arenaHealth = arena == null ? null : new Health(HoardRun.PLAYER_HEALTH);
             this.map = map;
             this.entry = entry;

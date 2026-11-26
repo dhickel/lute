@@ -41,10 +41,15 @@ public class GameScreen extends ScreenAdapter {
     private boolean disposed;
 
 
-    public GameScreen(MapAssets mapAssets) { this(mapAssets, GameConsts.DEBUG_LAYERS, null); }
+    public GameScreen(MapAssets mapAssets) { this(mapAssets, GameConsts.DEBUG_LAYERS, null, false); }
 
     public GameScreen(MapAssets mapAssets, GameConsts.DebugLayers debugLayers,
                       Consumer<HoardRun> onDeath) {
+        this(mapAssets, debugLayers, onDeath, false);
+    }
+
+    public GameScreen(MapAssets mapAssets, GameConsts.DebugLayers debugLayers,
+                      Consumer<HoardRun> onDeath, boolean hammerDemo) {
         this.onDeath = onDeath;
         this.game = GameCore.INSTANCE;
         this.inputManager = this.game.getInputManager();
@@ -77,7 +82,7 @@ public class GameScreen extends ScreenAdapter {
             renderer = new RenderSystem(game.getBatch(), game.getViewport(), game.getCamera(), game.getAssetService(), debugLayers);
             addSystem(renderer);
             addSystem(new EntityFactory(physicWorld, game.getAssetService()));
-            tiled = new TiledSystem(game.getAssetService(), physicWorld, inputManager, debugLayers.assetValidation());
+            tiled = new TiledSystem(game.getAssetService(), physicWorld, inputManager, debugLayers.assetValidation(), hammerDemo);
             addSystem(tiled);
             if (debugLayers.physics()) { addSystem(new PhysicDebugRenderSystem(physicWorld, game.getCamera())); }
             if (debugLayers.triggers()) { addSystem(new TriggerDebugRenderSystem(physicWorld, game.getCamera())); }

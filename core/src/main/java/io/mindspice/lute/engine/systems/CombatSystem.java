@@ -14,6 +14,7 @@ import io.mindspice.lute.engine.data.json.WeaponsData.WeaponData.CollisionType;
 import io.mindspice.lute.engine.data.json.ProjectilesData.Projectile;
 import io.mindspice.lute.engine.events.Event;
 import io.mindspice.lute.engine.events.EventEmitter;
+import io.mindspice.lute.engine.singletons.GameConsts;
 
 import java.util.ArrayList;
 import java.util.IdentityHashMap;
@@ -84,6 +85,7 @@ public class CombatSystem extends IteratingSystem implements ContactListener, En
     }
 
     private final List<Hit> pendingHits = new ArrayList<>();
+    private final Map<Body, LungePush> lungePushes = new IdentityHashMap<>();
     // Family removal may arrive after Ashley has detached the component, even mid-handoff.
     private final Map<Entity, Combat> mountedCombat = new IdentityHashMap<>();
 
@@ -165,7 +167,9 @@ public class CombatSystem extends IteratingSystem implements ContactListener, En
             if ((attackerHealth == null || attackerHealth.isAlive())
                 && combat != null && combat.isAttacking() && combat.getAttackId() == hit.attackId()
                 && health != null && health.isAlive() && clearOfDredgeCover(hit) && combat.markHit(hit.target())) {
-                int damage = HealthFeedback.land(hit.target(), health, combat.getActiveAttack().damage(), 1, combat.getAttackFacing());
+                float damageScale = hit.hammerLunge() && combat.getActiveSlot() == Combat.AttackSlot.SECONDARY ? 1.25f : 1f;
+                int damage = HealthFeedback.land(hit.target(), health, combat.getActiveAttack().damage(), damageScale,
+                    combat.getAttackFacing());
                 if (!health.isAlive()) {
                     if (arena != null) { killed.add(hit.target()); }
                     creditKill(hit.attacker(), hit.target());
@@ -181,8 +185,11 @@ public class CombatSystem extends IteratingSystem implements ContactListener, En
     }
 
     private boolean clearOfDredgeCover(Hit hit) {
-        return !hit.dredgeSwing() || !Actor.MAPPER.has(hit.target())
-            || AwarenessSystem.clearSight(world, AwarenessSystem.feet(hit.attacker()), AwarenessSystem.feet(hit.target()));
+        return !hit.hammerLunge() || !Actor.MAPPER.has(hit.target()) || clearOfCover(hit.attacker(), hit.target());
+    }
+
+    private boolean clearOfCover(Entity attacker, Entity target) {
+        return AwarenessSystem.clearSight(world, AwarenessSystem.feet(attacker), AwarenessSystem.feet(target));
     }
 
     private void creditKill(Entity attacker, Entity victim) {
@@ -202,6 +209,10 @@ public class CombatSystem extends IteratingSystem implements ContactListener, En
         var move = Move.MAPPER.get(entity);
         boolean movingPlayer = alive && Controller.MAPPER.has(entity) && move != null
             && !move.isRooted() && !move.getDirection().isZero();
+        if (isHammerLunge(entity, combat)) {
+            if (!alive) { stopAttack(entity); }
+            return;
+        }
         if (alive && combat.isAttacking() && (movingPlayer || combat.hasDeferredRequest())) {
             combat.deferRequest();
             // Input and animation precede combat; movement and fixed physics follow it.
@@ -246,7 +257,7 @@ public class CombatSystem extends IteratingSystem implements ContactListener, En
         if (requested != null && alive && (aim == null || !aim.isAiming())) {
             var weapon = Loadout.MAPPER.get(entity).getWeapon();
             if (!combat.isCoolingDown(weapon.id(), requested)) {
-                var next = requested == Combat.AttackSlot.PRIMARY ? weapon.primary() : weapon.secondary();
+                var next = attackFor(entity, weapon, requested);
                 stopAttack(entity);
                 if (aim != null && Controller.MAPPER.has(entity) && requested == Combat.AttackSlot.PRIMARY
                     && next.collisionType() == CollisionType.PROJECTILE) {
@@ -265,32 +276,93 @@ public class CombatSystem extends IteratingSystem implements ContactListener, En
                 return;
             }
         }
-        if (!combat.isAttacking() || isDredgeSwing(entity, combat)) { return; }
+        if (!combat.isAttacking()) { return; }
         updateActiveAttack(entity, combat, animation, alive, ai);
     }
 
-    static boolean isDredgeSwing(Entity entity, Combat combat) {
-        return entity.getComponent(DredgeLunge.class) != null && combat != null && combat.isAttacking()
-            && combat.getActiveAttack().collisionType() == CollisionType.MELEE;
+    static CombatWeapon.Attack attackFor(Entity entity, CombatWeapon.Weapon weapon, Combat.AttackSlot slot) {
+        if (slot == Combat.AttackSlot.PRIMARY) { return weapon.primary(); }
+        if (!usesHammerLunge(entity, weapon.id(), slot)) { return weapon.secondary(); }
+        var primary = weapon.primary();
+        return new CombatWeapon.Attack(primary.weaponId(), primary.damage(), primary.hitFrame(), primary.cooldownSeconds() + .2f,
+            primary.animation(), primary.hitSoundId(), primary.shape(), primary.bounds(), primary.collisionType());
+    }
+
+    private static boolean usesHammerLunge(Entity entity, String weaponId, Combat.AttackSlot slot) {
+        if (entity.getComponent(DredgeLunge.class) == null) { return false; }
+        var actor = Actor.MAPPER.get(entity);
+        if (actor != null && actor.role() == Actor.Role.PLAYER) {
+            return slot == Combat.AttackSlot.SECONDARY && ("basic_hammer".equals(weaponId) || "black_hammer".equals(weaponId));
+        }
+        return "black_hammer".equals(weaponId);
+    }
+
+    static boolean isHammerLunge(Entity entity, Combat combat) {
+        return combat != null && combat.isAttacking()
+            && usesHammerLunge(entity, combat.getActiveAttack().weaponId(), combat.getActiveSlot());
     }
 
     void beforeLungeStep(Entity entity, DredgeLunge lunge, float interval) {
         var combat = Combat.MAPPER.get(entity);
-        if (!isDredgeSwing(entity, combat)) { return; }
+        if (!isHammerLunge(entity, combat)) { return; }
         if (!Health.MAPPER.get(entity).isAlive()) {
             stopAttack(entity);
             return;
         }
         var animation = Animation2D.MAPPER.get(entity);
         if (lunge.beginStep(combat.getAttackId())) {
-            // The first playback tick installs frame zero, even within a batched update.
-            if (animation.getType() != Animation2D.AnimationType.ATTACK) {
-                AnimationPlayer.MAPPER.get(entity).getAnimationFsm().changeState(AnimationState.ATTACK);
-            }
             getEngine().getSystem(AnimationSystem.class).advancePlayback(entity, interval);
             updateActiveAttack(entity, combat, animation, true, ActorAi.MAPPER.get(entity));
+        } else if (animation.getType() != Animation2D.AnimationType.ATTACK) {
+            AnimationPlayer.MAPPER.get(entity).getAnimationFsm().changeState(AnimationState.ATTACK);
+        } else {
+            // A heavy swing can replace an ordinary attack before the next render tick.
+            animation.restartQueuedAttack();
         }
         lunge.driveStep(Physic.MAPPER.get(entity).getBody(), combat, animation, interval);
+    }
+
+    // Use persistent contacts, not beginContact: a target takes damage once but is
+    // carried for every fixed step it remains in the moving hitbox.
+    void beforeLungePushStep() {
+        for (var contact : world.getContactList()) {
+            if (!contact.isTouching()) { continue; }
+            pushAlongLunge(contact.getFixtureA(), contact.getFixtureB());
+            pushAlongLunge(contact.getFixtureB(), contact.getFixtureA());
+        }
+    }
+
+    private void pushAlongLunge(Fixture sensor, Fixture target) {
+        if (!(sensor.getUserData() instanceof AttackSensor attack) || !attack.hammerLunge()
+            || target.getUserData() != Hurtbox.INSTANCE
+            || !(target.getBody().getUserData() instanceof Entity victim)) { return; }
+        var actor = Actor.MAPPER.get(victim);
+        var health = Health.MAPPER.get(victim);
+        var body = target.getBody();
+        if (actor == null || actor.role() == Actor.Role.NPC || health == null || !health.isAlive()
+            || body.getType() != BodyDef.BodyType.DynamicBody || lungePushes.containsKey(body)
+            || isHammerLunge(victim, Combat.MAPPER.get(victim))
+            || !clearOfCover(attack.attacker(), victim)) { return; }
+
+        var drive = sensor.getBody().getLinearVelocity();
+        var direction = new Vector2(drive).nor();
+        var velocity = body.getLinearVelocity();
+        float baseline = velocity.dot(direction);
+        float carrySpeed = Math.min(220f * GameConsts.UNIT_SCALE, drive.len() * .85f);
+        if (carrySpeed <= 0f || baseline >= carrySpeed) { return; }
+        body.setLinearVelocity(velocity.mulAdd(direction, carrySpeed - baseline));
+        lungePushes.put(body, new LungePush(direction, baseline, carrySpeed - baseline));
+    }
+
+    void finishLungePushStep() {
+        // The temporary carry isn't a lasting knockback impulse. Keep lateral
+        // velocity and any independent forward motion from the contact solver.
+        lungePushes.forEach((body, push) -> {
+            var velocity = body.getLinearVelocity();
+            float added = velocity.dot(push.direction()) - push.baseline();
+            if (added > 0f) { body.setLinearVelocity(velocity.mulAdd(push.direction(), -Math.min(added, push.added()))); }
+        });
+        lungePushes.clear();
     }
 
     private void updateActiveAttack(Entity entity, Combat combat, Animation2D animation, boolean alive, ActorAi ai) {
@@ -340,7 +412,7 @@ public class CombatSystem extends IteratingSystem implements ContactListener, En
             var sensor = body.createFixture(definition);
             body.setAwake(true);
             combat.setSensor(sensor, physicsStep());
-            sensor.setUserData(new AttackSensor(entity, combat.getAttackId(), isDredgeSwing(entity, combat)));
+            sensor.setUserData(new AttackSensor(entity, combat.getAttackId(), isHammerLunge(entity, combat)));
         } finally {
             shape.dispose();
         }
@@ -350,11 +422,9 @@ public class CombatSystem extends IteratingSystem implements ContactListener, En
         var combat = mountedCombat.get(entity);
         if (combat == null || !combat.isAttacking()) { return; }
         var sensor = combat.getSensor();
-        if (sensor != null) {
-            var body = sensor.getBody();
-            body.destroyFixture(sensor);
-            if (isDredgeSwing(entity, combat)) { body.setLinearVelocity(0f, 0f); }
-        }
+        if (sensor != null) { sensor.getBody().destroyFixture(sensor); }
+        var physics = Physic.MAPPER.get(entity);
+        if (physics != null && isHammerLunge(entity, combat)) { physics.getBody().setLinearVelocity(0f, 0f); }
         combat.endAttack();
     }
 
@@ -379,7 +449,7 @@ public class CombatSystem extends IteratingSystem implements ContactListener, En
                 if (fixture.getUserData() == Hurtbox.INSTANCE) { return; }
             }
         }
-        pendingHits.add(new Hit(attack.attacker(), entity, attack.attackId(), attack.dredgeSwing()));
+        pendingHits.add(new Hit(attack.attacker(), entity, attack.attackId(), attack.hammerLunge()));
     }
 
     @Override
@@ -410,6 +480,7 @@ public class CombatSystem extends IteratingSystem implements ContactListener, En
         mountedCombat.remove(entity);
     }
 
-    private record AttackSensor(Entity attacker, long attackId, boolean dredgeSwing) { }
-    private record Hit(Entity attacker, Entity target, long attackId, boolean dredgeSwing) { }
+    private record AttackSensor(Entity attacker, long attackId, boolean hammerLunge) { }
+    private record Hit(Entity attacker, Entity target, long attackId, boolean hammerLunge) { }
+    private record LungePush(Vector2 direction, float baseline, float added) { }
 }

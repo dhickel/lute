@@ -4,7 +4,7 @@ import com.badlogic.ashley.core.Component;
 import com.badlogic.gdx.physics.box2d.Body;
 import io.mindspice.lute.engine.singletons.GameConsts;
 
-/** Mounted on Hoard's Dredge guards. Distances are in logical pixels. */
+/** Fixed-step hammer drive for the Hoard player and Dredge guards. Distances are in logical pixels. */
 public final class DredgeLunge implements Component {
     public static final float COMMIT_RANGE = 80f;
     private static final float START_SPEED = 420f, END_SPEED = 180f;
@@ -20,7 +20,7 @@ public final class DredgeLunge implements Component {
     }
 
     public void driveStep(Body body, Combat combat, Animation2D animation, float interval) {
-        if (combat.getSensor() == null) {
+        if (!combat.isAttacking() || combat.getSensor() == null) {
             // A second tick in the same frame can inherit a contact impulse from the first.
             body.setLinearVelocity(0f, 0f);
             return;
