@@ -502,6 +502,7 @@ public class TiledSystem extends EntitySystem implements EventEmitter {
         runtime.sessionPlayer = PlayerState.of(player);
         if (runtime.arenaHealth != null) {
             var loadout = runtime.sessionPlayer.loadout().copy();
+            if (runtime.hammerDemo) { loadout.setWeapon("basic_hammer"); }
             var controller = runtime.hammerDemo
                 ? new Controller(GameCore.INSTANCE.getGameData().weaponsData().weapons().keySet().stream().sorted().toList())
                 : Controller.forArena(loadout.getWeapon().id());

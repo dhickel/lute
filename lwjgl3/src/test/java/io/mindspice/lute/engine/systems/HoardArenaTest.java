@@ -647,7 +647,7 @@ public final class HoardArenaTest extends ApplicationAdapter {
         verifyGuardSwing(boss, LungeTrial.COVER, dt);
         for (float frame : new float[]{dt / 2, dt, 2 * dt}) {
             float travel = verifyGuardSwing(boss, LungeTrial.FREE, frame);
-            require(Math.abs(travel - 61.511f) < .01f, "demo lunge travel at frame delta " + frame + ": " + travel);
+            require(Math.abs(travel - 32f) < .01f, "demo lunge travel at frame delta " + frame + ": " + travel);
         }
         verifyPlayerHammer(boss);
     }
@@ -670,7 +670,7 @@ public final class HoardArenaTest extends ApplicationAdapter {
         float dt = GameConsts.PHYSIC_INTERVAL, scale = GameConsts.UNIT_SCALE;
         try {
             playerBody.setTransform(-100, -100, 0);
-            bossBody.setTransform(-100 + 76 * scale, -100, 0);
+            bossBody.setTransform(-100 + 58 * scale, -100, 0);
             Move.MAPPER.get(boss).getDirection().setZero();
             facing.setDirection(Facing.Direction.RIGHT);
             engine.getSystem(LoadoutSystem.class).equipWeapon(player, "basic_hammer");
@@ -685,7 +685,10 @@ public final class HoardArenaTest extends ApplicationAdapter {
             require(combat.isCoolingDown(hammer.id(), Combat.AttackSlot.SECONDARY)
                 && !combat.isCoolingDown(hammer.id(), Combat.AttackSlot.PRIMARY), "heavy lunge uses the secondary cooldown slot");
             float startX = bossBody.getPosition().x;
+            float playerStartX = playerBody.getPosition().x;
             for (int i = 0; i < 120 && combat.isAttacking(); i++) { engine.update(dt); }
+            float travel = (playerBody.getPosition().x - playerStartX) / scale;
+            require(Math.abs(travel - 32f) < .01f, "player lunge travels 32 pixels: " + travel);
             float pushPixels = (bossBody.getPosition().x - startX) / scale;
             require(pushPixels > 2 && pushPixels < 60, "player lunge carries enemy a short distance: " + pushPixels);
             var feedback = HealthFeedback.MAPPER.get(boss);
@@ -740,11 +743,12 @@ public final class HoardArenaTest extends ApplicationAdapter {
             var start = bossBody.getPosition().cpy();
             // Equalize the gap after the randomized approach ticks, without changing the committed direction.
             float playerY = playerBody.getPosition().y;
-            playerBody.setTransform(AwarenessSystem.feet(boss).x + 76 * scale - playerActor.feetX(), playerY, 0);
+            float gap = trial == LungeTrial.DODGE ? 76f : 58f;
+            playerBody.setTransform(AwarenessSystem.feet(boss).x + gap * scale - playerActor.feetX(), playerY, 0);
             switch (trial) {
                 case HIT -> { }
                 case DODGE -> input.keyDown(Input.Keys.W);
-                case COVER -> wall = lungeWall(bossBody, AwarenessSystem.feet(player).x - 18 * scale, feet.y);
+                case COVER -> wall = lungeWall(bossBody, AwarenessSystem.feet(player).x - 24 * scale, feet.y);
                 case FREE -> playerBody.setTransform(playerBody.getPosition().x + 100 * scale, playerBody.getPosition().y, 0);
             }
             int startup = 0, active = 0;
@@ -784,9 +788,9 @@ public final class HoardArenaTest extends ApplicationAdapter {
             require(startup == 20 && active == 12, "fixed windup and active window: " + startup + "/" + active);
             require(!attack.isAttacking() && attack.getSensor() == null && ai.recovering(), "fixture is gone in recovery");
             float travel = (bossBody.getPosition().x - start.x) / scale;
-            require(travel > 35f, "Dredge closes the gap: " + travel);
+            require(travel > 15f && travel <= 32.01f, "Dredge closes the gap within the lunge budget: " + travel);
             if (trial == LungeTrial.COVER) {
-                require(hammerContact && AwarenessSystem.feet(boss).x < wall.getPosition().x && travel < 50f,
+                require(hammerContact && AwarenessSystem.feet(boss).x < wall.getPosition().x && travel < 32f,
                     "thin wall stops the lunge and shields a player overlapping the hammer sensor");
             }
             if (trial == LungeTrial.FREE || trial == LungeTrial.DODGE) {
@@ -800,7 +804,7 @@ public final class HoardArenaTest extends ApplicationAdapter {
                 require(hammerContact && health.getCurrent() < hp && feedback != null && feedback.numbers.size() == 1,
                     "stationary player takes exactly one hit: hp " + hp + " -> " + health.getCurrent()
                         + ", feedback count " + (feedback == null ? 0 : feedback.numbers.size()) + ", dt " + frame + ", travel " + travel);
-                float pushPixels = (AwarenessSystem.feet(player).x - start.x - Actor.MAPPER.get(boss).feetX()) / scale - 76;
+                float pushPixels = (AwarenessSystem.feet(player).x - start.x - Actor.MAPPER.get(boss).feetX()) / scale - gap;
                 require(pushPixels > 2 && pushPixels < 60, "guard lunge carries player a short distance: " + pushPixels);
             } else {
                 require(health.getCurrent() == hp, trial + " takes no lunge damage");

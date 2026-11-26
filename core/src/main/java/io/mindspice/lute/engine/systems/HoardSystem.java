@@ -49,6 +49,7 @@ public final class HoardSystem extends EntitySystem implements EventListener {
     private static final String KILL_HEALTH_KEY = "health_pack_1";
     private static final String WEAPON_BAG_KEY = "weapon_bag";
     private static final int DREDGE_BASE_XP = 100;
+    private static final int DEMO_UNDEAD_PER_AREA = 12;
     private static final float SPRINT_MULTIPLIER = 1.6f;
     private static final float SPRINT_RAMP_UP_SECONDS = .25f;
     private static final float SPRINT_RAMP_DOWN_SECONDS = .10f;
@@ -216,7 +217,7 @@ public final class HoardSystem extends EntitySystem implements EventListener {
             .add(new DredgeLunge()).add(new HoardDemoCombatant(HoardDemoCombatant.Side.DREDGE));
         tiled.addArenaEntity(boss);
         for (var area : areas) {
-            for (int i = 0; i < 2; i++) {
+            for (int i = 0; i < DEMO_UNDEAD_PER_AREA; i++) {
                 var enemy = tiled.trySpawnAreaEnemy(area, "brainless_undead", random);
                 if (enemy != null) { enemy.add(new HoardDemoCombatant(HoardDemoCombatant.Side.SWARM)); }
             }

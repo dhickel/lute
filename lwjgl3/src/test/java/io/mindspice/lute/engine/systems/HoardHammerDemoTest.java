@@ -55,6 +55,7 @@ public final class HoardHammerDemoTest extends ApplicationAdapter {
         var cycle = GAME.getGameData().weaponsData().weapons().keySet().stream().sorted().toList();
         require(Controller.MAPPER.get(player).getWeaponCycle().equals(cycle), "player cycles every weapon in stable ID order");
         require(player.getComponent(DredgeLunge.class) != null, "arena player receives the hammer-lunge marker");
+        require("basic_hammer".equals(Loadout.MAPPER.get(player).getWeaponId()), "demo starts with the hammer equipped");
 
         var actors = engine.getEntitiesFor(Family.all(ActorAi.class).get());
         Entity dredge = null;
@@ -65,7 +66,7 @@ public final class HoardHammerDemoTest extends ApplicationAdapter {
             if (demo.side() == HoardDemoCombatant.Side.DREDGE) { dredge = actor; }
             else { swarm++; }
         }
-        require(dredge != null && swarm > 0 && swarm <= 8, "one Dredge and a bounded brainless swarm spawn");
+        require(dredge != null && swarm == 48, "one Dredge and 48 undead spawn: " + swarm);
         require("black_hammer".equals(Loadout.MAPPER.get(dredge).getWeaponId())
             && dredge.getComponent(ArenaGuard.class) != null
             && dredge.getComponent(DredgeLunge.class) != null,
@@ -87,7 +88,7 @@ public final class HoardHammerDemoTest extends ApplicationAdapter {
         require(clock.getTotalInGameSeconds() == before, "demo keeps arena daylight and freezes session time");
         var physics = engine.getSystem(PhysicSystem.class);
         physics.update(1f);
-        require(hoard.run() == null && actors.size() <= 9, "fixed-step updates do not open scored waves");
+        require(hoard.run() == null && actors.size() == swarm + 1, "fixed-step updates do not open scored waves");
         boolean swarmAttacked = false;
         for (int i = 0; i < 600 && !swarmAttacked; i++) {
             engine.update(GameConsts.PHYSIC_INTERVAL);
@@ -102,8 +103,9 @@ public final class HoardHammerDemoTest extends ApplicationAdapter {
         tiled.hideMap();
         tiled.showMap(ManifestLoader.parseMapManifest("hoard_mode"));
         var remountedPlayer = engine.getEntitiesFor(Family.all(Player.class).get()).first();
-        require(remountedPlayer != player && remountedPlayer.getComponent(DredgeLunge.class) != null,
-            "remount rebuilds demo player and marker");
+        require(remountedPlayer != player && remountedPlayer.getComponent(DredgeLunge.class) != null
+            && "basic_hammer".equals(Loadout.MAPPER.get(remountedPlayer).getWeaponId()),
+            "remount rebuilds the hammer-equipped demo player");
         require(hoard.isActive() && hoard.run() == null
             && engine.getEntitiesFor(Family.all(HoardDemoCombatant.class).get()).size() == swarm + 1,
             "remount rebuilds only the bounded demo fight without a run");
