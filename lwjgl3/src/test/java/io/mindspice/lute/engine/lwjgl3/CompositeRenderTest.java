@@ -82,7 +82,7 @@ public final class CompositeRenderTest extends ApplicationAdapter {
         viewport.update(128, 128, true);
         batch = new SpriteBatch();
         output = new FrameBuffer(Pixmap.Format.RGBA8888, 128, 128, false);
-        renderer = new RenderSystem(batch, viewport, camera, assets, new GameConsts.DebugLayers(false, false, false, false));
+        renderer = new RenderSystem(batch, viewport, camera, assets, new GameConsts.DebugLayers(false, false, false, false, true));
         engine = new Engine();
         engine.addSystem(loadouts);
         engine.addSystem(renderer);

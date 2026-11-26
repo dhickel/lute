@@ -723,7 +723,7 @@ public final class TexturePackerToolTest {
         Files.write(raw.resolve("images/menu/mainmenubg.jpg"), new byte[]{42});
         Files.writeString(raw.resolve("game.settings.json"), """
             {"mapsPath":"maps/", "atlasPath":"atlases/", "startupMap":"alpha", "projectPath":"world.tiled-project",
-             "debugLayers":{"physics":true,"triggers":true,"rawLightMap":false,"lightingOutlines":false},
+             "debugLayers":{"physics":true,"triggers":true,"rawLightMap":false,"lightingOutlines":false,"assetValidation":true},
              "dataPath":"data/", "soundPath":"audio/", "musicPath":"audio/"}
             """);
         Files.writeString(raw.resolve("world.tiled-project"), "{}");

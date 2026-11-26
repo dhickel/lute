@@ -238,7 +238,7 @@ public final class MapTravelTest extends ApplicationAdapter {
         try {
             GameConsts.NIGHT_AMBIENT = new GameConsts.NightAmbient("#0000FF", .25f);
             // Inspect world pixels without diagnostic overlays on the synthetic travel maps.
-            GameConsts.DEBUG_LAYERS = new GameConsts.DebugLayers(false, false, false, false);
+            GameConsts.DEBUG_LAYERS = new GameConsts.DebugLayers(false, false, false, false, true);
             bind(new GameScreen(entry));
         } finally {
             GameConsts.NIGHT_AMBIENT = startupAmbient;

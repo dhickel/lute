@@ -52,10 +52,10 @@ import static org.lwjgl.opengl.ARBSamplerObjects.glSamplerParameteri;
 public final class LightingRenderTest extends ApplicationAdapter {
     private static final int WHITE = 0xffffffff, BAR = 0xde279ba7;
     private static final GameConsts.NightAmbient AMBIENT = new GameConsts.NightAmbient("#804020", .25f);
-    private static final DebugLayers OFF = new DebugLayers(false, false, false, false);
-    private static final DebugLayers RAW = new DebugLayers(false, false, true, false);
-    private static final DebugLayers OUTLINES = new DebugLayers(false, false, false, true);
-    private static final DebugLayers BOTH = new DebugLayers(false, false, true, true);
+    private static final DebugLayers OFF = new DebugLayers(false, false, false, false, true);
+    private static final DebugLayers RAW = new DebugLayers(false, false, true, false, true);
+    private static final DebugLayers OUTLINES = new DebugLayers(false, false, false, true, true);
+    private static final DebugLayers BOTH = new DebugLayers(false, false, true, true, true);
     private static final int DIM = 0x201008ff; // ambient × white
     private static final int SOLID = 0xff5f1fff, RADIUS = 0x7fff1fff;
     private static final float LX = 36.5f, LY = 44.5f;
@@ -169,7 +169,7 @@ public final class LightingRenderTest extends ApplicationAdapter {
         var clock = new WorldTimeSystem(24);
         overlay.addSystem(clock);
         overlay.addSystem(combat);
-        overlay.addSystem(new TiledSystem(null, world, null));
+        overlay.addSystem(new TiledSystem(null, world, null, true));
         overlay.addSystem(render);
         render.gameplayFrame(world, AMBIENT, false, 0);
         clear(BAR);

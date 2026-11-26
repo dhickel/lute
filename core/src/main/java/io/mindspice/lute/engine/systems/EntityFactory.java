@@ -27,6 +27,7 @@ import io.mindspice.lute.engine.data.json.CollisionData;
 import io.mindspice.lute.engine.behaviorgraph.BehaviorGraphs;
 import io.mindspice.lute.engine.components.ActorAi;
 import io.mindspice.lute.engine.data.json.MapActorData;
+import io.mindspice.lute.engine.data.json.ObjectData;
 import io.mindspice.lute.engine.data.json.WeaponsData;
 import io.mindspice.lute.engine.GameCore;
 import io.mindspice.lute.engine.components.CombatWeapon;
@@ -280,14 +281,30 @@ public class EntityFactory extends EntitySystem {
     }
 
     public Entity getSpawnedObject(Vector2 pixelPosition, String spawnKey, Facing.Direction facing) {
+        return buildSpawnedObject(pixelPosition, spawnKey, facing, null);
+    }
+
+    void validatePickupSpawn(String spawnKey, ObjectData.Kind expectedKind) {
+        var staged = buildSpawnedObject(Vector2.Zero, spawnKey, Facing.Direction.DOWN, expectedKind);
+        world.destroyBody(Physic.MAPPER.get(staged).getBody()); // Never registered or stepped.
+    }
+
+    private Entity buildSpawnedObject(Vector2 pixelPosition, String spawnKey, Facing.Direction facing,
+                                      ObjectData.Kind expectedKind) {
         var definition = GameCore.INSTANCE.getGameData().objectsData().get(spawnKey);
         if (definition == null) { throw new IllegalArgumentException("Unknown object spawnKey: " + spawnKey); }
+        if (expectedKind != null && definition.pickup().map(ObjectData.Pickup::type).orElse(null) != expectedKind) {
+            throw new IllegalArgumentException("Expected " + expectedKind + " pickup for " + spawnKey);
+        }
         var atlas = ObjectAssets.OBJECTS;
         Animation2D animation = null;
         TextureRegion region;
         if (definition.animation().isEmpty()) {
-            region = assetService.get(TextureAtlas.class, atlas.id()).findRegion(definition.atlasKey().orElse(spawnKey), -1);
-            if (region == null) { throw new IllegalArgumentException("No static object atlas region for " + spawnKey); }
+            String regionKey = definition.atlasKey().orElse(spawnKey);
+            region = assetService.get(TextureAtlas.class, atlas.id()).findRegion(regionKey, -1);
+            if (region == null) {
+                throw new IllegalArgumentException("No static object atlas region '" + regionKey + "' for " + spawnKey);
+            }
         } else {
             var settings = definition.animation().orElseThrow();
             animation = createAnimation(atlas, settings.atlasKey(), Animation2D.AnimationType.DEFAULT,
@@ -324,13 +341,15 @@ public class EntityFactory extends EntitySystem {
         definition.emissive().ifPresent(light -> entity.add(new Emissive(light, unit)));
         definition.pickup().ifPresent(rule -> {
             String payload = null;
-            if (rule.type() == io.mindspice.lute.engine.data.json.ObjectData.Kind.WEAPON_BAG) {
+            if (rule.type() == ObjectData.Kind.WEAPON_BAG) {
                 var eligible = GameCore.INSTANCE.getGameData().weaponsData().weapons().keySet().stream()
                     .filter(key -> !key.equals("basic_bow") && !key.equals("basic_arrow")).toList();
-                if (eligible.isEmpty()) { throw new IllegalArgumentException("Weapon bag has no eligible loaded weapon"); }
-                payload = eligible.get(java.util.concurrent.ThreadLocalRandom.current().nextInt(eligible.size()));
+                if (eligible.isEmpty()) { throw new IllegalArgumentException("No eligible loaded weapon for " + spawnKey); }
+                if (expectedKind == null) {
+                    payload = eligible.get(java.util.concurrent.ThreadLocalRandom.current().nextInt(eligible.size()));
+                }
             }
-            entity.add(new Pickup(rule, payload));
+            if (expectedKind == null) { entity.add(new Pickup(rule, payload)); }
         });
         if (definition.collision().isPresent() || definition.pickup().isPresent()) {
             var collision = definition.collision().orElseGet(() -> CollisionData.ellipse(new CharacterBounds(0, 0, width, height)));

@@ -138,8 +138,17 @@ public class CombatSystem extends IteratingSystem implements ContactListener, En
         super.update(deltaTime);
     }
 
-    /** Drain unlocked, in contact order. Only the arena's fixed-tick drain can hit a still-registering enemy. */
-    List<Entity> applyPendingHits(TiledSystem arena) {
+    /** Resolve this unlocked arena tick before pickups and clock advancement. */
+    void resolveArenaStepHits(TiledSystem arena) {
+        if (world.isLocked()) { return; }
+        var killed = applyPendingHits(arena);
+        if (killed.isEmpty()) { return; }
+        var death = getEngine().getSystem(DeathSystem.class);
+        for (var victim : killed) { death.beginContactDeath(victim); }
+    }
+
+    // Drain in contact order. Only the arena's fixed-tick drain can hit a still-registering enemy.
+    private List<Entity> applyPendingHits(TiledSystem arena) {
         if (pendingHits.isEmpty()) { return List.of(); }
         var killed = new ArrayList<Entity>();
         var entities = getEngine().getEntities();
@@ -158,7 +167,7 @@ public class CombatSystem extends IteratingSystem implements ContactListener, En
                 && health != null && health.isAlive() && clearOfDredgeCover(hit) && combat.markHit(hit.target())) {
                 int damage = HealthFeedback.land(hit.target(), health, combat.getActiveAttack().damage(), 1, combat.getAttackFacing());
                 if (!health.isAlive()) {
-                    killed.add(hit.target());
+                    if (arena != null) { killed.add(hit.target()); }
                     creditKill(hit.attacker(), hit.target());
                 } else if (damage > 0 && awareness != null && Actor.MAPPER.has(hit.attacker())
                     && Actor.MAPPER.get(hit.attacker()).role() == Actor.Role.PLAYER && Actor.MAPPER.has(hit.target())

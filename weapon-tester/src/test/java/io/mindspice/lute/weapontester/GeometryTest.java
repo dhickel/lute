@@ -1,53 +1,73 @@
 package io.mindspice.lute.weapontester;
 
+import com.badlogic.gdx.math.Vector2;
+import com.fasterxml.jackson.databind.json.JsonMapper;
+import org.junit.jupiter.api.DynamicTest;
 import org.junit.jupiter.api.Test;
+import org.junit.jupiter.api.TestFactory;
 
+import java.io.IOException;
+import java.util.EnumMap;
+import java.util.List;
 import java.util.Map;
+import java.util.stream.Stream;
 
 import static io.mindspice.lute.weapontester.Geometry.*;
 import static org.junit.jupiter.api.Assertions.*;
 
 class GeometryTest {
-    private static final float UNIT = 1f / 32f;
-    private final Geometry geometry = new Geometry(UNIT);
+    record Cases(float unitScale, List<AttackCase> attacks, List<FixtureCase> fixtures) { }
+    record AttackCase(String name, AttackShape shape, float[] bounds, float[] size, Map<Direction, float[]> offsets,
+                      Map<Direction, float[][]> verticesPixels) { }
+    record FixtureCase(String name, FixtureShape shape, float[] bounds, float rotation, float[][] verticesPixels) { }
 
-    @Test void rotatesAroundLogicalCenterThenAddsWorldAlignedOffsets() {
-        var shape = new AttackBounds(AttackShape.TRIANGLE, new Box(48, 20, 72, 44), Map.of(
-            Direction.RIGHT, new Point(2, 3), Direction.UP, new Point(4, 5),
-            Direction.LEFT, new Point(-6, 7), Direction.DOWN, new Point(8, -9)));
-        var size = new Point(64, 64);
-        geometry.weaponPixels(shape, size);
-        float[][] expected = {{36, 77}, {40, -17}, {-14, 39}, {74, 35}};
-        for (var facing : Direction.values()) {
-            var tip = geometry.weaponWorld(shape, size, facing)[1];
-            assertEquals(expected[facing.ordinal()][0], tip.x / UNIT, .001);
-            assertEquals(expected[facing.ordinal()][1], tip.y / UNIT, .001);
+    @TestFactory Stream<DynamicTest> goldenGeometry() throws IOException {
+        Cases cases;
+        try (var input = GeometryTest.class.getResourceAsStream("/geometry-golden.json")) {
+            assertNotNull(input, "Missing shared geometry fixture");
+            cases = JsonMapper.builder().build().readValue(input, Cases.class);
         }
+        var geometry = new Geometry(cases.unitScale());
+        return Stream.concat(
+            cases.attacks().stream().map(test -> DynamicTest.dynamicTest(test.name(), () -> verifyAttack(geometry, test))),
+            cases.fixtures().stream().map(test -> DynamicTest.dynamicTest(test.name(), () -> verifyFixture(geometry, test))));
     }
 
-    @Test void semicircleUsesSevenVerticesAndRejectsWeldedEdges() {
-        var offsets = Map.of(Direction.UP, new Point(0, 0), Direction.DOWN, new Point(0, 0),
-            Direction.LEFT, new Point(0, 0), Direction.RIGHT, new Point(0, 0));
-        var size = new Point(64, 64);
-        var arc = geometry.weaponWorld(new AttackBounds(AttackShape.SEMICIRCLE, new Box(32, 8, 60, 56), offsets),
-            size, Direction.RIGHT);
-        assertEquals(7, arc.length);
-        assertEquals(32, arc[0].x / UNIT, .02);
-        assertEquals(8, arc[0].y / UNIT, .02);
-        assertEquals(60, arc[3].x / UNIT, .02);
-        assertEquals(32, arc[3].y / UNIT, .02);
-        assertThrows(IllegalArgumentException.class, () -> geometry.weaponPixels(
-            new AttackBounds(AttackShape.RECT, new Box(0, 0, .01f, 1), offsets), size));
+    private static void verifyAttack(Geometry geometry, AttackCase test) {
+        var offsets = new EnumMap<Direction, Point>(Direction.class);
+        for (var direction : Direction.values()) {
+            var point = test.offsets().get(direction);
+            offsets.put(direction, point == null ? new Point(0, 0) : new Point(point[0], point[1]));
+        }
+        var b = test.bounds();
+        var bounds = new AttackBounds(test.shape(), new Box(b[0], b[1], b[2], b[3]), offsets);
+        var size = new Point(test.size()[0], test.size()[1]);
+        if (test.verticesPixels() == null) {
+            var failure = assertThrows(IllegalArgumentException.class, () -> geometry.weaponPixels(bounds, size));
+            assertTrue(failure.getMessage().contains("edge limits"), failure::getMessage);
+            return;
+        }
+        var actual = geometry.weaponPixels(bounds, size);
+        test.verticesPixels().forEach((direction, expected) -> assertVertices(expected, actual.get(direction)));
     }
 
-    @Test void playerFixtureUsesEightEllipseVerticesAndCenterRotation() {
-        var ellipse = geometry.fixturePixels(new Fixture(FixtureShape.ELLIPSE, new Box(20, 4, 44, 14), 90));
-        assertEquals(8, ellipse.length);
-        assertEquals(32, ellipse[0].x, .001);
-        assertEquals(21, ellipse[0].y, .001);
-        var triangle = geometry.fixturePixels(new Fixture(FixtureShape.TRIANGLE, new Box(10, 12, 22, 20), 0));
-        assertEquals(16, triangle[0].x);
-        assertEquals(20, triangle[0].y);
+    private static void verifyFixture(Geometry geometry, FixtureCase test) {
+        var b = test.bounds();
+        var fixture = new Fixture(test.shape(), new Box(b[0], b[1], b[2], b[3]), test.rotation());
+        if (test.verticesPixels() == null) {
+            var failure = assertThrows(IllegalArgumentException.class, () -> geometry.fixturePixels(fixture));
+            assertTrue(failure.getMessage().contains("edge limits"), failure::getMessage);
+            return;
+        }
+        assertVertices(test.verticesPixels(), geometry.fixturePixels(fixture));
+    }
+
+    private static void assertVertices(float[][] expected, Vector2[] actual) {
+        assertEquals(expected.length, actual.length);
+        for (int i = 0; i < expected.length; i++) {
+            assertEquals(expected[i][0], actual[i].x, .02, "x at vertex " + i);
+            assertEquals(expected[i][1], actual[i].y, .02, "y at vertex " + i);
+        }
     }
 
     @Test void playbackUsesAuthoredIntervalOverSpeedAndLoopsAfterLastFrame() {

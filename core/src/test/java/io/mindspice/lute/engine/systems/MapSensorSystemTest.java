@@ -1209,7 +1209,7 @@ public final class MapSensorSystemTest {
         final MapSensorSystem sensors = new MapSensorSystem(world);
         final PhysicSystem physics = new PhysicSystem(world, STEP);
         final AssetService assets = new AssetService(FileHandle::new);
-        final TiledSystem tiled = new TiledSystem(assets, world, new InputManager(InputMap.of()));
+        final TiledSystem tiled = new TiledSystem(assets, world, new InputManager(InputMap.of()), true);
         final MapAssets mapAssets = new MapAssets(Asset.Map.of("native-test", "unused.tmx"), "",
             Asset.Atlas.of("unused", "unused.atlas"), Map.of(), Map.of());
         final List<Event.Sensor> received = new ArrayList<>();

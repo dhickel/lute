@@ -26,6 +26,7 @@ public final class GameConsts {
     public static double DAY_LENGTH_MINUTES = DEFAULT_DAY_LENGTH_MINUTES;
     public static NightAmbient NIGHT_AMBIENT;
     public static DebugLayers DEBUG_LAYERS;
+    private static Boolean visualLaunchOverride;
     public static final Vector2 PHYSIC_SCALING = new Vector2(1f, 1f);
     public static float CAMERA_SMOOTH_FACTOR = 4f;
     public static String PROJECT_PATH;
@@ -41,10 +42,10 @@ public final class GameConsts {
         try (var file = Gdx.files.internal("game.settings.json").read();
              var parser = DataLoader.mapper.createParser(file)) {
             var settings = parseSettings(parser);
-            var debugLayers = switch (System.getProperty("luteDebugLayers")) {
-                case null -> settings.debugLayers();
-                case "on" -> new DebugLayers(true, true, false, false);
-                case "off" -> new DebugLayers(false, false, false, false);
+            visualLaunchOverride = switch (System.getProperty("luteDebugLayers")) {
+                case null -> null;
+                case "on" -> true;
+                case "off" -> false;
                 default -> throw new IllegalArgumentException("luteDebugLayers must be on or off");
             };
             UNIT_SCALE = settings.unitScale();
@@ -53,7 +54,7 @@ public final class GameConsts {
             PHYSIC_INTERVAL = settings.physicInterval();
             DAY_LENGTH_MINUTES = settings.dayLengthMinutes();
             NIGHT_AMBIENT = settings.nightAmbient();
-            DEBUG_LAYERS = debugLayers;
+            DEBUG_LAYERS = applyVisualLaunchProfile(settings.debugLayers());
             PHYSIC_SCALING.set(settings.physicScaling().x(), settings.physicScaling().y());
             CAMERA_SMOOTH_FACTOR = settings.cameraSmoothFactor();
             PROJECT_PATH = settings.projectPath();
@@ -67,6 +68,11 @@ public final class GameConsts {
         } catch (IOException | RuntimeException failure) {
             throw new GdxRuntimeException("Failed to load game.settings.json", failure);
         }
+    }
+
+    public static DebugLayers applyVisualLaunchProfile(DebugLayers layers) {
+        if (visualLaunchOverride == null) { return layers; }
+        return new DebugLayers(visualLaunchOverride, visualLaunchOverride, false, false, layers.assetValidation());
     }
 
     public record NightAmbient(String tint, float brightness) {
@@ -92,14 +98,15 @@ public final class GameConsts {
         }
     }
 
-    public record DebugLayers(boolean physics, boolean triggers, boolean rawLightMap, boolean lightingOutlines) {
+    public record DebugLayers(boolean physics, boolean triggers, boolean rawLightMap, boolean lightingOutlines,
+                              boolean assetValidation) {
         @JsonCreator(mode = JsonCreator.Mode.DELEGATING)
         private static DebugLayers parse(JsonNode node) {
-            if (!node.isObject() || node.size() != 4) {
-                throw new IllegalArgumentException("debugLayers requires exactly physics, triggers, rawLightMap and lightingOutlines");
+            if (!node.isObject() || node.size() != 5) {
+                throw new IllegalArgumentException("debugLayers requires exactly physics, triggers, rawLightMap, lightingOutlines and assetValidation");
             }
             return new DebugLayers(flag(node, "physics"), flag(node, "triggers"),
-                flag(node, "rawLightMap"), flag(node, "lightingOutlines"));
+                flag(node, "rawLightMap"), flag(node, "lightingOutlines"), flag(node, "assetValidation"));
         }
 
         private static boolean flag(JsonNode node, String key) {

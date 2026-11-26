@@ -33,6 +33,8 @@ application {
   applicationDefaultJvmArgs = ['--enable-native-access=ALL-UNNAMED']
 }
 
+sourceSets.test.resources.srcDir('../test-fixtures')
+
 tasks.named('run', JavaExec) { workingDir = projectDir.parentFile }
 tasks.named('test', Test) { useJUnitPlatform { excludeTags 'display' } }
 

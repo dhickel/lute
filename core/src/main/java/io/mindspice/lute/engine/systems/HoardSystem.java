@@ -3,6 +3,8 @@ package io.mindspice.lute.engine.systems;
 import com.badlogic.ashley.core.Engine;
 import com.badlogic.ashley.core.Entity;
 import com.badlogic.ashley.core.EntitySystem;
+import io.mindspice.lute.engine.GameCore;
+import io.mindspice.lute.engine.data.json.ObjectData;
 import io.mindspice.lute.engine.events.Event;
 import io.mindspice.lute.engine.events.EventListener;
 import io.mindspice.lute.engine.input.InputManager;
@@ -16,34 +18,36 @@ import io.mindspice.lute.engine.components.*;
 import io.mindspice.lute.engine.singletons.GameConsts;
 import java.util.ArrayList;
 import java.util.List;
+import java.util.function.BiFunction;
 import java.util.function.Consumer;
 import java.util.random.RandomGenerator;
 
 /** Adapts one map-scoped run to the simulation clock, combat events and map placement. */
 public final class HoardSystem extends EntitySystem implements EventListener {
-    static final List<String> WAVE_ROSTER = List.of("brainless_undead", "undead_archer", "bone_soldier",
-        "cultist", "cultist_archer", "viper", "reaper", "raider");
+    record RosterEntry(String key, int unlockRound, int weight, int baseXp) { }
 
-    static List<String> unlockedRoster(int round) {
-        if (round < 5) { return WAVE_ROSTER.subList(0, 2); }
-        if (round < 10) { return WAVE_ROSTER.subList(0, 3); }
-        if (round < 20) { return WAVE_ROSTER.subList(0, 5); } // Both Cultists join at round 10.
-        if (round < 25) { return WAVE_ROSTER.subList(0, 6); }
-        if (round < 30) { return WAVE_ROSTER.subList(0, 7); }
-        return WAVE_ROSTER;
-    }
-    static List<String> spawnTickets(List<String> roster) {
-        var tickets = new ArrayList<String>();
-        for (var key : roster) {
-            tickets.add(key);
-            switch (key) {
-                case "undead_archer", "cultist_archer", "viper" -> { }
-                default -> tickets.add(key);
-            }
+    static final List<RosterEntry> WAVE_ROSTER = List.of(
+        new RosterEntry("brainless_undead", 1, 2, 5),
+        new RosterEntry("undead_archer", 1, 1, 5),
+        new RosterEntry("bone_soldier", 5, 2, 10),
+        new RosterEntry("cultist", 10, 2, 15),
+        new RosterEntry("cultist_archer", 10, 1, 15),
+        new RosterEntry("viper", 20, 1, 20),
+        new RosterEntry("reaper", 25, 2, 25),
+        new RosterEntry("raider", 30, 2, 30)
+    );
+
+    static List<RosterEntry> spawnTickets(int round) {
+        var tickets = new ArrayList<RosterEntry>();
+        for (var enemy : WAVE_ROSTER) {
+            if (enemy.unlockRound() > round) { break; }
+            for (int i = 0; i < enemy.weight(); i++) { tickets.add(enemy); }
         }
         return tickets;
     }
 
+    private static final String KILL_HEALTH_KEY = "health_pack_1";
+    private static final String WEAPON_BAG_KEY = "weapon_bag";
     private static final int DREDGE_BASE_XP = 100;
     private static final float SPRINT_MULTIPLIER = 1.6f;
     private static final float SPRINT_RAMP_UP_SECONDS = .25f;
@@ -53,16 +57,11 @@ public final class HoardSystem extends EntitySystem implements EventListener {
     private static final double REFILL_DELAY_SECONDS = 2d;
     private record Bounty(int baseXp) implements Component { }
 
-    private static int waveBaseXp(String key) {
-        return switch (key) {
-            case "brainless_undead", "undead_archer" -> 5;
-            case "bone_soldier" -> 10;
-            case "cultist", "cultist_archer" -> 15;
-            case "viper" -> 20;
-            case "reaper" -> 25;
-            case "raider" -> 30;
-            default -> throw new IllegalArgumentException("Unknown Hoard enemy: " + key);
-        };
+    static Component rosterBounty(String key) {
+        for (var enemy : WAVE_ROSTER) {
+            if (enemy.key().equals(key)) { return new Bounty(enemy.baseXp()); }
+        }
+        throw new IllegalArgumentException("Unsupported Hoard enemy spawnKey: " + key);
     }
     // Placement must not consume random draws used for waves or kill drops.
     private final RandomGenerator roundHealthRandom = RandomGenerator.getDefault();
@@ -83,7 +82,7 @@ public final class HoardSystem extends EntitySystem implements EventListener {
         var bounty = enemy.getComponent(Bounty.class);
         if (bounty == null) { return; }
         run.enemyKilled(bounty.baseXp());
-        if (dropRandom.nextInt(10) == 0) { drop(tiled, feet(enemy), "health_pack_1"); }
+        if (dropRandom.nextInt(10) == 0) { drop(tiled, feet(enemy), KILL_HEALTH_KEY); }
     };
 
     public HoardSystem(InputManager input) {
@@ -123,6 +122,20 @@ public final class HoardSystem extends EntitySystem implements EventListener {
         return areas.getFirst();
     }
 
+    static void validateDelayedSpawns(EntityFactory factory, MapTriggers triggers, Entity player,
+                                      BiFunction<String, Facing.Direction, Rectangle> enemyFootprint) {
+        var boss = dredgePoint(triggers);
+        enemyFootprint.apply(boss.spawnKey(), boss.facing());
+        factory.validatePickupSpawn(healthArea(triggers).spawnKey(), ObjectData.Kind.HEAL);
+        factory.validatePickupSpawn(KILL_HEALTH_KEY, ObjectData.Kind.HEAL);
+        factory.validatePickupSpawn(WEAPON_BAG_KEY, ObjectData.Kind.WEAPON_BAG);
+        // Factory staging already validates weapon art. Check that the arena cycle resolves too.
+        var weapons = GameCore.INSTANCE.getGameData().weaponsData();
+        for (var weapon : Controller.MAPPER.get(player).getWeaponCycle()) {
+            weapons.requireWeapon(weapon);
+        }
+    }
+
     void bind(TiledSystem tiled, List<MapTriggers.SpawnArea> areas, RandomGenerator random) {
         stamina = 1d;
         refillDelay = 0d;
@@ -150,17 +163,16 @@ public final class HoardSystem extends EntitySystem implements EventListener {
                 tiled.addArenaEntity(boss);
             }
         }, (amount, round) -> {
-            var tickets = spawnTickets(unlockedRoster(round));
+            var tickets = spawnTickets(round);
             int count = areas.size();
             int next = random.nextInt(count);
             for (int i = 0; i < amount; i++) {
-                String key = tickets.get(random.nextInt(tickets.size()));
-                int baseXp = waveBaseXp(key);
+                var entry = tickets.get(random.nextInt(tickets.size()));
                 for (int attempt = 0; attempt < count; attempt++) {
                     int zone = next;
                     next = (next + 1) % count;
-                    var enemy = tiled.trySpawnAreaEnemy(areas.get(zone), key, random);
-                    if (enemy != null) { enemy.add(new Bounty(baseXp)); break; }
+                    var enemy = tiled.trySpawnAreaEnemy(areas.get(zone), entry.key(), random);
+                    if (enemy != null) { enemy.add(new Bounty(entry.baseXp())); break; }
                 }
             }
         });
@@ -184,7 +196,7 @@ public final class HoardSystem extends EntitySystem implements EventListener {
 
     void dredgeDied(Entity enemy) {
         var tiled = getEngine().getSystem(TiledSystem.class);
-        if (isActive() && tiled.owns(enemy)) { drop(tiled, feet(enemy), "weapon_bag"); }
+        if (isActive() && tiled.owns(enemy)) { drop(tiled, feet(enemy), WEAPON_BAG_KEY); }
     }
 
     private static Vector2 feet(Entity enemy) {
@@ -277,16 +289,11 @@ public final class HoardSystem extends EntitySystem implements EventListener {
     void afterPhysicsStep(float interval) {
         if (run == null || run.isGameOver()) { return; }
         // Resolve contacts at this tick's positions, before a lunge ends, a wave spawns or a pickup heals.
-        // Use the arena-aware drain so a hit can reach an enemy still registering from the prior tick.
         var engine = getEngine();
-        var killed = engine.getSystem(CombatSystem.class).applyPendingHits(engine.getSystem(TiledSystem.class));
-        for (var victim : killed) {
-            // A newly spawned casualty may not be in DeathSystem's Ashley family yet.
-            var death = engine.getSystem(DeathSystem.class);
-            if (death.getFamily().matches(victim)) { death.processEntity(victim, 0f); }
-        }
+        var tiled = engine.getSystem(TiledSystem.class);
+        engine.getSystem(CombatSystem.class).resolveArenaStepHits(tiled);
         if (!run.isGameOver()) {
-            engine.getSystem(TiledSystem.class).collectPickups();
+            tiled.collectPickups();
             run.advance(interval);
         }
     }

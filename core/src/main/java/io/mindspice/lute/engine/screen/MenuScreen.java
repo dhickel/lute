@@ -97,7 +97,8 @@ public final class MenuScreen extends InputAdapter implements Screen {
             case OPTIONS -> {
                 title = "Options";
                 for (var layer : MenuSettings.Layer.values()) {
-                    row(label(layer) + "    " + (settings.enabled(layer) ? "ON" : "OFF"), () -> {
+                    String name = layer == MenuSettings.Layer.ASSET_VALIDATION ? "Asset Validation" : label(layer);
+                    row(name + "    " + (settings.enabled(layer) ? "ON" : "OFF"), () -> {
                         settings.toggle(layer);
                         rebuild();
                     });

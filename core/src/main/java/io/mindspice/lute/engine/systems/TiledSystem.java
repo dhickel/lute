@@ -40,12 +40,14 @@ import java.util.IdentityHashMap;
 import java.util.List;
 import java.util.Map;
 import java.util.Set;
+import java.util.function.BiFunction;
 import java.util.random.RandomGenerator;
 
 public class TiledSystem extends EntitySystem implements EventEmitter {
     private final AssetService assetService;
     private final World physicsWorld;
     private final InputManager inputManager;
+    private final boolean assetValidation;
     private final RandomGenerator arenaRandom = RandomGenerator.getDefault();
     private RuntimeMap active;
     // These outlive a map runtime (including hide/show), but not this gameplay session.
@@ -58,10 +60,11 @@ public class TiledSystem extends EntitySystem implements EventEmitter {
     // Only unfinished deaths survive map teardown; after expiry the next runtime spawns normally.
     private final Map<String, Map<String, DeathSystem.Corpse>> offMapCorpses = new HashMap<>();
 
-    public TiledSystem(AssetService assetService, World physicsWorld, InputManager inputManager) {
+    public TiledSystem(AssetService assetService, World physicsWorld, InputManager inputManager, boolean assetValidation) {
         this.assetService = assetService;
         this.physicsWorld = physicsWorld;
         this.inputManager = inputManager;
+        this.assetValidation = assetValidation;
     }
 
     @Override
@@ -317,13 +320,18 @@ public class TiledSystem extends EntitySystem implements EventEmitter {
                 if (hiddenPlayerCorpse != null) { death.restore(next.player, hiddenPlayerCorpse, simulationSeconds); }
             }
             var factory = getEngine().getSystem(EntityFactory.class);
+            record FootprintKey(String spawnKey, Facing.Direction facing) { }
+            var stagedFootprints = new HashMap<FootprintKey, Rectangle>();
+            BiFunction<String, Facing.Direction, Rectangle> enemyFootprint = (key, facing) ->
+                stagedFootprints.computeIfAbsent(new FootprintKey(key, facing),
+                    spawn -> factory.enemySpawnFootprint(spawn.spawnKey(), spawn.facing()));
             for (var area : triggers.areas()) {
                 if (area.type() == MapTriggers.SpawnType.ENEMY && area.behaviorKey() != null) {
                     var footprints = new HashMap<String, Rectangle>();
-                    footprints.put(area.spawnKey(), factory.enemySpawnFootprint(area.spawnKey(), area.facing()));
+                    footprints.put(area.spawnKey(), enemyFootprint.apply(area.spawnKey(), area.facing()));
                     if (next.arena != null && next.arena.contains(area)) {
-                        for (var key : HoardSystem.WAVE_ROSTER) {
-                            footprints.put(key, factory.enemySpawnFootprint(key, area.facing()));
+                        for (var entry : HoardSystem.WAVE_ROSTER) {
+                            footprints.put(entry.key(), enemyFootprint.apply(entry.key(), area.facing()));
                         }
                     }
                     next.enemyFootprints.put(area, footprints);
@@ -334,8 +342,11 @@ public class TiledSystem extends EntitySystem implements EventEmitter {
                 switch (marker.type()) {
                     case NPC, ENEMY -> {
                         var role = marker.type() == MapTriggers.SpawnType.NPC ? Actor.Role.NPC : Actor.Role.ENEMY;
+                        var bounty = next.arena != null && role == Actor.Role.ENEMY
+                            ? HoardSystem.rosterBounty(marker.spawnKey()) : null;
                         var actor = factory.getMapActor(marker.position(), role, marker.spawnKey(), marker.facing());
                         next.entities.add(actor);
+                        if (bounty != null) { actor.add(bounty); }
                         // Arena actors belong to this run, including authored point enemies.
                         if (next.arena == null) { next.actorSpawns.put(actor, marker.name()); }
                         var corpse = corpses.get(marker.name());
@@ -344,6 +355,9 @@ public class TiledSystem extends EntitySystem implements EventEmitter {
                     case ITEM, OBJECT -> next.entities.add(factory.getSpawnedObject(marker.position(), marker.spawnKey(), marker.facing()));
                     default -> { }
                 }
+            }
+            if (assetValidation && next.arena != null) {
+                HoardSystem.validateDelayedSpawns(factory, triggers, next.player, enemyFootprint);
             }
             next.sensors = getEngine().getSystem(MapSensorSystem.class).prepareMap(triggers);
             return next;

@@ -126,7 +126,7 @@ tasks.register('hoardArenaTest', JavaExec) {
       if (mapId == 'hoard_mode') {
         // Make the clock-lighting pixel comparison independent of the local debug view and ambient tuning.
         settings.nightAmbient = [tint: '#8299CC', brightness: 0.35]
-        settings.debugLayers = [physics: false, triggers: false, rawLightMap: false, lightingOutlines: false]
+        settings.debugLayers.putAll(physics: false, triggers: false, rawLightMap: false, lightingOutlines: false)
       }
       new File(workingDir, 'game.settings.json').text = groovy.json.JsonOutput.toJson(settings)
     }

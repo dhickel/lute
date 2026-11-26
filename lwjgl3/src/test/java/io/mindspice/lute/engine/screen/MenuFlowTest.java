@@ -9,7 +9,10 @@ import com.badlogic.gdx.graphics.Pixmap;
 import com.badlogic.gdx.graphics.PixmapIO;
 import io.mindspice.lute.engine.GameCore;
 import io.mindspice.lute.engine.components.Health;
+import io.mindspice.lute.engine.components.Pickup;
 import io.mindspice.lute.engine.components.Player;
+import io.mindspice.lute.engine.data.json.DataLoader;
+import io.mindspice.lute.engine.data.json.GameData;
 import io.mindspice.lute.engine.input.InputAction;
 import io.mindspice.lute.engine.input.InputSettings;
 import io.mindspice.lute.engine.input.GamepadControl;
@@ -21,6 +24,7 @@ import io.mindspice.lute.gameplay.HoardRun;
 import java.lang.reflect.Proxy;
 import java.nio.file.Files;
 import java.nio.file.Path;
+import java.util.HashMap;
 import java.util.List;
 
 import static com.badlogic.gdx.Input.Keys.*;
@@ -46,6 +50,7 @@ public final class MenuFlowTest extends ApplicationAdapter {
 
     @Override public void create() {
         profile();
+        visualLaunchProfile();
         addController();
         var prefs = Gdx.app.getPreferences("lute-controls-v1");
         prefs.putString("key." + F6, "GUI_RIGHT_CLICK").putString("key." + F7, "GUI_ENTER")
@@ -66,9 +71,13 @@ public final class MenuFlowTest extends ApplicationAdapter {
             tap(F8); button(5); // scroll down; mapped GUI left click toggles triggers
             button(4); tap(F7); // mapped GUI tab; toggle raw light map
             tap(F8); tap(F7); // toggle lighting outlines
+            require(GameConsts.DEBUG_LAYERS.assetValidation() && !prefs.contains("ASSET_VALIDATION"),
+                "asset validation starts enabled without a preference");
+            tap(F8); tap(F7); // disable asset validation
             tap(F8); tap(F9); tap(F8); tap(F7); // left then scroll down -> Key Bindings
             require(prefs.contains("PHYSICS") && prefs.contains("TRIGGERS") && prefs.contains("RAW_LIGHT_MAP")
                 && prefs.contains("LIGHTING_OUTLINES"), "all four independently persisted via logical GUI actions");
+            require(prefs.getString("ASSET_VALIDATION").equals("false"), "Options toggle persists disabled validation");
             for (int i = 0; i < InputAction.SPRINT.ordinal(); i++) { tap(DOWN); }
             tap(ENTER);
             tap(DOWN); tap(ENTER); // Add Keyboard
@@ -94,8 +103,7 @@ public final class MenuFlowTest extends ApplicationAdapter {
             require(GAME.getEngine().getSystems().size() == 0, "blank name does not start a run");
             button(3); button(0); // controller enters A
             type('x'); tap(BACKSPACE); type('d'); type('a'); type('!'); // name editing wins over shortcuts
-            tap(UP); tap(ENTER);
-            var first = waitForRun();
+            var first = startWithoutPreflight();
             require((GAME.getEngine().getSystem(PhysicDebugRenderSystem.class) != null) == physics, "options reach game renderer");
             var processor = Gdx.input.getInputProcessor();
             processor.keyDown(E);
@@ -125,10 +133,31 @@ public final class MenuFlowTest extends ApplicationAdapter {
             require(scorePrefs.getString("topFive.v1").equals(saved + "\nAda\t0\t0\t1\t0"), "second run recorded once below first");
             var disk = new Lwjgl3Preferences(new FileHandle(temp.resolve("lute-controls-v1").toFile()));
             var restart = new MenuSettings(disk, InputSettings.load(Gdx.files.internal("input.setting.json")), GameConsts.DEBUG_LAYERS);
-            require(restart.layers().physics() == physics && restart.map.getKey(E) == InputAction.SPRINT
+            require(restart.layers().physics() == physics && !restart.layers().assetValidation()
+                && restart.map.getKey(E) == InputAction.SPRINT
                 && restart.map.getGamepad(GamepadControl.LEFT_STICK_UP) == InputAction.SPRINT, "restart restores overrides");
             remappedBackControls(prefs, physics);
         } finally { GAME.dispose(); Gdx.app.exit(); }
+    }
+
+    private HoardRun startWithoutPreflight() {
+        var original = DataLoader.loadGameData();
+        var objects = new HashMap<>(original.objectsData());
+        objects.remove("health_pack_2");
+        var incomplete = new GameData(original.playerData(), original.weaponsData(), original.projectilesData(),
+            original.actorsData(), objects);
+        try {
+            var field = GameCore.class.getDeclaredField("gameData");
+            field.setAccessible(true);
+            field.set(GAME, incomplete);
+            try {
+                tap(UP); tap(ENTER);
+                var run = waitForRun();
+                require(run.round() == 1 && GAME.getEngine().getEntitiesFor(Family.all(Pickup.class).get()).size() == 0,
+                    "validation disabled: missing delayed pickup does not block entry or change round-one spawning");
+                return run;
+            } finally { field.set(GAME, original); }
+        } catch (ReflectiveOperationException failure) { throw new AssertionError(failure); }
     }
 
     private void remappedBackControls(Preferences prefs, boolean physics) {
@@ -151,6 +180,36 @@ public final class MenuFlowTest extends ApplicationAdapter {
         p.touchUp(0, 0, 0, Input.Buttons.RIGHT);
         tap(DOWN); tap(ESCAPE); button(2);
         require(prefs.getString("PHYSICS").equals(Boolean.toString(physics)), "right-click still goes back after remapping");
+    }
+
+    private static void visualLaunchProfile() {
+        var file = new FileHandle(temp.resolve("test-visual-options").toFile());
+        var saved = new Lwjgl3Preferences(file);
+        saved.putString("PHYSICS", "true").putString("TRIGGERS", "false")
+            .putString("RAW_LIGHT_MAP", "true").putString("LIGHTING_OUTLINES", "true")
+            .putString("ASSET_VALIDATION", "false").flush();
+        var previous = System.getProperty("luteDebugLayers");
+        try {
+            for (String profile : List.of("off", "on")) {
+                System.setProperty("luteDebugLayers", profile);
+                boolean on = profile.equals("on");
+                require(restartLayers(file).equals(new GameConsts.DebugLayers(on, on, false, false, false)),
+                    profile + " overrides saved visual options only");
+            }
+            System.clearProperty("luteDebugLayers");
+            require(restartLayers(file).equals(new GameConsts.DebugLayers(true, false, true, true, false)),
+                "restart without a profile restores saved options");
+            require(new Lwjgl3Preferences(file).get().equals(saved.get()), "launch profiles leave saved preferences untouched");
+        } finally {
+            if (previous == null) { System.clearProperty("luteDebugLayers"); }
+            else { System.setProperty("luteDebugLayers", previous); }
+        }
+    }
+
+    private static GameConsts.DebugLayers restartLayers(FileHandle file) {
+        GameConsts.loadSettings();
+        var map = InputSettings.load(Gdx.files.internal("input.setting.json"));
+        return new MenuSettings(new Lwjgl3Preferences(file), map, GameConsts.DEBUG_LAYERS).layers();
     }
 
     private static void profile() {

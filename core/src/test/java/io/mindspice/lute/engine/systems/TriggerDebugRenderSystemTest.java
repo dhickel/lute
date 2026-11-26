@@ -376,7 +376,7 @@ public final class TriggerDebugRenderSystemTest {
     }
 
     private static TriggerDebugRenderSystem attach(World world, RecordingRenderer renderer, TiledMap map) {
-        var tiled = new TiledSystem(null, world, null) {
+        var tiled = new TiledSystem(null, world, null, true) {
             @Override public TiledMap getCurrentMap() { return map; }
         };
         var engine = new Engine() {

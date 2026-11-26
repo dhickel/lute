@@ -27,6 +27,23 @@ tasks.named('test') {
   failOnNoDiscoveredTests = false
 }
 
+sourceSets.test.resources.srcDir(rootProject.file('test-fixtures'))
+
+tasks.register('geometryGoldenTest', JavaExec) {
+  dependsOn testClasses
+  classpath = sourceSets.test.runtimeClasspath
+  mainClass = 'io.mindspice.lute.engine.systems.GeometryGoldenTest'
+  jvmArgs '--enable-native-access=ALL-UNNAMED'
+}
+check.dependsOn geometryGoldenTest
+
+tasks.register('hoardRosterTest', JavaExec) {
+  dependsOn testClasses
+  classpath = sourceSets.test.runtimeClasspath
+  mainClass = 'io.mindspice.lute.engine.systems.HoardRosterTest'
+}
+check.dependsOn hoardRosterTest
+
 tasks.register('worldTimeSystemTest', JavaExec) {
   dependsOn testClasses
   classpath = sourceSets.test.runtimeClasspath

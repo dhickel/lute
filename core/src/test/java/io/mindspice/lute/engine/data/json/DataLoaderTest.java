@@ -29,6 +29,11 @@ public final class DataLoaderTest {
                 System.out.println("DataLoaderTest: actor schema passed");
                 return;
             }
+            if (List.of(args).equals(List.of("--settings-only"))) {
+                debugLayerLaunchModes();
+                System.out.println("DataLoaderTest: settings launch modes passed");
+                return;
+            }
             var settings = DataLoader.mapper.readTree(Path.of("assets/game.settings.json").toFile());
             check(GameConsts.VIEW_WIDTH == settings.required("viewWidth").floatValue()
                 && GameConsts.UNIT_SCALE == settings.required("unitScale").floatValue(), "settings constants match authored values");
@@ -38,7 +43,8 @@ public final class DataLoaderTest {
             var debug = settings.required("debugLayers");
             check(GameConsts.DEBUG_LAYERS.equals(new GameConsts.DebugLayers(debug.required("physics").booleanValue(),
                 debug.required("triggers").booleanValue(), debug.required("rawLightMap").booleanValue(),
-                debug.required("lightingOutlines").booleanValue())), "debug layers match authored values");
+                debug.required("lightingOutlines").booleanValue(), debug.required("assetValidation").booleanValue())),
+                "debug layers match authored values");
             check(Files.mismatch(Path.of("raw_assets/game.settings.json"), Path.of("assets/game.settings.json")) == -1,
                 "generated settings match source");
             var player = DataLoader.parsePlayerData();
@@ -559,16 +565,23 @@ public final class DataLoaderTest {
             var settings = (tools.jackson.databind.node.ObjectNode) DataLoader.mapper.readTree(Path.of("assets/game.settings.json").toFile());
             var layers = settings.putObject("debugLayers");
             layers.put("physics", false).put("triggers", true).put("rawLightMap", true).put("lightingOutlines", true);
-            Files.writeString(fixture, settings.toString());
             useFile(fixture);
-            GameConsts.loadSettings();
-            check(GameConsts.DEBUG_LAYERS.equals(new GameConsts.DebugLayers(false, true, true, true)), "absent mode uses JSON");
-            System.setProperty("luteDebugLayers", "off");
-            GameConsts.loadSettings();
-            check(GameConsts.DEBUG_LAYERS.equals(new GameConsts.DebugLayers(false, false, false, false)), "off disables all layers");
-            System.setProperty("luteDebugLayers", "on");
-            GameConsts.loadSettings();
-            check(GameConsts.DEBUG_LAYERS.equals(new GameConsts.DebugLayers(true, true, false, false)), "on enables physics and triggers only");
+            for (boolean validate : List.of(true, false)) {
+                layers.put("assetValidation", validate);
+                Files.writeString(fixture, settings.toString());
+                System.clearProperty("luteDebugLayers");
+                GameConsts.loadSettings();
+                check(GameConsts.DEBUG_LAYERS.equals(new GameConsts.DebugLayers(false, true, true, true, validate)),
+                    "absent mode uses JSON");
+                System.setProperty("luteDebugLayers", "off");
+                GameConsts.loadSettings();
+                check(GameConsts.DEBUG_LAYERS.equals(new GameConsts.DebugLayers(false, false, false, false, validate)),
+                    "off disables visual layers only");
+                System.setProperty("luteDebugLayers", "on");
+                GameConsts.loadSettings();
+                check(GameConsts.DEBUG_LAYERS.equals(new GameConsts.DebugLayers(true, true, false, false, validate)),
+                    "on enables physics and triggers without changing asset validation");
+            }
 
             var width = GameConsts.VIEW_WIDTH;
             settings.put("viewWidth", width + 1);
@@ -577,7 +590,7 @@ public final class DataLoaderTest {
             rejects(GameConsts::loadSettings, "unknown launch mode");
             check(GameConsts.VIEW_WIDTH == width, "invalid mode publishes nothing");
             System.setProperty("luteDebugLayers", "on");
-            layers.remove("rawLightMap");
+            layers.remove("assetValidation");
             Files.writeString(fixture, settings.toString());
             rejects(GameConsts::loadSettings, "override masking an invalid authored layer");
         } finally {

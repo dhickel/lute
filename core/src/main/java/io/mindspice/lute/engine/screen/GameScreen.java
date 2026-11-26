@@ -77,7 +77,7 @@ public class GameScreen extends ScreenAdapter {
             renderer = new RenderSystem(game.getBatch(), game.getViewport(), game.getCamera(), game.getAssetService(), debugLayers);
             addSystem(renderer);
             addSystem(new EntityFactory(physicWorld, game.getAssetService()));
-            tiled = new TiledSystem(game.getAssetService(), physicWorld, inputManager);
+            tiled = new TiledSystem(game.getAssetService(), physicWorld, inputManager, debugLayers.assetValidation());
             addSystem(tiled);
             if (debugLayers.physics()) { addSystem(new PhysicDebugRenderSystem(physicWorld, game.getCamera())); }
             if (debugLayers.triggers()) { addSystem(new TriggerDebugRenderSystem(physicWorld, game.getCamera())); }

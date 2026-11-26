@@ -25,8 +25,12 @@ import com.badlogic.gdx.physics.box2d.BodyDef;
 import com.badlogic.gdx.physics.box2d.Fixture;
 import com.badlogic.gdx.physics.box2d.PolygonShape;
 import io.mindspice.lute.engine.GameCore;
+import io.mindspice.lute.engine.assets.MapAssets;
 import io.mindspice.lute.engine.tiled.MapTriggers;
 import io.mindspice.lute.engine.components.*;
+import io.mindspice.lute.engine.data.json.ActorsData;
+import io.mindspice.lute.engine.data.json.GameData;
+import io.mindspice.lute.engine.data.json.ObjectData;
 import io.mindspice.lute.engine.events.Event;
 import io.mindspice.lute.engine.input.InputAction;
 import io.mindspice.lute.engine.singletons.GameConsts;
@@ -34,8 +38,10 @@ import io.mindspice.lute.engine.tiled.ManifestLoader;
 
 import java.lang.reflect.Proxy;
 import java.util.Arrays;
+import java.util.HashMap;
 import java.util.HashSet;
 import java.util.List;
+import java.util.Optional;
 import java.util.Random;
 
 /** Real generated arena, Box2D, normal screen lifecycle and both rendering paths. */
@@ -61,7 +67,7 @@ public final class HoardArenaTest extends ApplicationAdapter {
         finally { Gdx.app.exit(); }
     }
 
-    private void exercise() {
+    private void exercise() throws ReflectiveOperationException {
         verifyRoundHealthSampling();
         GAME.create();
         initialized = true;
@@ -176,8 +182,7 @@ public final class HoardArenaTest extends ApplicationAdapter {
         var priorRun = hoard.run();
         var priorEnemy = enemies.first();
         bus.emitEvent(new Event.Player.KilledEnemy(player(), priorEnemy)); // delayed until after named reentry
-        require(tiled.requestTravel(player(), "test_tiled", "PlayerSpawn"), "leave arena");
-        tiled.applyPendingTravel();
+        verifyAssetPreflight(tiled, hoard); // Leaves for the ordinary map with a broken Hoard-only asset.
         require(hoard.run() == null && !enemies.contains(priorEnemy, true)
             && Health.MAPPER.get(player()).getMaximum() == GAME.getGameData().playerData().maxHealth(), "normal map and HP restored");
         var normal = Health.MAPPER.get(player());
@@ -224,6 +229,123 @@ public final class HoardArenaTest extends ApplicationAdapter {
         int batched = reinforcementHp(tiled, hoard, true);
         System.out.printf("HoardArenaTest: reinforcement HP after two physics ticks: split=%d, batched=%d%n", split, batched);
         require(split > 0 && batched == split, "one real sword hit regardless of physics frame batching");
+        verifyAuthoredEnemyCredit(tiled, hoard);
+    }
+
+    private void verifyAuthoredEnemyCredit(TiledSystem tiled, HoardSystem hoard) {
+        var map = contactArena();
+        var point = new PointMapObject(384, 384);
+        point.setName("AuthoredEnemy");
+        point.getProperties().put("type", "SpawnPoint");
+        point.getProperties().put("spawnType", "ENEMY");
+        point.getProperties().put("spawnKey", "bone_soldier");
+        point.getProperties().put("facing", "DOWN");
+        map.getLayers().get("Triggers").getObjects().add(point);
+        var manifest = ManifestLoader.parseMapManifest("hoard_mode");
+        var engine = GAME.getEngine();
+        var enemies = engine.getEntitiesFor(Family.all(ActorAi.class).get());
+        var pickups = engine.getEntitiesFor(Family.all(Pickup.class).get());
+        var random = new Random(31) {
+            int dropRolls;
+            @Override public int nextInt(int bound) {
+                if (bound != 10) { return super.nextInt(bound); }
+                dropRolls++;
+                return 0;
+            }
+        };
+        try {
+            tiled.setMap(map, manifest);
+            var authored = enemies.first(); // Point actors are installed before the opening wave.
+            var body = Physic.MAPPER.get(authored).getBody();
+            var center = body.getPosition().cpy().mulAdd(Transform.MAPPER.get(authored).getSize(), .5f);
+            require(center.epsilonEquals(point.getPoint().cpy().scl(GameConsts.UNIT_SCALE), .0001f)
+                && tiled.owns(authored), "authored enemy belongs to the arena");
+            hoard.bind(tiled, HoardSystem.arena("hoard_mode", tiled.getMapTriggers()), random);
+            var run = hoard.run();
+            var bus = engine.getSystem(EventSystem.class);
+            bus.emitEvent(new Event.Player.KilledEnemy(player(), authored));
+            bus.update(0);
+            require(run.kills() == 1 && run.score() == 11, "authored Bone Soldier earns its round-scaled roster bounty");
+            require(random.dropRolls == 1 && pickups.size() == 1 && pickups.first().getComponent(Pickup.class).rule().amount() == 50,
+                "authored enemy gets one kill-drop roll and the winning roll drops a small heal");
+
+            point.getProperties().put("spawnKey", "dredge"); // Valid catalog entry, but reserved for the delayed boss in Hoard.
+            var player = player();
+            var world = body.getWorld();
+            int bodies = world.getBodyCount();
+            try {
+                tiled.setMap(map, manifest);
+                throw new AssertionError("Hoard accepted an unsupported authored enemy");
+            } catch (IllegalArgumentException expected) {
+                require(expected.getMessage().contains("Unsupported Hoard enemy spawnKey: dredge"),
+                    "staging error identifies the unsupported key");
+            }
+            require(hoard.run() == run && player() == player && tiled.owns(authored) && world.getBodyCount() == bodies,
+                "rejected encounter leaves the active runtime and its bodies intact");
+            var ordinary = ManifestLoader.parseMapManifest("test_tiled");
+            tiled.setMap(map, new MapAssets(ordinary.mapAsset(), "", ordinary.atlasAsset(), ordinary.musicAssets(), ordinary.soundAssets()));
+            require(!hoard.isActive() && enemies.size() == 2, "ordinary maps can still author Dredge points");
+        } finally {
+            tiled.hideMap();
+            map.dispose();
+        }
+    }
+
+    private void verifyAssetPreflight(TiledSystem tiled, HoardSystem hoard) throws ReflectiveOperationException {
+        var field = GameCore.class.getDeclaredField("gameData");
+        field.setAccessible(true);
+        var original = GAME.getGameData();
+        var enemies = new HashMap<>(original.actorsData().enemies());
+        var objects = new HashMap<>(original.objectsData());
+        var map = tiled.getCurrentMap();
+        var manifest = ManifestLoader.parseMapManifest("hoard_mode");
+        var mount = (Runnable) () -> tiled.setMap(map, manifest);
+        var run = hoard.run();
+        var player = player();
+        var world = Physic.MAPPER.get(player).getBody().getWorld();
+        var bodyCount = world.getBodyCount();
+        var entities = GAME.getEngine().getEntities();
+        var entityCount = entities.size();
+        try {
+            // A successful mount must not mask a missing late-round actor on the next preparation.
+            for (String key : List.of("raider", "dredge", "health_pack_2", "health_pack_1", "weapon_bag")) {
+                enemies.remove(key);
+                objects.remove(key);
+                var actors = new ActorsData(original.actorsData().npc(), java.util.Map.copyOf(enemies));
+                field.set(GAME, new GameData(original.playerData(), original.weaponsData(), original.projectilesData(), actors, objects));
+                rejectsPreflight(mount, key);
+                enemies.putAll(original.actorsData().enemies());
+                objects.putAll(original.objectsData());
+            }
+
+            var bag = objects.get("weapon_bag");
+            objects.put("weapon_bag", new ObjectData(bag.animation(), bag.collision(), bag.emissive(), bag.atlasKey(),
+                objects.get("health_pack_2").pickup()));
+            field.set(GAME, new GameData(original.playerData(), original.weaponsData(), original.projectilesData(), original.actorsData(), objects));
+            rejectsPreflight(mount, "WEAPON_BAG pickup for weapon_bag");
+
+            objects.put("weapon_bag", new ObjectData(Optional.empty(), bag.collision(), bag.emissive(),
+                Optional.of("missing/bag_art"), bag.pickup()));
+            field.set(GAME, new GameData(original.playerData(), original.weaponsData(), original.projectilesData(), original.actorsData(), objects));
+            rejectsPreflight(mount, "missing/bag_art");
+            require(tiled.getCurrentMap() == map && hoard.run() == run && player() == player,
+                "preflight failures leave the current runtime installed");
+            require(world.getBodyCount() == bodyCount && entities.size() == entityCount,
+                "preflight failures destroy staged bodies and never register staged entities");
+
+            require(tiled.requestTravel(player, "test_tiled", "PlayerSpawn"), "request ordinary map with bad arena assets");
+            tiled.applyPendingTravel();
+            require(tiled.getCurrentMap() != map && hoard.run() == null, "ordinary map does not require delayed arena assets");
+        } finally { field.set(GAME, original); }
+    }
+
+    private static void rejectsPreflight(Runnable mount, String key) {
+        try { mount.run(); }
+        catch (IllegalArgumentException failure) {
+            require(failure.getMessage().contains(key), "preflight error names " + key + ": " + failure.getMessage());
+            return;
+        }
+        throw new AssertionError("preflight accepted invalid dependency: " + key);
     }
 
     private static void verifyRoundHealthSampling() {
@@ -297,23 +419,8 @@ public final class HoardArenaTest extends ApplicationAdapter {
         var bus = engine.getSystem(EventSystem.class);
         var areas = HoardSystem.arena("hoard_mode", tiled.getMapTriggers());
         var marker = tiled.getMapTriggers().points().stream().filter(p -> p.name().equals("Dredge")).findFirst().orElseThrow();
-        var expected = List.of("brainless_undead", "undead_archer", "bone_soldier", "cultist",
-            "cultist_archer", "viper", "reaper", "raider");
-        var unlockRounds = List.of(1, 1, 5, 10, 10, 20, 25, 30);
-        var baseXp = List.of(5, 5, 10, 15, 15, 20, 25, 30);
-        for (int round = 1; round <= 35; round++) {
-            int currentRound = round;
-            int count = (int) unlockRounds.stream().filter(unlock -> unlock <= currentRound).count();
-            var roster = HoardSystem.unlockedRoster(round);
-            require(roster.equals(expected.subList(0, count)), "shared pool at round " + round);
-            var tickets = HoardSystem.spawnTickets(roster);
-            require(roster.containsAll(tickets), "only unlocked types can be rolled");
-            for (var key : roster) {
-                boolean archer = List.of("undead_archer", "cultist_archer", "viper").contains(key);
-                require(java.util.Collections.frequency(tickets, key) == (archer ? 1 : 2),
-                    "archers receive half the spawn weight of melee at round " + round);
-            }
-        }
+        var roster = HoardSystem.WAVE_ROSTER.stream().collect(java.util.stream.Collectors.toMap(
+            HoardSystem.RosterEntry::key, entry -> entry));
         var observed = new HashSet<String>();
         hoard.bind(tiled, areas, new Random(537) {
             @Override public int nextInt(int bound) { return bound == 10 ? 9 : super.nextInt(bound); }
@@ -340,11 +447,11 @@ public final class HoardArenaTest extends ApplicationAdapter {
                         "Dredge spawns at the authored point");
                     points = 100;
                 } else {
-                    int zone = spawnArea(areas, enemy);
-                    require(zone < areas.size() && expected.contains(key) && unlockRounds.get(expected.indexOf(key)) <= round,
-                        "round " + round + " uses only the unlocked shared roster: " + key);
+                    var entry = roster.get(key);
+                    require(spawnArea(areas, enemy) < areas.size() && entry != null && entry.unlockRound() <= round,
+                        "round " + round + " spawns only unlocked wave enemies in the authored areas: " + key);
                     if (key.equals("viper")) { require(BowAim.MAPPER.has(enemy), "Viper can use its authored bow"); }
-                    points = baseXp.get(expected.indexOf(key));
+                    points = entry.baseXp();
                 }
                 boolean firstOfType = observed.add(key);
                 if (firstOfType || key.equals("dredge")) {

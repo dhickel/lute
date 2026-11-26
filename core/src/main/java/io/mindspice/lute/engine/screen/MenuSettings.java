@@ -3,6 +3,7 @@ package io.mindspice.lute.engine.screen;
 import com.badlogic.gdx.Input;
 import com.badlogic.gdx.Preferences;
 import io.mindspice.lute.engine.input.*;
+import io.mindspice.lute.engine.singletons.GameConsts;
 import io.mindspice.lute.engine.singletons.GameConsts.DebugLayers;
 
 import java.util.ArrayList;
@@ -23,7 +24,7 @@ final class MenuSettings {
         }
     }
 
-    enum Layer { PHYSICS, TRIGGERS, RAW_LIGHT_MAP, LIGHTING_OUTLINES }
+    enum Layer { PHYSICS, TRIGGERS, RAW_LIGHT_MAP, LIGHTING_OUTLINES, ASSET_VALIDATION }
     final InputMap map;
     private final Preferences prefs;
     private final List<Binding> controls = new ArrayList<>();
@@ -40,7 +41,8 @@ final class MenuSettings {
             try { control.set(map, value.isEmpty() ? null : InputAction.valueOf(value)); }
             catch (IllegalArgumentException e) { throw new IllegalArgumentException("Invalid saved binding: " + control.id(), e); }
         }
-        layers = new boolean[]{defaults.physics(), defaults.triggers(), defaults.rawLightMap(), defaults.lightingOutlines()};
+        layers = new boolean[]{defaults.physics(), defaults.triggers(), defaults.rawLightMap(),
+            defaults.lightingOutlines(), defaults.assetValidation()};
         for (var layer : Layer.values()) {
             var value = prefs.getString(layer.name(), Boolean.toString(enabled(layer)));
             if (!value.equals("true") && !value.equals("false")) { throw new IllegalArgumentException("Invalid saved layer: " + layer); }
@@ -49,7 +51,9 @@ final class MenuSettings {
     }
 
     boolean enabled(Layer layer) { return layers[layer.ordinal()]; }
-    DebugLayers layers() { return new DebugLayers(layers[0], layers[1], layers[2], layers[3]); }
+    DebugLayers layers() {
+        return GameConsts.applyVisualLaunchProfile(new DebugLayers(layers[0], layers[1], layers[2], layers[3], layers[4]));
+    }
 
     void toggle(Layer layer) {
         boolean next = !enabled(layer);
