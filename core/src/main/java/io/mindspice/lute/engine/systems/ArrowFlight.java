@@ -11,6 +11,8 @@ import io.mindspice.lute.engine.data.json.ProjectilesData.Projectile;
 import io.mindspice.lute.engine.singletons.GameConsts;
 
 final class ArrowFlight {
+    private static final float MAX_LIFT_RATIO = .15f;
+
     final Entity owner;
     final Projectile type;
     final Vector2 tip;
@@ -43,7 +45,7 @@ final class ArrowFlight {
         } : aimPoint.cpy().sub(start);
         span = travel.len();
         double blend = northBlend(travel.x, travel.y);
-        double lift = lift(type, distance, blend);
+        double lift = lift(type, distance * MAX_LIFT_RATIO, blend);
         rise = travel.y + 4 * lift;
         bend = 8 * lift;
         // Keep the parabola within a quarter sprite pixel of each collision chord.
@@ -67,36 +69,69 @@ final class ArrowFlight {
             ? apex : Double.POSITIVE_INFINITY;
     }
 
-    private static double northBlend(float x, float y) {
+    private static double northBlend(double x, double y) {
         double angle = Math.toDegrees(Math.atan2(Math.abs(x), y));
         return Math.max(0, Math.min(1, (angle - 10) / 15));
     }
 
-    private static double lift(Projectile type, float distance, double blend) {
-        return Math.min(type.arcHeight(), distance * .15f) * blend * blend * (3 - 2 * blend);
+    private static double lift(Projectile type, double distanceLimit, double blend) {
+        return Math.min(type.arcHeight(), distanceLimit) * blend * blend * (3 - 2 * blend);
     }
 
-    // Find a point the arrow and a constant-velocity target reach at the same time.
-    // If the lifetime is too short, take a direct shot rather than leading beyond reach.
+    // Find the first intercept after release. If none fits within the lifetime, aim directly.
     static Vector2 intercept(Projectile type, Vector2 start, Vector2 center, Vector2 velocity, float beforeRelease) {
         if (velocity.isZero() || center.equals(start)) { return center.cpy(); }
-        float low = 0, high = type.lifetime();
-        var point = center.cpy().mulAdd(velocity, beforeRelease + high);
-        if (secondsToAim(type, start, point) > high) { return center.cpy(); }
-        for (int i = 0; i < 24; i++) {
-            float time = (low + high) * .5f;
-            point.set(center).mulAdd(velocity, beforeRelease + time);
-            if (secondsToAim(type, start, point) > time) { low = time; }
-            else { high = time; }
+        double vx = velocity.x, vy = velocity.y;
+        double x = (double) center.x - start.x + vx * beforeRelease;
+        double y = (double) center.y - start.y + vy * beforeRelease;
+        double distanceSquared = x * x + y * y;
+        if (distanceSquared == 0) { return start.cpy(); }
+
+        // The arc is at least as long as its chord. Solve |position + velocity*t| <= speed*t
+        // first, so even an arbitrarily short crossing window is not lost to time sampling.
+        double speed = type.speed(), high = type.lifetime();
+        double a = vx * vx + vy * vy - speed * speed;
+        double dot = x * vx + y * vy;
+        double cross = x * vy - y * vx;
+        double discriminant = speed * speed * distanceSquared - cross * cross;
+        if (discriminant < 0 || (a >= 0 && dot >= 0)) { return center.cpy(); }
+        double root = Math.sqrt(discriminant);
+        // Use the equivalent root expression that doesn't subtract nearly equal terms.
+        double low = dot <= 0 ? distanceSquared / (root - dot) : (-dot - root) / a;
+        if (a > 0) { high = Math.min(high, (root - dot) / a); }
+        if (low > high) { return center.cpy(); }
+
+        double time = low;
+        if (type.arcHeight() > 0 && northBlend(x + vx * low, y + vy * low) > 0) {
+            // Arc length changes by at most 3 times aim displacement: the chord contributes
+            // at most 1, and lift is < 1-Lipschitz (including the north taper) and contributes at most 2.
+            double rate = speed + 3 * Math.hypot(vx, vy);
+            time = firstReachable(type, x, y, vx, vy, low, high,
+                reachGap(type, x, y, vx, vy, low), reachGap(type, x, y, vx, vy, high), rate);
         }
-        return point.set(center).mulAdd(velocity, beforeRelease + high);
+        if (Double.isNaN(time)) { return center.cpy(); }
+        return new Vector2((float) (start.x + x + vx * time), (float) (start.y + y + vy * time));
     }
 
-    private static double secondsToAim(Projectile type, Vector2 start, Vector2 point) {
-        float x = point.x - start.x, y = point.y - start.y;
-        float distance = Vector2.len(x, y);
-        double lift = lift(type, distance, northBlend(x, y));
-        return distanceAt(1, distance, x, y + 4 * lift, 8 * lift) / type.speed();
+    private static double firstReachable(Projectile type, double x, double y, double vx, double vy,
+                                         double low, double high, double lowGap, double highGap, double rate) {
+        if (lowGap <= 0) { return low; }
+        // Conservative lower bound from both ends; positive means the whole interval is unreachable.
+        if (lowGap + highGap > rate * (high - low)) { return Double.NaN; }
+        // Stop at about the precision of the returned float aim, not a fixed timestep.
+        if (high - low <= 1e-7 * high) { return highGap <= 0 ? high : Double.NaN; }
+        double mid = (low + high) / 2;
+        double midGap = reachGap(type, x, y, vx, vy, mid);
+        double first = firstReachable(type, x, y, vx, vy, low, mid, lowGap, midGap, rate);
+        return Double.isNaN(first) ? firstReachable(type, x, y, vx, vy, mid, high, midGap, highGap, rate) : first;
+    }
+
+    private static double reachGap(Projectile type, double x, double y, double vx, double vy, double time) {
+        x += vx * time;
+        y += vy * time;
+        double distance = Math.hypot(x, y);
+        double lift = lift(type, distance * MAX_LIFT_RATIO, northBlend(x, y));
+        return distanceAt(1, distance, x, y + 4 * lift, 8 * lift) - time * type.speed();
     }
 
     int boundsVertexCount() { return vertices.length; }

@@ -165,12 +165,53 @@ public final class ArrowFlightTest {
             "Coincident target does not invent a lead direction");
         require(ArrowFlight.intercept(TYPE, Vector2.Zero, center, new Vector2(20, 0), .25f).equals(center),
             "An outrunning target gets a direct shot");
+        verifyFastCrossing(world);
         var velocity = new Vector2(0, 4);
         var aim = ArrowFlight.intercept(TYPE, Vector2.Zero, center, velocity, 0);
         float time = (aim.y - center.y) / velocity.y;
         var arrow = launch(TYPE, aim);
         require(time > 0 && !arrow.finished(world, time) && arrow.tip.epsilonEquals(aim, .0001f),
             "Lead time matches actual curved flight, not straight-line distance");
+    }
+
+    private static void verifyFastCrossing(World world) {
+        var center = new Vector2(.4f, 4);
+        var velocity = new Vector2(0, -12);
+        var straight = new Projectile("test", 8, 5, TYPE.collision(), 0, 0, 0, 0);
+        var aim = ArrowFlight.intercept(straight, Vector2.Zero, center, velocity, .25f);
+        require(aim.epsilonEquals(.4f, .27331f, .00002f), "Lead the supplied fast crossing at its first intercept");
+        float time = (center.y - aim.y) / 12 - .25f;
+        var arrow = launch(straight, aim);
+        require(!arrow.finished(world, time) && arrow.tip.epsilonEquals(aim, .00002f),
+            "Straight flight reaches the fast crossing at the predicted time");
+        var impactWorld = new World(Vector2.Zero, true);
+        try {
+            var target = hurtbox(impactWorld, aim);
+            arrow = launch(straight, aim);
+            require(arrow.finished(impactWorld, time) && arrow.damagedVictim == target && oneHit(target),
+                "The predicted crossing uses the ordinary swept collision and damage path");
+        } finally { impactWorld.dispose(); }
+
+        aim = ArrowFlight.intercept(straight, Vector2.Zero, new Vector2(.005f, 4), new Vector2(0, -1200), 0);
+        require(aim.epsilonEquals(.005f, .02602f, .00002f),
+            "A crossing window much shorter than a simulation tick is still found");
+        var atLifetime = new Projectile("test", 8, .25f, TYPE.collision(), 0, 0, 0, 0);
+        require(ArrowFlight.intercept(atLifetime, Vector2.Zero, new Vector2(0, 4), new Vector2(0, -8), 0)
+            .equals(new Vector2(0, 2)), "Equal-speed approach can intercept exactly at the lifetime cap");
+
+        var curved = new Projectile("test", 8, 5, TYPE.collision(), .5f, 0, 0, 0);
+        aim = ArrowFlight.intercept(curved, Vector2.Zero, center, velocity, .25f);
+        time = (center.y - aim.y) / 12 - .25f;
+        arrow = launch(curved, aim);
+        require(time > .06056f && time < 1f / 12 && !arrow.finished(world, time)
+            && arrow.tip.epsilonEquals(aim, .00002f), "Fast crossing also uses curved travel time");
+
+        var shortLived = new Projectile("test", 8, .061f, TYPE.collision(), .5f, 0, 0, 0);
+        require(ArrowFlight.intercept(shortLived, Vector2.Zero, center, velocity, .25f).equals(center),
+            "A straight-line solution is not enough when curved flight runs out of lifetime");
+        arrow = launch(shortLived, aim);
+        require(arrow.finished(world, 1) && arrow.tip.dst(aim) > .001f,
+            "Actual flight stops short at the configured lifetime");
     }
 
     private static void verifySpeed(World world, float aimX, float lift) {
