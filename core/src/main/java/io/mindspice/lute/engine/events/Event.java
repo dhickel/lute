@@ -26,5 +26,6 @@ public sealed interface Event {
 
     sealed interface Player extends Event {
         record Moved() implements Player { }
+        record KilledEnemy(Entity player, Entity enemy) implements Player { }
     }
 }

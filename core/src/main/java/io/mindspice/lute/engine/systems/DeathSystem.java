@@ -29,20 +29,37 @@ public final class DeathSystem extends IteratingSystem {
         var animation = Animation2D.MAPPER.get(entity);
         var tiled = getEngine().getSystem(TiledSystem.class);
         if (animation.getType() != Animation2D.AnimationType.DEATH) {
-            var combat = getEngine().getSystem(CombatSystem.class);
-            if (combat != null) { combat.cancelCombat(entity); }
-            var ai = ActorAi.MAPPER.get(entity);
-            if (ai != null) { ai.forgetTarget(); }
-            if (Actor.MAPPER.get(entity).role() == Actor.Role.PLAYER) {
-                var sensors = getEngine().getSystem(MapSensorSystem.class);
-                if (sensors != null) { sensors.forgetPlayer(entity); }
-                if (tiled != null) { tiled.detachController(entity); }
-            }
-            var position = Physic.MAPPER.get(entity).getBody().getPosition();
-            pose(entity, position.x, position.y, 0d);
+            beginDeath(entity);
         } else if (animation.getDeathSeconds() >= animation.getPlaybackDuration() + POSE_SECONDS) {
             if (tiled == null || !tiled.retireCorpse(entity)) { getEngine().removeEntity(entity); }
         }
+    }
+
+    // Combat supplies newly killed victims after stepping. Check components, not published family membership:
+    // a casualty that arrived earlier in this batch may still be registering with Ashley.
+    void beginContactDeath(Entity victim) {
+        if (getFamily().matches(victim) && Animation2D.MAPPER.get(victim).getType() != Animation2D.AnimationType.DEATH) {
+            beginDeath(victim);
+        }
+    }
+
+    private void beginDeath(Entity entity) {
+        var combat = getEngine().getSystem(CombatSystem.class);
+        if (combat != null) { combat.cancelCombat(entity); }
+        var ai = ActorAi.MAPPER.get(entity);
+        if (ai != null) { ai.forgetTarget(); }
+        if (Actor.MAPPER.get(entity).role() == Actor.Role.PLAYER) {
+            var hoard = getEngine().getSystem(HoardSystem.class);
+            if (hoard != null) { hoard.playerDied(entity); }
+            var sensors = getEngine().getSystem(MapSensorSystem.class);
+            if (sensors != null) { sensors.forgetPlayer(entity); }
+            var tiled = getEngine().getSystem(TiledSystem.class);
+            if (tiled != null) { tiled.detachController(entity); }
+        } else if (entity.getComponent(ArenaGuard.class) != null) {
+            getEngine().getSystem(HoardSystem.class).dredgeDied(entity);
+        }
+        var position = Physic.MAPPER.get(entity).getBody().getPosition();
+        pose(entity, position.x, position.y, 0d);
     }
 
     private void pose(Entity entity, float x, float y, double elapsed) {

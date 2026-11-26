@@ -1,0 +1,52 @@
+plugins {
+  id 'application'
+}
+
+repositories { mavenCentral() }
+java.toolchain.languageVersion = JavaLanguageVersion.of(25)
+
+// JavaFX publishes platform jars; only the tester needs them.
+def javafxPlatform = providers.systemProperty('os.name').zip(providers.systemProperty('os.arch')) { name, arch ->
+  def os = name.toLowerCase(Locale.ROOT)
+  def arm = arch in ['aarch64', 'arm64']
+  def platform = os.startsWith('linux') ? 'linux' : os.startsWith('mac') ? 'mac' : os.startsWith('windows') ? 'win' : null
+  if (platform == null || (!(arch in ['amd64', 'x86_64']) && !arm) || (arm && platform == 'win')) {
+    throw new GradleException("Unsupported JavaFX platform: $os / $arch")
+  }
+  arm ? "$platform-aarch64" : platform
+}
+
+dependencies {
+  ['base', 'graphics', 'controls'].each { module ->
+    addProvider('implementation', javafxPlatform.map { platform -> "org.openjfx:javafx-$module:25.0.2:$platform" }) {
+      transitive = false
+    }
+  }
+  implementation 'com.fasterxml.jackson.core:jackson-databind:2.22.0'
+  implementation 'com.badlogicgames.gdx:gdx:1.14.2'
+  testImplementation 'org.junit.jupiter:junit-jupiter:5.14.3'
+  testRuntimeOnly 'org.junit.platform:junit-platform-launcher:1.14.3'
+}
+
+application {
+  mainClass = 'io.mindspice.lute.weapontester.WeaponTester'
+  applicationDefaultJvmArgs = ['--enable-native-access=ALL-UNNAMED']
+}
+
+sourceSets.test.resources.srcDir('../test-fixtures')
+
+tasks.named('run', JavaExec) { workingDir = projectDir.parentFile }
+tasks.named('test', Test) { useJUnitPlatform { excludeTags 'display' } }
+
+tasks.register('uiSmokeTest', Test) {
+  description = 'Exercises the editor and Canvas on a desktop JavaFX display.'
+  testClassesDirs = sourceSets.test.output.classesDirs
+  classpath = sourceSets.test.runtimeClasspath
+  def raw = file('../raw_assets')
+  inputs.files(fileTree(raw) {
+    include 'data/player.json', 'data/weapons.json', 'game.settings.json', 'sprites/**/*.png'
+  })
+  systemProperty 'tester.rawInput', raw.absolutePath
+  jvmArgs '--enable-native-access=ALL-UNNAMED'
+  useJUnitPlatform { includeTags 'display' }
+}

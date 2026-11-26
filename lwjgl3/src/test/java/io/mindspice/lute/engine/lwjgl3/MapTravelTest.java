@@ -11,8 +11,11 @@ import com.badlogic.gdx.audio.Sound;
 import com.badlogic.gdx.backends.lwjgl3.Lwjgl3Application;
 import com.badlogic.gdx.backends.lwjgl3.Lwjgl3ApplicationConfiguration;
 import com.badlogic.gdx.backends.lwjgl3.Lwjgl3ApplicationLogger;
+import com.badlogic.gdx.graphics.GL20;
+import com.badlogic.gdx.graphics.OrthographicCamera;
 import com.badlogic.gdx.graphics.Pixmap;
 import com.badlogic.gdx.graphics.Texture;
+import com.badlogic.gdx.graphics.glutils.FrameBuffer;
 import com.badlogic.gdx.graphics.glutils.HdpiUtils;
 import com.badlogic.gdx.graphics.g2d.TextureAtlas;
 import com.badlogic.gdx.maps.objects.RectangleMapObject;
@@ -23,15 +26,21 @@ import com.badlogic.gdx.physics.box2d.Body;
 import com.badlogic.gdx.physics.box2d.BodyDef;
 import com.badlogic.gdx.physics.box2d.CircleShape;
 import com.badlogic.gdx.physics.box2d.Fixture;
+import com.badlogic.gdx.physics.box2d.PolygonShape;
 import com.badlogic.gdx.physics.box2d.World;
 import com.badlogic.gdx.utils.Array;
 import io.mindspice.lute.engine.GameCore;
 import io.mindspice.lute.engine.assets.CharacterAssets;
 import io.mindspice.lute.engine.assets.ObjectAssets;
 import io.mindspice.lute.engine.components.*;
+import io.mindspice.lute.engine.data.json.ActorsData;
 import io.mindspice.lute.engine.data.json.DataLoader;
 import io.mindspice.lute.engine.data.json.GameData;
+import io.mindspice.lute.engine.data.json.MapActorData.Enemy;
+import io.mindspice.lute.engine.data.json.MapActorData.EnemyDetectionBounds;
+import io.mindspice.lute.engine.data.json.MapActorData.EnemyDetectionBounds.Shape;
 import io.mindspice.lute.engine.data.json.ObjectData;
+import io.mindspice.lute.engine.input.InputAction;
 import io.mindspice.lute.engine.screen.GameScreen;
 import io.mindspice.lute.engine.screen.ScreenManager;
 import io.mindspice.lute.engine.singletons.GameConsts;
@@ -41,6 +50,7 @@ import io.mindspice.lute.engine.systems.CombatSystem;
 import io.mindspice.lute.engine.systems.DamageFeedbackProbe;
 import io.mindspice.lute.engine.systems.EventSystem;
 import io.mindspice.lute.engine.systems.EntityFactory;
+import io.mindspice.lute.engine.systems.HoardSystem;
 import io.mindspice.lute.engine.systems.PhysicDebugRenderSystem;
 import io.mindspice.lute.engine.systems.TriggerDebugRenderSystem;
 import io.mindspice.lute.engine.systems.TiledSystem;
@@ -137,8 +147,10 @@ public final class MapTravelTest extends ApplicationAdapter {
             && Health.MAPPER.get(oldEnemy).getMaximum() == enemy.maxHealth(), "Map actors use authored maximum health");
         require(Actor.MAPPER.get(player).role() == Actor.Role.PLAYER && body(player).getFixtureList().size == 2,
             "Player is detectable without owning a third fixture");
-        require(ActorAi.MAPPER.get(oldNpc).graphKey().equals(npc.decisionGraph())
-            && ActorAi.MAPPER.get(oldEnemy).graphKey().equals(enemy.decisionGraph()), "Spawned actors use their authored graph keys");
+        require(ActorAi.MAPPER.get(oldNpc).behaviorGraphKey().equals(npc.behaviorGraph())
+            && ActorAi.MAPPER.get(oldEnemy).behaviorGraphKey().equals(enemy.behaviorGraph()), "Spawned actors use their authored graph keys");
+        verifyDredgeVision(player, awareness);
+        verifyAuthoredVisionShapes(player, awareness);
         verifyActorAi(oldNpc, oldEnemy, player, awareness);
         var oldNpcBody = body(oldNpc);
         var oldEnemyBody = body(oldEnemy);
@@ -226,7 +238,7 @@ public final class MapTravelTest extends ApplicationAdapter {
         try {
             GameConsts.NIGHT_AMBIENT = new GameConsts.NightAmbient("#0000FF", .25f);
             // Inspect world pixels without diagnostic overlays on the synthetic travel maps.
-            GameConsts.DEBUG_LAYERS = new GameConsts.DebugLayers(false, false, false, false);
+            GameConsts.DEBUG_LAYERS = new GameConsts.DebugLayers(false, false, false, false, true);
             bind(new GameScreen(entry));
         } finally {
             GameConsts.NIGHT_AMBIENT = startupAmbient;
@@ -497,28 +509,171 @@ public final class MapTravelTest extends ApplicationAdapter {
         } finally { white.dispose(); }
     }
 
+    private void verifyDredgeVision(Entity player, AwarenessSystem awareness) {
+        var engine = GAME.getEngine();
+        require(!engine.getSystem(HoardSystem.class).isActive(), "Dredge vision is tested outside Hoard");
+        float unit = GameConsts.UNIT_SCALE;
+        // Use the real authored enemy on test_tiled, positioned away from map geometry.
+        var dredge = engine.getSystem(EntityFactory.class).getMapActor(new Vector2(-200 / unit, -200 / unit),
+            Actor.Role.ENEMY, "dredge", Facing.Direction.LEFT);
+        engine.addEntity(dredge);
+        var playerBody = body(player);
+        var original = playerBody.getPosition().cpy();
+        try {
+            require(dredge.getComponent(ArenaGuard.class) == null && dredge.getComponent(DredgeLunge.class) == null,
+                "Ordinary Dredge has neither arena home nor lunge");
+            var actor = Actor.MAPPER.get(dredge);
+            var playerActor = Actor.MAPPER.get(player);
+            var feet = body(dredge).getWorldPoint(new Vector2(actor.feetX(), actor.feetY())).cpy();
+            var rear = feet.cpy().add(72 * unit - playerActor.feetX(), -playerActor.feetY());
+            playerBody.setTransform(rear, 0);
+            require(awareness.inRange(dredge, Actor.Role.PLAYER).equals(List.of(player)),
+                "The rear player is in Dredge's authored detection range");
+            var ai = ActorAi.MAPPER.get(dredge);
+            awareness.update(0f);
+            require(ai.mode() == ActorAi.Mode.ENGAGE && Move.MAPPER.get(dredge).getDirection().x > 0f,
+                "Actual Dredge outside Hoard pursues a visible player behind it");
+            var combat = Combat.MAPPER.get(dredge);
+            awareness.update(.25f);
+            require(!combat.hasAttackRequest(), "Ordinary Dredge cannot commit from lunge range");
+            playerBody.setTransform(rear.cpy().sub(44 * unit, 0), 0);
+            awareness.update(0f);
+            awareness.update(.25f);
+            require(combat.requestedTarget() == player, "Ordinary Dredge can still commit at normal melee range");
+            combat.consumeAttackRequest();
+            playerBody.setTransform(rear, 0);
+
+            var wall = world.createBody(new BodyDef());
+            var shape = new PolygonShape();
+            try {
+                wall.setTransform(feet.x + 36 * unit, feet.y, 0);
+                shape.setAsBox(4 * unit, 24 * unit);
+                wall.createFixture(shape, 0);
+                awareness.update(0f);
+                require(ai.mode() == ActorAi.Mode.INVESTIGATE, "Solid cover breaks sight and ordinary Dredge investigates");
+            } finally {
+                shape.dispose();
+                world.destroyBody(wall);
+            }
+            Facing.MAPPER.get(dredge).setDirection(Facing.Direction.LEFT);
+            awareness.update(0f);
+            require(ai.mode() == ActorAi.Mode.ENGAGE, "Ordinary Dredge reacquires behind itself when cover clears");
+            playerBody.setTransform(rear.cpy().add(ai.detectionRadius(), 0), 0);
+            awareness.update(0f);
+            require(ai.mode() == ActorAi.Mode.INVESTIGATE, "Full-circle vision still respects Dredge's detection radius");
+        } finally {
+            playerBody.setTransform(original, 0);
+            engine.removeEntity(dredge);
+        }
+    }
+
+    private void verifyAuthoredVisionShapes(Entity player, AwarenessSystem awareness) throws ReflectiveOperationException {
+        var original = GAME.getGameData();
+        var enemies = new HashMap<>(original.actorsData().enemies());
+        // Keep the spawn keys and all other fields; change only the authored shape.
+        enemies.compute("brainless_undead", (_, enemy) -> withVisionShape(enemy, Shape.FULL_CIRCLE));
+        enemies.compute("dredge", (_, enemy) -> withVisionShape(enemy, Shape.FORWARD_SEMICIRCLE));
+        var gameDataField = field(GameCore.class, "gameData");
+        gameDataField.set(GAME, new GameData(original.playerData(), original.weaponsData(), original.projectilesData(),
+            new ActorsData(original.actorsData().npc(), enemies), original.objectsData()));
+        var playerBody = body(player);
+        var start = playerBody.getPosition().cpy();
+        try {
+            var engine = GAME.getEngine();
+            var factory = engine.getSystem(EntityFactory.class);
+            var playerActor = Actor.MAPPER.get(player);
+            float unit = GameConsts.UNIT_SCALE;
+            for (String key : List.of("brainless_undead", "dredge")) {
+                boolean fullCircle = enemies.get(key).detectionBounds().shape() == Shape.FULL_CIRCLE;
+                var enemy = factory.getMapActor(new Vector2(-200 / unit, -200 / unit), Actor.Role.ENEMY, key, Facing.Direction.LEFT);
+                engine.addEntity(enemy);
+                try {
+                    var actor = Actor.MAPPER.get(enemy);
+                    var feet = body(enemy).getWorldPoint(new Vector2(actor.feetX(), actor.feetY())).cpy();
+                    var aligned = feet.cpy().sub(playerActor.feetX(), playerActor.feetY());
+                    playerBody.setTransform(aligned.cpy().add(72 * unit, 0), 0);
+                    require(awareness.inRange(enemy, Actor.Role.PLAYER).equals(List.of(player)), key + " still queries the full circle");
+                    var ai = ActorAi.MAPPER.get(enemy);
+                    checkVisionOutline(feet, ai.detectionRadius(), fullCircle); // Still facing left, before AI can turn.
+                    awareness.update(0f);
+                    require(ai.mode() == (fullCircle ? ActorAi.Mode.ENGAGE : ActorAi.Mode.WANDER),
+                        key + " rear acquisition follows the edited shape, not the spawn key");
+                    if (!fullCircle) {
+                        playerBody.setTransform(aligned.sub(72 * unit, 0), 0);
+                        awareness.update(0f);
+                        require(ai.mode() == ActorAi.Mode.ENGAGE, key + " still acquires in front");
+                    }
+                } finally { engine.removeEntity(enemy); }
+            }
+        } finally {
+            playerBody.setTransform(start, 0);
+            gameDataField.set(GAME, original);
+        }
+    }
+
+    private static Enemy withVisionShape(Enemy enemy, Shape shape) {
+        return new Enemy(enemy.name(), enemy.moveSpeed(), enemy.maxHealth(), enemy.weapon(), enemy.animation(),
+            enemy.sounds(), enemy.logicalSize(), enemy.collision(), enemy.hitboxBounds(),
+            new EnemyDetectionBounds(enemy.detectionRadius(), shape), enemy.behaviorGraph());
+    }
+
+    private void checkVisionOutline(Vector2 feet, float radius, boolean fullCircle) {
+        int size = 128;
+        var camera = new OrthographicCamera(3 * radius, 3 * radius);
+        camera.position.set(feet.x, feet.y, 0);
+        camera.update();
+        var target = new FrameBuffer(Pixmap.Format.RGBA8888, size, size, false);
+        var overlay = new PhysicDebugRenderSystem(world, camera);
+        target.begin();
+        try {
+            Gdx.gl.glClearColor(0, 0, 0, 1);
+            Gdx.gl.glClear(GL20.GL_COLOR_BUFFER_BIT);
+            overlay.update(0f);
+            var image = Pixmap.createFromFrameBuffer(0, 0, size, size);
+            try {
+                require(hasOutline(image, size / 6, size / 2), "Debug draws the front arc for either shape");
+                require(hasOutline(image, 5 * size / 6, size / 2) == fullCircle,
+                    "Debug draws the rear arc only for full-circle vision");
+            } finally { image.dispose(); }
+        } finally {
+            target.end();
+            overlay.dispose();
+            target.dispose();
+        }
+    }
+
+    private static boolean hasOutline(Pixmap image, int x, int y) {
+        for (int dy = -2; dy <= 2; dy++) {
+            for (int dx = -2; dx <= 2; dx++) {
+                if ((image.getPixel(x + dx, y + dy) >>> 8) != 0) { return true; }
+            }
+        }
+        return false;
+    }
+
     private void verifyActorAi(Entity npc, Entity enemy, Entity player, AwarenessSystem awareness) {
         var npcPosition = body(npc).getPosition().cpy();
         var enemyPosition = body(enemy).getPosition().cpy();
         var playerPosition = body(player).getPosition().cpy();
         var combat = Combat.MAPPER.get(enemy);
-        // Use empty space to verify actor steering and weapon damage independent of fixture placement on the demo map.
-        body(npc).setTransform(-110, -100, 0);
+        // Keep live Box2D combat in open space and the wandering NPC out of both the pursuit and retreat paths.
+        var npcStart = new Vector2(-110, -160);
+        body(npc).setTransform(npcStart, 0);
         body(enemy).setTransform(-100, -100, 0);
         body(player).setTransform(-90, -100, 0);
         boolean npcMoved = false, enemyMoved = false;
         for (int i = 0; i < 190 && !(npcMoved && enemyMoved); i++) {
             screen.render(1f / 60f);
-            npcMoved |= !body(npc).getPosition().epsilonEquals(-110, -100, .01f);
+            npcMoved |= !body(npc).getPosition().epsilonEquals(npcStart, .01f);
             enemyMoved |= !body(enemy).getPosition().epsilonEquals(-100, -100, .01f);
         }
         require(npcMoved && enemyMoved && combat.getAttackId() == 0,
             "Both actors physically wander after their initial wait without attacking out of range");
         body(enemy).setTransform(-100, -100, 0);
+        Facing.MAPPER.get(enemy).setDirection(Facing.Direction.RIGHT);
         body(player).setTransform(-100 + 80f * GameConsts.UNIT_SCALE, -100, 0);
         var originalHealth = Health.MAPPER.get(player);
-        int base = Loadout.MAPPER.get(enemy).getWeapon().primary().damage();
-        var testHealth = new Health(4 * base); // The pursuit check needs a survivor independently of authored player HP.
+        var testHealth = new Health(100); // The pursuit check needs a survivor independently of authored player HP.
         player.add(testHealth);
         try {
             screen.render(1f / 60f);
@@ -527,23 +682,83 @@ public final class MapTravelTest extends ApplicationAdapter {
                 && body(enemy).getLinearVelocity().x > 0, "Enemy faces and pursues a detected player outside melee range");
             for (int i = 0; i < 120 && !combat.isAttacking(); i++) { screen.render(1f / 60f); }
             require(combat.isAttacking(), "Enemy closes the gap and starts the attack without repositioning the player");
-            for (int i = 0; i < 5; i++) { screen.render(1f / 60f); }
-            require(testHealth.getCurrent() >= testHealth.getMaximum() - Math.round(1.1f * base)
-                && testHealth.getCurrent() <= testHealth.getMaximum() - Math.round(.9f * base)
+            for (int i = 0; i < 15; i++) { screen.render(1f / 60f); }
+            require(testHealth.getCurrent() == testHealth.getMaximum() && combat.getSensor() == null,
+                "Visible planted swing gives at least 250 ms before hit");
+            for (int i = 0; i < 12; i++) { screen.render(1f / 60f); }
+            require(testHealth.getCurrent() >= testHealth.getMaximum() - 20
+                && testHealth.getCurrent() <= testHealth.getMaximum() - 15
                 && body(enemy).getLinearVelocity().isZero() && DamageFeedbackProbe.count(player) == 1,
                 "Enemy deals one weapon hit and creates one player feedback number while standing still");
-            var retreat = body(enemy).getPosition().cpy().add(-2.5f, .5f);
+            var retreat = body(enemy).getPosition().cpy().add(.5f, 2.5f);
             body(player).setTransform(retreat, 0);
             for (int i = 0; i < 90 && combat.isAttacking(); i++) { screen.render(1f / 60f); }
-            screen.render(1f / 60f);
+            for (int i = 0; i < 8; i++) { screen.render(1f / 60f); }
+            require(!combat.isAttacking() && combat.getSensor() == null && body(enemy).getLinearVelocity().isZero(),
+                "After the sensor disappears, there is time to approach safely");
+            for (int i = 0; i < 8; i++) { screen.render(1f / 60f); }
             require(!combat.isAttacking() && body(enemy).getLinearVelocity().y > 0f
-                && body(enemy).getLinearVelocity().x < 0f && Facing.MAPPER.get(enemy).getDirection() == Facing.Direction.LEFT,
-                "Enemy resumes pursuit and faces the retreating player once the swing finishes");
+                && body(enemy).getLinearVelocity().x > 0f && Facing.MAPPER.get(enemy).getDirection() == Facing.Direction.UP,
+                "Enemy resumes pursuit and faces the retreating player after recovery");
+            verifyWalkingCounter(enemy, player);
         } finally {
             player.add(originalHealth);
             body(npc).setTransform(npcPosition, 0);
             body(enemy).setTransform(enemyPosition, 0);
             body(player).setTransform(playerPosition, 0);
+        }
+    }
+
+    private void verifyWalkingCounter(Entity enemy, Entity player) {
+        var combat = Combat.MAPPER.get(enemy);
+        var hp = Health.MAPPER.get(player).getCurrent();
+        var loadout = Loadout.MAPPER.get(player);
+        var previous = loadout.getWeaponId();
+        var input = Controller.MAPPER.get(player).getInputListener();
+        var enemyHealth = Health.MAPPER.get(enemy);
+        float dt = 1f / 60f;
+        long firstSwing = combat.getAttackId();
+        var enemyActor = Actor.MAPPER.get(enemy);
+        var playerActor = Actor.MAPPER.get(player);
+        float unit = GameConsts.UNIT_SCALE;
+        // Start inside planted range without overlapping the feet fixtures. Pursuit was tested above.
+        var bait = body(enemy).getPosition().cpy().add(
+            enemyActor.feetX() - playerActor.feetX() + 22 * unit,
+            enemyActor.feetY() - playerActor.feetY() + 8 * unit);
+        body(player).setTransform(bait, 0);
+        loadout.setWeapon("basic_sword");
+        try {
+            for (int i = 0; i < 60 && !combat.isAttacking(); i++) { screen.render(dt); }
+            require(combat.isAttacking() && combat.getAttackId() > firstSwing, "Bait a second swing");
+            require(combat.getAttackFacing() == Facing.Direction.RIGHT, "Second swing commits toward the bait");
+            input.offer(InputAction.MOVE_RIGHT, 1);
+            for (int i = 0; i < 20; i++) { screen.render(dt); }
+            input.offer(InputAction.MOVE_RIGHT, 0);
+            require(combat.getSensor() != null && combat.getAttackFacing() == Facing.Direction.RIGHT,
+                "Walking out during the cue does not cancel or turn the swing");
+            for (int i = 0; i < 90 && combat.isAttacking(); i++) { screen.render(dt); }
+            require(ActorAi.MAPPER.get(enemy).recovering() && Health.MAPPER.get(player).getCurrent() == hp,
+                "The committed swing whiffs");
+            long swing = combat.getAttackId();
+            // Keep the enemy looking away from the player's approach during the counter.
+            Facing.MAPPER.get(enemy).setDirection(Facing.Direction.LEFT);
+            input.offer(InputAction.MOVE_LEFT, 1);
+            screen.render(dt);
+            input.offer(InputAction.ATTACK_PRIMARY, 1);
+            int before = enemyHealth.getCurrent();
+            for (int i = 0; i < 25 && enemyHealth.getCurrent() == before; i++) { screen.render(dt); }
+            require(enemyHealth.getCurrent() < before && combat.getAttackId() == swing
+                && Health.MAPPER.get(player).getCurrent() == hp, "Walk back in and land a normal sword counter before the reset");
+            require(ActorAi.MAPPER.get(enemy).retaliationTarget() == player,
+                "A confirmed sword hit from behind immediately makes the player the enemy's retaliation target");
+        } finally {
+            input.offer(InputAction.ATTACK_PRIMARY, 0);
+            input.offer(InputAction.MOVE_LEFT, 0);
+            input.offer(InputAction.MOVE_RIGHT, 0);
+            body(player).setTransform(-90, -100, 0);
+            for (int i = 0; i < 60; i++) { screen.render(dt); }
+            loadout.setWeapon(previous);
+            enemyHealth.restore();
         }
     }
 
@@ -620,6 +835,7 @@ public final class MapTravelTest extends ApplicationAdapter {
         require(Combat.MAPPER.get(corpse).isCoolingDown("basic_bow", Combat.AttackSlot.SECONDARY),
             "Player has an independent secondary cooldown before death");
         input.keyDown(Input.Keys.SPACE);
+        screen.render(0f); // Stationary draw can replace the jab; movement during recovery would defer it.
         input.keyDown(Input.Keys.W);
         screen.render(0f);
         require(BowAim.MAPPER.get(corpse).isAiming(), "Player has a bow draw and held movement before death");

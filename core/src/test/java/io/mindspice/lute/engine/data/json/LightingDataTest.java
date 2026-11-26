@@ -15,7 +15,7 @@ public final class LightingDataTest {
     private static final String ANIMATION = "{\"speed\":2,\"atlas_key\":\"fire/fire\",\"sound_frame\":1,\"frame_interval\":0.125}";
     private static final String COLLISION = "{\"shape\":\"RECT\",\"rotation\":30,\"bounds\":{\"x1\":1,\"y1\":2,\"x2\":4,\"y2\":5}}";
     private static final String AMBIENT = "{\"tint\":\"#7fbeeF\",\"brightness\":0.375}";
-    private static final String DEBUG_LAYERS = "{\"physics\":true,\"triggers\":false,\"rawLightMap\":true,\"lightingOutlines\":false}";
+    private static final String DEBUG_LAYERS = "{\"physics\":true,\"triggers\":false,\"rawLightMap\":true,\"lightingOutlines\":false,\"assetValidation\":true}";
     private static final String LEGACY_FIELDS = """
         "unitScale":0.03125,"viewHeight":18,"viewWidth":32,"physicInterval":0.016,
         "physicScaling":{"x":1,"y":1},"cameraSmoothFactor":4,"projectPath":"game.tiled-project",
@@ -36,7 +36,18 @@ public final class LightingDataTest {
     private static void catalogueSchema() {
         var empty = object("{\"animation\":null,\"collision\":null,\"emissive\":null}");
         check(empty.animation().isEmpty() && empty.collision().isEmpty() && empty.emissive().isEmpty(), "Explicit nulls bind as empty");
-        requiredMembers(LightingDataTest::object, "\"animation\":null", "\"collision\":null", "\"emissive\":null");
+        check(object("{}").equals(empty), "Omitted capabilities bind as empty");
+        var potion = object("{\"atlas_key\":\"potion\",\"pickup\":{\"type\":\"HEAL\",\"amount\":50}}");
+        check(potion.atlasKey().orElseThrow().equals("potion") && potion.pickup().orElseThrow().amount() == 50
+            && potion.animation().isEmpty() && potion.collision().isEmpty() && potion.emissive().isEmpty(),
+            "Pickup and static art bind without other behaviors");
+        var combined = object("{\"animation\":" + ANIMATION + ",\"emissive\":" + LIGHT + ",\"pickup\":{\"type\":\"WEAPON_BAG\"}}");
+        check(combined.animation().isPresent() && combined.emissive().isPresent() && combined.pickup().isPresent(),
+            "An animated emitter can also be collected");
+        for (String invalid : List.of("{}", "{\"type\":\"HEAL\"}", "{\"type\":\"HEAL\",\"amount\":0}",
+            "{\"type\":\"HEAL\",\"amount\":50.5}", "{\"type\":\"WEAPON_BAG\",\"amount\":5}", "{\"type\":\"OTHER\"}")) {
+            rejects(() -> object("{\"pickup\":" + invalid + "}"), "Invalid pickup: " + invalid);
+        }
         rejects(() -> object("{\"animation\":null,\"collision\":null,\"emssive\":null}"), "emssive is not an alias");
         for (String invalid : List.of("null", "{}", "[]", "{\"fixture\":null}", "{\" \":" + definition(LIGHT) + "}",
             "{\"fixture\":" + definition(LIGHT) + ",\"fixture\":" + definition(LIGHT) + "}", "{\"fixture\":" + definition(LIGHT) + "}{}")) {
@@ -116,8 +127,9 @@ public final class LightingDataTest {
         for (String bad : List.of("null", "true", "[]", "\"debug\"", "1")) {
             rejects(() -> parse.accept(bad), "Invalid debugLayers: " + bad);
         }
-        requiredMembers(parse, "\"physics\":true", "\"triggers\":false", "\"rawLightMap\":true", "\"lightingOutlines\":false");
-        var keys = List.of("physics", "triggers", "rawLightMap", "lightingOutlines");
+        requiredMembers(parse, "\"physics\":true", "\"triggers\":false", "\"rawLightMap\":true", "\"lightingOutlines\":false",
+            "\"assetValidation\":true");
+        var keys = List.of("physics", "triggers", "rawLightMap", "lightingOutlines", "assetValidation");
         for (String key : keys) {
             var flags = DataLoader.mapper.createObjectNode();
             for (String field : keys) {
@@ -125,7 +137,8 @@ public final class LightingDataTest {
             }
             var layers = GameConsts.parseSettings(prefix + ",\"debugLayers\":" + flags + "}").debugLayers();
             check(layers.equals(new GameConsts.DebugLayers(key.equals("physics"), key.equals("triggers"),
-                key.equals("rawLightMap"), key.equals("lightingOutlines"))), "Binds " + key + " independently");
+                key.equals("rawLightMap"), key.equals("lightingOutlines"), key.equals("assetValidation"))),
+                "Binds " + key + " independently");
             invalidValues(parse, flags.toString(), "true", "null", "\"true\"", "1", "0", "[]", "{}");
         }
     }

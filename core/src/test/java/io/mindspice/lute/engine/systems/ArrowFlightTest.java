@@ -10,6 +10,7 @@ import io.mindspice.lute.engine.components.Facing;
 import io.mindspice.lute.engine.components.Health;
 import io.mindspice.lute.engine.components.Hurtbox;
 import io.mindspice.lute.engine.components.Transform;
+import io.mindspice.lute.engine.data.json.AttackDamage;
 import io.mindspice.lute.engine.data.json.CharacterBounds;
 import io.mindspice.lute.engine.data.json.CollisionData;
 import io.mindspice.lute.engine.data.json.ProjectilesData.Projectile;
@@ -21,17 +22,16 @@ public final class ArrowFlightTest {
     private ArrowFlightTest() { }
 
     public static void run() {
-        require(DamageFeedback.roundedDamage(10, 1, .9f) == 9 && DamageFeedback.roundedDamage(10, 1, 1.1f) == 11,
-            "Sword roll endpoints");
-        require(DamageFeedback.roundedDamage(11, 1, .9f) == 10 && DamageFeedback.roundedDamage(11, 1, 1.1f) == 12,
-            "Full draw roll endpoints");
-        require(DamageFeedback.roundedDamage(11, .25f, .9f) == 2 && DamageFeedback.roundedDamage(11, .25f, 1.1f) == 3,
-            "Quarter draw is not rounded before the roll");
+        rangeRolls(15, 20);
+        rangeRolls(10, 10);
+        rangeRolls(20, 30);
+        rangeRolls(Integer.MAX_VALUE, Integer.MAX_VALUE);
         rollsPerHit();
         collisionShapes();
         var aim = new Vector2(1, 0);
         var world = new World(Vector2.Zero, true);
         try {
+            verifyIntercept(world);
             verifySpeed(world, 1f, .15f);
             verifySpeed(world, 8f, .5f);
             verifyNorthShots(world);
@@ -42,17 +42,17 @@ public final class ArrowFlightTest {
             var target = hurtbox(world, aim);
             var arrow = launch(TYPE, aim);
             Facing.MAPPER.get(arrow.owner).setDirection(Facing.Direction.DOWN);
-            DamageFeedback.land(target, Health.MAPPER.get(target), 1, .25f, Facing.Direction.RIGHT);
-            require(Health.MAPPER.get(target).getCurrent() == 100 && DamageFeedback.MAPPER.get(target) == null,
+            HealthFeedback.land(target, Health.MAPPER.get(target), new AttackDamage.Scalar(1), .25f, Facing.Direction.RIGHT);
+            require(Health.MAPPER.get(target).getCurrent() == 100 && HealthFeedback.MAPPER.get(target) == null,
                 "A hit rounded to zero consumes no HP and creates no number");
             require(arrow.finished(world, 2f) && oneHit(target), "One long update sweeps through the exact crosshair");
-            var feedback = DamageFeedback.MAPPER.get(target);
+            var feedback = HealthFeedback.MAPPER.get(target);
             var hit = feedback.numbers.getFirst();
             var health = Health.MAPPER.get(target);
             require(hit.facing == Facing.Direction.RIGHT && hit.amount == 100 - health.getCurrent()
                 && hit.remaining == health.getCurrent() / 100f, "Feedback snapshots release facing and effective hit");
             feedback.advance(.25f);
-            DamageFeedback.land(target, health, 500, 1, Facing.Direction.LEFT);
+            HealthFeedback.land(target, health, new AttackDamage.Scalar(500), 1, Facing.Direction.LEFT);
             var kill = feedback.numbers.getLast();
             require(kill.remaining == 0 && kill.amount == 100 - hit.amount, "Killing hit reports only remaining HP");
             require(GameplayHud.healthText(health).equals("HP 0/100") && GameplayHud.clockText(6 * 60 + 4).equals("06:04"), "Dead player's clock and health");
@@ -76,6 +76,23 @@ public final class ArrowFlightTest {
         } finally { world.dispose(); }
     }
 
+    private static void rangeRolls(int min, int max) {
+        var damage = new AttackDamage.Range(min, max);
+        for (int offset = 0; offset <= max - min; offset++) {
+            final int sample = offset;
+            var random = new java.util.Random() {
+                @Override public int nextInt(int bound) {
+                    require(bound == max - min + 1, "Roll includes every integer through max");
+                    return sample;
+                }
+            };
+            for (float scale : new float[]{.25f, .5f, .75f, 1f}) {
+                require(damage.roll(random, scale) == Math.round((min + sample) * (double) scale),
+                    "Explicit range scales a single inclusive roll without scalar jitter");
+            }
+        }
+    }
+
     private static void rollsPerHit() {
         var previous = com.badlogic.gdx.math.MathUtils.random;
         try {
@@ -85,7 +102,7 @@ public final class ArrowFlightTest {
             var health = new Health(500);
             int remaining = 500;
             for (int i = 0; i < 20; i++) {
-                DamageFeedback.land(target, health, 10, 1, Facing.Direction.UP);
+                HealthFeedback.land(target, health, new AttackDamage.Scalar(10), 1, Facing.Direction.UP);
                 remaining -= Math.round(10 * (.9f + (1.1f - .9f) * expected.nextFloat()));
                 require(remaining == health.getCurrent(), "Fresh uniform sample for each hit");
             }
@@ -140,6 +157,63 @@ public final class ArrowFlightTest {
         return max - min;
     }
 
+    private static void verifyIntercept(World world) {
+        var center = new Vector2(3, -1);
+        require(ArrowFlight.intercept(TYPE, Vector2.Zero, center, Vector2.Zero, .25f).equals(center),
+            "Stationary target needs no lead");
+        require(ArrowFlight.intercept(TYPE, center, center, new Vector2(2, 3), .25f).equals(center),
+            "Coincident target does not invent a lead direction");
+        require(ArrowFlight.intercept(TYPE, Vector2.Zero, center, new Vector2(20, 0), .25f).equals(center),
+            "An outrunning target gets a direct shot");
+        verifyFastCrossing(world);
+        var velocity = new Vector2(0, 4);
+        var aim = ArrowFlight.intercept(TYPE, Vector2.Zero, center, velocity, 0);
+        float time = (aim.y - center.y) / velocity.y;
+        var arrow = launch(TYPE, aim);
+        require(time > 0 && !arrow.finished(world, time) && arrow.tip.epsilonEquals(aim, .0001f),
+            "Lead time matches actual curved flight, not straight-line distance");
+    }
+
+    private static void verifyFastCrossing(World world) {
+        var center = new Vector2(.4f, 4);
+        var velocity = new Vector2(0, -12);
+        var straight = new Projectile("test", 8, 5, TYPE.collision(), 0, 0, 0, 0);
+        var aim = ArrowFlight.intercept(straight, Vector2.Zero, center, velocity, .25f);
+        require(aim.epsilonEquals(.4f, .27331f, .00002f), "Lead the supplied fast crossing at its first intercept");
+        float time = (center.y - aim.y) / 12 - .25f;
+        var arrow = launch(straight, aim);
+        require(!arrow.finished(world, time) && arrow.tip.epsilonEquals(aim, .00002f),
+            "Straight flight reaches the fast crossing at the predicted time");
+        var impactWorld = new World(Vector2.Zero, true);
+        try {
+            var target = hurtbox(impactWorld, aim);
+            arrow = launch(straight, aim);
+            require(arrow.finished(impactWorld, time) && arrow.damagedVictim == target && oneHit(target),
+                "The predicted crossing uses the ordinary swept collision and damage path");
+        } finally { impactWorld.dispose(); }
+
+        aim = ArrowFlight.intercept(straight, Vector2.Zero, new Vector2(.005f, 4), new Vector2(0, -1200), 0);
+        require(aim.epsilonEquals(.005f, .02602f, .00002f),
+            "A crossing window much shorter than a simulation tick is still found");
+        var atLifetime = new Projectile("test", 8, .25f, TYPE.collision(), 0, 0, 0, 0);
+        require(ArrowFlight.intercept(atLifetime, Vector2.Zero, new Vector2(0, 4), new Vector2(0, -8), 0)
+            .equals(new Vector2(0, 2)), "Equal-speed approach can intercept exactly at the lifetime cap");
+
+        var curved = new Projectile("test", 8, 5, TYPE.collision(), .5f, 0, 0, 0);
+        aim = ArrowFlight.intercept(curved, Vector2.Zero, center, velocity, .25f);
+        time = (center.y - aim.y) / 12 - .25f;
+        arrow = launch(curved, aim);
+        require(time > .06056f && time < 1f / 12 && !arrow.finished(world, time)
+            && arrow.tip.epsilonEquals(aim, .00002f), "Fast crossing also uses curved travel time");
+
+        var shortLived = new Projectile("test", 8, .061f, TYPE.collision(), .5f, 0, 0, 0);
+        require(ArrowFlight.intercept(shortLived, Vector2.Zero, center, velocity, .25f).equals(center),
+            "A straight-line solution is not enough when curved flight runs out of lifetime");
+        arrow = launch(shortLived, aim);
+        require(arrow.finished(world, 1) && arrow.tip.dst(aim) > .001f,
+            "Actual flight stops short at the configured lifetime");
+    }
+
     private static void verifySpeed(World world, float aimX, float lift) {
         var arrow = launch(TYPE, new Vector2(aimX, 0));
         float elapsed = 0;
@@ -185,7 +259,7 @@ public final class ArrowFlightTest {
     }
 
     private static ArrowFlight launch(Projectile type, Vector2 aim) {
-        return new ArrowFlight(new Entity().add(new Facing(Facing.Direction.RIGHT)), type, new Vector2(), aim, 10, 1);
+        return new ArrowFlight(new Entity().add(new Facing(Facing.Direction.RIGHT)), type, new Vector2(), aim, new AttackDamage.Scalar(10), 1);
     }
 
     private static boolean oneHit(Entity target) {

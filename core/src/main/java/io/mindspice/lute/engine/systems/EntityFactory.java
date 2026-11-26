@@ -7,11 +7,13 @@ import com.badlogic.gdx.graphics.g2d.Animation;
 import com.badlogic.gdx.graphics.g2d.TextureAtlas;
 import com.badlogic.gdx.graphics.g2d.TextureRegion;
 import com.badlogic.gdx.maps.tiled.objects.TiledMapTileMapObject;
+import com.badlogic.gdx.math.Rectangle;
 import com.badlogic.gdx.math.Vector2;
 import com.badlogic.gdx.physics.box2d.Body;
 import com.badlogic.gdx.physics.box2d.BodyDef;
 import com.badlogic.gdx.physics.box2d.CircleShape;
 import com.badlogic.gdx.physics.box2d.FixtureDef;
+import com.badlogic.gdx.physics.box2d.PolygonShape;
 import com.badlogic.gdx.physics.box2d.World;
 import com.badlogic.gdx.utils.GdxRuntimeException;
 import io.mindspice.lute.engine.assets.Asset;
@@ -22,8 +24,10 @@ import io.mindspice.lute.engine.assets.CharacterAssets;
 import io.mindspice.lute.engine.assets.ObjectAssets;
 import io.mindspice.lute.engine.data.json.CharacterBounds;
 import io.mindspice.lute.engine.data.json.CollisionData;
+import io.mindspice.lute.engine.behaviorgraph.BehaviorGraphs;
 import io.mindspice.lute.engine.components.ActorAi;
 import io.mindspice.lute.engine.data.json.MapActorData;
+import io.mindspice.lute.engine.data.json.ObjectData;
 import io.mindspice.lute.engine.data.json.WeaponsData;
 import io.mindspice.lute.engine.GameCore;
 import io.mindspice.lute.engine.components.CombatWeapon;
@@ -93,6 +97,35 @@ public class EntityFactory extends EntitySystem {
         return entity;
     }
 
+    /** Stage the actual enemy before replacing the live map. This checks its art, AI, weapons and
+     * native geometry, and measures its solid footprint relative to a logical center at (0,0). */
+    Rectangle enemySpawnFootprint(String key, Facing.Direction facing) {
+        var staged = getMapActor(Vector2.Zero, Actor.Role.ENEMY, key, facing);
+        var body = Physic.MAPPER.get(staged).getBody();
+        try {
+            for (var fixture : body.getFixtureList()) {
+                if (fixture.isSensor()) { continue; }
+                var shape = fixture.getShape();
+                float radius = shape.getRadius(); // Circle radius or the native polygon skin.
+                if (shape instanceof CircleShape circle) {
+                    var c = body.getWorldPoint(circle.getPosition());
+                    return new Rectangle(c.x - radius, c.y - radius, 2 * radius, 2 * radius);
+                }
+                var polygon = (PolygonShape) shape;
+                var vertex = new Vector2();
+                polygon.getVertex(0, vertex);
+                var p = body.getWorldPoint(vertex);
+                var bounds = new Rectangle(p.x, p.y, 0, 0);
+                for (int i = 1; i < polygon.getVertexCount(); i++) {
+                    polygon.getVertex(i, vertex);
+                    bounds.merge(body.getWorldPoint(vertex));
+                }
+                return bounds.set(bounds.x - radius, bounds.y - radius, bounds.width + 2 * radius, bounds.height + 2 * radius);
+            }
+            throw new IllegalStateException("Enemy has no solid feet: " + key);
+        } finally { world.destroyBody(body); } // Never registered with Ashley or stepped.
+    }
+
     public Entity getMapActor(Vector2 pixelPosition, Actor.Role role, String spawnKey, Facing.Direction facing) {
         var data = GameCore.INSTANCE.getGameData();
         MapActorData definition = switch (role) {
@@ -145,12 +178,20 @@ public class EntityFactory extends EntitySystem {
             .add(new Graphic(region, Color.WHITE.cpy()))
             .add(new CompositeCharacter(region.getRegionWidth(), region.getRegionHeight()));
         entity.add(new Health(definition.maxHealth()));
-        entity.add(new ActorAi(definition.decisionGraph()));
+        float detectionRadius = definition.detectionRadius();
+        entity.add(new ActorAi(definition.behaviorGraph(), detectionRadius * GameConsts.UNIT_SCALE));
+        if (definition instanceof MapActorData.Enemy enemyData
+            && enemyData.detectionBounds().shape() == MapActorData.EnemyDetectionBounds.Shape.FULL_CIRCLE) {
+            entity.add(new FullCircleVision());
+        }
+        if (BehaviorGraphs.ARCHER.equals(definition.behaviorGraph())) {
+            entity.add(new BowAim(transform.getSize().x, transform.getSize().y));
+        }
         entity.add(new Move(definition.moveSpeed()));
         entity.add(new Combat());
         entity.add(new AnimationPlayer(entity));
         entity.add(createCharacterPhysics(transform.getPosition(), entity, BodyDef.BodyType.DynamicBody,
-            definition.collision(), definition.hitboxBounds(), role, definition.detectionBounds().radius()));
+            definition.collision(), definition.hitboxBounds(), role, detectionRadius));
         return entity;
     }
 
@@ -240,14 +281,30 @@ public class EntityFactory extends EntitySystem {
     }
 
     public Entity getSpawnedObject(Vector2 pixelPosition, String spawnKey, Facing.Direction facing) {
+        return buildSpawnedObject(pixelPosition, spawnKey, facing, null);
+    }
+
+    void validatePickupSpawn(String spawnKey, ObjectData.Kind expectedKind) {
+        var staged = buildSpawnedObject(Vector2.Zero, spawnKey, Facing.Direction.DOWN, expectedKind);
+        world.destroyBody(Physic.MAPPER.get(staged).getBody()); // Never registered or stepped.
+    }
+
+    private Entity buildSpawnedObject(Vector2 pixelPosition, String spawnKey, Facing.Direction facing,
+                                      ObjectData.Kind expectedKind) {
         var definition = GameCore.INSTANCE.getGameData().objectsData().get(spawnKey);
         if (definition == null) { throw new IllegalArgumentException("Unknown object spawnKey: " + spawnKey); }
+        if (expectedKind != null && definition.pickup().map(ObjectData.Pickup::type).orElse(null) != expectedKind) {
+            throw new IllegalArgumentException("Expected " + expectedKind + " pickup for " + spawnKey);
+        }
         var atlas = ObjectAssets.OBJECTS;
         Animation2D animation = null;
         TextureRegion region;
         if (definition.animation().isEmpty()) {
-            region = assetService.get(TextureAtlas.class, atlas.id()).findRegion(spawnKey, -1);
-            if (region == null) { throw new IllegalArgumentException("No static object atlas region for " + spawnKey); }
+            String regionKey = definition.atlasKey().orElse(spawnKey);
+            region = assetService.get(TextureAtlas.class, atlas.id()).findRegion(regionKey, -1);
+            if (region == null) {
+                throw new IllegalArgumentException("No static object atlas region '" + regionKey + "' for " + spawnKey);
+            }
         } else {
             var settings = definition.animation().orElseThrow();
             animation = createAnimation(atlas, settings.atlasKey(), Animation2D.AnimationType.DEFAULT,
@@ -282,8 +339,20 @@ public class EntityFactory extends EntitySystem {
         }
         // Convert and validate the light's world radius before allocating a staged native body.
         definition.emissive().ifPresent(light -> entity.add(new Emissive(light, unit)));
-        if (definition.collision().isPresent()) {
-            var collision = definition.collision().orElseThrow();
+        definition.pickup().ifPresent(rule -> {
+            String payload = null;
+            if (rule.type() == ObjectData.Kind.WEAPON_BAG) {
+                var eligible = GameCore.INSTANCE.getGameData().weaponsData().weapons().keySet().stream()
+                    .filter(key -> !key.equals("basic_bow") && !key.equals("basic_arrow")).toList();
+                if (eligible.isEmpty()) { throw new IllegalArgumentException("No eligible loaded weapon for " + spawnKey); }
+                if (expectedKind == null) {
+                    payload = eligible.get(java.util.concurrent.ThreadLocalRandom.current().nextInt(eligible.size()));
+                }
+            }
+            if (expectedKind == null) { entity.add(new Pickup(rule, payload)); }
+        });
+        if (definition.collision().isPresent() || definition.pickup().isPresent()) {
+            var collision = definition.collision().orElseGet(() -> CollisionData.ellipse(new CharacterBounds(0, 0, width, height)));
             var bounds = collision.bounds();
             if (bounds.x2() > width || bounds.y2() > height) {
                 throw new IllegalArgumentException("Object collision bounds exceed the sprite canvas for " + spawnKey);
@@ -294,7 +363,7 @@ public class EntityFactory extends EntitySystem {
             bodyDef.angle = (float) Math.toRadians(rotation);
             var body = world.createBody(bodyDef);
             try {
-                CharacterFixtures.create(body, collision, false, width * .5f, height * .5f);
+                CharacterFixtures.create(body, collision, definition.pickup().isPresent(), width * .5f, height * .5f);
                 body.setUserData(entity);
                 entity.add(new Physic(body, position.cpy()));
             } catch (RuntimeException | Error failure) {

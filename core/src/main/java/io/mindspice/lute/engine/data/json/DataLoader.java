@@ -57,6 +57,8 @@ public class DataLoader {
 
     public static Map<String, ObjectData> parseObjectDefinitions(InputStream file) {
         return readDefinitions(file, "objects.json", definitionsReader(ObjectData.class)
+            .with(DeserializationFeature.FAIL_ON_TRAILING_TOKENS)
+            .without(DeserializationFeature.ACCEPT_FLOAT_AS_INT)
             .with(JsonNodeFeature.USE_BIG_DECIMAL_FOR_FLOATS));
     }
 
@@ -104,6 +106,7 @@ public class DataLoader {
         String filepath = GameConsts.DATA_PATH + "weapons.json";
         try (var file = Gdx.files.internal(filepath).read()) {
             return mapper.readerFor(WeaponsData.class)
+                .with(DeserializationFeature.FAIL_ON_READING_DUP_TREE_KEY)
                 .without(DeserializationFeature.ACCEPT_FLOAT_AS_INT)
                 .readValue(file);
         } catch (IOException e) {

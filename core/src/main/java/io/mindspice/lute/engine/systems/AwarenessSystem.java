@@ -7,12 +7,15 @@ import com.badlogic.gdx.math.Vector2;
 import com.badlogic.gdx.physics.box2d.CircleShape;
 import com.badlogic.gdx.physics.box2d.Fixture;
 import com.badlogic.gdx.physics.box2d.World;
-import io.mindspice.lute.engine.ai.decisiongraph.Action;
-import io.mindspice.lute.engine.ai.decisiongraph.FocusState;
-import io.mindspice.lute.engine.ai.decisiongraph.Graphs;
+import io.mindspice.lute.engine.behaviorgraph.Action;
+import io.mindspice.lute.engine.behaviorgraph.BehaviorGraphs;
+import io.mindspice.lute.engine.behaviorgraph.FocusState;
 import io.mindspice.lute.engine.components.Actor;
 import io.mindspice.lute.engine.components.ActorAi;
+import io.mindspice.lute.engine.components.ArenaGuard;
 import io.mindspice.lute.engine.components.Combat;
+import io.mindspice.lute.engine.components.Facing;
+import io.mindspice.lute.engine.components.FullCircleVision;
 import io.mindspice.lute.engine.components.Health;
 import io.mindspice.lute.engine.components.Physic;
 
@@ -24,6 +27,7 @@ public final class AwarenessSystem extends IteratingSystem {
     private static final Family ACTORS = Family.all(Actor.class, Physic.class).get();
     private final World world;
     private final Action stop = Action.stop();
+    private final Action followTarget = Action.followTarget();
 
     public AwarenessSystem(World world) {
         super(ACTORS);
@@ -34,13 +38,19 @@ public final class AwarenessSystem extends IteratingSystem {
     protected void processEntity(Entity actor, float deltaTime) {
         var ai = ActorAi.MAPPER.get(actor);
         if (ai == null) { return; }
+        ai.tickRecovery(deltaTime);
         var state = new FocusState(deltaTime);
         if (!Health.MAPPER.get(actor).isAlive()) {
             ai.forgetTarget();
             stop.perform(actor, state);
             return;
         }
-        var graphs = Graphs.forKey(ai.graphKey());
+        var guard = actor.getComponent(ArenaGuard.class);
+        if (guard != null) {
+            updateGuard(actor, ai, guard, state);
+            return;
+        }
+        var graphs = BehaviorGraphs.forKey(ai.behaviorGraphKey());
         var shooter = ai.retaliationTarget();
         boolean detectsPlayer = Actor.MAPPER.get(actor).role() == Actor.Role.ENEMY
             && graphs.containsKey(ActorAi.Mode.ENGAGE);
@@ -59,17 +69,87 @@ public final class AwarenessSystem extends IteratingSystem {
             state.setVisibleTarget(target);
             state.setTargetOffset(ai.updateTarget(from, visible, deltaTime));
         }
-        if (Combat.MAPPER.get(actor).isAttacking()) {
+        if (BehaviorGraphs.attackLocksMovement(actor)) {
             stop.perform(actor, state);
             return;
         }
-        var graph = ai.mode() == ActorAi.Mode.WANDER ? graphs.get(ai.mode()) : Graphs.pursuit(ai.mode());
+        // Passive wanderers still use ordinary pursuit when retaliating.
+        var graph = graphs.getOrDefault(ai.mode(), BehaviorGraphs.pursuit(ai.mode()));
         graph.travel(actor, state);
     }
 
-    void arrowDamaged(Entity victim, Entity shooter) {
+    private void updateGuard(Entity actor, ActorAi ai, ArenaGuard guard, FocusState state) {
+        var from = feet(actor);
+        var attacker = ai.retaliationTarget();
+        if (attacker != null && livingActor(attacker)) {
+            state.setTargetOffset(ai.updateTarget(from, feet(attacker), state.deltaTime()));
+            if (BehaviorGraphs.attackLocksMovement(actor)) { stop.perform(actor, state); }
+            else { followTarget.perform(actor, state); }
+            return;
+        }
+        ai.retaliateAgainst(null);
+        var player = visiblePlayer(actor, from);
+        if (player != null) {
+            state.setVisibleTarget(player);
+            state.setTargetOffset(ai.updateTarget(from, feet(player), state.deltaTime()));
+            if (BehaviorGraphs.attackLocksMovement(actor)) { stop.perform(actor, state); }
+            else { BehaviorGraphs.pursuit(ActorAi.Mode.ENGAGE).travel(actor, state); }
+            return;
+        }
+
+        ai.forgetTarget();
+        Combat.MAPPER.get(actor).consumeAttackRequest();
+        var offset = guard.home().cpy().sub(Physic.MAPPER.get(actor).getBody().getPosition());
+        state.setTargetOffset(offset);
+        if (offset.len2() < .01f || BehaviorGraphs.attackLocksMovement(actor)) { stop.perform(actor, state); }
+        else { followTarget.perform(actor, state); }
+    }
+
+    private boolean feetContact(Entity first, Entity second) {
+        var firstBody = Physic.MAPPER.get(first).getBody();
+        var secondBody = Physic.MAPPER.get(second).getBody();
+        for (var contact : world.getContactList()) {
+            if (!contact.isTouching()) { continue; }
+            var a = contact.getFixtureA();
+            var b = contact.getFixtureB();
+            if (!a.isSensor() && !b.isSensor() && (a.getBody() == firstBody && b.getBody() == secondBody
+                || a.getBody() == secondBody && b.getBody() == firstBody)) { return true; }
+        }
+        return false;
+    }
+
+    static void guardBodyContact(Fixture a, Fixture b) {
+        if (a.isSensor() || b.isSensor()
+            || !(a.getBody().getUserData() instanceof Entity first)
+            || !(b.getBody().getUserData() instanceof Entity second)) { return; }
+        endGuardPursuit(first, second);
+        endGuardPursuit(second, first);
+    }
+
+    private static void endGuardPursuit(Entity guard, Entity other) {
+        if (guard.getComponent(ArenaGuard.class) == null) { return; }
+        var ai = ActorAi.MAPPER.get(guard);
+        if (ai.retaliationTarget() == other) { ai.retaliateAgainst(null); }
+    }
+
+    void retaliateAfterArrow(Entity victim, Entity shooter) {
+        if (victim.getComponent(ArenaGuard.class) == null) {
+            retaliateAfterDamage(victim, shooter);
+            return;
+        }
+        if (!livingActor(victim) || !livingActor(shooter) || Actor.MAPPER.get(shooter).role() != Actor.Role.PLAYER
+            || feetContact(victim, shooter)) { return; }
+        var ai = ActorAi.MAPPER.get(victim);
+        ai.retaliateAgainst(shooter);
+        ai.clearOpportunity();
+        // Arrow impact is resolved after awareness, but before combat commits its requests.
+        Combat.MAPPER.get(victim).consumeAttackRequest();
+    }
+
+    void retaliateAfterDamage(Entity victim, Entity shooter) {
         var ai = ActorAi.MAPPER.get(victim);
         if (ai == null || !livingActor(victim) || Actor.MAPPER.get(victim).role() == Actor.Role.PLAYER) { return; }
+        if (victim.getComponent(ArenaGuard.class) != null) { return; }
         var from = feet(victim);
         var to = retaliationFeet(victim, shooter, from);
         if (to != null) {
@@ -88,7 +168,7 @@ public final class AwarenessSystem extends IteratingSystem {
             double radius = 3d * ((CircleShape) fixture.getShape()).getRadius();
             double dx = (double) to.x - from.x;
             double dy = (double) to.y - from.y;
-            return dx * dx + dy * dy <= radius * radius && clearSight(from, to) ? to : null;
+            return dx * dx + dy * dy <= radius * radius && clearSight(world, from, to) ? to : null;
         }
         return null;
     }
@@ -129,7 +209,7 @@ public final class AwarenessSystem extends IteratingSystem {
         return List.of();
     }
 
-    private static Vector2 feet(Entity entity) {
+    static Vector2 feet(Entity entity) {
         var actor = Actor.MAPPER.get(entity);
         return Physic.MAPPER.get(entity).getBody().getWorldPoint(new Vector2(actor.feetX(), actor.feetY()));
     }
@@ -140,7 +220,7 @@ public final class AwarenessSystem extends IteratingSystem {
             && Actor.MAPPER.has(entity));
     }
 
-    private boolean clearSight(Vector2 from, Vector2 to) {
+    static boolean clearSight(World world, Vector2 from, Vector2 to) {
         // Box2D ray casts ignore shapes containing the ray origin.
         boolean[] blocked = {false};
         world.QueryAABB(fixture -> {
@@ -158,8 +238,26 @@ public final class AwarenessSystem extends IteratingSystem {
 
     private Entity visiblePlayer(Entity owner, Vector2 from) {
         for (var player : inRange(owner, Actor.Role.PLAYER)) {
-            if (Health.MAPPER.get(player).isAlive() && clearSight(from, feet(player))) { return player; }
+            if (!livingActor(player)) { continue; }
+            var to = feet(player);
+            if (withinFieldOfView(owner, from, to) && clearSight(world, from, to)) { return player; }
         }
         return null;
+    }
+
+    static boolean usesForwardVision(Entity owner) {
+        return Actor.MAPPER.has(owner) && Actor.MAPPER.get(owner).role() == Actor.Role.ENEMY
+            && !FullCircleVision.MAPPER.has(owner);
+    }
+
+    private static boolean withinFieldOfView(Entity owner, Vector2 from, Vector2 to) {
+        if (!usesForwardVision(owner)) { return true; }
+        // Cardinal facing defines an inclusive half-plane through the physical feet center.
+        return switch (Facing.MAPPER.get(owner).getDirection()) {
+            case UP -> to.y >= from.y;
+            case DOWN -> to.y <= from.y;
+            case LEFT -> to.x <= from.x;
+            case RIGHT -> to.x >= from.x;
+        };
     }
 }

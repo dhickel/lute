@@ -23,6 +23,8 @@ public final class Loadout implements Component {
         setWeapon(weaponId);
     }
 
+    public Loadout copy() { return new Loadout(equipment, weapon.id(), weapons, validateEquipment); }
+
     public Equipment getEquipment() { return equipment; }
     public CombatWeapon.Weapon getWeapon() { return weapon; }
     public String getWeaponId() {

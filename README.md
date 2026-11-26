@@ -9,17 +9,39 @@ This project was generated with a template including simple application launcher
 - `core`: Main module with the application logic shared by all platforms.
 - `lwjgl3`: Primary desktop platform using LWJGL3; was called 'desktop' in older docs.
 
+## Starting and using the menu
+
+Provision the runtime assets described below, run `./generate-runtime-assets.sh`, then launch with `./gradlew :lwjgl3:run`. The main menu offers Hoard, Options, and Key Bindings; Story is unavailable. Select Hoard and enter a nonblank name of at most 16 letters, numbers, spaces, dashes, or underscores. After a run, the results show its totals and the local top five scores, with Play Again and Return to Main Menu choices.
+
+Use the keyboard arrows and Enter, controller D-pad or left stick and A, or the mouse to navigate. Esc, controller B, or right-click goes back. Options control the four debug layers and Asset Validation; Key Bindings lets you add, remove, or reassign keyboard and controller bindings, including confirming conflicts. Options, bindings, and scores are stored locally in LibGDX preferences; mouse bindings remain configured in input settings, not through the menu.
+
+For development, the JVM property `-DluteDirectMap=true` bypasses the menu and loads the configured `startupMap`. With the Gradle launcher use `./gradlew :lwjgl3:run -PluteDirectMap=true`, which forwards the property to the game.
+
+## Hoard sprint prototype
+
+On `hoard-mode-alpha`, hold controller B while moving to ramp up to 1.6× normal speed over 250 ms in Hoard mode. On release or exhaustion, the boost ramps back down to walking speed in up to 100 ms. A full stamina meter provides 2 seconds of boosted movement at the existing drain rate. Recharge begins after 2 active simulation seconds without actual stamina expenditure; pauses freeze this delay. The recharge rate remains 70% of the original rate, taking about 8.57 seconds to refill once recharge begins, or about 10.57 seconds from the last drain when empty. The walk animation follows the boost up to 2× speed while advancing. Stamina drains only with actual forward movement, including the release tail while stamina remains; it does not drain when blocked. After exhaustion, release and press B again to run as stamina refills. The Hoard HUD shows health and stamina together in a centered row below the arena stats; other maps retain their existing HUD and movement.
+
+This prototype originated on `hoard-mode-sprint-test`, based on `hoard-mode-alpha`, and adds neither backpedaling, a dash, nor invincibility frames. The existing dash prototypes remain on separate branches.
+
+## Weapon hitbox editor
+
+Launch the standalone JavaFX editor from the repository root with `./gradlew :weapon-tester:run`. It is a standalone included build registered in `settings.gradle`. Provision the ignored `raw_assets/` tree first: the editor uses raw player and weapon data and raw character, equipment, and weapon sprites rather than generated runtime assets.
+
+The editor previews all four facing directions and overlays the weapon attack hitbox separately from the player's damage-receiving hurtbox and physical collider. Edit the attack shape, extents, and directional offsets; for a weapon with a projectile primary attack, only its secondary attack is editable. Save explicitly to write changes to `raw_assets/data/weapons.json`. Saving does not generate runtime assets: run `./generate-runtime-assets.sh` separately before using the changes in the game.
+
 ## Runtime assets
 
-Both `raw_assets/` and `assets/` are local and ignored by Git; their contents are not included in the current tracked tree or new checkouts. Existing Git history retains old asset objects; it has not been purged. In a new checkout, provide the complete current `raw_assets/` tree externally, including settings, data, audio, maps, tilesets, sprites, and the Tiled project. Edit source assets in `raw_assets/`, not the generated files in `assets/`. Shared settings and the Tiled project live at the source root; `data/` and `audio/` contain shared game data and sounds. Each map directory, such as `raw_assets/maps/test_tiled/`, contains a matching TMX and manifest and an `objects/` directory with source images and `pack.json`. Shared terrain tilesets live under `raw_assets/tilesets/` and can be referenced by multiple maps. The manifest must name `<map>.atlas` and `<map>/<map>.tmx`, and include `music_assets` and `sound_assets` objects, even when empty.
+Both `raw_assets/` and `assets/` are local and ignored by Git, except tracked `assets/input.setting.json`; the complete pack is not included in new checkouts. No matching raw pack version, digest, or distribution location is recorded here; obtain the matching pack from the asset owner before attempting a reproducible build. Existing Git history retains old asset objects; it has not been purged. In a new checkout, provide the complete current `raw_assets/` tree externally, including settings, data, audio, maps, tilesets, sprites, and the Tiled project. Edit source assets in `raw_assets/`, not the generated files in `assets/`. Shared settings and the Tiled project live at the source root; `data/` and `audio/` contain shared game data and sounds. The required menu background is `raw_assets/images/menu/mainmenubg.jpg`; the generator publishes it as `assets/images/menu/mainmenubg.jpg`. Each map directory, such as `raw_assets/maps/test_tiled/`, contains a matching TMX and manifest and an `objects/` directory with source images and `pack.json`. Shared terrain tilesets live under `raw_assets/tilesets/` and can be referenced by multiple maps. The manifest must name `<map>.atlas` and `<map>/<map>.tmx`, and include `music_assets` and `sound_assets` objects, even when empty.
 
 Continue authoring terrain sheets and Tiled maps normally in `raw_assets/`. `./generate-runtime-assets.sh` adds a one-pixel repeated RGBA border around each tile in generated grid-based terrain sheets, including external TSX and inline TMX tilesets. This padding reduces texture bleed but does not fix every cause of tile seams. Generated files are subject to the existing ownership and transaction rules; the source files are not modified. See [asset generation](docs/asset-service.md#terrain-tilesheet-generation) for grid validation and metadata details.
 
-`raw_assets/game.settings.json` requires `startupMap`, a map name rather than a path, and `projectPath`, the filename of the root Tiled `.tiled-project` file. The local values are `test_tiled` and `game.tiled-project`, respectively. The asset generator also allows its Tiled project filename to be configured; keep it aligned with `projectPath`.
+`raw_assets/game.settings.json` requires `startupMap`, a map name rather than a path, and `projectPath`, the filename of the root Tiled `.tiled-project` file. The provisioned local values are `hoard_mode` and `game.tiled-project`, respectively; normal menu startup selects Hoard independently, while direct-map startup uses `startupMap`. The asset generator also allows its Tiled project filename to be configured; keep it aligned with `projectPath`. See [Hoard provisioning](docs/asset-service.md#hoard-arena-provisioning) for required markers, catalog entries, and the intended optional asset preflight.
 
-Authored gameplay JSON follows the same source-to-runtime path: provision `raw_assets/data/player.json`, `characters.json`, `enemies.json`, `weapons.json`, and `projectiles.json`, then generate `assets/data/`. Both actor files are required top-level maps keyed by spawn key and may be empty. NPC spawns select `characters.json`; enemy spawns select `enemies.json`. Each actor requires a nonblank `name` and positive integer `max_health`, used as its initial and maximum spawn health. NPCs retain their loadout; enemies require a nullable top-level `weapon` instead. Both require `detection_bounds: { "radius": ... }` in pixels and a `decision_graph` key. Graph keys such as `wander` and `wander_attack` are reusable across definitions. Animation `atlas_key` selects the sprite prefix. Missing or invalid required data fails loading without a fallback; player data retains its existing schema.
+Authored gameplay JSON follows the same source-to-runtime path: provision `raw_assets/data/player.json`, `characters.json`, `enemies.json`, `weapons.json`, and `projectiles.json`, then generate `assets/data/`. Both actor files are required top-level maps keyed by spawn key and may be empty. NPC spawns select `characters.json`; enemy spawns select `enemies.json`. Each actor requires a nonblank `name` and positive integer `max_health`, used as its initial and maximum spawn health. NPCs retain their loadout; enemies require a nullable top-level `weapon` instead. NPCs require `detection_bounds: { "radius": ... }` in pixels; enemies additionally require a string `shape` in `detection_bounds`, either `FULL_CIRCLE` or `FORWARD_SEMICIRCLE`. Both require a `behavior_graph` key. Graph keys such as `wander` and `wander_attack` are reusable across definitions. Animation `atlas_key` selects the sprite prefix. Missing or invalid required data fails loading without a fallback; player data retains its existing schema.
 
-The ignored raw and runtime copies in this checkout have been migrated locally. Other checkouts must migrate their own ignored data: move the former `actors.json` NPC and enemy entries into the respective files, preserve graph keys and detection radii, add names, and retain each map actor's existing `max_health`. Regenerate runtime assets afterward. There is no `actors.json` fallback.
+For the behavior graph rename, replace `decision_graph` with `behavior_graph` in every entry in the ignored raw `characters.json` and `enemies.json`, then regenerate runtime assets. The old field is not accepted and has no alias; keep values such as `wander` and `wander_attack` unchanged.
+
+The ignored raw and runtime copies in this checkout have previously been migrated to the role-specific files. Other checkouts must migrate their own ignored data: move the former `actors.json` NPC and enemy entries into the respective files, preserve graph keys and detection radii, add names, and retain each map actor's existing `max_health`. For detection shape, set `dredge` to `FULL_CIRCLE` and the other existing enemies to `FORWARD_SEMICIRCLE` in the raw `enemies.json`, preserving their radii; regenerate runtime assets afterward. Shape is authored per enemy, not inferred from its spawn key. There is no `actors.json` fallback.
 
 This example shows the actor data shape; author it in the ignored raw tree before generating runtime assets:
 
@@ -69,7 +91,7 @@ This example shows the actor data shape; author it in the ignored raw tree befor
         },
         "rotation": 0
       },
-      "decision_graph": "wander"
+      "behavior_graph": "wander"
     }
 }
 ```
@@ -103,7 +125,8 @@ This example shows the actor data shape; author it in the ignored raw tree befor
         "frame_interval": 0.12
       },
       "detection_bounds": {
-        "radius": 160
+        "radius": 160,
+        "shape": "FORWARD_SEMICIRCLE"
       },
       "weapon": "basic_sword",
       "collision": {
@@ -116,29 +139,12 @@ This example shows the actor data shape; author it in the ignored raw tree befor
         },
         "rotation": 0
       },
-      "decision_graph": "wander_attack"
+      "behavior_graph": "wander_attack"
     }
 }
 ```
 
-At startup, `DataLoader` loads them through `GameConsts.DATA_PATH`, and `GameData` supplies the resolved data to gameplay. There is no bundled-resource or classpath fallback. If the externally provisioned tree lacks `raw_assets/data/projectiles.json`, create it with this starter data:
-
-```json
-{
-  "projectiles": {
-    "iron_arrow": {
-      "atlas_key": "projectiles/IronArrow",
-      "speed": 8.0,
-      "lifetime": 5.0,
-      "collision_bounds": { "length": 8.5, "width": 10.0 },
-      "arc_height": 0.30,
-      "tip_x": 16.0,
-      "tip_y": 32.0,
-      "art_degrees": 90.0
-    }
-  }
-}
-```
+At startup, `DataLoader` loads them through `GameConsts.DATA_PATH`, and `GameData` supplies the resolved data to gameplay. There is no bundled-resource or classpath fallback. Provision the matching `projectiles.json` and its referenced art with the rest of the pack; its required collision schema is described in the [composite character specification](.internal-dev/specifications/composite-characters.md).
 
 Existing externally provisioned `raw_assets/data/weapons.json` files must be migrated: add a finite, positive `stats.cooldown_seconds` to every primary and secondary attack, including unarmed. The locally tuned values are sword primary `0.30` and secondary `0.24`, bow primary `0.25` and secondary `0.32`, and unarmed `0.32` for both slots. These local asset edits are not tracked.
 
@@ -160,15 +166,16 @@ Add `"nightAmbient": { "tint": "#8299CC", "brightness": 0.35 }` and the required
   "physics": true,
   "triggers": true,
   "rawLightMap": false,
-  "lightingOutlines": false
+  "lightingOutlines": false,
+  "assetValidation": true
 }
 ```
 
-All four fields must be JSON booleans; missing or invalid fields fail startup. These are local authored sample values, not code defaults. Edit the raw settings, run `./generate-runtime-assets.sh`, and restart to apply changes. See [asset authoring](docs/asset-service.md) for validation and the complete object example.
+All five fields must be JSON booleans; missing or invalid fields fail startup. These are local authored sample values, not code defaults. Edit the raw settings, run `./generate-runtime-assets.sh`, and restart to apply changes. See [asset authoring](docs/asset-service.md) for validation and the complete object example.
 
-Press N in gameplay to toggle day and night. Each new screen starts in day; mode and pulse phase survive travel and hide/show, and pause freezes the pulse. The toggle does not change world time. At night solid Box2D fixtures cast shadows, except the emitter's own fixtures; sensors and arrows without solids do not. Lighting follows collision geometry rather than art silhouettes. Crosshair and debug overlays remain unlit.
+Outside the hoard arena, press N in gameplay to toggle day and night independently of world time. Each new screen starts in day; manual mode and pulse phase survive travel and hide/show, and pause freezes the pulse. In the arena, N is ignored, lighting stays in daylight, and the session world clock freezes until leaving. A new session starts at 06:00, and map travel does not reset the clock. At night solid Box2D fixtures cast shadows, except the emitter's own fixtures; sensors and arrows without solids do not. Lighting follows collision geometry rather than art silhouettes. Crosshair and debug overlays remain unlit.
 
-F3 no longer cycles diagnostics. The four debug layers are independent and can appear together: `physics` shows physics geometry, `triggers` shows sensor diagnostics, and `lightingOutlines` shows solid fixture outlines and pulsed emitter rings by day or night. At night `rawLightMap` replaces world art with the combined ambient and emitter lightmap; by day it leaves the ordinary world view unchanged. Other enabled overlays can still appear over the raw lightmap.
+F3 no longer cycles diagnostics. The four debug layers are independent and can appear together: `physics` shows physics geometry, with enemy detection drawn according to its authored shape; this outline does not visualize occlusion, and NPC detection circles are unchanged. `triggers` shows sensor diagnostics, and `lightingOutlines` shows solid fixture outlines and pulsed emitter rings by day or night. At night `rawLightMap` replaces world art with the combined ambient and emitter lightmap; by day it leaves the ordinary world view unchanged. Other enabled overlays can still appear over the raw lightmap. Explicit visual launch overrides do not affect Asset Validation.
 
 After provisioning or changing source assets, run:
 
@@ -195,7 +202,9 @@ Character sprites come from `raw_assets/sprites/`: base frames live in `characte
 
 Tiled `PLAYER`, `NPC`, and `ENEMY` spawn points require a `facing` enum value: `UP`, `DOWN`, `LEFT`, or `RIGHT`. The Tiled class supplies the `DOWN` default; Java does not supply a fallback. The sample NPC faces `LEFT`. A new player uses the player marker's facing, while named travel and in-place travel retain the live player's existing facing. `TELEPORT` and `ITEM` points do not use facing.
 
-The existing `NPC` and `ENEMY` points on `test_tiled` spawn map-owned actors. The NPC starts with basic body, hands, and feet equipment, without a head item or weapon; it can equip compatible head armor. All four armor slots are independently optional for both the player and basic NPC. The player's authored defaults remain the basic set and sword: its loadout object is required, but each slot, including the weapon, may be omitted or null; non-null IDs must not be blank. Equipped frames must still match the actor's base animation. The demo enemy uses its baked body art and starts with a sword and no separate armor; its weapon can be changed through the existing `LoadoutSystem`. Both actors have dynamic bodies with a solid feet ellipse, a separate sensor hurtbox, and 100 health. Their bounds and health are authored independently of player JSON. Authored move speed drives movement. The NPC only wanders. For the enemy, a per-actor Wander/Engage/Investigate FSM uses explicit Java transitions and selects the decision graph for its current mode. Its query-only, feet-centered detection circle and feet-to-feet line of sight acquire a living player. Engage follows the detectable player at authored speed, faces along the dominant axis, and records the player's last seen world-space feet coordinates. On loss of detection, Investigate steers directly to that point and returns to Wander at a distance of at most 8 logical pixels or after 2 seconds, whichever comes first. The actor can reacquire a detectable player on any tick. Only live sight can request melee: with a primary melee attack at most 32 logical pixels away, the actor stops, faces the player, and attacks when ready, waiting in place during cooldown. Perception continues during an attack, but motion and facing remain committed until it ends. Existing combat handles attack animation, cooldown, and damage. There is no pathfinding, saved data, retained target reference, or new JSON key. Both actors have query-only detection circles centered at their feet, with radii authored in pixels. They have no dialogue, player control, or camera ownership. Named travel rebuilds them with the map. In Tiled, use `spawnKey` on `NpcSpawn` for `basic_npc` and on `EnemySpawn` for `brainless_undead`; when no explicit key is authored, the unchanged legacy `actorId` fallback applies. Provision the raw assets and run the root generation script before launching `./gradlew lwjgl3:run`. Visit the marked NPC and ENEMY locations on `test_tiled` to inspect their appearance and placement, then travel away and back to check that they are rebuilt.
+The existing `NPC` and `ENEMY` points on `test_tiled` spawn map-owned actors. The NPC starts with basic body, hands, and feet equipment, without a head item or weapon; it can equip compatible head armor. All four armor slots are independently optional for both the player and basic NPC. The player's authored defaults remain the basic set and sword: its loadout object is required, but each slot, including the weapon, may be omitted or null; non-null IDs must not be blank. Equipped frames must still match the actor's base animation. The demo enemy uses its baked body art and starts with a sword and no separate armor; its weapon can be changed through the existing `LoadoutSystem`. Both actors have dynamic bodies with a solid feet ellipse, a separate sensor hurtbox, and 100 health. Their bounds and health are authored independently of player JSON. Authored move speed drives movement. The NPC wanders without acquiring targets by default. For the enemy, a per-actor Wander/Engage/Investigate FSM uses explicit Java transitions and selects the behavior graph for its current mode. Its query-only, feet-centered detection range uses its authored shape: `FORWARD_SEMICIRCLE` includes both side edges, while `FULL_CIRCLE` detects in all directions. Feet-to-feet line of sight must be clear to acquire a living player. Solid non-actor fixtures block sight, including at the origin; sensors and actors do not. Engage follows the detectable player at authored speed, faces along the dominant axis, and records the player's last seen world-space feet coordinates. On loss of detection, Investigate steers directly to that point and returns to Wander at a distance of at most 8 logical pixels or after 2 seconds, whichever comes first. The actor can reacquire a detectable player on any tick. Only live sight can request melee: with a primary melee attack at most 32 logical pixels away, the actor stops, faces the player, and attacks when ready, waiting in place during cooldown. Perception continues during an attack, but motion and facing remain committed until it ends. Existing combat handles attack animation, cooldown, and damage. Confirmed nonlethal player melee damage provokes ordinary enemies, as do existing arrow hits. Retaliation ignores facing but still requires a living attacker within three detection radii and clear feet-to-feet sight; attacks retain cooldown and committed windups. NPC melee behavior is unchanged. There is no pathfinding or saved data. Both actors have query-only detection circles centered at their feet, with radii authored in pixels. They have no dialogue, player control, or camera ownership. Named travel rebuilds them with the map. In Tiled, use `spawnKey` on `NpcSpawn` for `basic_npc` and on `EnemySpawn` for `brainless_undead`; when no explicit key is authored, the unchanged legacy `actorId` fallback applies. Provision the raw assets and run the root generation script before launching `./gradlew lwjgl3:run`. Visit the marked NPC and ENEMY locations on `test_tiled` to inspect their appearance and placement, then travel away and back to check that they are rebuilt.
+
+The migrated `dredge` definition uses `FULL_CIRCLE` detection with clear feet-to-feet sight wherever it spawns; detection shape is not determined by identity. Retaliation ignores facing regardless of detection shape. The Hoard Dredge guard pursues outside the health ellipse and normally returns to its spawn when detection is lost; it waits there and can reacquire the player on the way home. When the player is visible within 80 logical pixels, the guard can commit to a lunge with about 0.33 seconds of startup, then ease forward in fixed steps during the live hitbox frames. It does not track the player during the lunge, and solid cover blocks damage. A damaging player arrow instead provokes pursuit beyond normal sight and range until solid body contact or the player is no longer live, after which normal detection and combat rules resume. This adds no pathfinding. See the [Hoard arena rules](.internal-dev/specifications/decisions.md#hoard-arena-run) for Dredge scaling and pickup behavior.
 
 ### Per-map generation
 

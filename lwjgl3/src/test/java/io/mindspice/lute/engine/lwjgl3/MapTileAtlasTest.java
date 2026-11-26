@@ -212,6 +212,8 @@ public final class MapTileAtlasTest {
         var sets = Files.createDirectories(raw.resolve("tilesets"));
         Files.createDirectories(raw.resolve("data"));
         Files.createDirectories(raw.resolve("audio"));
+        Files.createDirectories(raw.resolve("images/menu"));
+        Files.write(raw.resolve("images/menu/mainmenubg.jpg"), new byte[]{42});
         Files.writeString(raw.resolve("game.settings.json"), """
             {"mapsPath":"maps/","atlasPath":"atlases/","dataPath":"data/","soundPath":"audio/",
              "musicPath":"audio/","projectPath":"game.tiled-project"}

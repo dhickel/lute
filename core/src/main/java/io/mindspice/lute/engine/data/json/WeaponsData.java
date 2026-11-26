@@ -68,13 +68,14 @@ public record WeaponsData(String atlas, Map<String, WeaponData> weapons) {
             }
         }
 
-        public record Stats(@JsonProperty(value = "damage", required = true) int damage,
+        public record Stats(@JsonProperty(value = "damage", required = true) AttackDamage damage,
                             @JsonProperty(value = "cost", required = true) int cost,
                             @JsonProperty(value = "hit_frame", required = true) int hitFrame,
                             @JsonProperty(value = "cooldown_seconds", required = true) float cooldownSeconds) {
             public Stats {
-                if (damage <= 0 || cost < 0 || hitFrame < 0) {
-                    throw new IllegalArgumentException("Weapon damage must be positive; cost and hit_frame must be nonnegative");
+                Objects.requireNonNull(damage, "damage");
+                if (cost < 0 || hitFrame < 0) {
+                    throw new IllegalArgumentException("Weapon cost and hit_frame must be nonnegative");
                 }
                 if (!Float.isFinite(cooldownSeconds) || cooldownSeconds <= 0f) {
                     throw new IllegalArgumentException("Weapon cooldown_seconds must be finite and positive");

@@ -2,6 +2,7 @@ package io.mindspice.lute.engine.systems;
 
 import com.badlogic.ashley.core.Engine;
 import com.badlogic.ashley.core.Entity;
+import com.badlogic.ashley.core.EntityListener;
 import com.badlogic.ashley.core.EntitySystem;
 import com.badlogic.gdx.Gdx;
 import com.badlogic.gdx.maps.MapLayer;
@@ -10,6 +11,7 @@ import com.badlogic.gdx.maps.objects.PointMapObject;
 import com.badlogic.gdx.maps.tiled.TiledMap;
 import com.badlogic.gdx.maps.tiled.TiledMapTileLayer;
 import com.badlogic.gdx.maps.tiled.objects.TiledMapTileMapObject;
+import com.badlogic.gdx.math.Rectangle;
 import com.badlogic.gdx.math.Vector2;
 import com.badlogic.gdx.physics.box2d.Body;
 import com.badlogic.gdx.physics.box2d.BodyDef;
@@ -17,6 +19,7 @@ import com.badlogic.gdx.physics.box2d.PolygonShape;
 import com.badlogic.gdx.physics.box2d.World;
 import com.badlogic.gdx.utils.GdxRuntimeException;
 import io.mindspice.lute.engine.assets.Asset;
+import io.mindspice.lute.gameplay.HoardRun;
 import io.mindspice.lute.engine.assets.AssetService;
 import io.mindspice.lute.engine.assets.MapAssets;
 import io.mindspice.lute.engine.components.*;
@@ -31,15 +34,21 @@ import io.mindspice.lute.engine.tiled.properties.AnimatedPhysicObjectProps;
 import io.mindspice.lute.engine.tiled.properties.PhysicObjectProps;
 
 import java.util.ArrayList;
+import java.util.Collections;
 import java.util.HashMap;
 import java.util.IdentityHashMap;
 import java.util.List;
 import java.util.Map;
+import java.util.Set;
+import java.util.function.BiFunction;
+import java.util.random.RandomGenerator;
 
 public class TiledSystem extends EntitySystem implements EventEmitter {
     private final AssetService assetService;
     private final World physicsWorld;
     private final InputManager inputManager;
+    private final boolean assetValidation;
+    private final RandomGenerator arenaRandom = RandomGenerator.getDefault();
     private RuntimeMap active;
     // These outlive a map runtime (including hide/show), but not this gameplay session.
     private Entry entry;
@@ -51,10 +60,11 @@ public class TiledSystem extends EntitySystem implements EventEmitter {
     // Only unfinished deaths survive map teardown; after expiry the next runtime spawns normally.
     private final Map<String, Map<String, DeathSystem.Corpse>> offMapCorpses = new HashMap<>();
 
-    public TiledSystem(AssetService assetService, World physicsWorld, InputManager inputManager) {
+    public TiledSystem(AssetService assetService, World physicsWorld, InputManager inputManager, boolean assetValidation) {
         this.assetService = assetService;
         this.physicsWorld = physicsWorld;
         this.inputManager = inputManager;
+        this.assetValidation = assetValidation;
     }
 
     @Override
@@ -74,14 +84,94 @@ public class TiledSystem extends EntitySystem implements EventEmitter {
         return active == null ? null : active.map;
     }
 
+    /** Call on the simulation thread outside a Box2D step. Null means no clear spot in this batch. */
+    public Entity trySpawnAreaEnemy(MapTriggers.SpawnArea area, RandomGenerator random) {
+        return trySpawnAreaEnemy(area, area.spawnKey(), random);
+    }
+
+    Entity trySpawnAreaEnemy(MapTriggers.SpawnArea area, String key, RandomGenerator random) {
+        if (physicsWorld.isLocked()) { throw new IllegalStateException("Cannot spawn during a physics step"); }
+        var footprints = active == null ? null : active.enemyFootprints.get(area);
+        var footprint = footprints == null ? null : footprints.get(key);
+        if (footprint == null) { throw new IllegalArgumentException("Expected a configured enemy area from the active map"); }
+        var candidate = new Rectangle();
+        var occupied = new boolean[1];
+        var bounds = area.bounds();
+        for (int attempt = 0; attempt < 32; attempt++) {
+            float x = bounds.x + random.nextFloat() * bounds.width;
+            float y = bounds.y + random.nextFloat() * bounds.height;
+            candidate.set(footprint).setPosition(x + footprint.x, y + footprint.y);
+            if (!active.mapBounds.contains(candidate) || !area.contains(candidate)
+                || (area.polygon() != null && !area.polygon().contains(x, y))) { continue; }
+            // Conservative broad phase. Sensors (including awareness and hurtboxes) do not block;
+            // all solid fixtures do, including actors inserted earlier in this same tick.
+            occupied[0] = false;
+            physicsWorld.QueryAABB(fixture -> {
+                occupied[0] = !fixture.isSensor();
+                return !occupied[0];
+            }, candidate.x, candidate.y, candidate.x + candidate.width, candidate.y + candidate.height);
+            if (occupied[0]) { continue; }
+            var pixels = new Vector2(x, y).scl(1f / GameConsts.UNIT_SCALE);
+            var actor = getEngine().getSystem(EntityFactory.class).getMapActor(pixels, Actor.Role.ENEMY, key, area.facing());
+            // Runtime-owned but not tied to a persistent point/corpse on reentry.
+            active.entities.add(actor);
+            // The body participates in the next fixed tick. Ashley may not publish the entity
+            // until PhysicSystem returns; entityAdded ends this map-owned registration window.
+            if (active.arena != null && active.arena.contains(area)) { active.arrivingEnemies.add(actor); }
+            getEngine().addEntity(actor);
+            return actor;
+        }
+        return null;
+    }
+
+    Entity activePlayer() { return active.player; }
+
+    void addArenaEntity(Entity entity) {
+        active.entities.add(entity);
+        if (ActorAi.MAPPER.has(entity)) { active.arrivingEnemies.add(entity); }
+        getEngine().addEntity(entity);
+    }
+
+    void collectPickups() {
+        var collected = new ArrayList<Entity>();
+        for (var contact : physicsWorld.getContactList()) {
+            if (!contact.isTouching()) { continue; }
+            var a = contact.getFixtureA();
+            var b = contact.getFixtureB();
+            var other = !a.isSensor() && a.getBody().getUserData() == active.player ? b
+                : !b.isSensor() && b.getBody().getUserData() == active.player ? a : null;
+            if (other == null || !(other.getBody().getUserData() instanceof Entity object)) { continue; }
+            var pickup = object.getComponent(Pickup.class);
+            if (pickup == null || object.isScheduledForRemoval() || collected.contains(object)) { continue; }
+            switch (pickup.rule().type()) {
+                case HEAL -> { if (!HealthFeedback.healPlayer(active.player, pickup.rule().amount())) { continue; } }
+                case WEAPON_BAG -> Controller.MAPPER.get(active.player).collectWeapon(pickup.weapon());
+            }
+            collected.add(object);
+        }
+        for (var object : collected) {
+            active.entities.remove(object);
+            removeEntity(getEngine(), object);
+        }
+    }
+
     public void showMap(MapAssets initialAssets) {
         if (active != null) { return; }
         install(prepare(entry == null ? new Entry(initialAssets, null) : entry));
     }
 
     Health playerHealth() {
+        if (active != null && active.arenaHealth != null) { return active.arenaHealth; }
         if (active != null && active.player != null) { return Health.MAPPER.get(active.player); }
         return playerState == null ? null : playerState.health();
+    }
+
+    boolean ownsArrivingEnemy(Entity entity) {
+        return active != null && !entity.isScheduledForRemoval() && active.arrivingEnemies.contains(entity);
+    }
+
+    boolean owns(Entity entity) {
+        return active != null && active.entities.contains(entity);
     }
 
     public void hideMap() {
@@ -104,7 +194,9 @@ public class TiledSystem extends EntitySystem implements EventEmitter {
         if (active == null) { return; }
         var death = engine.getSystem(DeathSystem.class);
         if (death != null) { death.update(0f); }
-        hiddenPlayerCorpse = active.player == null ? null : DeathSystem.snapshot(active.player, simulationSeconds);
+        // Arena visits start fresh, even if the previous death pose had not yet expired.
+        hiddenPlayerCorpse = active.player != null && active.arena == null
+            ? DeathSystem.snapshot(active.player, simulationSeconds) : null;
         pendingRespawn = false;
         stashActiveCorpses();
         removeRuntime(engine);
@@ -151,11 +243,16 @@ public class TiledSystem extends EntitySystem implements EventEmitter {
     boolean retireCorpse(Entity entity) {
         if (active == null) { return false; }
         if (active.player == entity) {
-            pendingRespawn = true;
-            entity.remove(Graphic.class);
-            return true;
+            if (active.arena == null) {
+                pendingRespawn = true;
+                entity.remove(Graphic.class);
+                return true;
+            }
+            active.player = null;
+            detachPlayerState(entity);
         }
         active.actorSpawns.remove(entity);
+        active.arrivingEnemies.remove(entity);
         active.entities.remove(entity);
         return false; // DeathSystem removes the entity from Ashley (and thus the body from Box2D).
     }
@@ -174,7 +271,7 @@ public class TiledSystem extends EntitySystem implements EventEmitter {
         detachPlayerState(corpse);
         active.player = replacement;
         active.entities.add(replacement);
-        playerState.health().restore();
+        Health.MAPPER.get(replacement).restore();
         engine.addEntity(replacement);
         inputManager.regKeyListener(Controller.MAPPER.get(replacement).getInputListener());
         engine.getSystem(MapSensorSystem.class).suppressArrivalPortals(replacement);
@@ -207,12 +304,13 @@ public class TiledSystem extends EntitySystem implements EventEmitter {
     private RuntimeMap prepareRuntime(TiledMap map, Entry destination, List<Asset<?>> acquired) {
         if (physicsWorld.isLocked()) { throw new IllegalStateException("Cannot change maps during a physics step"); }
         var triggers = MapTriggers.parse(map);
-        var next = new RuntimeMap(map, destination, triggers, acquired);
         var mapId = destination.assets().mapAsset().id();
+        var next = new RuntimeMap(map, destination, triggers, acquired, HoardSystem.arena(mapId, triggers));
         var corpses = active != null && active.entry.assets().mapAsset().id().equals(mapId)
             ? activeCorpses() : offMapCorpses.getOrDefault(mapId, Map.of());
         var death = getEngine().getSystem(DeathSystem.class);
         var point = destination.spawn() == null ? respawnPoint(next) : triggers.travelDestination(destination.spawn());
+        if (next.arena != null && point == null) { throw new IllegalArgumentException("Arena requires a player spawn"); }
         try {
             initMapBoundary(next);
             loadMapObjects(next);
@@ -222,19 +320,44 @@ public class TiledSystem extends EntitySystem implements EventEmitter {
                 if (hiddenPlayerCorpse != null) { death.restore(next.player, hiddenPlayerCorpse, simulationSeconds); }
             }
             var factory = getEngine().getSystem(EntityFactory.class);
+            record FootprintKey(String spawnKey, Facing.Direction facing) { }
+            var stagedFootprints = new HashMap<FootprintKey, Rectangle>();
+            BiFunction<String, Facing.Direction, Rectangle> enemyFootprint = (key, facing) ->
+                stagedFootprints.computeIfAbsent(new FootprintKey(key, facing),
+                    spawn -> factory.enemySpawnFootprint(spawn.spawnKey(), spawn.facing()));
+            for (var area : triggers.areas()) {
+                if (area.type() == MapTriggers.SpawnType.ENEMY && area.behaviorKey() != null) {
+                    var footprints = new HashMap<String, Rectangle>();
+                    footprints.put(area.spawnKey(), enemyFootprint.apply(area.spawnKey(), area.facing()));
+                    if (next.arena != null && next.arena.contains(area)) {
+                        for (var entry : HoardSystem.WAVE_ROSTER) {
+                            footprints.put(entry.key(), enemyFootprint.apply(entry.key(), area.facing()));
+                        }
+                    }
+                    next.enemyFootprints.put(area, footprints);
+                }
+            }
             for (var marker : triggers.points()) {
+                if (next.arena != null && "idle_dredge".equals(marker.behaviorKey())) { continue; }
                 switch (marker.type()) {
                     case NPC, ENEMY -> {
                         var role = marker.type() == MapTriggers.SpawnType.NPC ? Actor.Role.NPC : Actor.Role.ENEMY;
+                        var bounty = next.arena != null && role == Actor.Role.ENEMY
+                            ? HoardSystem.rosterBounty(marker.spawnKey()) : null;
                         var actor = factory.getMapActor(marker.position(), role, marker.spawnKey(), marker.facing());
                         next.entities.add(actor);
-                        next.actorSpawns.put(actor, marker.name());
+                        if (bounty != null) { actor.add(bounty); }
+                        // Arena actors belong to this run, including authored point enemies.
+                        if (next.arena == null) { next.actorSpawns.put(actor, marker.name()); }
                         var corpse = corpses.get(marker.name());
                         if (corpse != null) { death.restore(actor, corpse, simulationSeconds); }
                     }
                     case ITEM, OBJECT -> next.entities.add(factory.getSpawnedObject(marker.position(), marker.spawnKey(), marker.facing()));
                     default -> { }
                 }
+            }
+            if (assetValidation && next.arena != null) {
+                HoardSystem.validateDelayedSpawns(factory, triggers, next.player, enemyFootprint);
             }
             next.sensors = getEngine().getSystem(MapSensorSystem.class).prepareMap(triggers);
             return next;
@@ -270,7 +393,7 @@ public class TiledSystem extends EntitySystem implements EventEmitter {
         next.sensors = null;
         for (var entity : next.entities) { engine.addEntity(entity); }
         if (next.player != null) {
-            if (playerState == null) { playerState = PlayerState.of(next.player); }
+            playerState = next.sessionPlayer;
             var controller = Controller.MAPPER.get(next.player);
             if (controller != null) {
                 inputManager.regKeyListener(controller.getInputListener());
@@ -279,6 +402,7 @@ public class TiledSystem extends EntitySystem implements EventEmitter {
         }
         var physics = engine.getSystem(PhysicSystem.class);
         if (physics != null) { physics.resetClock(); }
+        if (next.arena != null) { engine.addEntityListener(next); }
         bindMap(engine, next);
         if (previous != null) { releaseAssets(previous.ownedAssets, next.ownedAssets); }
         eventEmitter.accept(new Event.Map.Changed(next.entry.assets().mapAsset().id()));
@@ -299,6 +423,10 @@ public class TiledSystem extends EntitySystem implements EventEmitter {
     }
 
     private void removeRuntime(Engine engine) {
+        if (active.arena != null) {
+            engine.removeEntityListener(active);
+            active.arrivingEnemies.clear();
+        }
         var sensors = engine.getSystem(MapSensorSystem.class);
         if (sensors != null) { sensors.clearMap(); }
         inputManager.releaseHeldInputs();
@@ -310,7 +438,7 @@ public class TiledSystem extends EntitySystem implements EventEmitter {
     private void removeEntity(Engine engine, Entity entity) {
         detachController(entity);
         engine.removeEntity(entity);
-        entity.remove(DamageFeedback.class);
+        entity.remove(HealthFeedback.class);
     }
 
     private static void detachPlayerState(Entity player) {
@@ -319,7 +447,9 @@ public class TiledSystem extends EntitySystem implements EventEmitter {
         player.remove(Facing.class);
     }
 
-    private static void bindMap(Engine engine, RuntimeMap next) {
+    private void bindMap(Engine engine, RuntimeMap next) {
+        var hoard = engine.getSystem(HoardSystem.class);
+        if (hoard != null) { hoard.bind(this, next == null ? null : next.arena, arenaRandom); }
         var renderer = engine.getSystem(RenderSystem.class);
         if (renderer != null) { renderer.setMap(next == null ? null : next.map); }
         var camera = engine.getSystem(CameraSystem.class);
@@ -356,6 +486,12 @@ public class TiledSystem extends EntitySystem implements EventEmitter {
 
     private Entity createPlayer(RuntimeMap runtime, MapTriggers.SpawnPoint point) {
         var player = getEngine().getSystem(EntityFactory.class).getPlayerEntity(point.position(), playerState, point.facing());
+        // Keep ordinary health and equipment out of the visit's temporary inventory and health pool.
+        runtime.sessionPlayer = PlayerState.of(player);
+        if (runtime.arenaHealth != null) {
+            var loadout = runtime.sessionPlayer.loadout().copy();
+            player.add(runtime.arenaHealth).add(loadout).add(Controller.forArena(loadout.getWeapon().id()));
+        }
         var properties = runtime.map.getProperties();
         player.add(new BowAim(properties.get("tilewidth", Integer.class) * GameConsts.UNIT_SCALE,
             properties.get("tileheight", Integer.class) * GameConsts.UNIT_SCALE));
@@ -376,6 +512,7 @@ public class TiledSystem extends EntitySystem implements EventEmitter {
             throw new IllegalArgumentException("Map boundaries require positive finite map and tile dimensions");
         }
         var body = createStaticBody(next, Vector2.Zero);
+        next.mapBounds.set(0, 0, mapW, mapH);
         float halfW = mapW * .5f;
         float halfH = mapH * .5f;
         float thickness = .5f;
@@ -451,18 +588,29 @@ public class TiledSystem extends EntitySystem implements EventEmitter {
     private record Entry(MapAssets assets, String spawn) { }
     private record Travel(Entity player, String mapId, String spawn) { }
 
-    private static final class RuntimeMap {
+    private static final class RuntimeMap implements EntityListener {
         final TiledMap map;
         final Entry entry;
         final MapTriggers triggers;
         final List<Asset<?>> ownedAssets;
         final List<Body> bodies = new ArrayList<>();
         final List<Entity> entities = new ArrayList<>();
+        final Set<Entity> arrivingEnemies = Collections.newSetFromMap(new IdentityHashMap<>());
+        final Rectangle mapBounds = new Rectangle();
+        final Map<MapTriggers.SpawnArea, Map<String, Rectangle>> enemyFootprints = new IdentityHashMap<>();
         final Map<Entity, String> actorSpawns = new IdentityHashMap<>();
         List<MapSensorSystem.SensorBody> sensors;
+        final List<MapTriggers.SpawnArea> arena;
+        final Health arenaHealth; // Remains available to the HUD after the corpse is removed.
         Entity player;
+        PlayerState sessionPlayer;
 
-        RuntimeMap(TiledMap map, Entry entry, MapTriggers triggers, List<Asset<?>> ownedAssets) {
+        @Override public void entityAdded(Entity entity) { arrivingEnemies.remove(entity); }
+        @Override public void entityRemoved(Entity entity) { arrivingEnemies.remove(entity); }
+
+        RuntimeMap(TiledMap map, Entry entry, MapTriggers triggers, List<Asset<?>> ownedAssets, List<MapTriggers.SpawnArea> arena) {
+            this.arena = arena;
+            arenaHealth = arena == null ? null : new Health(HoardRun.PLAYER_HEALTH);
             this.map = map;
             this.entry = entry;
             this.triggers = triggers;

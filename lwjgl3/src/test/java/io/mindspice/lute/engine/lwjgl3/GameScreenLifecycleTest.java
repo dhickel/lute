@@ -233,12 +233,12 @@ public final class GameScreenLifecycleTest extends ApplicationAdapter {
         }
 
         for (var layers : List.of(
-            new DebugLayers(false, false, false, false),
-            new DebugLayers(true, false, false, false),
-            new DebugLayers(false, true, false, false),
-            new DebugLayers(false, false, true, false),
-            new DebugLayers(false, false, false, true),
-            new DebugLayers(true, true, true, true))) {
+            new DebugLayers(false, false, false, false, true),
+            new DebugLayers(true, false, false, false, true),
+            new DebugLayers(false, true, false, false, true),
+            new DebugLayers(false, false, true, false, true),
+            new DebugLayers(false, false, false, true, true),
+            new DebugLayers(true, true, true, true, true))) {
             var authored = GameConsts.DEBUG_LAYERS;
             GameScreen replacement;
             try {
@@ -257,7 +257,7 @@ public final class GameScreenLifecycleTest extends ApplicationAdapter {
             input.keyDown(Input.Keys.N);
             replacement.render(.02f);
             require(night(replacement), "Fresh press after real key-up toggles the replacement screen");
-            if (layers.equals(new DebugLayers(false, false, false, false))) {
+            if (layers.equals(new DebugLayers(false, false, false, false, true))) {
                 replacement.render(0f);
                 var alive = hudGlyphs();
                 var view = GAME.getViewport();

@@ -5,6 +5,7 @@ import com.badlogic.gdx.files.FileHandle;
 import io.mindspice.lute.engine.assets.Asset;
 import io.mindspice.lute.engine.assets.CharacterAssets;
 import io.mindspice.lute.engine.assets.WeaponAssets;
+import io.mindspice.lute.engine.data.json.MapActorData.EnemyDetectionBounds.Shape;
 import io.mindspice.lute.engine.data.json.WeaponsData.WeaponData;
 import io.mindspice.lute.engine.data.json.WeaponsData.WeaponData.*;
 import io.mindspice.lute.engine.singletons.GameConsts;
@@ -13,6 +14,7 @@ import java.lang.reflect.Proxy;
 import java.nio.file.Files;
 import java.nio.file.Path;
 import java.util.HashMap;
+import java.util.List;
 import java.util.Map;
 
 public final class DataLoaderTest {
@@ -22,6 +24,16 @@ public final class DataLoaderTest {
         try {
             useAssets();
             GameConsts.loadSettings();
+            if (List.of(args).equals(List.of("--actors-only"))) {
+                actorsSchema();
+                System.out.println("DataLoaderTest: actor schema passed");
+                return;
+            }
+            if (List.of(args).equals(List.of("--settings-only"))) {
+                debugLayerLaunchModes();
+                System.out.println("DataLoaderTest: settings launch modes passed");
+                return;
+            }
             var settings = DataLoader.mapper.readTree(Path.of("assets/game.settings.json").toFile());
             check(GameConsts.VIEW_WIDTH == settings.required("viewWidth").floatValue()
                 && GameConsts.UNIT_SCALE == settings.required("unitScale").floatValue(), "settings constants match authored values");
@@ -31,7 +43,8 @@ public final class DataLoaderTest {
             var debug = settings.required("debugLayers");
             check(GameConsts.DEBUG_LAYERS.equals(new GameConsts.DebugLayers(debug.required("physics").booleanValue(),
                 debug.required("triggers").booleanValue(), debug.required("rawLightMap").booleanValue(),
-                debug.required("lightingOutlines").booleanValue())), "debug layers match authored values");
+                debug.required("lightingOutlines").booleanValue(), debug.required("assetValidation").booleanValue())),
+                "debug layers match authored values");
             check(Files.mismatch(Path.of("raw_assets/game.settings.json"), Path.of("assets/game.settings.json")) == -1,
                 "generated settings match source");
             var player = DataLoader.parsePlayerData();
@@ -46,6 +59,7 @@ public final class DataLoaderTest {
             objectsSchema();
             invalidMetadata(player, definitions);
             assetIds(definitions);
+            debugLayerLaunchModes();
             settingsAtomicity();
             check(Files.mismatch(Path.of("raw_assets/data/player.json"), Path.of("assets/data/player.json")) == -1,
                 "generated player matches source");
@@ -69,6 +83,8 @@ public final class DataLoaderTest {
             stats.put("damage", 10.5);
             Files.writeString(fixture, weapons.toString());
             rejects(DataLoader::parseWeaponData, "fractional weapon damage");
+            Files.writeString(fixture, weapons.toString().replace("\"damage\":10.5", "\"damage\":{\"min\":1,\"min\":2,\"max\":3}"));
+            rejects(DataLoader::parseWeaponData, "duplicate damage bound");
         } finally {
             useAssets();
             Files.delete(fixture);
@@ -142,8 +158,9 @@ public final class DataLoaderTest {
             "sounds": {"move": "step.wav", "damage": "hurt.wav"},
             "detection_bounds": {"radius": 72}
             """;
-        String npc = "{\"name\":\"Town Guard\"," + common + ",\"decision_graph\":\"wander\",\"loadout\":{\"body\":\"basic\",\"weapon\":\"basic_bow\"}}";
-        String enemy = "{\"name\":\"Undead Guard\"," + common.replace("72}", "192.5}") + ",\"decision_graph\":\"wander_attack\",\"weapon\":\"basic_sword\"}";
+        String npc = "{\"name\":\"Town Guard\"," + common + ",\"behavior_graph\":\"wander\",\"loadout\":{\"body\":\"basic\",\"weapon\":\"basic_bow\"}}";
+        String enemy = "{\"name\":\"Undead Guard\"," + common.replace("72}", "192.5, \"shape\": \"FORWARD_SEMICIRCLE\"}")
+            + ",\"behavior_graph\":\"wander_attack\",\"weapon\":\"basic_sword\"}";
         String npcs = "{\"guard\":" + npc + ",\"merchant\":" + npc.replace("Town Guard", "Merchant").replace("80", "60") + "}";
         String entry = "{\"guard\":%s}";
         try {
@@ -158,7 +175,8 @@ public final class DataLoaderTest {
             Files.delete(enemies);
             Files.writeString(characters, npcs);
             rejects(DataLoader::loadGameData, "Missing enemies file");
-            Files.writeString(enemies, entry.formatted(enemy));
+            Files.writeString(enemies, "{\"guard\":" + enemy + ",\"sentinel\":"
+                + enemy.replace("FORWARD_SEMICIRCLE", "FULL_CIRCLE") + "}");
             var data = DataLoader.loadGameData().actorsData();
             var merchant = data.npc().get("merchant");
             check(merchant.maxHealth() == 60 && merchant.name().equals("Merchant"), "Multiple NPC IDs resolve independently");
@@ -168,8 +186,11 @@ public final class DataLoaderTest {
                 "NPC definitions mirror player gameplay and loadout fields");
             var undead = data.enemies().get("guard");
             check(undead.weapon().equals("basic_sword") && guard.detectionBounds().radius() == 72
-                && undead.detectionBounds().radius() == 192.5f && guard.decisionGraph().equals("wander")
-                && undead.decisionGraph().equals("wander_attack"), "Role-scoped IDs bind distinct radii and graph keys");
+                && undead.detectionBounds().radius() == 192.5f && guard.behaviorGraph().equals("wander")
+                && undead.behaviorGraph().equals("wander_attack"), "Role-scoped IDs bind distinct radii and graph keys");
+            check(undead.detectionBounds().shape() == Shape.FORWARD_SEMICIRCLE
+                && data.enemies().get("sentinel").detectionBounds().shape() == Shape.FULL_CIRCLE,
+                "Both authored shapes bind independently of spawn key");
             check(guard.name().equals("Town Guard") && undead.name().equals("Undead Guard")
                 && guard.maxHealth() == 80 && undead.maxHealth() == 80, "Both catalogues bind name and maximum health");
             Files.writeString(characters, "{}");
@@ -181,9 +202,13 @@ public final class DataLoaderTest {
             Files.writeString(characters, npcs);
             for (String invalid : new String[]{npc, enemy.replace(",\"weapon\":\"basic_sword\"", ""),
                     enemy.replace("basic_sword", "unknown_weapon"), enemy.replace("192.5", "0"),
-                    enemy.replace("192.5", "1e100"), enemy.replace("\"radius\": 192.5", ""),
+                    enemy.replace("192.5", "1e100"), enemy.replace("\"radius\": 192.5, ", ""),
+                    enemy.replace(", \"shape\": \"FORWARD_SEMICIRCLE\"", ""),
+                    enemy.replace("\"FORWARD_SEMICIRCLE\"", "null"),
+                    enemy.replace("\"FORWARD_SEMICIRCLE\"", "0"),
+                    enemy.replace("FORWARD_SEMICIRCLE", ""), enemy.replace("FORWARD_SEMICIRCLE", "TRIANGLE"),
                     enemy.replace("\"x2\": 50", "\"x2\": 100"), "null",
-                    enemy.replace(",\"decision_graph\":\"wander_attack\"", ""),
+                    enemy.replace(",\"behavior_graph\":\"wander_attack\"", ""),
                     enemy.replace("wander_attack", ""), enemy.replace("wander_attack", "unknown_graph"),
                     enemy.replace("\"wander_attack\"", "null")}) {
                 Files.writeString(enemies, entry.formatted(invalid));
@@ -191,12 +216,15 @@ public final class DataLoaderTest {
             }
             Files.writeString(enemies, entry.formatted(enemy));
             for (String invalid : new String[]{"null", "{\"\":" + npc + "}", "{} {}",
-                    "{\"guard\":" + npc + ",\"guard\":" + npc + "}", entry.formatted(enemy)}) {
+                    "{\"guard\":" + npc + ",\"guard\":" + npc + "}", entry.formatted(enemy),
+                    entry.formatted(npc.replace("\"radius\": 72", "\"radius\": 72, \"shape\": \"FULL_CIRCLE\""))}) {
                 Files.writeString(characters, invalid);
                 rejects(DataLoader::loadGameData, "Invalid character catalogue: " + invalid);
             }
             Files.writeString(characters, npcs);
             for (var target : Map.of(characters, npc, enemies, enemy).entrySet()) {
+                Files.writeString(target.getKey(), entry.formatted(target.getValue().replace("\"behavior_graph\"", "\"decision_graph\"")));
+                rejects(DataLoader::loadGameData, "Legacy decision_graph is not accepted in " + target.getKey());
                 var definition = (tools.jackson.databind.node.ObjectNode) DataLoader.mapper.readTree(target.getValue());
                 for (String field : new String[]{"name", "max_health"}) {
                     var missing = definition.deepCopy();
@@ -238,8 +266,7 @@ public final class DataLoaderTest {
             var sign = DataLoader.loadGameData().objectsData().get("sign");
             check(sign.animation().isEmpty() && sign.collision().isEmpty() && sign.emissive().isEmpty(),
                 "Object fields accept explicit null");
-            for (String invalid : new String[]{"{\"animation\":null,\"emissive\":null}", "{\"collision\":null,\"emissive\":null}",
-                    "{\"animation\":null,\"collision\":null}", "{\"animation\":null,\"collision_bounds\":null,\"emissive\":null}", "null"}) {
+            for (String invalid : new String[]{"{\"pickup\":{\"type\":\"HEAL\"}}", "{\"pickup\":{\"type\":\"WEAPON_BAG\",\"amount\":2}}",  "{\"animation\":null,\"collision_bounds\":null,\"emissive\":null}", "null"}) {
                 Files.writeString(objects, "{\"sign\":" + invalid + "}");
                 rejects(DataLoader::loadGameData, "Invalid object definition: " + invalid);
             }
@@ -384,8 +411,7 @@ public final class DataLoaderTest {
             for (var slot : new String[]{"primary", "secondary"}) {
                 var attack = slot.equals("primary") ? weapon.attackStats().primary() : weapon.attackStats().secondary();
                 var json = authored.get(entry.getKey()).get("attack_stats").get(slot);
-                check(attack.stats().damage() == json.get("stats").get("damage").asInt()
-                    && attack.stats().cost() == json.get("stats").get("cost").asInt()
+                check(attack.stats().cost() == json.get("stats").get("cost").asInt()
                     && attack.stats().hitFrame() == json.get("stats").get("hit_frame").asInt()
                     && attack.stats().cooldownSeconds() == (float) json.get("stats").get("cooldown_seconds").asDouble(),
                     "authored " + slot + " stats");
@@ -397,9 +423,16 @@ public final class DataLoaderTest {
         }
         check(unarmed.attackStats().primary().animation().atlasKey().equals("jab")
             && unarmed.attackStats().primary().collisionType() == CollisionType.MELEE, "unarmed primary jab");
-        check(sword.attackStats().secondary().stats().damage() < sword.attackStats().primary().stats().damage()
-            && sword.attackStats().secondary().stats().hitFrame() != sword.attackStats().primary().stats().hitFrame(),
-            "jab has distinct lower tuning");
+        check(sword.attackStats().primary().stats().damage().equals(new AttackDamage.Range(15, 20))
+            && sword.attackStats().secondary().stats().damage().equals(new AttackDamage.Range(10, 10)), "exact sword tuning");
+        for (var attack : List.of(bow.attackStats().primary(), bow.attackStats().secondary())) {
+            check(attack.stats().damage().equals(new AttackDamage.Range(20, 30)), "exact bow tuning");
+        }
+        for (var attack : List.of(unarmed.attackStats().primary(), unarmed.attackStats().secondary())) {
+            check(attack.stats().damage().equals(new AttackDamage.Scalar(3)), "unchanged scalar unarmed tuning");
+        }
+        check(sword.attackStats().secondary().stats().hitFrame() != sword.attackStats().primary().stats().hitFrame(),
+            "jab has a distinct hit frame");
         var stats = DataLoader.mapper.readValue("{\"damage\":1,\"cost\":0,\"hit_frame\":2,\"cooldown_seconds\":0.375}", Stats.class);
         check(stats.cooldownSeconds() == .375f, "cooldown in seconds");
         var animation = DataLoader.mapper.readValue("{\"speed\":1,\"atlas_key\":\"jab\",\"sound_frame\":3,\"frame_interval\":0.15}", AnimationData.class);
@@ -430,11 +463,18 @@ public final class DataLoaderTest {
             primary.bounds(), primary.stats(), primary.sounds(), CollisionType.MELEE), "shot marked melee");
         rejects(() -> new AttackData(primary.animation(), primary.bounds(), primary.stats(), primary.sounds(), CollisionType.PROJECTILE),
             "slash marked projectile");
-        rejects(() -> new Stats(10, 0, -1, .25f), "negative hit frame");
-        rejects(() -> new Stats(0, 0, 0, .25f), "zero damage");
-        rejects(() -> new Stats(10, -1, 0, .25f), "negative cost");
+        var damage = primary.stats().damage();
+        rejects(() -> new Stats(damage, 0, -1, .25f), "negative hit frame");
+        rejects(() -> new Stats(damage, -1, 0, .25f), "negative cost");
+        String fields = "\"cost\":0,\"hit_frame\":0,\"cooldown_seconds\":0.25}";
+        rejects(() -> DataLoader.mapper.readValue("{" + fields, Stats.class), "missing damage");
+        for (String invalid : List.of("0", "-1", "null", "\"10\"", "[]", "{}", "{\"min\":1}", "{\"max\":1}",
+            "{\"min\":null,\"max\":2}", "{\"min\":1,\"max\":null}", "{\"min\":5,\"max\":4}", "{\"min\":0,\"max\":1}",
+            "{\"min\":1.5,\"max\":3}", "{\"min\":1,\"max\":\"2\"}", "{\"min\":1,\"max\":2147483648}", "{\"min\":1,\"max\":2,\"extra\":1}")) {
+            rejects(() -> DataLoader.mapper.readValue("{\"damage\":" + invalid + "," + fields, Stats.class), "invalid damage: " + invalid);
+        }
         for (float invalid : new float[]{0f, -.25f, Float.NaN, Float.POSITIVE_INFINITY, Float.NEGATIVE_INFINITY}) {
-            rejects(() -> new Stats(10, 0, 0, invalid), "invalid cooldown: " + invalid);
+            rejects(() -> new Stats(damage, 0, 0, invalid), "invalid cooldown: " + invalid);
         }
         rejects(() -> new AnimationData(0, "jab", 0, .125f), "zero speed");
         rejects(() -> new AnimationData(1, "jab", -1, .125f), "negative sound frame");
@@ -515,6 +555,50 @@ public final class DataLoaderTest {
             CharacterAssets.FEET, CharacterAssets.WEAPONS)), "all shared character atlases");
         for (var atlas : atlases) {
             check(atlas.path().equals("atlases/" + atlas.id() + ".atlas"), "shared atlas logical ID and path");
+        }
+    }
+
+    private static void debugLayerLaunchModes() throws Exception {
+        var fixture = Files.createTempFile("debug-layer-settings", ".json");
+        var previous = System.clearProperty("luteDebugLayers");
+        try {
+            var settings = (tools.jackson.databind.node.ObjectNode) DataLoader.mapper.readTree(Path.of("assets/game.settings.json").toFile());
+            var layers = settings.putObject("debugLayers");
+            layers.put("physics", false).put("triggers", true).put("rawLightMap", true).put("lightingOutlines", true);
+            useFile(fixture);
+            for (boolean validate : List.of(true, false)) {
+                layers.put("assetValidation", validate);
+                Files.writeString(fixture, settings.toString());
+                System.clearProperty("luteDebugLayers");
+                GameConsts.loadSettings();
+                check(GameConsts.DEBUG_LAYERS.equals(new GameConsts.DebugLayers(false, true, true, true, validate)),
+                    "absent mode uses JSON");
+                System.setProperty("luteDebugLayers", "off");
+                GameConsts.loadSettings();
+                check(GameConsts.DEBUG_LAYERS.equals(new GameConsts.DebugLayers(false, false, false, false, validate)),
+                    "off disables visual layers only");
+                System.setProperty("luteDebugLayers", "on");
+                GameConsts.loadSettings();
+                check(GameConsts.DEBUG_LAYERS.equals(new GameConsts.DebugLayers(true, true, false, false, validate)),
+                    "on enables physics and triggers without changing asset validation");
+            }
+
+            var width = GameConsts.VIEW_WIDTH;
+            settings.put("viewWidth", width + 1);
+            Files.writeString(fixture, settings.toString());
+            System.setProperty("luteDebugLayers", "invalid");
+            rejects(GameConsts::loadSettings, "unknown launch mode");
+            check(GameConsts.VIEW_WIDTH == width, "invalid mode publishes nothing");
+            System.setProperty("luteDebugLayers", "on");
+            layers.remove("assetValidation");
+            Files.writeString(fixture, settings.toString());
+            rejects(GameConsts::loadSettings, "override masking an invalid authored layer");
+        } finally {
+            if (previous == null) System.clearProperty("luteDebugLayers");
+            else System.setProperty("luteDebugLayers", previous);
+            Files.deleteIfExists(fixture);
+            useAssets();
+            GameConsts.loadSettings();
         }
     }
 

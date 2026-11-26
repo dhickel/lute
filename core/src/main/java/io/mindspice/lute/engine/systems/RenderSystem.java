@@ -17,6 +17,7 @@ import com.badlogic.gdx.graphics.glutils.ShaderProgram;
 import com.badlogic.gdx.math.Matrix4;
 import io.mindspice.lute.engine.assets.AssetService;
 import io.mindspice.lute.engine.components.BowAim;
+import io.mindspice.lute.engine.components.Controller;
 import io.mindspice.lute.engine.components.Emissive;
 import io.mindspice.lute.engine.components.CompositeCharacter;
 import com.badlogic.gdx.graphics.OrthographicCamera;
@@ -37,7 +38,7 @@ import java.util.Comparator;
 import java.util.List;
 
 public class RenderSystem extends SortedIteratingSystem implements Disposable {
-    private static final Family AIMERS = Family.all(BowAim.class).get();
+    private static final Family AIMERS = Family.all(BowAim.class, Controller.class).get();
     private static final Family LIGHTS = Family.all(Emissive.class, Transform.class).get();
     private final Batch batch;
     private final CharacterCompositor compositor;
@@ -140,7 +141,9 @@ public class RenderSystem extends SortedIteratingSystem implements Disposable {
             super.update(deltaTime);
             straightBlend();
             fgLayers.forEach(mapRenderer::renderMapLayer);
-            if (night) {
+            var hoard = getEngine().getSystem(HoardSystem.class);
+            var run = hoard == null ? null : hoard.run();
+            if (run == null && night) {
                 batch.end();
                 if (lighting == null) { lighting = new NightLighting(pixels[2], pixels[3], state); }
                 lighting.render(world, getEngine().getEntitiesFor(LIGHTS), ambient, sessionSeconds, camera, pixels, state,
@@ -166,7 +169,8 @@ public class RenderSystem extends SortedIteratingSystem implements Disposable {
                     hud = new GameplayHud(overlayWhite(state));
                 }
                 var clock = getEngine().getSystem(WorldTimeSystem.class);
-                hud.draw(batch, getEngine(), viewport, tiled.playerHealth(), (int) clock.getMinuteOfDay());
+                hud.draw(batch, getEngine(), viewport, tiled.playerHealth(), (int) clock.getMinuteOfDay(), run,
+                    run == null ? 0d : hoard.stamina());
             }
             batch.end();
         } finally {

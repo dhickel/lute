@@ -19,6 +19,8 @@ public final class WorldTimeSystem extends EntitySystem {
 
     @Override
     public void update(float deltaTime) {
+        var hoard = getEngine() == null ? null : getEngine().getSystem(HoardSystem.class);
+        if (hoard != null && hoard.isActive()) { return; }
         totalInGameSeconds += deltaTime * inGameSecondsPerSimulationSecond;
     }
 

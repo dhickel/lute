@@ -10,22 +10,15 @@
 
 ## Local asset storage
 
-`raw_assets/` and `assets/` are ignored and absent from the current tracked tree and new checkouts. Provision the complete current source tree externally, including settings, data, audio, maps, tilesets, sprites, and the Tiled project, then run `./generate-runtime-assets.sh` from the repository root. The root entrypoint also works when invoked from another directory, fails with an actionable message if the source directory is missing, and creates the runtime directory before generation. Running the game and asset-dependent tests requires the provisioned data. Git ignore is separate from runtime resource ownership; existing Git history has not been purged and may contain asset objects.
+`raw_assets/` and `assets/` are ignored and absent from new checkouts except for tracked `assets/input.setting.json`. Provision the complete current source tree externally, including settings, data, audio, maps, tilesets, sprites, and the Tiled project, then run `./generate-runtime-assets.sh` from the repository root. The root entrypoint also works when invoked from another directory, fails with an actionable message if the source directory is missing, and creates the runtime directory before generation. Running the game and asset-dependent tests requires the provisioned data. Git ignore is separate from runtime resource ownership; existing Git history has not been purged and may contain asset objects.
 
 Map actor data comes from `raw_assets/data/characters.json` for NPCs and `raw_assets/data/enemies.json` for enemies, generated into the corresponding `assets/data/` paths. Each required file is a top-level map keyed by spawn key and may be empty; spawn role selects the file. Each definition requires a nonblank `name` and positive integer `max_health`, used as initial and maximum spawn health. NPCs retain their loadout and enemies require a nullable top-level `weapon` instead. The player schema is unchanged. See the README for complete examples.
 
 The ignored raw and runtime copies in this checkout have been migrated locally. Other checkouts must migrate their own ignored data: move entries from the former `actors.json` role maps into the corresponding files, preserve their graph keys and detection radii, add names, and retain map actor `max_health`. Regenerate runtime assets. There is no `actors.json` fallback.
 
-### Reproducing combat tuning
+### Combat data
 
-Both asset trees are ignored, so these JSON values are not included in the PR. After provisioning the raw tree, set the following existing fields, preserving all other data:
-
-- `raw_assets/data/player.json`: set `max_health` to `50`.
-- `raw_assets/data/characters.json`: set `basic_npc.max_health` to `50`.
-- `raw_assets/data/enemies.json`: set `brainless_undead.max_health` to `50`.
-- `raw_assets/data/weapons.json`: set `weapons.basic_sword.attack_stats.primary.stats.damage` to `10` (unchanged) and `weapons.basic_bow.attack_stats.primary.stats.damage` to `11`.
-
-Run `./generate-runtime-assets.sh` from the repository root to regenerate the corresponding `assets/data/` files; do not edit generated files directly. This tuning introduces no asset schema migration. Health and authored and applied damage are whole numbers. Each landed hit independently rolls within ±10% after any bow draw scaling, then rounds once to the nearest integer before subtracting health. Floating damage displays the whole effective health loss, capped by current health before the hit. Sword primary rolls to 9–11 damage and takes 5–6 landed hits to deplete 50 health; full-draw bow primary rolls to 10–12 and always takes five landed hits. Secondary and unarmed attacks remain weaker and their existing values are unchanged. Partial bow draw multipliers remain 25%, 50%, and 75%; with the primary damage of 11, they yield pre-roll damage of 2.75, 5.5, and 8.25, compared with 11 at full draw.
+Health and damage values are authored in the externally provisioned pack, not prescribed defaults. Do not replace a pack's tuning with values from historical examples. Run `./generate-runtime-assets.sh` after editing raw data; do not edit generated files directly. Damage accepts either a positive whole-number scalar or an object with positive whole-number `min` and `max`, with `min <= max`. Scalar hits roll within ±10% after draw scaling; ranges roll an inclusive integer first, then apply draw scaling. Both round once before subtraction. Floating damage displays effective health loss capped by health before the hit. Bow draw multipliers are 25%, 50%, 75%, and 100%.
 
 The stylized top bar spans the gameplay viewport with open sides and visually distinguished text. Player HP and 24-hour game time are horizontally centered together. HP text uses the same green-yellow-red current-to-maximum health ratio as floating damage, without a colorful border.
 
@@ -61,7 +54,44 @@ For an in-place `Teleport`, set `targetMap` to `THIS` (case-insensitive) and `ta
 
 For map travel, set `targetMap` to the destination map's logical manifest ID and `targetSpawn` to a named `PLAYER` or `TELEPORT` point there. An explicit ID matching the current map still rebuilds its runtime; use `THIS` for the in-place behavior. The destination is synchronously loaded and prepared before the old runtime is replaced after the ECS and physics update. Invalid or missing destinations are logged and leave the current runtime intact. Arrival portals require exit before reentry, preventing a teleport loop. Named travel retains live health, loadout, and facing, but resets transient combat and input state. Hide/show remounts the current entry with the same session state; a new session uses player JSON defaults. No saves or disk hot reload are provided.
 
-Author a `SpawnPoint` as a zero-size point and a `SpawnArea` as an unrotated rectangle with positive dimensions, using a Tiled object name unique among spawn markers and a `spawnType` of `PLAYER`, `TELEPORT`, `NPC`, `ENEMY`, `OBJECT`, or `ITEM`. At most one `PLAYER` point is allowed; it creates the initial player. NPC and ENEMY points create map actors, preferring `spawnKey` and falling back to legacy `actorId` when no explicit key is authored. OBJECT and ITEM points create objects and require `spawnKey`. Both marker classes use a nested Tiled `spawnInfo` class property of type `SpawnInfo`, containing `spawnType`, `spawnKey`, and `facing`; `NULL` counts as an unset key. The spawn type enum includes `TELEPORT` and `OBJECT`. Legacy flat `spawnType`, `spawnKey`, and `facing` properties override nested values when present. Migrate markers by their intended roles, update the ignored raw Tiled project and maps, and regenerate runtime assets. PLAYER, NPC, ENEMY, OBJECT, and ITEM points require the `facing` enum; the Tiled project supplies `DOWN`. A new player uses the marker facing, while travel preserves the live player's facing. SpawnAreas remain data-only. The map owner cleans up sensor objects.
+Author a `SpawnPoint` as a zero-size point. A data-only `SpawnArea` must be an unrotated rectangle with positive dimensions; an area with behavior supports an unrotated positive-size rectangle or valid polygon. Use a Tiled object name unique among spawn markers and a `spawnType` of `PLAYER`, `TELEPORT`, `NPC`, `ENEMY`, `OBJECT`, or `ITEM`. At most one `PLAYER` point is allowed; it creates the initial player. NPC and ENEMY points create map actors, preferring `spawnKey` and falling back to legacy `actorId` when no explicit key is authored. OBJECT and ITEM points create objects and require `spawnKey`. Both marker classes use a nested Tiled `spawnInfo` class property of type `SpawnInfo`, containing `spawnType`, `spawnKey`, and `facing`; `NULL` counts as an unset key. The spawn type enum includes `TELEPORT` and `OBJECT`. Legacy flat `spawnType`, `spawnKey`, and `facing` properties override nested values when present. Migrate markers by their intended roles, update the ignored raw Tiled project and maps, and regenerate runtime assets. PLAYER, NPC, ENEMY, OBJECT, and ITEM points require the `facing` enum; the Tiled project supplies `DOWN`. A new player uses the marker facing, while travel preserves the live player's facing. Data-only areas do not spawn actors. Behavior-enabled enemy areas support spawning; the `hoard_mode` arena requires four enemy polygons as described below. The map owner cleans up sensor objects.
+
+### Hoard arena provisioning
+
+Both asset trees are ignored. Provision the `hoard_mode` map and manifest in `raw_assets/maps/hoard_mode/`, with referenced tilesets and art. In the raw Tiled project, add the string member `behaviorKey` to `SpawnInfo` with literal default `NULL` (not JSON null). On the `Triggers` layer author:
+
+- A `PLAYER` spawn point with facing.
+- Four simple polygon `SpawnArea` objects named `SpawnArea1` through `SpawnArea4`, each with nested `spawnInfo`: `behaviorKey` `agroWanderingHoard`, `spawnType` `ENEMY`, and `spawnKey` `brainless_undead`.
+- One `ENEMY` spawn point with facing, `behaviorKey` `idle_dredge`, and `spawnKey` `dredge`.
+- One elliptical `SpawnArea` with `behaviorKey` `round_health_spawn`, `spawnType` `ITEM`, and `spawnKey` `health_pack_2`.
+
+Provide enemy definitions for `brainless_undead`, `undead_archer`, `bone_soldier`, `cultist`, `cultist_archer`, `viper`, `reaper`, `raider`, and `dredge`, with their referenced behaviors, weapons, sprites, animations, and sounds. Provide `health_pack_1`, `health_pack_2`, and `weapon_bag` in `objects.json` with their pickup behavior and object art; provide `basic_sword`, `basic_bow`, their required projectile data and art, and at least one eligible bag weapon other than `basic_bow` or `basic_arrow`. Include all dependencies of these definitions. The complete pack, not just these IDs, is needed for a playable run. See the [Hoard arena rules](../.internal-dev/specifications/decisions.md#hoard-arena-run) for the canonical roster and tuning.
+
+Normal startup reaches Hoard through the menu and name entry; `startupMap` matters only for direct-map startup. Preserve other assets and regenerate with `./generate-runtime-assets.sh`. No matching external raw pack version, digest, or distribution location is recorded here; obtain the complete matching pack from the asset owner before attempting a reproducible build.
+
+The old fixed `CourtyardArcher` placement is absent; archers spawn through batches. This example shows the schema for an entry in the top-level `raw_assets/data/enemies.json` map; its numeric values are illustrative, not required tuning. Preserve the rest of the matching pack:
+
+```json
+"undead_archer": {
+  "name": "Undead Archer",
+  "max_health": 50,
+  "behavior_graph": "wander_archer",
+  "move_speed": 4.0,
+  "logical_size": { "width": 64, "height": 64 },
+  "collision": { "shape": "ELLIPSE", "bounds": { "x1": 20, "y1": 4, "x2": 44, "y2": 14 }, "rotation": 0 },
+  "hitbox_bounds": { "x1": 16, "y1": 6, "x2": 48, "y2": 56 },
+  "sounds": { "move": "sword_hit.wav", "damage": "sword_hit.wav" },
+  "animation": { "speed": 1, "atlas_key": "brainless_undead", "sound_frame": 0, "frame_interval": 0.12 },
+  "detection_bounds": { "radius": 320, "shape": "FORWARD_SEMICIRCLE" },
+  "weapon": "basic_bow"
+}
+```
+
+The existing raw and generated assets remain ignored; regenerate them with `./generate-runtime-assets.sh` after updating the map and data.
+
+All four areas participate from round 1; enemy types unlock over time. Hoard uses pickups rather than automatic round healing, permanent daylight, and terminal player death. See the [canonical rules](../.internal-dev/specifications/decisions.md#hoard-arena-run) for wave, score, and pickup tuning.
+
+Hoard asset preflight is controlled by required boolean `debugLayers.assetValidation` in `game.settings.json`, set to `true` in shipped settings and available as **Asset Validation** in Options. When enabled it checks delayed encounter content before installing the arena; `false` skips those extra checks, not ordinary asset loading or validation. Explicit visual launch overrides do not affect Asset Validation. It does not change valid gameplay.
 
 OBJECT and ITEM points use the required shared `objects.atlas`, generated from `raw_assets/sprites/objects/`, and required `raw_assets/data/objects.json`, keyed by `spawnKey`. Each definition requires the exact keys `animation`, `collision`, and `emissive`, each explicitly nullable; omission is invalid. `animation` is nullable: null selects the static atlas region named exactly by `spawnKey`; otherwise it uses the player `AnimationData` fields and `atlas_key` selects indexed frames. `sound_frame` is required but unused for objects. `collision` is explicitly nullable for objects; null creates no physics body or fixture. Otherwise its bounds use bottom-left sprite-local pixels. The sprite is centered on the point, while the fixture retains its offset from the sprite center; object facing rotates both around the point: DOWN 0°, RIGHT 90°, UP 180°, LEFT -90°. Collision rotation adds to facing without rotating the artwork.
 
@@ -87,11 +117,15 @@ To reproduce the local ignored asset update, add a `FireSpawn` OBJECT point to `
 
 For the lighting migration, preserve the existing FireSpawn placement and art; the preceding placement and frame instructions apply only when provisioning an older tree without them. Add `emissive: null` to every nonemitter in `raw_assets/data/objects.json`, and use the shown block for `campfire1`. A nonnull emissive requires `color` as `#RRGGBB`, positive `radius_pixels`, intensity greater than zero and at most one, and a required nullable `pulse`. A nonnull pulse requires positive `period_seconds` and independent `radius_strength` and `intensity_strength` in [0, 1). Numbers and their derived values must remain finite and usable. The two channels use `base × (1 + strength × sin(phase))`; null pulse or zero strength is steady. Missing, duplicate, unknown, mistyped, or invalid members fail loading; `emssive` is not an alias.
 
-Add `"nightAmbient": { "tint": "#8299CC", "brightness": 0.35 }` to `raw_assets/game.settings.json`. Both fields are required: tint is `#RRGGBB` and brightness is finite in [0, 1]. Regenerate with `./generate-runtime-assets.sh` and restart to apply changes; no live reload or missing-data fallback is provided. These are the current local values, not defaults. Each new gameplay screen starts in day; N toggles night independently of world time. Solid active Box2D fixtures shadow each light independently, excluding its own body and sensors. A different filled solid containing or touching the light origin blocks that light; edge and chain segments do not have filled interiors. Shadows follow physics geometry, not artwork. See [README](../README.md#night-lighting-migration-and-validation) for testing commands.
+Add `"nightAmbient": { "tint": "#8299CC", "brightness": 0.35 }` to `raw_assets/game.settings.json`. Both fields are required: tint is `#RRGGBB` and brightness is finite in [0, 1]. Regenerate with `./generate-runtime-assets.sh` and restart to apply changes; no live reload or missing-data fallback is provided. These are the current local values, not defaults. Outside the hoard arena, each new gameplay screen starts in day and N toggles night independently of world time. The arena remains in daylight. Solid active Box2D fixtures shadow each light independently, excluding its own body and sensors. A different filled solid containing or touching the light origin blocks that light; edge and chain segments do not have filled interiors. Shadows follow physics geometry, not artwork. See [README](../README.md#night-lighting-migration-and-validation) for testing commands.
 
 Migrate the ignored raw data files: `raw_assets/data/player.json`, `characters.json`, `enemies.json`, `objects.json`, and `projectiles.json`. Replace each `collision_bounds` with required `collision: { shape, bounds, rotation }`; only objects may explicitly use null. Preserve existing actor and object bounds as `ELLIPSE` with rotation 0. For `iron_arrow`, formerly a triangle, use `ELLIPSE`, rotation 0, and bounds `{ "x1": 0, "y1": 0, "x2": 10, "y2": 8.5 }`. Regenerate the ignored `assets/data/` copies with `./generate-runtime-assets.sh` after updating the raw Tiled project, map, sprites, and data.
 
 Collision shapes are `ELLIPSE`, `RECT`, `CIRCLE`, and `TRIANGLE`. Bounds `x1`, `y1`, `x2`, `y2` are local pixels with positive width and height; circles require equal dimensions. Rotation is finite counterclockwise degrees about the bounds center. Actor and object circles use native circle fixtures; projectile circles use a 32-vertex sweep polygon. Ellipses use eight vertices; triangles have a bottom base and a top-midpoint apex. For projectiles the unrotated bounds' top midpoint anchors at the art tip: X is full width and Y is length behind the tip. Rotation combines with the flight tangent and does not rotate the art independently. Hitboxes, Tiled collision, arrow flight, and artwork are unchanged.
+
+### Developer debug launches
+
+The shared IntelliJ `.run` configurations call `:lwjgl3:run`: `Lute Run` passes `-PluteDebugLayers=off` to disable all overlays, while `Lute Debug Run` passes `-PluteDebugLayers=on` to enable physics and trigger overlays with the special lighting views off. Select `Lute Debug Run` and use the IDE Run button for game diagnostics; the IDE Debug button separately enables breakpoints. Without the flag, the authored `debugLayers` settings apply. These launch overrides do not alter asset JSON.
 
 ## Weapon assets and animation timing
 

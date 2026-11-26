@@ -1,5 +1,7 @@
 package io.mindspice.lute.engine.lwjgl3;
 
+import io.mindspice.lute.engine.data.json.AttackDamage.Scalar;
+
 import com.badlogic.ashley.core.Engine;
 import com.badlogic.ashley.core.Entity;
 import com.badlogic.gdx.*;
@@ -50,10 +52,10 @@ import static org.lwjgl.opengl.ARBSamplerObjects.glSamplerParameteri;
 public final class LightingRenderTest extends ApplicationAdapter {
     private static final int WHITE = 0xffffffff, BAR = 0xde279ba7;
     private static final GameConsts.NightAmbient AMBIENT = new GameConsts.NightAmbient("#804020", .25f);
-    private static final DebugLayers OFF = new DebugLayers(false, false, false, false);
-    private static final DebugLayers RAW = new DebugLayers(false, false, true, false);
-    private static final DebugLayers OUTLINES = new DebugLayers(false, false, false, true);
-    private static final DebugLayers BOTH = new DebugLayers(false, false, true, true);
+    private static final DebugLayers OFF = new DebugLayers(false, false, false, false, true);
+    private static final DebugLayers RAW = new DebugLayers(false, false, true, false, true);
+    private static final DebugLayers OUTLINES = new DebugLayers(false, false, false, true, true);
+    private static final DebugLayers BOTH = new DebugLayers(false, false, true, true, true);
     private static final int DIM = 0x201008ff; // ambient × white
     private static final int SOLID = 0xff5f1fff, RADIUS = 0x7fff1fff;
     private static final float LX = 36.5f, LY = 44.5f;
@@ -167,7 +169,7 @@ public final class LightingRenderTest extends ApplicationAdapter {
         var clock = new WorldTimeSystem(24);
         overlay.addSystem(clock);
         overlay.addSystem(combat);
-        overlay.addSystem(new TiledSystem(null, world, null));
+        overlay.addSystem(new TiledSystem(null, world, null, true));
         overlay.addSystem(render);
         render.gameplayFrame(world, AMBIENT, false, 0);
         clear(BAR);
@@ -175,11 +177,12 @@ public final class LightingRenderTest extends ApplicationAdapter {
             var gl = Gdx.gl;
             int active = integer(GL_ACTIVE_TEXTURE);
             gl.glActiveTexture(GL_TEXTURE1);
+            Glyphs dayClock;
             try {
                 var before = snapshot();
                 withSmallUnpackBuffer("first day HUD font and panel texture uploads", () -> overlay.update(0));
                 checkState(before, "HUD draw and upload");
-                var dayClock = glyphs(0, 102, side, 26, Color.WHITE);
+                dayClock = glyphs(0, 102, side, 26, Color.WHITE);
                 require(dayClock.pixels() > 0 && Math.abs(dayClock.x() - side / 2f) < 3,
                     "Clock is centered without player health");
                 render.gameplayFrame(world, AMBIENT, true, 0);
@@ -234,6 +237,38 @@ public final class LightingRenderTest extends ApplicationAdapter {
                 overlay.removeEntity(victim);
             }
 
+            var healed = new Entity().add(new Health(100)).add(transform(62, 28, 4, 4, 0));
+            var nativeHit = new Entity().add(new Health(100)).add(transform(14, 28, 4, 4, 0));
+            overlay.addEntity(healed);
+            overlay.addEntity(nativeHit);
+            require(!DamageFeedbackProbe.heal(healed, 50), "Cannot heal at full health");
+            Health.MAPPER.get(healed).damage(1);
+            require(!DamageFeedbackProbe.heal(healed, 0) && !DamageFeedbackProbe.heal(healed, -1)
+                && DamageFeedbackProbe.count(healed) == 0, "No marker for an ineffective heal");
+            require(DamageFeedbackProbe.heal(healed, 50), "Capped gameplay heal succeeds");
+            DamageFeedbackProbe.hit(nativeHit, 1, Facing.Direction.UP);
+            overlay.update(0);
+            var heal = glyphs(26, 32, 76, 66, Color.GREEN);
+            var hit = glyphs(10, 32, 12, 66, Color.GREEN);
+            require(hit.height() > 0 && Math.abs(heal.height() - 2 * hit.height()) <= 2 && Math.abs(heal.x() - 64) < 6,
+                "Healing label is centered and twice the hit glyph height: " + heal + " vs " + hit);
+            require(glyphs(0, 102, side, 26, Color.WHITE).equals(dayClock), "Healing does not change the HUD font scale");
+            overlay.removeEntity(nativeHit);
+            Transform.MAPPER.get(healed).getPosition().setZero();
+            combat.update(.325f);
+            overlay.update(0);
+            var fadedHeal = glyphs(26, 32, 76, 66, Color.GREEN);
+            require(fadedHeal.pixels() > 0 && Math.abs(fadedHeal.x() - heal.x()) < 3 && fadedHeal.y() > heal.y() + 12
+                && fadedHeal.brightness() < heal.brightness() * .6f, "Healing rises and fades from the original position");
+            combat.update(.33f);
+            overlay.update(0);
+            require(DamageFeedbackProbe.count(healed) == 0 && glyphs(26, 32, 76, 66, Color.GREEN).pixels() == 0,
+                "Healing expires without a framebuffer trail");
+            Health.MAPPER.get(healed).damage(100);
+            require(!DamageFeedbackProbe.heal(healed, 50) && DamageFeedbackProbe.count(healed) == 0,
+                "Healing cannot revive a dead player or produce a marker");
+            overlay.removeEntity(healed);
+
             var wounded = new Entity().add(new Health(100)).add(transform(34, 48, 4, 4, 0));
             Health.MAPPER.get(wounded).damage(40);
             var killed = new Entity().add(new Health(5)).add(transform(90, 48, 4, 4, 0));
@@ -274,6 +309,7 @@ public final class LightingRenderTest extends ApplicationAdapter {
         var image = Pixmap.createFromFrameBuffer(ox + x, oy + y, width, height);
         try {
             int pixels = 0, xSum = 0, ySum = 0, brightness = 0;
+            int minY = height, maxY = -1;
             for (int iy = 0; iy < height; iy++) {
                 for (int ix = 0; ix < width; ix++) {
                     int rgba = image.getPixel(ix, iy);
@@ -283,15 +319,17 @@ public final class LightingRenderTest extends ApplicationAdapter {
                         pixels++;
                         xSum += x + ix;
                         ySum += y + iy;
+                        minY = Math.min(minY, iy);
+                        maxY = Math.max(maxY, iy);
                         brightness = Math.max(brightness, Math.max(r, g));
                     }
                 }
             }
-            return new Glyphs(pixels, (float) xSum / pixels, (float) ySum / pixels, brightness);
+            return new Glyphs(pixels, (float) xSum / pixels, (float) ySum / pixels, brightness, Math.max(0, maxY - minY + 1));
         } finally { image.dispose(); }
     }
 
-    private record Glyphs(int pixels, float x, float y, int brightness) { }
+    private record Glyphs(int pixels, float x, float y, int brightness, int height) { }
 
     private void integrationAndOrder(AssetService assets) throws Exception {
         // 8px strips overlap at different depths. Adjacent probes independently expose each pass.
@@ -326,7 +364,7 @@ public final class LightingRenderTest extends ApplicationAdapter {
         var combat = new CombatSystem(world, new ProjectilesData.Projectile("arrow", 1, 5,
             CollisionData.ellipse(new CharacterBounds(0, 0, 2, 2)), 0, 0, 4, 0));
         engine.addSystem(combat);
-        var bow = new CombatWeapon.Weapon("bow", "bow", new CombatWeapon.Attack("bow", 1, 0, 1,
+        var bow = new CombatWeapon.Weapon("bow", "bow", new CombatWeapon.Attack("bow", new Scalar(1), 0, 1,
             new Animation2D.Attack("shot", 1, .1f, 0, ""), "", null, null, null), null);
         var aim = new BowAim(8, 8);
         var start = transform(24, 44, 0, 0, 0);

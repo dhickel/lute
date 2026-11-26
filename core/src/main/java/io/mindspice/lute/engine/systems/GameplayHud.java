@@ -11,6 +11,7 @@ import com.badlogic.gdx.math.Vector2;
 import com.badlogic.gdx.utils.Align;
 import com.badlogic.gdx.utils.viewport.Viewport;
 import io.mindspice.lute.engine.components.Health;
+import io.mindspice.lute.gameplay.HoardRun;
 
 final class GameplayHud {
     private static final int BAR_HEIGHT = 28;
@@ -29,39 +30,55 @@ final class GameplayHud {
         this.white = white;
     }
 
-    void draw(Batch batch, Engine engine, Viewport viewport, Health player, int minute) {
+    void draw(Batch batch, Engine engine, Viewport viewport, Health player, int minute, HoardRun run, double stamina) {
         batch.setProjectionMatrix(projection.setToOrtho2D(0, 0, viewport.getScreenWidth(), viewport.getScreenHeight()));
-        for (var victim : engine.getEntitiesFor(DamageFeedback.FAMILY)) {
-            for (var hit : DamageFeedback.MAPPER.get(victim).numbers) {
-                viewport.project(point.set(hit.x, hit.y));
+        for (var entity : engine.getEntitiesFor(HealthFeedback.FAMILY)) {
+            for (var number : HealthFeedback.MAPPER.get(entity).numbers) {
+                viewport.project(point.set(number.x, number.y));
                 // Projection includes the letterbox offset; this batch draws inside the viewport.
                 float x = point.x - viewport.getScreenX();
-                float y = point.y - viewport.getScreenY() + font.getLineHeight();
-                float t = hit.age / DamageFeedback.DURATION;
-                // Rise even on a southbound hit; its outward component reduces the rise.
+                float t = number.age / HealthFeedback.DURATION;
+                float scale = number.isHeal() ? 2 : 1;
+                float y = point.y - viewport.getScreenY() + font.getLineHeight() * scale;
                 y += 30 * t;
-                switch (hit.facing) {
-                    case LEFT -> x -= 35 * t;
-                    case RIGHT -> x += 35 * t;
-                    case UP -> y += 12 * t;
-                    case DOWN -> y -= 12 * t;
+                if (number.isHeal()) {
+                    font.getData().setScale(scale);
+                    try {
+                        drawText(batch, "+" + number.amount + " HP", x, y, Align.center, 0, 1, 0, 1 - t);
+                    } finally {
+                        font.getData().setScale(1);
+                    }
+                } else {
+                    // Rise even on a southbound hit; its outward component reduces the rise.
+                    switch (number.facing) {
+                        case LEFT -> x -= 35 * t;
+                        case RIGHT -> x += 35 * t;
+                        case UP -> y += 12 * t;
+                        case DOWN -> y -= 12 * t;
+                    }
+                    drawHealthText(batch, Integer.toString(number.amount), x, y, Align.center, number.remaining, 1 - t);
                 }
-                drawHealthText(batch, Integer.toString(hit.amount), x, y, Align.center, hit.remaining, 1 - t);
             }
         }
-        drawBar(batch, viewport.getScreenWidth(), viewport.getScreenHeight(), player, minute);
+        int width = viewport.getScreenWidth(), top = viewport.getScreenHeight();
+        String status = statusText(minute, run);
+        if (run == null) {
+            drawRow(batch, width, top, player, status, false);
+        } else {
+            drawRow(batch, width, top, null, status, false);
+            drawRow(batch, width, top - BAR_HEIGHT, player, staminaText(stamina), stamina == 0d);
+        }
     }
 
-    private void drawBar(Batch batch, int width, int top, Health player, int minute) {
+    private void drawRow(Batch batch, int width, int top, Health player, String label, boolean depleted) {
         int bottom = top - BAR_HEIGHT;
         batch.setColor(.10f, .10f, .10f, 1);
         batch.draw(white, 0, bottom, width, BAR_HEIGHT);
         batch.setColor(.14f, .14f, .14f, 1);
         batch.draw(white, 0, bottom + 15, width, 13);
 
-        String time = clockText(minute);
-        measure.setText(font, time);
-        float timeWidth = measure.width;
+        measure.setText(font, label);
+        float labelWidth = measure.width;
         String hp = player == null ? null : healthText(player);
         float hpWidth = 0;
         if (hp != null) {
@@ -71,8 +88,8 @@ final class GameplayHud {
 
         // Keep native-size glyphs if a tighter gap is enough; otherwise shrink the entire group, not just one label.
         float available = width - 2 * Math.min(SIDE_INSET, width / 4f);
-        float gap = hp == null ? 0 : Math.clamp(available - hpWidth - timeWidth, MIN_LABEL_GAP, LABEL_GAP);
-        float groupWidth = hpWidth + gap + timeWidth;
+        float gap = hp == null ? 0 : Math.clamp(available - hpWidth - labelWidth, MIN_LABEL_GAP, LABEL_GAP);
+        float groupWidth = hpWidth + gap + labelWidth;
         float scale = Math.min(1, available / groupWidth);
         float x = (width - groupWidth * scale) / 2;
         if (scale < 1) {
@@ -88,13 +105,33 @@ final class GameplayHud {
                 x += (hpWidth + gap) * scale;
             }
             batch.setColor(Color.WHITE);
-            drawText(batch, time, x, y, Align.left, .61f, .79f, .86f, 1);
+            if (depleted) {
+                drawText(batch, label, x, y, Align.left, 1f, .55f, .32f, 1);
+            } else {
+                drawText(batch, label, x, y, Align.left, .61f, .79f, .86f, 1);
+            }
         } finally {
             if (scale < 1) {
                 font.getData().setScale(1);
                 font.setUseIntegerPositions(true);
             }
         }
+    }
+
+    static String statusText(int minute, HoardRun run) {
+        if (run == null) { return clockText(minute); }
+        if (run.isGameOver()) {
+            return "Game Over   Score " + run.score() + "   Round " + run.round() + "   Alive " + run.aliveSeconds() + "s";
+        }
+        int left = run.remainingSeconds();
+        return "Round " + run.round()
+            + "   " + left / 60 + ":" + (left % 60 < 10 ? "0" : "") + left % 60
+            + " left   Kills " + run.kills() + "   Score " + run.score();
+    }
+
+    static String staminaText(double stamina) {
+        int percent = stamina == 0d ? 0 : Math.max(1, (int) (stamina * 100));
+        return "Stamina " + percent + "%";
     }
 
     static String healthText(Health health) {

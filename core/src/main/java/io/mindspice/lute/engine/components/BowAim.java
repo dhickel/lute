@@ -13,6 +13,7 @@ public final class BowAim implements Component {
     private final Vector2 target = new Vector2();
     private CombatWeapon.Weapon weapon;
     private boolean firstFrame;
+    private float lockTimeLeft = -1f;
 
     public BowAim(float tileWidth, float tileHeight) {
         this.tileWidth = tileWidth;
@@ -44,5 +45,12 @@ public final class BowAim implements Component {
         target.add(dx * tileWidth * step, dy * tileHeight * step);
     }
 
-    public void cancel() { weapon = null; }
+    public void lockAt(Vector2 point, float seconds) { target.set(point); lockTimeLeft = seconds; }
+    public boolean isLocked() { return lockTimeLeft >= 0f; }
+    public boolean advanceLock(float delta) {
+        lockTimeLeft = Math.max(0f, lockTimeLeft - delta);
+        return lockTimeLeft == 0f;
+    }
+
+    public void cancel() { weapon = null; lockTimeLeft = -1f; }
 }

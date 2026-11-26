@@ -11,6 +11,7 @@ import com.badlogic.gdx.utils.GdxRuntimeException;
 import io.mindspice.lute.engine.assets.AssetService;
 import io.mindspice.lute.engine.components.Animation2D;
 import io.mindspice.lute.engine.components.BowAim;
+import io.mindspice.lute.engine.components.Combat;
 import io.mindspice.lute.engine.components.Facing;
 import io.mindspice.lute.engine.components.Graphic;
 
@@ -34,6 +35,12 @@ public class AnimationSystem extends IteratingSystem implements EventEmitter {
 
     @Override
     protected void processEntity(Entity entity, float deltaTime) {
+        if (!CombatSystem.isDredgeSwing(entity, Combat.MAPPER.get(entity))) {
+            advancePlayback(entity, deltaTime);
+        }
+    }
+
+    void advancePlayback(Entity entity, float deltaTime) {
         Animation2D anim2d = Animation2D.MAPPER.get(entity);
         Facing.Direction fDirection = Facing.MAPPER.get(entity).getDirection();
 
@@ -49,9 +56,13 @@ public class AnimationSystem extends IteratingSystem implements EventEmitter {
         var aim = BowAim.MAPPER.get(entity);
         boolean drawing = aim != null && aim.isAiming();
         if (anim2d.isDirty() || fDirection != anim2d.getFdirection() || atlasChanged) {
+            boolean turningAttack = !atlasChanged && anim2d.isAttackReady();
+            float previousTime = anim2d.getStateTime();
             updateAnimation(anim2d, fDirection);
             currentAtlases.put(anim2d, atlas);
-            deltaTime = 0f;
+            // A new direction changes the pose, not the clock or the attack cues.
+            if (turningAttack) { anim2d.setStateTime(previousTime); }
+            else { deltaTime = 0f; }
         }
         float stateTime = anim2d.advancePlayback(deltaTime, drawing);
 
@@ -65,6 +76,15 @@ public class AnimationSystem extends IteratingSystem implements EventEmitter {
 
         TextureRegion keyFrame = animation.getKeyFrame(stateTime);
         Graphic.MAPPER.get(entity).setRegion(keyFrame);
+    }
+
+    // The normal frame pass has already advanced playback at walk speed. Add only
+    // the time actually spent running, without replaying attack cues or other poses.
+    void advanceSprintWalk(Entity entity, float runningTime) {
+        var anim = Animation2D.MAPPER.get(entity);
+        if (anim.getType() != Animation2D.AnimationType.WALK || anim.isDirty()) { return; }
+        float stateTime = anim.incAndGetStateTime(runningTime);
+        Graphic.MAPPER.get(entity).setRegion(anim.getAnimation().getKeyFrame(stateTime));
     }
 
     public static void validateAttackFrames(Animation2D anim2d, TextureAtlas atlas) {

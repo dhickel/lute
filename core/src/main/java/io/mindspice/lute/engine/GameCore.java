@@ -24,7 +24,9 @@ import io.mindspice.lute.engine.screen.GameScreen;
 import io.mindspice.lute.engine.screen.LoadingScreen;
 import io.mindspice.lute.engine.screen.ScreenManager;
 import io.mindspice.lute.engine.singletons.GameConsts;
-import io.mindspice.lute.engine.util.Pair;
+import io.mindspice.lute.engine.input.InputAction;
+import io.mindspice.lute.engine.screen.MenuScreen;
+import io.mindspice.lute.gameplay.HoardRun;
 
 import java.util.Arrays;
 import java.util.ArrayList;
@@ -43,12 +45,15 @@ public class GameCore extends Game {
     InputMultiplexer inputMultiplexer;
     private InputManager inputManager;
     private ScreenManager screenManager;
+    private MenuScreen menu;
+    private int windowWidth, windowHeight;
     private Engine engine;
     private GameData gameData;
 
 
     @Override
     public void create() {
+        gameData = null;
         GameConsts.loadSettings();
         Gdx.app.setLogLevel(Application.LOG_DEBUG);
 
@@ -69,23 +74,34 @@ public class GameCore extends Game {
         glProfiler.enable();
 
 
-        this.gameData = DataLoader.loadGameData();
+        this.screenManager = new ScreenManager();
+        if (Boolean.getBoolean("luteDirectMap")) {
+            menu = null;
+            startMap(GameConsts.STARTUP_MAP);
+        } else {
+            menu = new MenuScreen(this, inputMap, () -> startMap("hoard_mode"));
+            screenManager.loadScreen("Menu", menu);
+            screenManager.switchScreens("Menu");
+        }
+    }
+
+    private void startMap(String mapId) {
+        if (gameData == null) { gameData = DataLoader.loadGameData(); }
 
         Runnable switchToGameScreen = () -> {
             screenManager.getSwitchScreenThunk("GameScreen").run();
             screenManager.unloadScreen("InitialLoading");
         };
 
-        MapAssets assets = ManifestLoader.parseMapManifest(GameConsts.STARTUP_MAP);
+        MapAssets assets = ManifestLoader.parseMapManifest(mapId);
         var initialAssets = new ArrayList<>(CharacterAssets.all(gameData.weaponsData().atlas()));
         initialAssets.add(ObjectAssets.OBJECTS);
         for (String id : gameData.weaponsData().weapons().keySet()) {
             initialAssets.addAll(WeaponAssets.of(id, gameData.weaponsData()).all());
         }
-        this.screenManager = new ScreenManager(
-            Pair.of("InitialLoading", new LoadingScreen(assetService, switchToGameScreen, initialAssets)),
-            Pair.of("GameScreen", new GameScreen(assets))
-        );
+        screenManager.loadScreen("GameScreen", menu == null ? new GameScreen(assets)
+            : new GameScreen(assets, menu.layers(), this::finishRun));
+        screenManager.loadScreen("InitialLoading", new LoadingScreen(assetService, switchToGameScreen, initialAssets));
 
         screenManager.switchScreens("InitialLoading");
     }
@@ -139,8 +155,28 @@ public class GameCore extends Game {
         inputManager.dispose();
         this.assetService.debugDiagnostics();
         this.assetService.dispose();
+        glProfiler.disable();
     }
 
+
+    private void finishRun(HoardRun run) {
+        menu.finish(run);
+        screenManager.unloadScreen("GameScreen");
+        screenManager.switchScreens("Menu");
+    }
+
+    public boolean windowAction(InputAction action) {
+        if (action == InputAction.CLOSE_WINDOW) { Gdx.app.exit(); return true; }
+        if (action != InputAction.RESIZE_WINDOW) { return false; }
+        if (Gdx.graphics.isFullscreen()) {
+            Gdx.graphics.setWindowedMode(windowWidth > 0 ? windowWidth : 960, windowHeight > 0 ? windowHeight : 540);
+        } else {
+            windowWidth = Gdx.graphics.getWidth();
+            windowHeight = Gdx.graphics.getHeight();
+            Gdx.graphics.setFullscreenMode(Gdx.graphics.getDisplayMode());
+        }
+        return true;
+    }
 
     public Batch getBatch() {
         return batch;

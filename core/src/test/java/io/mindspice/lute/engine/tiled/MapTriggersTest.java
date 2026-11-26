@@ -35,6 +35,7 @@ public final class MapTriggersTest {
             GameConsts.UNIT_SCALE = 1f / 32f;
             projectSchema();
             sampleMap();
+            enemyAreas();
             classDefaultsAndCoordinates();
             groupedLayers();
             detectorShapes();
@@ -68,7 +69,7 @@ public final class MapTriggersTest {
     }
 
     private static void sampleMap() {
-        TiledMap map = new PropertyLoader().sample();
+        TiledMap map = new PropertyLoader().sample("test_tiled");
         try {
             var triggers = MapTriggers.parse(map);
             check(triggers.sensors().size() == 2 && triggers.points().size() == 5 && triggers.areas().isEmpty(),
@@ -100,6 +101,41 @@ public final class MapTriggersTest {
             check(map.getLayers().get("Objects").getObjects().getCount() == 6,
                 "Unrelated sample tile objects must remain intact");
         } finally { map.dispose(); }
+    }
+
+    private static void enemyAreas() {
+        var map = new PropertyLoader().sample("hoard_mode");
+        try {
+            var triggers = MapTriggers.parse(map);
+            var area = triggers.requireEnemyArea("SpawnArea1", "agroWanderingHoard");
+            check(area.polygon().getVertices().length == 14 && area.spawnKey().equals("brainless_undead")
+                && area.facing().name().equals("DOWN"), "Actual hoard marker retains its authored polygon and enemy metadata");
+            near(area.polygon().getVertices()[0], 77.3333f / 32, "Polygon uses absolute world x");
+            near(area.polygon().getVertices()[1], (3200 - 161.333f) / 32, "Polygon y is flipped once");
+            var enemy = new JsonReader().parse(new FileHandle("raw_assets/data/enemies.json")).get(area.spawnKey());
+            check(enemy.getInt("max_health") == 50 && "wander_attack".equals(enemy.getString("behavior_graph")),
+                "The area selects an authored 50 HP enemy with the existing pursuit profile");
+            rejects("superseded behavior", "behaviorKey", () -> triggers.requireEnemyArea("SpawnArea1", "agroWander"));
+        } finally { map.dispose(); }
+        var stale = fixture(layer("Triggers", "", rectangle("missing", "SpawnArea", "")));
+        try {
+            var props = stale.getLayers().get("Triggers").getObjects().get(0).getProperties();
+            props.get("spawnInfo", com.badlogic.gdx.maps.MapProperties.class).remove("behaviorKey");
+            rejects("missing project field", "behaviorKey", () -> MapTriggers.parse(stale));
+        } finally { stale.dispose(); }
+        String config = property("spawnType", "ENEMY") + property("behaviorKey", "ambush");
+        invalid("no actorId fallback for area", layer("Triggers", "", rectangle("bad", "SpawnArea",
+            config + property("actorId", "legacy"))), "spawnKey");
+        invalid("wrong role", layer("Triggers", "", rectangle("bad", "SpawnArea", property("behaviorKey", "ambush"))), "ENEMY");
+        invalid("blank behavior", layer("Triggers", "", rectangle("bad", "SpawnArea", property("behaviorKey", " "))), "behaviorKey");
+        var plain = parse(layer("Triggers", "", rectangle("data", "SpawnArea", property("spawnType", "ENEMY"))));
+        rejects("no implicit behavior", "behaviorKey", () -> plain.requireEnemyArea("data", "ambush"));
+
+        var notch = parse(layer("Triggers", "", object("notch", "SpawnArea", "x=\"32\" y=\"64\"",
+            config + property("spawnKey", "brainless_undead"),
+            "<polygon points=\"0,0 96,0 96,96 64,96 64,32 32,32 32,96 0,96\"/>"))).requireEnemyArea("notch", "ambush");
+        check(notch.contains(new Rectangle(1.2f, 15.2f, .5f, .5f)) && !notch.contains(new Rectangle(1.2f, 15.2f, 2.5f, .5f)),
+            "Containment respects concave edges, not just the bounding box or four corners");
     }
 
     private static void classDefaultsAndCoordinates() {
@@ -573,11 +609,10 @@ public final class MapTriggersTest {
     }
 
     private static final class PropertyLoader extends FixedTmxMapLoader {
-        PropertyLoader() { super(path -> new FileHandle(path.startsWith("maps/")
-            ? "raw_assets/maps/test_tiled/" + path.substring(5) : "raw_assets/" + path)); }
+        PropertyLoader() { super(path -> new FileHandle("raw_assets/" + path)); }
 
-        TiledMap sample() {
-            var file = resolve("maps/test_tiled.tmx");
+        TiledMap sample(String name) {
+            var file = resolve("maps/" + name + "/" + name + ".tmx");
             root = xml.parse(file);
             return loadTiledMap(file, parameters(), imagePath -> {
                 try {

@@ -1,13 +1,17 @@
 package io.mindspice.lute.engine.systems;
 
+import io.mindspice.lute.engine.data.json.AttackDamage.Scalar;
+
 import com.badlogic.ashley.core.Engine;
 import com.badlogic.ashley.core.Entity;
 import com.badlogic.gdx.graphics.g2d.Animation;
 import com.badlogic.gdx.math.Vector2;
 import com.badlogic.gdx.physics.box2d.*;
 import com.badlogic.gdx.utils.GdxNativesLoader;
+import io.mindspice.lute.engine.behaviorgraph.BehaviorGraphs;
 import io.mindspice.lute.engine.components.Actor;
 import io.mindspice.lute.engine.components.ActorAi;
+import io.mindspice.lute.engine.components.BowAim;
 import io.mindspice.lute.engine.components.ActorAi.Mode;
 import io.mindspice.lute.engine.components.Animation2D;
 import io.mindspice.lute.engine.components.Combat;
@@ -39,12 +43,102 @@ public final class AwarenessSystemTest {
         try {
             GameConsts.UNIT_SCALE = .125f;
             run(world);
+            checkSemicircle(world);
+            checkArcherSight(world);
             try (var test = new RetaliationTest()) { test.run(); }
         } finally {
             GameConsts.UNIT_SCALE = originalScale;
             world.dispose();
         }
         System.out.println("AwarenessSystemTest: " + checks + " checks passed (native Box2D)");
+    }
+
+    private static void checkSemicircle(World world) {
+        var engine = new Engine();
+        var awareness = new AwarenessSystem(world);
+        engine.addSystem(awareness);
+        var enemy = actor(engine, world, Actor.Role.ENEMY, 30, 30, .25f, .5f);
+        var player = actor(engine, world, Actor.Role.PLAYER, 30, 30);
+        var ai = ActorAi.MAPPER.get(enemy);
+        var facing = Facing.MAPPER.get(enemy);
+        var from = new Vector2(30.25f, 30.5f);
+        for (var direction : Facing.Direction.values()) {
+            var forward = switch (direction) {
+                case UP -> new Vector2(0, 1);
+                case DOWN -> new Vector2(0, -1);
+                case LEFT -> new Vector2(-1, 0);
+                case RIGHT -> new Vector2(1, 0);
+            };
+            var sideways = forward.cpy().rotate90(1);
+            for (int side : new int[]{-1, 1}) {
+                ai.forgetTarget();
+                facing.setDirection(direction);
+                var rear = from.cpy().mulAdd(sideways, 2 * side).mulAdd(forward, -.125f);
+                body(player).setTransform(rear, 0);
+                awareness.processEntity(enemy, 0);
+                check(awareness.inRange(enemy, Actor.Role.PLAYER).equals(List.of(player)) && ai.mode() == Mode.WANDER,
+                    direction + " rejects just behind either side of the semicircle even inside the range query");
+                var edge = from.cpy().mulAdd(sideways, 4 * side);
+                body(player).setTransform(edge, 0);
+                awareness.processEntity(enemy, 0);
+                check(ai.mode() == Mode.ENGAGE, direction + " includes both feet-centered side edges at full radius");
+                facing.setDirection(direction);
+                body(player).setTransform(rear, 0);
+                awareness.processEntity(enemy, 0);
+                check(ai.mode() == Mode.INVESTIGATE && !Combat.MAPPER.get(enemy).hasAttackRequest()
+                    && Move.MAPPER.get(enemy).getDirection().equals(edge.sub(from)),
+                    direction + " investigates the last seen feet when the player moves behind it");
+            }
+        }
+    }
+
+    private static void checkArcherSight(World world) {
+        var engine = new Engine();
+        engine.addSystem(new AwarenessSystem(world));
+        var enemy = actor(engine, world, Actor.Role.ENEMY, 50, 50);
+        var player = actor(engine, world, Actor.Role.PLAYER, 53, 50);
+        Facing.MAPPER.get(enemy).setDirection(Facing.Direction.RIGHT);
+        var shot = new CombatWeapon.Attack("bow", new Scalar(10), 0, .3f, null, null, null, null, CollisionType.PROJECTILE);
+        var bow = new CombatWeapon.Weapon("bow", "", shot, shot);
+        body(enemy).setType(BodyDef.BodyType.DynamicBody);
+        engine.addSystem(new PhysicMoveSystem());
+        enemy.add(new ActorAi(BehaviorGraphs.ARCHER, 4f)).add(new BowAim(1, 1)).add(new Loadout(new Loadout.Equipment(null, null, null, null),
+            "bow", Map.of("bow", bow), _ -> { }));
+        var combat = Combat.MAPPER.get(enemy);
+        engine.update(0);
+        check(!combat.hasAttackRequest() && body(enemy).getLinearVelocity().x > 0, "Outer archer approaches while deciding");
+        engine.update(.14f);
+        check(!combat.hasAttackRequest(), "Archer keeps the 150 ms minimum decision delay");
+        engine.update(.161f);
+        check(combat.requestedTarget() == player && Move.MAPPER.get(enemy).getDirection().isZero(),
+            "Archer chooses its ranged engage graph instead of chasing");
+        combat.consumeAttackRequest();
+        combat.beginAttack(Combat.AttackSlot.PRIMARY, shot, Facing.Direction.RIGHT);
+        engine.update(0);
+        check(body(enemy).getLinearVelocity().x > 0 && !combat.hasAttackRequest(),
+            "Outer archer advances during shot recovery without requesting an early draw");
+        body(player).setTransform(52, 50, 0);
+        engine.update(0);
+        check(body(enemy).getLinearVelocity().isZero() && !combat.hasAttackRequest(),
+            "Half-radius boundary is inside the hold zone");
+        body(player).setTransform(53, 50, 0);
+        engine.update(0);
+        check(body(enemy).getLinearVelocity().x > 0, "Approach resumes when the visible player moves out");
+        combat.tickCooldown(shot.cooldownSeconds());
+        engine.update(.35f);
+        check(!combat.hasAttackRequest(), "Ready slot cannot truncate release playback");
+        combat.endAttack();
+        engine.update(0);
+        engine.update(.35f);
+        check(body(enemy).getLinearVelocity().isZero() && combat.requestedTarget() == player,
+            "Ready bow stops for a new opportunity after recovery");
+        combat.consumeAttackRequest();
+        var wall = world.createBody(new BodyDef());
+        wall.setTransform(51, 50, 0);
+        box(wall, 0, 0, .25f, false);
+        engine.update(0);
+        check(!combat.hasAttackRequest() && ActorAi.MAPPER.get(enemy).mode() == Mode.INVESTIGATE,
+            "Archer investigates instead of firing through cover");
     }
 
     private static void run(World world) {
@@ -69,10 +163,22 @@ public final class AwarenessSystemTest {
         check(awareness.inRange(enemy, Actor.Role.PLAYER).equals(List.of(player)), "Boundary is inclusive");
         engine.update(0);
         var combat = Combat.MAPPER.get(enemy);
+        for (int i = 0; i < 100; i++) { engine.update(0); }
+        engine.update(.024f);
+        check(!combat.hasAttackRequest() && Move.MAPPER.get(enemy).getDirection().x > 0,
+            "No tick-based rolls: step in before the minimum decision time");
+        body(player).setTransform(4.1f, 0, 0);
+        engine.update(.3f);
+        body(player).setTransform(4, 0, 0);
+        engine.update(.3f);
+        engine.update(.024f);
+        check(!combat.hasAttackRequest(), "Leaving range cancels, reacquisition starts a fresh opportunity");
+        engine.update(.077f);
         check(facing.getDirection() == Facing.Direction.RIGHT && combat.consumeAttackRequest() == Combat.AttackSlot.PRIMARY
             && Move.MAPPER.get(enemy).getDirection().isZero(), "Enemy stops and attacks at the inclusive limit through other actor bodies");
         check(!Combat.MAPPER.get(npc).hasAttackRequest(), "Wander-only graph does not attack a nearby player");
         body(player).setTransform(0, 3, 0);
+        facing.setDirection(Facing.Direction.UP);
         var scenery = world.createBody(new BodyDef());
         scenery.setUserData(new Entity()); // Tiled tile-object scenery is entity-backed.
         var wall = box(scenery, 0, 1, 1, false);
@@ -83,16 +189,22 @@ public final class AwarenessSystemTest {
         check(!combat.hasAttackRequest(), "Solid scenery blocks ray");
         wall.setSensor(true);
         engine.update(0);
+        engine.update(.024f);
+        check(!combat.hasAttackRequest(), "Melee waits at least 25 ms after gaining sight");
+        engine.update(.077f);
         check(facing.getDirection() == Facing.Direction.UP && combat.consumeAttackRequest() == Combat.AttackSlot.PRIMARY,
             "World sensors do not block ray");
         wall.setSensor(false);
         scenery.setTransform(0, -1, 0);
         body(player).setTransform(0, -1, 0);
+        facing.setDirection(Facing.Direction.DOWN);
         engine.update(0);
         check(!combat.hasAttackRequest(), "Embedded target is blocked");
         body(player).setTransform(20, 20, 0);
         body(enemy).setTransform(22, 20, 0);
+        facing.setDirection(Facing.Direction.LEFT);
         engine.update(0);
+        engine.update(.35f);
         check(facing.getDirection() == Facing.Direction.LEFT && combat.consumeAttackRequest() == Combat.AttackSlot.PRIMARY,
             "Moving the body moves the attached circle");
         Health.MAPPER.get(player).damage(100);
@@ -186,6 +298,7 @@ public final class AwarenessSystemTest {
                 "Lost sight uses the old point and never attacks a hidden shooter in melee range");
             cover.setSensor(true);
             awareness.processEntity(victim, 0);
+            awareness.processEntity(victim, .35f);
             check(ai.mode() == Mode.ENGAGE && melee.consumeAttackRequest() == Combat.AttackSlot.PRIMARY,
                 "NPC with the unarmed loadout can attack on live reacquisition");
             var unarmed = Loadout.MAPPER.get(victim).getWeapon().primary();
@@ -209,7 +322,7 @@ public final class AwarenessSystemTest {
             fire(shooter, 1, .25f);
             int hp = Health.MAPPER.get(victim).getCurrent();
             impact();
-            awareness.arrowDamaged(victim, victim);
+            awareness.retaliateAfterDamage(victim, victim);
             check(Health.MAPPER.get(victim).getCurrent() == hp && ai.retaliationTarget() == null, "Zero damage and self leads are ignored");
             Health.MAPPER.get(shooter).damage(100);
             fire(shooter, 10, 1);
@@ -230,22 +343,25 @@ public final class AwarenessSystemTest {
         private void checkAttackQueue() {
             var enemy = actor(engine, world, Actor.Role.ENEMY, 20, 0);
             var player = actor(engine, world, Actor.Role.PLAYER, 20, 3);
-            var shooter = actor(engine, world, Actor.Role.NPC, 20, -8);
+            var shooter = actor(engine, world, Actor.Role.NPC, 12, -1);
+            Facing.MAPPER.get(enemy).setDirection(Facing.Direction.UP);
             enemy.add(new Animation2D("test", "", Animation2D.AnimationType.IDLE, Animation.PlayMode.LOOP, 1, .125f))
                 .add(new Transform(new Vector2(20, 0), 0, new Vector2(1, 1), new Vector2(1, 1), 0, 0));
             var ai = ActorAi.MAPPER.get(enemy);
             var melee = Combat.MAPPER.get(enemy);
             awareness.processEntity(enemy, 0f);
+            awareness.processEntity(enemy, .35f);
             check(melee.requestedTarget() == player, "Normal enemy vision queues melee against the live nearby player");
-            combat.arrows().add(new ArrowFlight(shooter, type, new Vector2(18, 0), new Vector2(20, 0), 10, 1));
+            combat.arrows().add(new ArrowFlight(shooter, type, new Vector2(18, 0), new Vector2(20, 0), new Scalar(10), 1));
             impact();
             check(ai.retaliationTarget() == shooter && melee.getAttackId() == 0 && !melee.hasAttackRequest(),
-                "A new retaliation lead invalidates the old target's queued melee before it commits");
+                "A damaging rear shot immediately retargets the enemy before its queued melee commits");
             awareness.processEntity(enemy, 0f);
-            check(!melee.hasAttackRequest() && Move.MAPPER.get(enemy).getDirection().equals(new Vector2(0, -8)),
-                "Enemy pursues the actual shooter rather than attacking the unrelated player");
-            body(shooter).setTransform(20, -13, 0);
+            check(!melee.hasAttackRequest() && Move.MAPPER.get(enemy).getDirection().equals(new Vector2(-8, -1)),
+                "Enemy pursues the actual shooter behind it rather than attacking the unrelated player");
+            body(shooter).setTransform(7, 0, 0);
             awareness.processEntity(enemy, 0f);
+            awareness.processEntity(enemy, .35f);
             check(ai.retaliationTarget() == null && melee.requestedTarget() == player,
                 "Losing the shooter does not mask normal live enemy detection");
             Health.MAPPER.get(player).damage(100);
@@ -254,13 +370,15 @@ public final class AwarenessSystemTest {
             engine.removeEntity(player);
             var replacement = actor(engine, world, Actor.Role.PLAYER, 20, 3);
             awareness.processEntity(enemy, 0f);
+            check(!melee.hasAttackRequest(), "A replacement target cannot inherit the previous decision");
+            awareness.processEntity(enemy, .35f);
             check(melee.requestedTarget() == replacement, "Vision acquires the replacement without retaining the retired player");
             combat.update(0f);
             check(melee.getAttackId() == 1 && melee.isAttacking(), "Live sight still commits an attack through the combat system");
         }
 
         private void fire(Entity shooter, int damage, float scale) {
-            combat.arrows().add(new ArrowFlight(shooter, type, new Vector2(-2, 0), new Vector2(0, 0), damage, scale));
+            combat.arrows().add(new ArrowFlight(shooter, type, new Vector2(-2, 0), new Vector2(0, 0), new Scalar(damage), scale));
         }
 
         private void impact() {
@@ -279,6 +397,7 @@ public final class AwarenessSystemTest {
         try {
             // Keep the four-world-unit sensor, but shrink the melee threshold to two world units.
             GameConsts.UNIT_SCALE = .0625f;
+            Facing.MAPPER.get(enemy).setDirection(Facing.Direction.RIGHT);
             body(player).setTransform(3, 1, 0);
             var wallDef = new BodyDef();
             wallDef.position.set(1.5f, .5f);
@@ -314,6 +433,7 @@ public final class AwarenessSystemTest {
             world.destroyBody(wall);
 
             body(player).setTransform(-1, 3, 0);
+            Facing.MAPPER.get(enemy).setDirection(Facing.Direction.UP);
             engine.update(0);
             check(ai.mode() == Mode.ENGAGE && direction.equals(new Vector2(-1, 3)), "The enemy can acquire the player again");
             body(player).setTransform(-2, 4, 0);
@@ -336,16 +456,21 @@ public final class AwarenessSystemTest {
     }
 
     private static Entity actor(Engine engine, World world, Actor.Role role, float x, float y) {
+        return actor(engine, world, role, x, y, 0, 0);
+    }
+
+    private static Entity actor(Engine engine, World world, Actor.Role role, float x, float y, float feetX, float feetY) {
         var entity = engine.createEntity();
         var def = new BodyDef();
         def.position.set(x, y);
         var body = world.createBody(def);
         body.setUserData(entity);
-        box(body, 0, 0, .2f, false);
+        box(body, feetX, feetY, .2f, false);
         if (role != Actor.Role.PLAYER) {
             var shape = new CircleShape();
             try {
                 shape.setRadius(4);
+                shape.setPosition(new Vector2(feetX, feetY));
                 var fixture = new FixtureDef();
                 fixture.shape = shape;
                 fixture.isSensor = true;
@@ -355,12 +480,13 @@ public final class AwarenessSystemTest {
                 shape.dispose();
             }
         }
-        entity.add(new Actor(role, 0, 0)).add(new Physic(body, def.position.cpy()))
+        entity.add(new Actor(role, feetX, feetY)).add(new Physic(body, def.position.cpy()))
             .add(new Facing(Facing.Direction.DOWN)).add(new Health(100));
         if (role != Actor.Role.PLAYER) {
-            var attack = new CombatWeapon.Attack("unarmed", 10, 0, .3f, null, null, null, null, CollisionType.MELEE);
+            var attack = new CombatWeapon.Attack("unarmed", new Scalar(10), 0, .3f,
+                new Animation2D.Attack("jab", 1, .125f, 0, "jab"), null, null, null, CollisionType.MELEE);
             var weapon = new CombatWeapon.Weapon("unarmed", "", attack, attack);
-            entity.add(new ActorAi(role == Actor.Role.ENEMY ? "wander_attack" : "wander"))
+            entity.add(new ActorAi(role == Actor.Role.ENEMY ? "wander_attack" : "wander", 4f))
                 .add(new Combat()).add(new Move(1f))
                 .add(new Loadout(new Loadout.Equipment(null, null, null, null), null, Map.of("unarmed", weapon), _ -> { }));
         }

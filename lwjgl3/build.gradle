@@ -95,6 +95,44 @@ tasks.register('mapTravelTest', JavaExec) {
   jvmArgs '--enable-native-access=ALL-UNNAMED', '--add-exports=java.base/jdk.internal.misc=ALL-UNNAMED'
 }
 
+tasks.register('menuFlowTest', JavaExec) {
+  dependsOn testClasses
+  classpath = sourceSets.test.runtimeClasspath
+  mainClass = 'io.mindspice.lute.engine.screen.MenuFlowTest'
+  workingDir = rootProject.file('assets')
+  environment 'DISPLAY', System.getenv('DISPLAY') ?: ':0'
+  jvmArgs '--enable-native-access=ALL-UNNAMED', '--add-exports=java.base/jdk.internal.misc=ALL-UNNAMED'
+}
+
+tasks.register('hoardArenaTest', JavaExec) {
+  dependsOn testClasses
+  classpath = sourceSets.test.runtimeClasspath
+  mainClass = 'io.mindspice.lute.engine.systems.HoardArenaTest'
+  environment 'DISPLAY', System.getenv('DISPLAY') ?: ':0'
+  jvmArgs '--enable-native-access=ALL-UNNAMED', '--add-exports=java.base/jdk.internal.misc=ALL-UNNAMED'
+}
+
+// Each real-map regression needs a specific map, not the developer's current startup selection.
+// The other provisioned assets remain ordinary runtime classpath resources.
+['hoardArenaTest': 'hoard_mode', 'mapTravelTest': 'test_tiled', 'compositeRenderTest': 'test_tiled',
+ 'gameScreenLifecycleTest': 'test_tiled'].each { taskName, mapId ->
+  tasks.named(taskName, JavaExec) {
+    systemProperty 'luteDirectMap', 'true'
+    workingDir = layout.buildDirectory.dir("map-tests/${taskName}").get().asFile
+    doFirst {
+      workingDir.mkdirs()
+      def settings = new groovy.json.JsonSlurper().parse(rootProject.file('assets/game.settings.json'))
+      settings.startupMap = mapId
+      if (mapId == 'hoard_mode') {
+        // Make the clock-lighting pixel comparison independent of the local debug view and ambient tuning.
+        settings.nightAmbient = [tint: '#8299CC', brightness: 0.35]
+        settings.debugLayers.putAll(physics: false, triggers: false, rawLightMap: false, lightingOutlines: false)
+      }
+      new File(workingDir, 'game.settings.json').text = groovy.json.JsonOutput.toJson(settings)
+    }
+  }
+}
+
 tasks.named('test') {
   failOnNoDiscoveredTests = false
 }
@@ -102,6 +140,9 @@ tasks.named('test') {
 def os = System.properties['os.name'].toLowerCase(Locale.ROOT)
 
 run {
+  if (providers.gradleProperty('luteDirectMap').isPresent()) systemProperty 'luteDirectMap', providers.gradleProperty('luteDirectMap').get()
+  def debugLayers = providers.gradleProperty('luteDebugLayers')
+  if (debugLayers.present) systemProperty 'luteDebugLayers', debugLayers.get()
   workingDir = rootProject.file('assets').path
 // You can uncomment the next line if your IDE claims a build failure even when the app closed properly.
   //setIgnoreExitValue(true)

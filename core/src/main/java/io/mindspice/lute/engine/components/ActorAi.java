@@ -7,6 +7,7 @@ import com.badlogic.gdx.math.Vector2;
 import io.mindspice.lute.engine.singletons.GameConsts;
 
 import java.util.concurrent.ThreadLocalRandom;
+import java.util.function.DoubleSupplier;
 
 public final class ActorAi implements Component {
     public static final ComponentMapper<ActorAi> MAPPER = ComponentMapper.getFor(ActorAi.class);
@@ -16,18 +17,48 @@ public final class ActorAi implements Component {
 
     public enum Mode { WANDER, ENGAGE, INVESTIGATE }
 
-    private final String graphKey;
+    private final String behaviorGraphKey;
     private Mode mode = Mode.WANDER;
     private final Vector2 lastSeenFeet = new Vector2();
     private float investigateTimeLeft;
     private Entity retaliateAgainst;
+    private Entity opportunityTarget;
+    private CombatWeapon.Weapon opportunityWeapon;
+    private float decisionTimeLeft;
+    private float recoveryLeft;
     // Start with a wait so the authored spawn facing is visible.
     private float wanderTimeLeft = wanderPhaseSeconds();
 
-    public ActorAi(String graphKey) { this.graphKey = graphKey; }
+    private final float detectionRadius;
 
-    public String graphKey() { return graphKey; }
+    public ActorAi(String behaviorGraphKey, float detectionRadius) {
+        this.behaviorGraphKey = behaviorGraphKey;
+        this.detectionRadius = detectionRadius;
+    }
+
+    public float detectionRadius() { return detectionRadius; }
+
+    public String behaviorGraphKey() { return behaviorGraphKey; }
     public Mode mode() { return mode; }
+
+    /** Start the clock only on entry: time before eligibility does not count. */
+    public boolean decisionDue(Entity target, CombatWeapon.Weapon weapon, float delta, DoubleSupplier delaySeconds) {
+        if (target == null) { clearOpportunity(); return false; }
+        if (target != opportunityTarget || weapon != opportunityWeapon) {
+            opportunityTarget = target;
+            opportunityWeapon = weapon;
+            decisionTimeLeft = (float) delaySeconds.getAsDouble();
+        } else {
+            decisionTimeLeft -= delta;
+        }
+        return decisionTimeLeft <= 0f;
+    }
+
+    public void clearOpportunity() { opportunityTarget = null; opportunityWeapon = null; }
+
+    public void recover(float seconds) { recoveryLeft = seconds; }
+    public void tickRecovery(float delta) { recoveryLeft = Math.max(0f, recoveryLeft - delta); }
+    public boolean recovering() { return recoveryLeft > 0f; }
 
     public Entity retaliationTarget() { return retaliateAgainst; }
 
@@ -40,6 +71,7 @@ public final class ActorAi implements Component {
             mode = Mode.ENGAGE;
             return visibleFeet.cpy().sub(feet);
         }
+        clearOpportunity();
         if (mode == Mode.WANDER) { return null; }
         if (mode == Mode.ENGAGE) {
             mode = Mode.INVESTIGATE;
@@ -57,6 +89,7 @@ public final class ActorAi implements Component {
     }
 
     public void forgetTarget() {
+        clearOpportunity();
         mode = Mode.WANDER;
         retaliateAgainst = null;
         lastSeenFeet.setZero();

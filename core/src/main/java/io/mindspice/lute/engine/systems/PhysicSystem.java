@@ -8,6 +8,7 @@ import com.badlogic.ashley.systems.IteratingSystem;
 import com.badlogic.gdx.math.MathUtils;
 import com.badlogic.gdx.physics.box2d.BodyDef;
 import com.badlogic.gdx.physics.box2d.World;
+import io.mindspice.lute.engine.components.DredgeLunge;
 import io.mindspice.lute.engine.components.Physic;
 import io.mindspice.lute.engine.components.Transform;
 
@@ -35,13 +36,18 @@ public class PhysicSystem extends IteratingSystem implements EntityListener {
     public void update(float deltaTime) {
         this.accumulator += deltaTime;
 
+        var hoard = getEngine().getSystem(HoardSystem.class);
+        long boostedPress = 0;
         while (accumulator >= interval) {
             accumulator -= interval;
             super.update(deltaTime);
+            if (hoard != null) { boostedPress = hoard.beforeSprintStep(interval, boostedPress != 0); }
             world.step(interval, 6, 2);
             completedSteps++;
+            if (boostedPress != 0) { hoard.finishSprintStep(interval, boostedPress); }
             var sensors = getEngine().getSystem(MapSensorSystem.class);
             if (sensors != null) { sensors.afterPhysicsStep(); }
+            if (hoard != null) { hoard.afterPhysicsStep(interval); }
         }
         world.clearForces();
 
@@ -71,6 +77,10 @@ public class PhysicSystem extends IteratingSystem implements EntityListener {
     protected void processEntity(Entity entity, float deltaTime) {
         Physic physic = Physic.MAPPER.get(entity);
         physic.getPrevPos().set(physic.getBody().getPosition());
+        var lunge = entity.getComponent(DredgeLunge.class);
+        if (lunge != null) {
+            getEngine().getSystem(CombatSystem.class).beforeLungeStep(entity, lunge, interval);
+        }
     }
 
     private void interpolateEntity(Entity entity, float alpha) {
