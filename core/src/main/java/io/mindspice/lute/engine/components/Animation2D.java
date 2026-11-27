@@ -5,8 +5,6 @@ import com.badlogic.ashley.core.ComponentMapper;
 import com.badlogic.gdx.graphics.g2d.Animation;
 import com.badlogic.gdx.graphics.g2d.TextureRegion;
 
-import java.util.Map;
-
 public class Animation2D implements Component {
     public static final ComponentMapper<Animation2D> MAPPER = ComponentMapper.getFor(Animation2D.class);
 
@@ -27,7 +25,6 @@ public class Animation2D implements Component {
     boolean dirty;
     private Attack attack;
     private Attack queuedAttack;
-    private Map<String, Long> requiredAttackFrames = Map.of();
     private boolean attackSoundEmitted;
 
     public record Attack(String action, float speed, float frameInterval, int soundFrame, String soundId) { }
@@ -46,10 +43,6 @@ public class Animation2D implements Component {
         queuedAttack = null;
         resetAttackPlayback();
     }
-
-    public void setRequiredAttackFrames(Map<String, Long> frames) { requiredAttackFrames = Map.copyOf(frames); }
-
-    public Map<String, Long> getRequiredAttackFrames() { return requiredAttackFrames; }
 
     public String getAction() {
         return type == AnimationType.ATTACK && attack != null ? attack.action() : type.atlasKey;
