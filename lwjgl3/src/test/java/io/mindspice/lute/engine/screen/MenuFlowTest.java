@@ -68,7 +68,12 @@ public final class MenuFlowTest extends ApplicationAdapter {
             .putString("key." + F8, "SCROLL_DOWN").putString("key." + F9, "GUI_LEFT")
             .putString("pad.FACE_WEST", "GUI_TAB").putString("pad.FACE_NORTH", "GUI_LEFT_CLICK")
             .putString("PHYSICS", "false").putString("TRIGGERS", "false").flush();
-        GAME.create();
+        var previousProfile = System.getProperty("luteDebugLayers");
+        System.clearProperty("luteDebugLayers"); // Let Options control the gameplay debug passes.
+        try { GAME.create(); }
+        finally {
+            if (previousProfile != null) { System.setProperty("luteDebugLayers", previousProfile); }
+        }
         try {
             GAME.resize(960, 540);
             GAME.render();
@@ -250,7 +255,7 @@ public final class MenuFlowTest extends ApplicationAdapter {
     }
 
     private void remappedBackControls(Preferences prefs, boolean physics) {
-        tap(UP); tap(ENTER); // Key Bindings from Main
+        tap(UP); tap(UP); tap(ENTER); // Key Bindings from Main, past Test Area
         for (int i = 0; i < InputAction.GUI_ENTER.ordinal(); i++) { tap(DOWN); }
         tap(ENTER);
         tap(DOWN); tap(ENTER); tap(ESCAPE); // + Keyboard after F7
@@ -282,8 +287,11 @@ public final class MenuFlowTest extends ApplicationAdapter {
             for (String profile : List.of("off", "on")) {
                 System.setProperty("luteDebugLayers", profile);
                 boolean on = profile.equals("on");
-                require(restartLayers(file).equals(new GameConsts.DebugLayers(on, on, false, false, false)),
-                    profile + " overrides saved visual options only");
+                require(restartLayers(file).equals(new GameConsts.DebugLayers(true, false, true, true, false)),
+                    "saved options take precedence over the " + profile + " profile");
+                var empty = new FileHandle(temp.resolve("unused-visual-options").toFile());
+                require(restartLayers(empty).equals(new GameConsts.DebugLayers(on, on, false, false,
+                    GameConsts.DEBUG_LAYERS.assetValidation())), profile + " supplies defaults for untouched options");
             }
             System.clearProperty("luteDebugLayers");
             require(restartLayers(file).equals(new GameConsts.DebugLayers(true, false, true, true, false)),

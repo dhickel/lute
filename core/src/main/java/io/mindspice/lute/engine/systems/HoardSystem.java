@@ -1,12 +1,8 @@
 package io.mindspice.lute.engine.systems;
 
-import com.badlogic.ashley.core.Engine;
 import com.badlogic.ashley.core.Entity;
-import com.badlogic.ashley.core.EntitySystem;
 import io.mindspice.lute.engine.GameCore;
 import io.mindspice.lute.engine.data.json.ObjectData;
-import io.mindspice.lute.engine.events.Event;
-import io.mindspice.lute.engine.events.EventListener;
 import io.mindspice.lute.engine.input.InputManager;
 import io.mindspice.lute.engine.tiled.MapTriggers;
 import io.mindspice.lute.gameplay.HoardRun;
@@ -20,11 +16,10 @@ import java.util.ArrayList;
 import java.util.LinkedHashSet;
 import java.util.List;
 import java.util.function.BiFunction;
-import java.util.function.Consumer;
 import java.util.random.RandomGenerator;
 
 /** Adapts one map-scoped run to the simulation clock, combat events and map placement. */
-public final class HoardSystem extends EntitySystem implements EventListener {
+public final class HoardSystem extends ArenaSystem {
     record RosterEntry(String key, int unlockRound, int weight, int baseXp) { }
 
     static final List<RosterEntry> WAVE_ROSTER = List.of(
@@ -55,15 +50,8 @@ public final class HoardSystem extends EntitySystem implements EventListener {
         return List.copyOf(cycle);
     }
 
-    private static final String KILL_HEALTH_KEY = "health_pack_1";
     private static final String WEAPON_BAG_KEY = "weapon_bag";
     private static final int DREDGE_BASE_XP = 100;
-    private static final float SPRINT_MULTIPLIER = 1.6f;
-    private static final float SPRINT_RAMP_UP_SECONDS = .25f;
-    private static final float SPRINT_RAMP_DOWN_SECONDS = .10f;
-    private static final double SPRINT_SECONDS = 2d;
-    private static final double REFILL_PER_SECOND = 0.7d / 6d;
-    private static final double REFILL_DELAY_SECONDS = 2d;
     private record Bounty(int baseXp) implements Component { }
 
     static Component rosterBounty(String key) {
@@ -74,28 +62,42 @@ public final class HoardSystem extends EntitySystem implements EventListener {
     }
     // Placement must not consume random draws used for waves or kill drops.
     private final RandomGenerator roundHealthRandom = RandomGenerator.getDefault();
-    private RandomGenerator dropRandom;
     private HoardRun run;
-    private final InputManager input;
-    private double stamina = 1d;
-    private double refillDelay;
-    private long exhaustedPress;
-    private long sprintPress;
-    private float sprintBoost;
-    private final Consumer<Event.Player.KilledEnemy> onKill = event -> {
-        // The bus drains on the next update, possibly after named travel or hide/show.
-        if (run == null || run.isGameOver()) { return; }
-        var tiled = getEngine().getSystem(TiledSystem.class);
-        var enemy = event.enemy();
-        if (event.player() != tiled.activePlayer() || !tiled.owns(enemy)) { return; }
-        var bounty = enemy.getComponent(Bounty.class);
-        if (bounty == null) { return; }
-        run.enemyKilled(bounty.baseXp());
-        if (dropRandom.nextInt(10) == 0) { drop(tiled, feet(enemy), KILL_HEALTH_KEY); }
-    };
 
-    public HoardSystem(InputManager input) {
-        this.input = input;
+    public HoardSystem(InputManager input) { super(input); }
+
+    @Override boolean creditKill(Entity enemy) {
+        var bounty = enemy.getComponent(Bounty.class);
+        if (bounty == null) { return false; }
+        run.enemyKilled(bounty.baseXp());
+        return true;
+    }
+
+    @Override MapRules rulesFor(String mapId, MapTriggers triggers) {
+        var areas = arena(mapId, triggers);
+        return areas == null ? null : arenaRules(areas, triggers);
+    }
+
+    private MapRules arenaRules(List<MapTriggers.SpawnArea> areas, MapTriggers triggers) {
+        var roster = WAVE_ROSTER.stream().map(RosterEntry::key).toList();
+        return new MapRules() {
+            @Override public List<MapTriggers.SpawnArea> enemyAreas() { return areas; }
+            @Override public List<String> extraEnemyKeys(MapTriggers.SpawnArea area) { return roster; }
+            @Override public boolean spawnPoint(MapTriggers.SpawnPoint point) {
+                return !"idle_dredge".equals(point.behaviorKey());
+            }
+            @Override public Component pointEnemyComponent(String key) { return rosterBounty(key); }
+            @Override public Controller setupLoadout(Loadout loadout) {
+                return Controller.forArena(starterWeaponCycle(loadout.getWeapon().id()));
+            }
+            @Override public void validate(EntityFactory factory, Entity player,
+                                           BiFunction<String, Facing.Direction, Rectangle> enemyFootprint) {
+                validateDelayedSpawns(factory, triggers, player, enemyFootprint);
+            }
+            @Override public void start(TiledSystem tiled, RandomGenerator random) {
+                startRun(tiled, areas, triggers, random);
+            }
+        };
     }
 
     static List<MapTriggers.SpawnArea> arena(String mapId, MapTriggers triggers) {
@@ -136,7 +138,7 @@ public final class HoardSystem extends EntitySystem implements EventListener {
         var boss = dredgePoint(triggers);
         enemyFootprint.apply(boss.spawnKey(), boss.facing());
         factory.validatePickupSpawn(healthArea(triggers).spawnKey(), ObjectData.Kind.HEAL);
-        factory.validatePickupSpawn(KILL_HEALTH_KEY, ObjectData.Kind.HEAL);
+        validateKillDrop(factory);
         factory.validatePickupSpawn(WEAPON_BAG_KEY, ObjectData.Kind.WEAPON_BAG);
         // Factory staging already validates weapon art. Check that the arena cycle resolves too.
         var weapons = GameCore.INSTANCE.getGameData().weaponsData();
@@ -146,13 +148,10 @@ public final class HoardSystem extends EntitySystem implements EventListener {
     }
 
     void bind(TiledSystem tiled, List<MapTriggers.SpawnArea> areas, RandomGenerator random) {
-        stamina = 1d;
-        refillDelay = 0d;
-        exhaustedPress = 0;
-        clearSprintMomentum();
-        if (areas == null) { run = null; return; }
-        dropRandom = random;
-        var triggers = tiled.getMapTriggers();
+        bind(tiled, areas == null ? null : arenaRules(areas, tiled.getMapTriggers()), random);
+    }
+
+    private void startRun(TiledSystem tiled, List<MapTriggers.SpawnArea> areas, MapTriggers triggers, RandomGenerator random) {
         var marker = dredgePoint(triggers);
         var center = healthArea(triggers);
         var box = center.bounds();
@@ -167,7 +166,6 @@ public final class HoardSystem extends EntitySystem implements EventListener {
                 int baseHealth = Health.MAPPER.get(boss).getMaximum();
                 boss.add(new Health((int) Math.min(Integer.MAX_VALUE, HoardRun.scaleForRound(baseHealth, round))));
                 boss.add(new ArenaGuard(Physic.MAPPER.get(boss).getBody().getPosition().cpy()));
-                boss.add(new DredgeLunge());
                 boss.add(new Bounty(DREDGE_BASE_XP));
                 tiled.addArenaEntity(boss);
             }
@@ -203,120 +201,14 @@ public final class HoardSystem extends EntitySystem implements EventListener {
         }
     }
 
-    void dredgeDied(Entity enemy) {
-        var tiled = getEngine().getSystem(TiledSystem.class);
-        if (isActive() && tiled.owns(enemy)) { drop(tiled, feet(enemy), WEAPON_BAG_KEY); }
+    @Override void enemyDied(TiledSystem tiled, Entity actor) {
+        if (actor.getComponent(ArenaGuard.class) != null) { drop(tiled, AwarenessSystem.feet(actor), WEAPON_BAG_KEY); }
     }
 
-    private static Vector2 feet(Entity enemy) {
-        var actor = Actor.MAPPER.get(enemy);
-        return Physic.MAPPER.get(enemy).getBody().getWorldPoint(new Vector2(actor.feetX(), actor.feetY()));
-    }
-
-    private void drop(TiledSystem tiled, Vector2 world, String key) {
-        var pixels = world.cpy().scl(1f / GameConsts.UNIT_SCALE);
-        tiled.addArenaEntity(getEngine().getSystem(EntityFactory.class).getSpawnedObject(pixels, key, Facing.Direction.DOWN));
-    }
-
-    void playerDied(Entity player) {
-        if (run != null && getEngine().getSystem(TiledSystem.class).owns(player)) { run.end(); }
-    }
-
-    public boolean isActive() { return run != null; }
+    @Override void clearRun() { run = null; }
+    @Override boolean isGameOver() { return run.isGameOver(); }
+    @Override void endRun() { run.end(); }
+    @Override void advance(TiledSystem tiled, float interval) { run.advance(interval); }
+    @Override String statusText() { return GameplayHud.hoardStatus(run); }
     public HoardRun run() { return run; }
-
-    double stamina() { return stamina; }
-
-    public void clearSprintMomentum() {
-        sprintPress = 0;
-        sprintBoost = 0f;
-    }
-
-    long beforeSprintStep(float interval, boolean wasBoosted) {
-        if (run == null || run.isGameOver()) { return 0; }
-        var player = getEngine().getSystem(TiledSystem.class).activePlayer();
-        if (!Health.MAPPER.get(player).isAlive() || !Controller.MAPPER.has(player)) { return 0; }
-
-        var move = Move.MAPPER.get(player);
-        var aim = BowAim.MAPPER.get(player);
-        long press = input.arenaSprintPress();
-        if (move.isRooted() || move.getDirection().isZero() || (aim != null && aim.isAiming())) {
-            clearSprintMomentum();
-        } else if (press != 0 && press != exhaustedPress && stamina > 0d) {
-            sprintPress = press;
-            // A sliver of stamina buys only its share of this tick's acceleration.
-            float poweredTime = (float) Math.min(interval, stamina * SPRINT_SECONDS);
-            sprintBoost = Math.min(1f, sprintBoost + poweredTime / SPRINT_RAMP_UP_SECONDS);
-        } else {
-            sprintBoost = Math.max(0f, sprintBoost - interval / SPRINT_RAMP_DOWN_SECONDS);
-        }
-        if (sprintBoost > .000001f) {
-            float multiplier = 1f + (SPRINT_MULTIPLIER - 1f) * sprintBoost;
-            getEngine().getSystem(PhysicMoveSystem.class).applyMovement(player, multiplier);
-            return sprintPress;
-        }
-        clearSprintMomentum();
-        // Ordinary movement is already applied once per frame. Restore it only when
-        // leaving a boosted tick in this batch, then let contacts carry velocity forward.
-        if (wasBoosted) { getEngine().getSystem(PhysicMoveSystem.class).applyMovement(player, 1f); }
-        refill(interval);
-        return 0;
-    }
-
-    // Measure the actual step before sensor teleports can change the player's position.
-    void finishSprintStep(float interval, long boostedPress) {
-        var player = getEngine().getSystem(TiledSystem.class).activePlayer();
-        var physics = Physic.MAPPER.get(player);
-        var before = physics.getPrevPos();
-        var after = physics.getBody().getPosition();
-        var direction = Move.MAPPER.get(player).getDirection();
-        float progress = direction.dot(after.x - before.x, after.y - before.y);
-        if (progress > 0.00001f) {
-            // The release tail still costs stamina while it provides extra movement.
-            if (stamina > 0d) {
-                stamina = Math.max(0d, stamina - interval / SPRINT_SECONDS);
-                if (stamina == 0d) { exhaustedPress = boostedPress; }
-                refillDelay = REFILL_DELAY_SECONDS;
-            } else {
-                refill(interval);
-            }
-            getEngine().getSystem(AnimationSystem.class).advanceSprintWalk(player, interval * sprintBoost);
-        } else {
-            // Don't bank a full-speed start by holding B against a wall.
-            clearSprintMomentum();
-            refill(interval);
-        }
-    }
-
-    private void refill(float interval) {
-        double refillTime = Math.max(0d, interval - refillDelay);
-        refillDelay = Math.max(0d, refillDelay - interval);
-        stamina = Math.min(1d, stamina + refillTime * REFILL_PER_SECOND);
-    }
-
-    // PhysicSystem has committed this tick; fixture queries and new bodies are safe here.
-    void afterPhysicsStep(float interval) {
-        if (run == null || run.isGameOver()) { return; }
-        // Resolve contacts at this tick's positions, before a lunge ends, a wave spawns or a pickup heals.
-        var engine = getEngine();
-        var tiled = engine.getSystem(TiledSystem.class);
-        var casualties = engine.getSystem(CombatSystem.class).resolveArenaStepHits(tiled::ownsArrivingEnemy);
-        var death = engine.getSystem(DeathSystem.class);
-        for (var victim : casualties) { death.beginContactDeath(victim); }
-        if (!run.isGameOver()) {
-            tiled.collectPickups();
-            run.advance(interval);
-        }
-    }
-
-    @Override
-    public void addedToEngine(Engine engine) {
-        eventSubscriber.accept(Event.Player.KilledEnemy.class, onKill);
-    }
-
-    @Override
-    public void removedFromEngine(Engine engine) {
-        eventUnSubscriber.accept(Event.Player.KilledEnemy.class, onKill);
-        run = null;
-    }
 }

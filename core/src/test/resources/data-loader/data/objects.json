@@ -1,0 +1,8 @@
+{
+  "fixture_lamp": {
+    "animation": { "speed": 1, "atlas_key": "fixture_lamp", "sound_frame": 0, "frame_interval": 0.1 },
+    "collision": { "shape": "RECT", "bounds": { "x1": 1, "y1": 3, "x2": 12, "y2": 7 }, "rotation": -15 },
+    "emissive": { "color": "#FFAA55", "radius_pixels": 39, "intensity": 0.9,
+      "pulse": { "period_seconds": 1.2, "radius_strength": 0.12, "intensity_strength": 0.18 } }
+  }
+}

@@ -528,9 +528,10 @@ public final class MapTravelTest extends ApplicationAdapter {
         engine.addEntity(dredge);
         var playerBody = body(player);
         var original = playerBody.getPosition().cpy();
+        var velocity = playerBody.getLinearVelocity().cpy();
         try {
-            require(dredge.getComponent(ArenaGuard.class) == null && dredge.getComponent(DredgeLunge.class) == null,
-                "Ordinary Dredge has neither arena home nor lunge");
+            playerBody.setLinearVelocity(0, 0);
+            require(dredge.getComponent(ArenaGuard.class) == null, "Ordinary Dredge has no arena home");
             var actor = Actor.MAPPER.get(dredge);
             var playerActor = Actor.MAPPER.get(player);
             var feet = body(dredge).getWorldPoint(new Vector2(actor.feetX(), actor.feetY())).cpy();
@@ -540,16 +541,17 @@ public final class MapTravelTest extends ApplicationAdapter {
                 "The rear player is in Dredge's authored detection range");
             var ai = ActorAi.MAPPER.get(dredge);
             awareness.update(0f);
-            require(ai.mode() == ActorAi.Mode.ENGAGE && Move.MAPPER.get(dredge).getDirection().x > 0f,
-                "Actual Dredge outside Hoard pursues a visible player behind it");
+            require(ai.mode() == ActorAi.Mode.ENGAGE && Facing.MAPPER.get(dredge).getDirection() == Facing.Direction.RIGHT,
+                "Actual Dredge outside Hoard detects and faces a visible player behind it");
             var combat = Combat.MAPPER.get(dredge);
             awareness.update(.25f);
-            require(!combat.hasAttackRequest(), "Ordinary Dredge cannot commit from lunge range");
+            require(combat.requestedTarget() == player && combat.consumeAttackRequest() == Combat.AttackSlot.SECONDARY,
+                "Ordinary Dredge uses its authored graph to request the lunge at extended range");
             playerBody.setTransform(rear.cpy().sub(44 * unit, 0), 0);
             awareness.update(0f);
             awareness.update(.25f);
-            require(combat.requestedTarget() == player, "Ordinary Dredge can still commit at normal melee range");
-            combat.consumeAttackRequest();
+            require(combat.requestedTarget() == player && combat.consumeAttackRequest() == Combat.AttackSlot.PRIMARY,
+                "Stationary targets in melee range receive the primary instead");
             playerBody.setTransform(rear, 0);
 
             var wall = world.createBody(new BodyDef());
@@ -572,6 +574,7 @@ public final class MapTravelTest extends ApplicationAdapter {
             require(ai.mode() == ActorAi.Mode.INVESTIGATE, "Full-circle vision still respects Dredge's detection radius");
         } finally {
             playerBody.setTransform(original, 0);
+            playerBody.setLinearVelocity(velocity);
             engine.removeEntity(dredge);
         }
     }

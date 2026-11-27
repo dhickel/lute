@@ -1,5 +1,6 @@
 package io.mindspice.lute.engine.lwjgl3;
 
+import io.mindspice.lute.engine.data.json.AttackAnimKey;
 import io.mindspice.lute.engine.data.json.AttackDamage.Scalar;
 
 import com.badlogic.ashley.core.Engine;
@@ -365,7 +366,7 @@ public final class LightingRenderTest extends ApplicationAdapter {
             CollisionData.ellipse(new CharacterBounds(0, 0, 2, 2)), 0, 0, 4, 0));
         engine.addSystem(combat);
         var bow = new CombatWeapon.Weapon("bow", "bow", new CombatWeapon.Attack("bow", new Scalar(1), 0, 1,
-            new Animation2D.Attack("shot", 1, .1f, 0, ""), "", null, null, null), null);
+            AttackAnimKey.SHOT, new Animation2D.Attack("shot", 1, .1f, 0, ""), "", null, null, null), null);
         var aim = new BowAim(8, 8);
         var start = transform(24, 44, 0, 0, 0);
         var owner = new Entity().add(start).add(new Facing(Facing.Direction.RIGHT)).add(new Combat()).add(anim);
@@ -374,7 +375,7 @@ public final class LightingRenderTest extends ApplicationAdapter {
         var launch = CombatSystem.class.getDeclaredMethod("launch", Entity.class, BowAim.class);
         launch.setAccessible(true); launch.invoke(combat, owner, aim);
         aim.start(bow, transform(102.5f, 84.5f, 0, 0, 0), Facing.Direction.RIGHT);
-        engine.addEntity(new Entity().add(aim));
+        engine.addEntity(new Entity().add(aim).add(new Controller()));
         var lamp = lamp(LX, LY, "#ff8040", 64, .65f, null);
         var marker = (QueryCallback) fixture -> true;
         var query = World.class.getDeclaredField("queryCallback"); query.setAccessible(true);

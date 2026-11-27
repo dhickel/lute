@@ -2,6 +2,8 @@ package io.mindspice.lute.engine.systems;
 
 import com.badlogic.ashley.core.EntitySystem;
 
+import java.util.function.BooleanSupplier;
+
 /** Advances the session clock once per simulation update. */
 public final class WorldTimeSystem extends EntitySystem {
     private static final int PRIORITY = -100;
@@ -10,17 +12,20 @@ public final class WorldTimeSystem extends EntitySystem {
     private static final double INITIAL_TOTAL_SECONDS = 6 * 60 * 60;
 
     private final double inGameSecondsPerSimulationSecond;
+    private final BooleanSupplier frozen;
     private double totalInGameSeconds = INITIAL_TOTAL_SECONDS;
 
-    public WorldTimeSystem(double dayLengthMinutes) {
+    public WorldTimeSystem(double dayLengthMinutes) { this(dayLengthMinutes, () -> false); }
+
+    public WorldTimeSystem(double dayLengthMinutes, BooleanSupplier frozen) {
         super(PRIORITY);
+        this.frozen = frozen;
         inGameSecondsPerSimulationSecond = IN_GAME_MINUTES_PER_DAY / dayLengthMinutes;
     }
 
     @Override
     public void update(float deltaTime) {
-        var hoard = getEngine() == null ? null : getEngine().getSystem(HoardSystem.class);
-        if (hoard != null && hoard.isActive()) { return; }
+        if (frozen.getAsBoolean()) { return; }
         totalInGameSeconds += deltaTime * inGameSecondsPerSimulationSecond;
     }
 

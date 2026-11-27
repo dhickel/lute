@@ -141,9 +141,10 @@ public class RenderSystem extends SortedIteratingSystem implements Disposable {
             super.update(deltaTime);
             straightBlend();
             fgLayers.forEach(mapRenderer::renderMapLayer);
-            var hoard = getEngine().getSystem(HoardSystem.class);
-            var run = hoard == null ? null : hoard.run();
-            if (run == null && night) {
+            var tiled = getEngine().getSystem(TiledSystem.class);
+            var arena = tiled == null ? null : tiled.arena();
+            boolean arenaActive = arena != null && arena.isActive();
+            if (!arenaActive && night) {
                 batch.end();
                 if (lighting == null) { lighting = new NightLighting(pixels[2], pixels[3], state); }
                 lighting.render(world, getEngine().getEntitiesFor(LIGHTS), ambient, sessionSeconds, camera, pixels, state,
@@ -161,7 +162,6 @@ public class RenderSystem extends SortedIteratingSystem implements Disposable {
                 var aim = BowAim.MAPPER.get(entity);
                 if (aim.isAiming()) { drawCrosshair(aim.getTargetX(), aim.getTargetY(), state); }
             }
-            var tiled = getEngine().getSystem(TiledSystem.class);
             if (world != null && tiled != null) {
                 if (hud == null) {
                     batch.flush();
@@ -169,8 +169,8 @@ public class RenderSystem extends SortedIteratingSystem implements Disposable {
                     hud = new GameplayHud(overlayWhite(state));
                 }
                 var clock = getEngine().getSystem(WorldTimeSystem.class);
-                hud.draw(batch, getEngine(), viewport, tiled.playerHealth(), (int) clock.getMinuteOfDay(), run,
-                    run == null ? 0d : hoard.stamina());
+                hud.draw(batch, getEngine(), viewport, tiled.playerHealth(), (int) clock.getMinuteOfDay(),
+                    arenaActive ? arena.statusText() : null, arenaActive ? arena.stamina() : 0d);
             }
             batch.end();
         } finally {

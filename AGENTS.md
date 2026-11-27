@@ -6,6 +6,14 @@ This is a hobbyist project. Keep the code simple, grokkable, and easy to follow.
 
 Format code for readability, with consistent indentation, sensible line breaks, and whitespace that separates logical steps. Favor clear names and straightforward expressions over clever or compressed code.
 
+## Project Documentation
+
+Agents need not create or maintain a root README. Use the existing documentation and living specifications instead.
+
+## Weapon Testing
+
+Use the main-menu **Test Area** mode to demo and test weapon changes. Keep test-specific setup in that mode and use shared production gameplay and combat rather than separate test implementations.
+
 ## Gameplay Scope
 
 Preserve existing gameplay behavior outside the requested scope. Obtain explicit user approval before any unspecified gameplay change, including indirect effects on existing balance, scaling, spawn rules, scoring, or timing. If such a change is needed to deliver the request, explain the exact change and wait for approval before implementing it.
@@ -23,6 +31,12 @@ Additional checks belong where genuinely uncertain data enters, such as random v
 ## New Game Data and Settings
 
 Every new game data or settings file and field is required at load. Reject missing or invalid data rather than supplying a missing-data fallback or code default. In the same change, update both the ignored raw and generated asset trees and all affected test fixtures. This does not change genuinely optional current gameplay states or existing optional data contracts.
+
+## Tests and Authored Data
+
+Do not hardcode or mirror shipped authored or tunable values, including catalog sizes, in tests. Each test must demonstrate behavior, an invariant, or a failure; do not assert a value merely because the test just assigned it or the implementation guarantees it by construction. Fixed expected values in fixtures are appropriate when they establish meaningful behavior.
+
+Test parsing, conversion, rejection, and cross-references through the real loader using small, distinct synthetic fixtures. Shipped-pack smoke tests should check loadability or independent runtime behavior, not duplicate authored data. Do not add CI or lint machinery to enforce these rules.
 
 ## Event System Interfaces
 

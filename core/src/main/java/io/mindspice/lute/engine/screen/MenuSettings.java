@@ -52,7 +52,7 @@ final class MenuSettings {
 
     boolean enabled(Layer layer) { return layers[layer.ordinal()]; }
     DebugLayers layers() {
-        return GameConsts.applyVisualLaunchProfile(new DebugLayers(layers[0], layers[1], layers[2], layers[3], layers[4]));
+        return new DebugLayers(layers[0], layers[1], layers[2], layers[3], layers[4]);
     }
 
     void toggle(Layer layer) {

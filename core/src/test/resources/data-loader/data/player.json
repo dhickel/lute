@@ -1,0 +1,11 @@
+{
+  "name": "Fixture Player",
+  "max_health": 72,
+  "move_speed": 2.5,
+  "loadout": { "weapon": "fixture_blade", "weapon_cycle": ["fixture_bow", "fixture_blade"] },
+  "logical_size": { "width": 62, "height": 63 },
+  "collision": { "shape": "ELLIPSE", "bounds": { "x1": 19, "y1": 3, "x2": 43, "y2": 12 }, "rotation": 6 },
+  "hitbox_bounds": { "x1": 15, "y1": 8, "x2": 46, "y2": 52 },
+  "animation": { "speed": 1.25, "atlas_key": "", "sound_frame": 1, "frame_interval": 0.12 },
+  "sounds": { "move": "step.wav", "damage": "hurt.wav" }
+}

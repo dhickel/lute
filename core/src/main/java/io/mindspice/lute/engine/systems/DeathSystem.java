@@ -48,15 +48,12 @@ public final class DeathSystem extends IteratingSystem {
         if (combat != null) { combat.cancelCombat(entity); }
         var ai = ActorAi.MAPPER.get(entity);
         if (ai != null) { ai.forgetTarget(); }
+        var tiled = getEngine().getSystem(TiledSystem.class);
+        if (tiled != null && tiled.arena() != null) { tiled.arena().actorDied(entity); }
         if (Actor.MAPPER.get(entity).role() == Actor.Role.PLAYER) {
-            var hoard = getEngine().getSystem(HoardSystem.class);
-            if (hoard != null) { hoard.playerDied(entity); }
             var sensors = getEngine().getSystem(MapSensorSystem.class);
             if (sensors != null) { sensors.forgetPlayer(entity); }
-            var tiled = getEngine().getSystem(TiledSystem.class);
             if (tiled != null) { tiled.detachController(entity); }
-        } else if (entity.getComponent(ArenaGuard.class) != null) {
-            getEngine().getSystem(HoardSystem.class).dredgeDied(entity);
         }
         var position = Physic.MAPPER.get(entity).getBody().getPosition();
         pose(entity, position.x, position.y, 0d);

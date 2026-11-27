@@ -112,6 +112,15 @@ tasks.register('hoardArenaTest', JavaExec) {
   jvmArgs '--enable-native-access=ALL-UNNAMED', '--add-exports=java.base/jdk.internal.misc=ALL-UNNAMED'
 }
 
+tasks.register('testAreaTest', JavaExec) {
+  dependsOn testClasses
+  classpath = sourceSets.test.runtimeClasspath
+  mainClass = 'io.mindspice.lute.engine.systems.TestAreaTest'
+  workingDir = rootProject.file('assets')
+  environment 'DISPLAY', System.getenv('DISPLAY') ?: ':0'
+  jvmArgs '--enable-native-access=ALL-UNNAMED', '--add-exports=java.base/jdk.internal.misc=ALL-UNNAMED'
+}
+
 // Each real-map regression needs a specific map, not the developer's current startup selection.
 // The other provisioned assets remain ordinary runtime classpath resources.
 ['hoardArenaTest': 'hoard_mode', 'mapTravelTest': 'test_tiled', 'compositeRenderTest': 'test_tiled',

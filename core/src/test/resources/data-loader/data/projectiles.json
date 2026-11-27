@@ -1,0 +1,9 @@
+{
+  "projectiles": {
+    "iron_arrow": {
+      "atlas_key": "fixture_arrow", "speed": 13, "lifetime": 2.5,
+      "collision": { "shape": "RECT", "bounds": { "x1": 1, "y1": 2, "x2": 7, "y2": 5 }, "rotation": 0 },
+      "arc_height": 0.2, "tip_x": 5, "tip_y": 9, "art_degrees": 90
+    }
+  }
+}

@@ -267,11 +267,11 @@ public class EntityFactory extends EntitySystem {
     private CombatWeapon.Attack createAttack(String id, WeaponsData.WeaponData.AttackData data, WeaponAssets.AttackSounds sounds,
                                              Vector2 anchor, Map<String, Long> requiredFrames) {
         var settings = data.animation();
-        var animation = new Animation2D.Attack(settings.atlasKey(), settings.speed(), settings.frameInterval(),
+        var animation = new Animation2D.Attack(settings.animKey().atlasKey(), settings.speed(), settings.frameInterval(),
             settings.soundFrame(), sounds.attack().id());
         var bounds = data.bounds();
         var attack = new CombatWeapon.Attack(id, data.stats().damage(), data.stats().hitFrame(),
-            data.stats().cooldownSeconds(), animation,
+            data.stats().cooldownSeconds(), settings.animKey(), animation,
             sounds.hit().id(), bounds.type(), new CombatWeapon.Bounds(bounds.x1(), bounds.y1(), bounds.x2(), bounds.y2(),
                 bounds.offsetUp(), bounds.offsetDown(), bounds.offsetLeft(), bounds.offsetRight()),
             data.collisionType());

@@ -29,6 +29,8 @@ import io.mindspice.lute.engine.data.json.CharacterBounds;
 import io.mindspice.lute.engine.data.json.PlayerData;
 import io.mindspice.lute.engine.data.json.DataLoader;
 import io.mindspice.lute.engine.data.json.AnimationData;
+import io.mindspice.lute.engine.data.json.AttackAnimKey;
+import io.mindspice.lute.engine.data.json.WeaponsData.WeaponData.AttackAnimation;
 import io.mindspice.lute.engine.data.json.GameData;
 import io.mindspice.lute.engine.data.json.CollisionData;
 import io.mindspice.lute.engine.data.json.ProjectilesData.Projectile;
@@ -69,6 +71,8 @@ public final class CombatSystemTest {
         interruptedMovementQueue();
         movementAfterBowRelease();
         attackSlotsAndLoadout();
+        specialKeysOnOtherSlots();
+        mixedFixedAndOrdinaryMeleeContacts();
         testWeaponCycle();
         heldBow();
         enemyBow(0f, false);
@@ -773,10 +777,10 @@ public final class CombatSystemTest {
 
     private static void independentAttacksAndGeometry(Actor.Role attacker, Actor.Role victim) {
         var primary = new CombatWeapon.Attack("test", new AttackDamage.Range(15, 20), 0, .375f,
-            new Animation2D.Attack("slash", 1, .125f, 1, "primary"), "hit", BoundsType.RECT,
+            AttackAnimKey.SLASH, new Animation2D.Attack("slash", 1, .125f, 1, "primary"), "hit", BoundsType.RECT,
             new CombatWeapon.Bounds(32, 16, 72, 48, ZERO, ZERO, ZERO, ZERO), CollisionType.MELEE);
         var secondary = new CombatWeapon.Attack("test", new AttackDamage.Range(10, 10), 2, .375f,
-            new Animation2D.Attack("jab", 1, .125f, 3, "secondary"), "hit", BoundsType.TRIANGLE,
+            AttackAnimKey.JAB, new Animation2D.Attack("jab", 1, .125f, 3, "secondary"), "hit", BoundsType.TRIANGLE,
             new CombatWeapon.Bounds(32, 24, 56, 40, ZERO, ZERO, ZERO, ZERO), CollisionType.MELEE);
         for (var input : new InputAction[]{InputAction.ATTACK_PRIMARY, InputAction.ATTACK_SECONDARY}) {
             try (var game = new Harness(1, 0, 0)) {
@@ -815,6 +819,76 @@ public final class CombatSystemTest {
                 check(game.sounds.size() == 1, "Independent cue is not repeated");
                 game.finish();
             }
+        }
+    }
+
+    private static void specialKeysOnOtherSlots() {
+        for (var key : List.of(AttackAnimKey.LUNGE, AttackAnimKey.TWIRL)) {
+            try (var game = new Harness(1, 0, 0); var playback = new FixedTestPlayback(game)) {
+                // An ordinary enemy, no arena system, a non-heavy weapon and the primary slot.
+                game.player.remove(Controller.class);
+                game.player.add(new Actor(Actor.Role.ENEMY, 0, 0));
+                var special = new CombatWeapon.Attack("test_sword", new AttackDamage.Range(23, 23), 2, .75f, key,
+                    new Animation2D.Attack(key.atlasKey(), 1, .125f, 1, "special"), "hit", BoundsType.TRIANGLE,
+                    new CombatWeapon.Bounds(32, 16, 72, 48, ZERO, ZERO, ZERO, ZERO), CollisionType.MELEE);
+                var jab = attack("test_sword", "jab", 1, 0, 0, BoundsType.RECT, CollisionType.MELEE);
+                game.selectWeapon(new CombatWeapon.Weapon("test_sword", "melee/test_sword", special, jab));
+                var target = game.target(2, false).add(new Actor(Actor.Role.PLAYER, 0, 0));
+                game.combat().requestAttack(Combat.AttackSlot.PRIMARY);
+                game.update(0);
+                check(game.combat().getActiveAttack() == special && game.combat().getSensor() == null,
+                    key + " commits its own attack and waits for physics");
+                check(game.combat().isCoolingDown("test_sword", Combat.AttackSlot.PRIMARY)
+                    && !game.combat().isCoolingDown("test_sword", Combat.AttackSlot.SECONDARY), "Only the selected slot cools down");
+                game.update(STEP);
+                check(game.animation().getAction().equals(key.atlasKey()), key + " plays its mapped atlas action");
+                check((game.combat().getSensor() != null) == (key == AttackAnimKey.TWIRL),
+                    "Twirl is live from frame zero; lunge waits for its hit frame");
+                for (int i = 0; i < 12 && game.combat().getSensor() == null; i++) { game.update(STEP); }
+                var sensor = game.combat().getSensor();
+                check(sensor != null && ((PolygonShape) sensor.getShape()).getVertexCount() == 3,
+                    key + " builds its own triangle fixture");
+                game.update(.6f); // Multiple fixed ticks, including cleanup, before the next combat update.
+                check(Health.MAPPER.get(target).getCurrent() == 77, key + " deals its authored damage exactly once outside an arena");
+                near(key == AttackAnimKey.LUNGE ? 48 * GameConsts.UNIT_SCALE : 0, game.body().getPosition().x,
+                    key + " drive distance");
+                check(!game.combat().isAttacking() && game.combat().getSensor() == null && game.body().getLinearVelocity().isZero()
+                    && Facing.MAPPER.get(game.player).getDirection() == Facing.Direction.RIGHT, key + " cleans up and restores facing");
+                game.events.update(0);
+                check(java.util.Collections.frequency(game.sounds, "special") == 1, key + " emits the authored cue once");
+            }
+        }
+    }
+
+    private static void mixedFixedAndOrdinaryMeleeContacts() {
+        try (var game = new Harness(1, 0, 0); var playback = new FixedTestPlayback(game)) {
+            game.player.add(new Actor(Actor.Role.PLAYER, 0, 0));
+            fixture(game.body(), .08f, .08f, new Vector2(1, 1.5f), false);
+            var playerHealth = Health.MAPPER.get(game.player);
+            playerHealth.damage(99);
+
+            var twirl = new CombatWeapon.Attack("test_axe", new AttackDamage.Scalar(10), 0, .375f,
+                AttackAnimKey.TWIRL, new Animation2D.Attack("jab", 1, .125f, 0, "twirl"), "hit", BoundsType.RECT,
+                new CombatWeapon.Bounds(32, 0, 96, 64, ZERO, ZERO, ZERO, ZERO), CollisionType.MELEE);
+            var axe = new CombatWeapon.Weapon("test_axe", "melee/test_axe", twirl, twirl);
+            var enemy = game.target(1, false).add(new Actor(Actor.Role.ENEMY, 0, 0));
+            var enemyHealth = Health.MAPPER.get(enemy);
+            enemyHealth.damage(99);
+            var enemyCombat = new Combat();
+            enemy.add(enemyCombat).add(new Facing(Facing.Direction.LEFT))
+                .add(new Transform(new Vector2(1.7f, 1), 0, new Vector2(2, 2), new Vector2(1, 1), 0, 0))
+                .add(new Animation2D("OBJECTS", "player", Animation2D.AnimationType.IDLE, Animation.PlayMode.LOOP, 1, .125f))
+                .add(new Graphic(new TextureRegion(), Color.WHITE)).add(new AnimationPlayer(enemy))
+                .add(new Loadout(new Loadout.Equipment(null, null, null, null), axe.id(), Map.of(axe.id(), axe), _ -> {}));
+
+            game.attack();
+            enemyCombat.requestAttack(Combat.AttackSlot.PRIMARY);
+            game.update(0);
+            check(enemyCombat.isAttacking() && enemyCombat.getSensor() == null, "Twirl is committed but awaits its fixed tick");
+            game.step(); // Ordinary contact enters the queue first, before the twirl sensor exists.
+            check(enemyHealth.isAlive(), "Normal melee contact is still queued");
+            game.engine.getSystem(PhysicSystem.class).update(STEP); // Append the reciprocal twirl contact, then drain.
+            check(!enemyHealth.isAlive() && playerHealth.isAlive(), "Earlier lethal swing wins over the later fixed-playback contact");
         }
     }
 
@@ -904,6 +978,8 @@ public final class CombatSystemTest {
                 game.body().setAwake(false);
                 game.attack(); game.step();
                 near(100, Health.MAPPER.get(target).getCurrent(), "Contact callback only queues damage");
+                game.engine.getSystem(PhysicSystem.class).update(STEP);
+                near(100, Health.MAPPER.get(target).getCurrent(), "A fixed tick leaves ordinary-only contacts deferred");
                 game.combatSystem.update(0);
                 damageWithin(10, target, "Sleeping owner hits beyond sprite in " + facing);
                 game.step(); game.combatSystem.update(0);
@@ -967,7 +1043,7 @@ public final class CombatSystemTest {
                 var bounds = feetOnly ? new CombatWeapon.Bounds(32, 4, 72, 4.5f, ZERO, ZERO, ZERO, ZERO)
                     : new CombatWeapon.Bounds(32, 24, 72, 56, ZERO, ZERO, ZERO, ZERO);
                 var attack = new CombatWeapon.Attack("test", new AttackDamage.Scalar(10), 0, .375f,
-                    new Animation2D.Attack("slash", 1, .125f, 0, "sound"), "hit", BoundsType.RECT, bounds, CollisionType.MELEE);
+                    AttackAnimKey.SLASH, new Animation2D.Attack("slash", 1, .125f, 0, "sound"), "hit", BoundsType.RECT, bounds, CollisionType.MELEE);
                 game.selectWeapon(new CombatWeapon.Weapon("test", "melee/test", attack, attack));
                 if (!feetOnly) {
                     CharacterFixtures.ellipse(targetBody, standing, true).setUserData(Hurtbox.INSTANCE);
@@ -1085,7 +1161,7 @@ public final class CombatSystemTest {
                 finally { polygon.dispose(); }
             }
             var shifted = new CombatWeapon.Attack(weapon.weaponId(), weapon.damage(), weapon.hitFrame(), weapon.cooldownSeconds(),
-                weapon.animation(), weapon.hitSoundId(), shape,
+                weapon.animKey(), weapon.animation(), weapon.hitSoundId(), shape,
                 new CombatWeapon.Bounds(32, 0, 72, 64, new Offset(-3, 7), new Offset(5, -9),
                     new Offset(-11, -13), new Offset(17, 19)), weapon.collisionType());
             shifted.validateGeometry(anchor);
@@ -1108,7 +1184,7 @@ public final class CombatSystemTest {
             for (var bounds : new CombatWeapon.Bounds[]{new CombatWeapon.Bounds(0, 0, .001f, .001f, ZERO, ZERO, ZERO, ZERO),
                 new CombatWeapon.Bounds(0, 0, 1e24f, 64, ZERO, ZERO, ZERO, ZERO),
                 new CombatWeapon.Bounds(0, 0, 1e15f, 1e15f, ZERO, ZERO, ZERO, ZERO)}) {
-                var unsafe = new CombatWeapon.Attack("bad", new AttackDamage.Scalar(10), 0, .375f, new Animation2D.Attack("slash", 1, .125f, 0, "sound"),
+                var unsafe = new CombatWeapon.Attack("bad", new AttackDamage.Scalar(10), 0, .375f, AttackAnimKey.SLASH, new Animation2D.Attack("slash", 1, .125f, 0, "sound"),
                     "hit", shape, bounds, CollisionType.MELEE);
                 rejects(() -> unsafe.validateGeometry(anchor), "Unsafe geometry");
             }
@@ -1385,7 +1461,7 @@ public final class CombatSystemTest {
     private static AttackData withCues(AttackData attack, int hitFrame, int soundFrame) {
         var animation = attack.animation();
         var stats = attack.stats();
-        return new AttackData(new AnimationData(animation.speed(), animation.atlasKey(), soundFrame, animation.frameInterval()),
+        return new AttackData(new AttackAnimation(animation.speed(), animation.animKey(), soundFrame, animation.frameInterval()),
             attack.bounds(), new Stats(stats.damage(), stats.cost(), hitFrame, stats.cooldownSeconds()), attack.sounds(), attack.collisionType());
     }
 
@@ -1480,6 +1556,7 @@ public final class CombatSystemTest {
                                                         BoundsType shape, CollisionType collisionType, AttackDamage damage) {
         String soundPrefix = "weapon/" + id + (action.equals("jab") ? "/secondary" : "/primary");
         return new CombatWeapon.Attack(id, damage, hit, collisionType == CollisionType.PROJECTILE ? .25f : .375f,
+            AttackAnimKey.valueOf(action.toUpperCase(java.util.Locale.ROOT)),
             new Animation2D.Attack(action, speed, .125f, sound, soundPrefix + "/attack"),
             soundPrefix + "/hit", shape, new CombatWeapon.Bounds(32, 0, 72, 64, ZERO, ZERO, ZERO, ZERO), collisionType);
     }
@@ -1516,6 +1593,33 @@ public final class CombatSystemTest {
         @Override public int getHeight() { return height; }
         @Override public void dispose() { }
     }
+    private static final class FixedTestPlayback implements AutoCloseable {
+        private final TextureAtlas atlas = new TextureAtlas();
+        private final AssetService assets = new AssetService(FileHandle::new) {
+            @Override public <T> T get(Class<T> type, String id) { return type.cast(atlas); }
+        };
+
+        FixedTestPlayback(Harness game) {
+            var canvas = new DimensionTexture(16, 16);
+            for (var direction : Facing.Direction.values()) {
+                for (var action : List.of("idle", "walk", "slash", "jab")) {
+                    for (int i = 0; i < 4; i++) {
+                        atlas.addRegion(game.animation().regionKey(action, direction), canvas, 0, 0, 16, 16).index = i;
+                    }
+                }
+            }
+            // Ashley looks up systems by exact class; fixed playback calls the real system.
+            game.engine.removeSystem(game.engine.getSystem(FakeAnimationSystem.class));
+            game.engine.addSystem(new AnimationSystem(assets));
+            game.update(0);
+        }
+
+        @Override public void close() {
+            assets.dispose();
+            atlas.dispose();
+        }
+    }
+
     private static final class FakeAnimationSystem extends AnimationSystem {
         private static final TextureAtlas ATLAS = new TextureAtlas();
         FakeAnimationSystem() {

@@ -19,7 +19,6 @@ import com.badlogic.gdx.physics.box2d.PolygonShape;
 import com.badlogic.gdx.physics.box2d.World;
 import com.badlogic.gdx.utils.GdxRuntimeException;
 import io.mindspice.lute.engine.assets.Asset;
-import io.mindspice.lute.gameplay.HoardRun;
 import io.mindspice.lute.engine.assets.AssetService;
 import io.mindspice.lute.engine.assets.MapAssets;
 import io.mindspice.lute.engine.components.*;
@@ -48,6 +47,7 @@ public class TiledSystem extends EntitySystem implements EventEmitter {
     private final World physicsWorld;
     private final InputManager inputManager;
     private final boolean assetValidation;
+    private final ArenaSystem arena;
     private final RandomGenerator arenaRandom = RandomGenerator.getDefault();
     private RuntimeMap active;
     // These outlive a map runtime (including hide/show), but not this gameplay session.
@@ -61,11 +61,19 @@ public class TiledSystem extends EntitySystem implements EventEmitter {
     private final Map<String, Map<String, DeathSystem.Corpse>> offMapCorpses = new HashMap<>();
 
     public TiledSystem(AssetService assetService, World physicsWorld, InputManager inputManager, boolean assetValidation) {
+        this(assetService, physicsWorld, inputManager, assetValidation, null);
+    }
+
+    public TiledSystem(AssetService assetService, World physicsWorld, InputManager inputManager,
+                       boolean assetValidation, ArenaSystem arena) {
         this.assetService = assetService;
         this.physicsWorld = physicsWorld;
         this.inputManager = inputManager;
         this.assetValidation = assetValidation;
+        this.arena = arena;
     }
+
+    ArenaSystem arena() { return arena; }
 
     @Override
     public void removedFromEngine(Engine engine) {
@@ -117,7 +125,7 @@ public class TiledSystem extends EntitySystem implements EventEmitter {
             active.entities.add(actor);
             // The body participates in the next fixed tick. Ashley may not publish the entity
             // until PhysicSystem returns; entityAdded ends this map-owned registration window.
-            if (active.arena != null && active.arena.contains(area)) { active.arrivingEnemies.add(actor); }
+            if (active.arena != null && active.arena.enemyAreas().contains(area)) { active.arrivingEnemies.add(actor); }
             getEngine().addEntity(actor);
             return actor;
         }
@@ -304,7 +312,8 @@ public class TiledSystem extends EntitySystem implements EventEmitter {
         if (physicsWorld.isLocked()) { throw new IllegalStateException("Cannot change maps during a physics step"); }
         var triggers = MapTriggers.parse(map);
         var mapId = destination.assets().mapAsset().id();
-        var next = new RuntimeMap(map, destination, triggers, acquired, HoardSystem.arena(mapId, triggers));
+        var rules = arena == null ? null : arena.rulesFor(mapId, triggers);
+        var next = new RuntimeMap(map, destination, triggers, acquired, rules);
         var corpses = active != null && active.entry.assets().mapAsset().id().equals(mapId)
             ? activeCorpses() : offMapCorpses.getOrDefault(mapId, Map.of());
         var death = getEngine().getSystem(DeathSystem.class);
@@ -323,28 +332,28 @@ public class TiledSystem extends EntitySystem implements EventEmitter {
             BiFunction<String, Facing.Direction, Rectangle> enemyFootprint = (key, facing) ->
                 stagedFootprints.computeIfAbsent(new FootprintKey(key, facing),
                     spawn -> factory.enemySpawnFootprint(spawn.spawnKey(), spawn.facing()));
-            for (var area : triggers.areas()) {
-                if (area.type() == MapTriggers.SpawnType.ENEMY && area.behaviorKey() != null) {
-                    var footprints = new HashMap<String, Rectangle>();
-                    footprints.put(area.spawnKey(), enemyFootprint.apply(area.spawnKey(), area.facing()));
-                    if (next.arena != null && next.arena.contains(area)) {
-                        for (var entry : HoardSystem.WAVE_ROSTER) {
-                            footprints.put(entry.key(), enemyFootprint.apply(entry.key(), area.facing()));
-                        }
+            if (rules == null || rules.includeAuthoredEnemyAreas()) {
+                for (var area : triggers.areas()) {
+                    if (area.type() == MapTriggers.SpawnType.ENEMY && area.behaviorKey() != null) {
+                        stageEnemyFootprints(next, area, List.of(), enemyFootprint);
                     }
-                    next.enemyFootprints.put(area, footprints);
+                }
+            }
+            if (rules != null) {
+                for (var area : rules.enemyAreas()) {
+                    stageEnemyFootprints(next, area, rules.extraEnemyKeys(area), enemyFootprint);
                 }
             }
             for (var marker : triggers.points()) {
-                if (next.arena != null && "idle_dredge".equals(marker.behaviorKey())) { continue; }
+                if (rules != null && !rules.spawnPoint(marker)) { continue; }
                 switch (marker.type()) {
                     case NPC, ENEMY -> {
                         var role = marker.type() == MapTriggers.SpawnType.NPC ? Actor.Role.NPC : Actor.Role.ENEMY;
-                        var bounty = next.arena != null && role == Actor.Role.ENEMY
-                            ? HoardSystem.rosterBounty(marker.spawnKey()) : null;
+                        var component = rules != null && role == Actor.Role.ENEMY
+                            ? rules.pointEnemyComponent(marker.spawnKey()) : null;
                         var actor = factory.getMapActor(marker.position(), role, marker.spawnKey(), marker.facing());
                         next.entities.add(actor);
-                        if (bounty != null) { actor.add(bounty); }
+                        if (component != null) { actor.add(component); }
                         // Arena actors belong to this run, including authored point enemies.
                         if (next.arena == null) { next.actorSpawns.put(actor, marker.name()); }
                         var corpse = corpses.get(marker.name());
@@ -354,9 +363,7 @@ public class TiledSystem extends EntitySystem implements EventEmitter {
                     default -> { }
                 }
             }
-            if (assetValidation && next.arena != null) {
-                HoardSystem.validateDelayedSpawns(factory, triggers, next.player, enemyFootprint);
-            }
+            if (assetValidation && rules != null) { rules.validate(factory, next.player, enemyFootprint); }
             next.sensors = getEngine().getSystem(MapSensorSystem.class).prepareMap(triggers);
             return next;
         } catch (RuntimeException | Error failure) {
@@ -367,6 +374,13 @@ public class TiledSystem extends EntitySystem implements EventEmitter {
             for (var body : next.bodies) { physicsWorld.destroyBody(body); }
             throw failure;
         }
+    }
+
+    private static void stageEnemyFootprints(RuntimeMap next, MapTriggers.SpawnArea area, List<String> extraKeys,
+                                             BiFunction<String, Facing.Direction, Rectangle> enemyFootprint) {
+        var footprints = next.enemyFootprints.computeIfAbsent(area, ignored -> new HashMap<>());
+        footprints.put(area.spawnKey(), enemyFootprint.apply(area.spawnKey(), area.facing()));
+        for (var key : extraKeys) { footprints.put(key, enemyFootprint.apply(key, area.facing())); }
     }
 
     private void install(RuntimeMap next) {
@@ -446,8 +460,7 @@ public class TiledSystem extends EntitySystem implements EventEmitter {
     }
 
     private void bindMap(Engine engine, RuntimeMap next) {
-        var hoard = engine.getSystem(HoardSystem.class);
-        if (hoard != null) { hoard.bind(this, next == null ? null : next.arena, arenaRandom); }
+        if (arena != null) { arena.bind(this, next == null ? null : next.arena, arenaRandom); }
         var renderer = engine.getSystem(RenderSystem.class);
         if (renderer != null) { renderer.setMap(next == null ? null : next.map); }
         var camera = engine.getSystem(CameraSystem.class);
@@ -490,8 +503,8 @@ public class TiledSystem extends EntitySystem implements EventEmitter {
             var sessionPlayer = PlayerState.of(player);
             if (runtime.arenaHealth != null) {
                 var loadout = sessionPlayer.loadout().copy();
-                var weaponCycle = HoardSystem.starterWeaponCycle(loadout.getWeapon().id());
-                player.add(runtime.arenaHealth).add(loadout).add(Controller.forArena(weaponCycle));
+                var controller = runtime.arena.setupLoadout(loadout);
+                player.add(runtime.arenaHealth).add(loadout).add(controller);
             }
             var properties = runtime.map.getProperties();
             player.add(new BowAim(properties.get("tilewidth", Integer.class) * GameConsts.UNIT_SCALE,
@@ -610,7 +623,7 @@ public class TiledSystem extends EntitySystem implements EventEmitter {
         final Map<MapTriggers.SpawnArea, Map<String, Rectangle>> enemyFootprints = new IdentityHashMap<>();
         final Map<Entity, String> actorSpawns = new IdentityHashMap<>();
         List<MapSensorSystem.SensorBody> sensors;
-        final List<MapTriggers.SpawnArea> arena;
+        final ArenaSystem.MapRules arena;
         final Health arenaHealth; // Remains available to the HUD after the corpse is removed.
         Entity player;
         PlayerState sessionPlayer;
@@ -618,9 +631,10 @@ public class TiledSystem extends EntitySystem implements EventEmitter {
         @Override public void entityAdded(Entity entity) { arrivingEnemies.remove(entity); }
         @Override public void entityRemoved(Entity entity) { arrivingEnemies.remove(entity); }
 
-        RuntimeMap(TiledMap map, Entry entry, MapTriggers triggers, List<Asset<?>> ownedAssets, List<MapTriggers.SpawnArea> arena) {
+        RuntimeMap(TiledMap map, Entry entry, MapTriggers triggers, List<Asset<?>> ownedAssets,
+                   ArenaSystem.MapRules arena) {
             this.arena = arena;
-            arenaHealth = arena == null ? null : new Health(HoardRun.PLAYER_HEALTH);
+            arenaHealth = arena == null ? null : ArenaSystem.newPlayerHealth();
             this.map = map;
             this.entry = entry;
             this.triggers = triggers;

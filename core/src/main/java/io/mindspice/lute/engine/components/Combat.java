@@ -23,11 +23,13 @@ public class Combat implements Component {
     private Fixture sensor;
     private long sensorCreatedAtStep;
     private long attackId;
+    private final LungeMotion lungeMotion = new LungeMotion();
     private final Set<Entity> hitTargets = Collections.newSetFromMap(new IdentityHashMap<>());
 
     public boolean isAttacking() { return activeAttack != null; }
     public Fixture getSensor() { return sensor; }
     public long getAttackId() { return attackId; }
+    public LungeMotion getLungeMotion() { return lungeMotion; }
 
     public enum AttackSlot { PRIMARY, SECONDARY }
     private record AttackKey(String weaponId, AttackSlot slot) { }
@@ -49,6 +51,7 @@ public class Combat implements Component {
     public Facing.Direction getAttackFacing() { return attackFacing; }
     public void setAttackFacing(Facing.Direction facing) { attackFacing = facing; }
     public CombatWeapon.Attack getActiveAttack() { return activeAttack; }
+    public AttackSlot getActiveSlot() { return activeKey.slot(); }
 
     public void requestAttack(AttackSlot slot) { requestAttack(slot, null); }
 

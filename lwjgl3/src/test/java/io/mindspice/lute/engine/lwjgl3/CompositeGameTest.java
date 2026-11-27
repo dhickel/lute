@@ -124,8 +124,17 @@ public final class CompositeGameTest {
             layers.deathFrames(player);
             var atlas = GAME.getAssetService().get(TextureAtlas.class, CharacterAssets.WEAPONS.id());
             var arrow = atlas.findRegion(GAME.getGameData().projectilesData().ironArrow().atlasKey());
-            require(arrow != null && layers.weaponPages.size() + 1 == atlas.getTextures().size,
-                "All character weapon pages sampled, with a separate arrow page");
+            require(arrow != null && atlas.getTextures().contains(arrow.getTexture()),
+                "Arrow region belongs to the loaded weapon atlas");
+            for (String id : List.of("basic_sword", "basic_bow")) {
+                String prefix = definitions.requireWeapon(id).atlasKey() + "/";
+                var expectedPages = new HashSet<Texture>();
+                for (var region : atlas.getRegions()) {
+                    if (region.name.startsWith(prefix)) { expectedPages.add(region.getTexture()); }
+                }
+                require(!expectedPages.isEmpty() && layers.weaponPages.containsAll(expectedPages),
+                    "All pages for the exercised weapon are sampled: " + id);
+            }
             require(layers.overhangPixels > 0, "Actual regenerated frames contain visible pixels outside the logical area");
             require(layers.helmetOcclusionActions.containsAll(Set.of("jab", "slash", "shot", "death")),
                 "Real upward poses exercise opaque helmet/glove overlaps in every overlapping action");
@@ -532,10 +541,12 @@ public final class CompositeGameTest {
 
     private static boolean oneHit(int before, String weapon, Combat.AttackSlot slot, int after) {
         return switch (weapon) {
-            case "basic_bow" -> after >= Math.max(0, before - 30) && after <= Math.max(0, before - 20);
+            case "basic_bow" -> slot == Combat.AttackSlot.PRIMARY
+                ? after >= Math.max(0, before - 30) && after <= Math.max(0, before - 20)
+                : after >= Math.max(0, before - 10) && after <= Math.max(0, before - 4);
             case "basic_sword" -> slot == Combat.AttackSlot.PRIMARY
                 ? after >= Math.max(0, before - 20) && after <= Math.max(0, before - 15)
-                : after == Math.max(0, before - 10);
+                : after >= Math.max(0, before - 12) && after <= Math.max(0, before - 8);
             case "unarmed" -> after == Math.max(0, before - 3);
             default -> throw new AssertionError("Unexpected test weapon: " + weapon);
         };

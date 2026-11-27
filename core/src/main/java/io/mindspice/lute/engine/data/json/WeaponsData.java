@@ -22,10 +22,12 @@ public record WeaponsData(String atlas, Map<String, WeaponData> weapons) {
             }
             var primary = weapon.attackStats().primary();
             var secondary = weapon.attackStats().secondary();
-            if (!secondary.animation().atlasKey().equals("jab") || secondary.collisionType() != WeaponData.CollisionType.MELEE
-                || (unarmed && (!primary.animation().atlasKey().equals("jab")
-                    || primary.collisionType() != WeaponData.CollisionType.MELEE))) {
-                throw new IllegalArgumentException("Secondary and unarmed attacks must be melee jabs");
+            if (secondary.collisionType() != WeaponData.CollisionType.MELEE) {
+                throw new IllegalArgumentException("Secondary attacks must be melee");
+            }
+            if (unarmed && (primary.animation().animKey() != AttackAnimKey.JAB
+                || secondary.animation().animKey() != AttackAnimKey.JAB)) {
+                throw new IllegalArgumentException("Unarmed attacks must be melee jabs");
             }
         });
     }
@@ -52,7 +54,7 @@ public record WeaponsData(String atlas, Map<String, WeaponData> weapons) {
             }
         }
 
-        public record AttackData(AnimationData animation, Bounds bounds, Stats stats, Sounds sounds,
+        public record AttackData(AttackAnimation animation, Bounds bounds, Stats stats, Sounds sounds,
                                  @JsonProperty("collision_type") CollisionType collisionType) {
             public AttackData {
                 Objects.requireNonNull(sounds, "sounds");
@@ -60,10 +62,20 @@ public record WeaponsData(String atlas, Map<String, WeaponData> weapons) {
                 Objects.requireNonNull(bounds, "bounds");
                 Objects.requireNonNull(stats, "stats");
                 Objects.requireNonNull(collisionType, "collision_type");
-                String action = animation.atlasKey();
-                if (!(action.equals("slash") || action.equals("jab") || action.equals("shot"))
-                    || (action.equals("shot") != (collisionType == CollisionType.PROJECTILE))) {
-                    throw new IllegalArgumentException("Attack action must be melee slash/jab or projectile shot");
+                if ((animation.animKey() == AttackAnimKey.SHOT) != (collisionType == CollisionType.PROJECTILE)) {
+                    throw new IllegalArgumentException("Only shot uses projectile collision");
+                }
+            }
+        }
+
+        public record AttackAnimation(@JsonProperty(value = "speed", required = true) float speed,
+                                      @JsonProperty(value = "anim_key", required = true) AttackAnimKey animKey,
+                                      @JsonProperty(value = "sound_frame", required = true) int soundFrame,
+                                      @JsonProperty(value = "frame_interval", required = true) float frameInterval) {
+            public AttackAnimation {
+                if (!Float.isFinite(speed) || speed <= 0 || animKey == null
+                    || soundFrame < 0 || !Float.isFinite(frameInterval) || frameInterval <= 0) {
+                    throw new IllegalArgumentException("Invalid attack animation speed, anim_key, sound_frame or frame_interval");
                 }
             }
         }

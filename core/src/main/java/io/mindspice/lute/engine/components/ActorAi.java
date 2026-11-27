@@ -24,6 +24,7 @@ public final class ActorAi implements Component {
     private Entity retaliateAgainst;
     private Entity opportunityTarget;
     private CombatWeapon.Weapon opportunityWeapon;
+    private Combat.AttackSlot opportunitySlot;
     private float decisionTimeLeft;
     private float recoveryLeft;
     // Start with a wait so the authored spawn facing is visible.
@@ -45,11 +46,13 @@ public final class ActorAi implements Component {
     public Mode mode() { return mode; }
 
     /** Start the clock only on entry: time before eligibility does not count. */
-    public boolean decisionDue(Entity target, CombatWeapon.Weapon weapon, float delta, DoubleSupplier delaySeconds) {
+    public boolean decisionDue(Entity target, CombatWeapon.Weapon weapon, Combat.AttackSlot slot, float delta,
+                               DoubleSupplier delaySeconds) {
         if (target == null) { clearOpportunity(); return false; }
-        if (target != opportunityTarget || weapon != opportunityWeapon) {
+        if (target != opportunityTarget || weapon != opportunityWeapon || slot != opportunitySlot) {
             opportunityTarget = target;
             opportunityWeapon = weapon;
+            opportunitySlot = slot;
             decisionTimeLeft = (float) delaySeconds.getAsDouble();
         } else {
             decisionTimeLeft -= delta;
@@ -57,7 +60,11 @@ public final class ActorAi implements Component {
         return decisionTimeLeft <= 0f;
     }
 
-    public void clearOpportunity() { opportunityTarget = null; opportunityWeapon = null; }
+    public void clearOpportunity() {
+        opportunityTarget = null;
+        opportunityWeapon = null;
+        opportunitySlot = null;
+    }
 
     public void recover(float seconds) { recoveryLeft = seconds; }
     public void tickRecovery(float delta) { recoveryLeft = Math.max(0f, recoveryLeft - delta); }
