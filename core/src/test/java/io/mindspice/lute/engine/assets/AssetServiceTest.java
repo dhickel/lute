@@ -72,6 +72,7 @@ public final class AssetServiceTest {
             GameConsts.loadSettings();
             assetValues();
             storageWiring(backend.resolver());
+            exactLoadedDefinition(backend);
             for (boolean candidate : new boolean[]{false, true}) {
                 perType = candidate;
                 validation(backend);
@@ -99,6 +100,23 @@ public final class AssetServiceTest {
             Gdx.graphics = graphics;
             Gdx.gl = gl;
             Gdx.gl20 = gl20;
+        }
+    }
+
+    private static void exactLoadedDefinition(Backend backend) {
+        var service = new AssetService(backend.resolver());
+        var asset = Asset.Sound.of("shared", "same.audio");
+        var differentPath = Asset.Sound.of("shared", "different.audio");
+        try {
+            service.queue(asset);
+            check(!service.isDefinitionLoaded(asset), "A pending definition is not complete");
+            service.load(asset);
+            check(service.isDefinitionLoaded(new Asset.Sound(asset.id(), asset.path())), "The loaded definition matches by value");
+            check(!service.isDefinitionLoaded(differentPath), "A conflicting path does not count as loaded");
+            check(!service.isDefinitionLoaded(Asset.Music.of("shared", "same.audio")), "A different type is not loaded");
+            rejectsArgument(() -> service.load(differentPath), "Counting must not hide conflicting paths");
+        } finally {
+            service.dispose();
         }
     }
 

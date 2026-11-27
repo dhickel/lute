@@ -156,6 +156,7 @@ public class TiledSystem extends EntitySystem implements EventEmitter {
         }
     }
 
+    /** Startup has loaded the initial map assets, but still owns them until mounting succeeds. */
     public void beginStartupMount(AssetService.PendingLoads loads) {
         startupMapLoads = loads;
     }
@@ -296,11 +297,10 @@ public class TiledSystem extends EntitySystem implements EventEmitter {
     private RuntimeMap prepare(Entry destination) {
         var acquired = new ArrayList<Asset<?>>();
         try {
-            AudioSystem.validateMapMusic(destination.assets());
-            for (var asset : destination.assets().all()) {
-                if (startupMapLoads != null) {
-                    startupMapLoads.load(asset);
-                } else {
+            // Startup has already validated and loaded these assets in its own transaction.
+            if (startupMapLoads == null) {
+                AudioSystem.validateMapMusic(destination.assets());
+                for (var asset : destination.assets().all()) {
                     if (!assetService.isRegistered(asset)) { acquired.add(asset); }
                     assetService.load(asset);
                 }

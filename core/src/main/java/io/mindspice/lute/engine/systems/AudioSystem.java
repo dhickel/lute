@@ -63,7 +63,7 @@ public class AudioSystem extends EntitySystem implements EventListener {
         return soundVolume;
     }
 
-    static void validateMapMusic(MapAssets map) {
+    public static void validateMapMusic(MapAssets map) {
         String id = map.startMusic();
         if (id == null || (!id.isBlank() && (id.equals("RANDOM") ? map.musicAssets().isEmpty() : !map.musicAssets().containsKey(id)))) {
             throw new GdxRuntimeException("Invalid start_music for map '" + map.mapAsset().id() + "': " + id);

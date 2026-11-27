@@ -124,16 +124,24 @@ public class AssetService implements Disposable {
     private <T> void queueChecked(Asset<T> asset) {
         var table = entriesFor(asset.type());
         var existing = table.get(asset.id());
-        if (existing != null) {
-            if (!existing.definition.path().equals(asset.path())) {
-                throw new IllegalArgumentException("Conflicting asset definition for " + key(asset) + ": '"
-                    + existing.definition.path() + "' versus '" + asset.path() + "'");
-            }
-            return;
-        }
+        validatePath(asset, existing);
+        if (existing != null) { return; }
         var entry = new Entry<>(asset);
         table.put(asset.id(), entry);
         queue.add(entry);
+    }
+
+    /** Checks compatibility with existing registrations without registering or loading anything. */
+    public void validateDefinition(Asset<?> asset) {
+        requireOpen();
+        validatePath(asset, entriesFor(asset.type()).get(asset.id()));
+    }
+
+    private static void validatePath(Asset<?> asset, Entry<?> existing) {
+        if (existing != null && !existing.definition.path().equals(asset.path())) {
+            throw new IllegalArgumentException("Conflicting asset definition for " + key(asset) + ": '"
+                + existing.definition.path() + "' versus '" + asset.path() + "'");
+        }
     }
 
     @SuppressWarnings("unchecked")
@@ -149,6 +157,11 @@ public class AssetService implements Disposable {
 
     public boolean isRegistered(Asset<?> asset) {
         return entriesFor(asset.type()).containsKey(asset.id());
+    }
+
+    public boolean isDefinitionLoaded(Asset<?> asset) {
+        var entry = entriesFor(asset.type()).get(asset.id());
+        return entry != null && entry.value != null && entry.definition.path().equals(asset.path());
     }
 
     public boolean isLoaded(Class<?> type, String id) {

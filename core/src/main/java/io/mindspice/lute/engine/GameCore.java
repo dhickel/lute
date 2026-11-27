@@ -19,6 +19,7 @@ import io.mindspice.lute.engine.assets.ObjectAssets;
 import io.mindspice.lute.engine.data.json.DataLoader;
 import io.mindspice.lute.engine.data.json.GameData;
 import io.mindspice.lute.engine.tiled.ManifestLoader;
+import io.mindspice.lute.engine.systems.AudioSystem;
 import io.mindspice.lute.engine.systems.TiledSystem;
 import io.mindspice.lute.engine.input.InputManager;
 import io.mindspice.lute.engine.input.InputSettings;
@@ -32,8 +33,9 @@ import io.mindspice.lute.gameplay.HoardRun;
 
 import java.util.ArrayList;
 import java.util.Arrays;
+import java.util.HashSet;
 import java.util.Iterator;
-import java.util.List;
+import java.util.LinkedHashMap;
 
 /**
  * {@link com.badlogic.gdx.ApplicationListener} implementation shared by all platforms.
@@ -91,13 +93,28 @@ public class GameCore extends Game {
 
     private void startMap(String mapId) {
         var attempt = new StartupAttempt(mapId);
-        screenManager.loadScreen("InitialLoading", new LoadingScreen(attempt::advance));
+        screenManager.loadScreen("InitialLoading", attempt.screen);
         screenManager.switchScreens("InitialLoading");
+        setInputProcessors(attempt.screen.input(), inputManager);
+    }
+
+    private void returnFromStartupFailure() {
+        menu.launchFailed();
+        screenManager.switchScreens("Menu");
+        screenManager.unloadScreen("InitialLoading");
+    }
+
+    private record AssetKey(Class<?> type, String id) {
+        AssetKey(Asset<?> asset) { this(asset.type(), asset.id()); }
     }
 
     private final class StartupAttempt {
         private final String mapId;
-        private final List<Asset<?>> owned = new ArrayList<>();
+        private final LoadingScreen screen = new LoadingScreen(this::advance,
+            menu == null ? null : GameCore.this::returnFromStartupFailure);
+        private final HashSet<AssetKey> complete = new HashSet<>();
+        private int total;
+        private MapAssets mapAssets;
         private AssetService.PendingLoads sharedLoads;
         private AssetService.PendingLoads mapLoads;
         private Iterator<Asset<?>> pending;
@@ -105,43 +122,65 @@ public class GameCore extends Game {
 
         StartupAttempt(String mapId) { this.mapId = mapId; }
 
-        private void queueSharedAssets() {
+        private void planAssets() {
             if (gameData == null) { gameData = DataLoader.loadGameData(); }
             var assets = new ArrayList<>(CharacterAssets.all(gameData.weaponsData().atlas()));
             assets.add(ObjectAssets.OBJECTS);
             for (String id : gameData.weaponsData().weapons().keySet()) {
                 assets.addAll(WeaponAssets.of(id, gameData.weaponsData()).all());
             }
-            sharedLoads = assetService.preservePendingLoads();
-            var toLoad = new ArrayList<Asset<?>>();
-            for (var asset : assets) {
-                boolean alreadyRegistered = assetService.isRegistered(asset);
-                assetService.queue(asset); // Also validates the path of an existing registration.
-                if (!alreadyRegistered) { owned.add(asset); }
-                if (!assetService.isLoaded(asset.type(), asset.id())) { toLoad.add(asset); }
+            mapAssets = ManifestLoader.parseMapManifest(mapId);
+            var all = new ArrayList<>(assets);
+            all.addAll(mapAssets.all());
+            var definitions = new LinkedHashMap<AssetKey, Asset<?>>();
+            for (var asset : all) {
+                var previous = definitions.putIfAbsent(new AssetKey(asset), asset);
+                if (previous != null && !previous.path().equals(asset.path())) {
+                    throw new IllegalArgumentException("Conflicting asset definition for " + asset.type().getSimpleName()
+                        + "[" + asset.id() + "]: '" + previous.path() + "' versus '" + asset.path() + "'");
+                }
             }
-            pending = toLoad.iterator();
+            definitions.values().forEach(assetService::validateDefinition);
+            total = definitions.size();
+            definitions.forEach((key, asset) -> {
+                if (assetService.isDefinitionLoaded(asset)) { complete.add(key); }
+            });
+            screen.progress(complete.size(), total);
+            sharedLoads = assetService.preservePendingLoads();
+            pending = assets.stream().distinct().filter(asset -> !complete.contains(new AssetKey(asset))).iterator();
+        }
+
+        private void load(AssetService.PendingLoads loads, Asset<?> asset) {
+            loads.load(asset);
+            complete.add(new AssetKey(asset));
+            screen.progress(complete.size(), total);
         }
 
         void advance() {
             try {
-                if (pending == null) { queueSharedAssets(); }
-                if (pending.hasNext()) { sharedLoads.load(pending.next()); }
+                if (pending == null) { planAssets(); }
+                if (pending.hasNext()) { load(sharedLoads, pending.next()); }
                 if (pending.hasNext()) { return; }
+                if (mapLoads == null) {
+                    AudioSystem.validateMapMusic(mapAssets);
+                    mapLoads = assetService.preservePendingLoads();
+                    for (var asset : mapAssets.all()) {
+                        if (!complete.contains(new AssetKey(asset))) { load(mapLoads, asset); }
+                    }
+                    return; // Draw the completed count before attempting to mount gameplay.
+                }
 
-                MapAssets assets = ManifestLoader.parseMapManifest(mapId);
-                session = menu == null ? new GameScreen(assets) : new GameScreen(assets, menu.layers(), GameCore.this::finishRun);
+                session = menu == null ? new GameScreen(mapAssets)
+                    : new GameScreen(mapAssets, menu.layers(), GameCore.this::finishRun);
                 var tiled = engine.getSystem(TiledSystem.class);
-                mapLoads = assetService.preservePendingLoads();
                 tiled.beginStartupMount(mapLoads);
                 screenManager.mountScreen("GameScreen", session);
                 tiled.commitStartupMount();
             } catch (RuntimeException | Error failure) {
                 rollback(failure);
-                if (menu == null || failure instanceof Error) { throw failure; }
                 Gdx.app.error("Startup", "Could not start map " + mapId, failure);
-                menu.launchFailed();
-                screenManager.switchScreens("Menu");
+                if (failure instanceof Error error) { throw error; }
+                screen.fail((RuntimeException) failure);
                 return;
             }
             screenManager.unloadScreen("InitialLoading");
@@ -150,12 +189,13 @@ public class GameCore extends Game {
         private void rollback(Throwable failure) {
             if (session != null) { cleanUp(failure, session::dispose); }
             if (mapLoads != null) { cleanUp(failure, () -> mapLoads.rollback(failure)); }
-            cleanUp(failure, () -> setInputProcessors(inputManager));
-            for (var asset : owned.reversed()) {
-                cleanUp(failure, () -> assetService.unload(asset.type(), asset.id()));
+            if (sharedLoads != null) { cleanUp(failure, () -> sharedLoads.rollback(failure)); }
+            if (failure instanceof Error) {
+                cleanUp(failure, () -> setInputProcessors(inputManager));
+                cleanUp(failure, () -> screenManager.unloadScreen("InitialLoading"));
+            } else {
+                cleanUp(failure, () -> setInputProcessors(screen.input(), inputManager));
             }
-            if (sharedLoads != null) { sharedLoads.rollback(failure); }
-            cleanUp(failure, () -> screenManager.unloadScreen("InitialLoading"));
         }
 
         private void cleanUp(Throwable failure, Runnable cleanup) {

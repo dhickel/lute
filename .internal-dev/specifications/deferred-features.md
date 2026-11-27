@@ -4,7 +4,7 @@ Record accepted capabilities that are intentionally deferred.
 
 ## Startup loading screen backgrounds
 
-A set of background artworks for the startup loading screen is accepted but deferred. A future implementation should cycle through the backgrounds while loading without adding an artificial delay. The current PR keeps the loading screen plain black; it does not implement this feature or add assets. Motion and timing settings remain unapproved and are not specified here.
+A set of background artworks for the startup loading screen is accepted but deferred. A future implementation should cycle through the backgrounds while loading without adding an artificial delay. The current loading screen uses a black background with a progress bar and error display; it does not implement this feature or add artwork. Motion and timing settings remain unapproved and are not specified here.
 
 ## Hoard web alpha
 
