@@ -22,7 +22,7 @@ public final class LightingDataTest {
         "startupMap":"map","mapsPath":"maps/","dataPath":"data/","soundPath":"audio/",
         "musicPath":"audio/","objectPath":"objects/","atlasPath":"atlases/"
         """;
-    private static final String SETTINGS_FIELDS = LEGACY_FIELDS + ",\"enemyInfightingChance\":30,\"debugLayers\":" + DEBUG_LAYERS;
+    private static final String SETTINGS_FIELDS = LEGACY_FIELDS + ",\"debugLayers\":" + DEBUG_LAYERS;
     private static int checks;
 
     public static void main(String[] args) {
@@ -30,21 +30,28 @@ public final class LightingDataTest {
         lightSchema();
         ambientSchema();
         debugLayersSchema();
-        infightingSchema();
+        enemyInfightingSchema();
         System.out.println("LightingDataTest: " + checks + " checks passed");
     }
 
-    private static void infightingSchema() {
-        var field = ",\"enemyInfightingChance\":";
-        var prefix = "{" + SETTINGS_FIELDS.replace(field + "30", "") + ",\"nightAmbient\":" + AMBIENT;
-        rejects(() -> GameConsts.parseSettings(prefix + "}"), "Missing infighting chance");
-        for (var bad : List.of("null", "-1", "101", "30.5", "30.0", "\"30\"", "true", "4294967326")) {
-            rejects(() -> GameConsts.parseSettings(prefix + field + bad + "}"), "Invalid infighting chance: " + bad);
+    private static void enemyInfightingSchema() {
+        String definition = """
+            {"name":"Test","move_speed":1,"max_health":10,"weapon":null,
+             "animation":{"speed":1,"atlas_key":"test","sound_frame":0,"frame_interval":0.1},
+             "sounds":{"move":"step","damage":"hit"},"logical_size":{"width":64,"height":64},
+             "hitbox_bounds":{"x1":1,"y1":1,"x2":20,"y2":20},
+             "detection_bounds":{"radius":64,"shape":"FULL_CIRCLE"},"behavior_graph":"wander_attack",
+             "collision":%s%s}
+            """;
+        var reader = DataLoader.mapper.readerFor(MapActorData.Enemy.class);
+        rejects(() -> reader.readValue(definition.formatted(COLLISION, "")), "Missing infight_chance");
+        for (var bad : List.of("null", "-1", "101", "30.0", "\"30\"", "true", "4294967326")) {
+            rejects(() -> reader.readValue(definition.formatted(COLLISION, ",\"infight_chance\":" + bad)),
+                "Invalid infight_chance: " + bad);
         }
-        rejects(() -> GameConsts.parseSettings(prefix + field + "30" + field + "0}"), "Duplicate infighting chance");
         for (int chance : new int[]{0, 30, 100}) {
-            check(GameConsts.parseSettings(prefix + field + chance + "}").enemyInfightingChance() == chance,
-                "Valid infighting chance " + chance);
+            MapActorData.Enemy enemy = reader.readValue(definition.formatted(COLLISION, ",\"infight_chance\":" + chance));
+            check(enemy.infightChance() == chance, "Valid infight_chance " + chance);
         }
     }
 
@@ -134,7 +141,7 @@ public final class LightingDataTest {
     }
 
     private static void debugLayersSchema() {
-        String prefix = "{" + LEGACY_FIELDS + ",\"enemyInfightingChance\":30,\"nightAmbient\":" + AMBIENT;
+        String prefix = "{" + LEGACY_FIELDS + ",\"nightAmbient\":" + AMBIENT;
         rejects(() -> GameConsts.parseSettings(prefix + "}"), "Missing debugLayers");
         rejects(() -> GameConsts.parseSettings(prefix + ",\"debugLayers\":null,\"debugLayers\":" + DEBUG_LAYERS + "}"),
             "Duplicate debugLayers");

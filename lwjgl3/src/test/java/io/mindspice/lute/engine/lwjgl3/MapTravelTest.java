@@ -614,7 +614,7 @@ public final class MapTravelTest extends ApplicationAdapter {
     private static Enemy withVisionShape(Enemy enemy, Shape shape) {
         return new Enemy(enemy.name(), enemy.moveSpeed(), enemy.maxHealth(), enemy.weapon(), enemy.animation(),
             enemy.sounds(), enemy.logicalSize(), enemy.collision(), enemy.hitboxBounds(),
-            new EnemyDetectionBounds(enemy.detectionRadius(), shape), enemy.behaviorGraph());
+            new EnemyDetectionBounds(enemy.detectionRadius(), shape), enemy.behaviorGraph(), enemy.infightChance());
     }
 
     private void checkVisionOutline(Vector2 feet, float radius, boolean fullCircle) {

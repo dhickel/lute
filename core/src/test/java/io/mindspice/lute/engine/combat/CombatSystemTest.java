@@ -517,7 +517,7 @@ public final class CombatSystemTest {
             var archer = game.player;
             archer.remove(Controller.class);
             var aim = new BowAim(1, 1);
-            archer.add(aim).add(new ActorAi(BehaviorGraphs.ARCHER, 8f));
+            archer.add(aim).add(new ActorAi(BehaviorGraphs.ARCHER, 8f, 0));
             var target = game.target(1, true);
             var body = Physic.MAPPER.get(target).getBody();
             body.setType(BodyDef.BodyType.DynamicBody);

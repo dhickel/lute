@@ -30,13 +30,16 @@ public final class ActorAi implements Component {
     private float wanderTimeLeft = wanderPhaseSeconds();
 
     private final float detectionRadius;
+    private final int infightChance;
 
-    public ActorAi(String behaviorGraphKey, float detectionRadius) {
+    public ActorAi(String behaviorGraphKey, float detectionRadius, int infightChance) {
         this.behaviorGraphKey = behaviorGraphKey;
         this.detectionRadius = detectionRadius;
+        this.infightChance = infightChance;
     }
 
     public float detectionRadius() { return detectionRadius; }
+    public int infightChance() { return infightChance; }
 
     public String behaviorGraphKey() { return behaviorGraphKey; }
     public Mode mode() { return mode; }

@@ -55,10 +55,11 @@
 
 ## Enemy infighting retaliation
 
-- **Decision:** Required top-level game settings integer `enemyInfightingChance` is inclusive 0–100; missing, null, fractional, and out-of-range values fail loading. The normal local authored value is 30, not a fallback.
+- **Decision:** Each enemy definition requires integer `infight_chance` from 0 through 100 inclusive; missing, null, fractional, and out-of-range values fail loading. The victim's value controls retaliation. All nine local enemy definitions use 30 in the ignored raw and generated trees, not as a fallback. Remove the former `enemyInfightingChance` game setting and migrate other checkouts' enemy data before regenerating assets.
+- **Override:** `AwarenessSystem(World, Integer)` takes a construction-time override: null uses the victim's authored value, 0 disables infighting, and 1–100 replaces authored values. The demo separately forces zero.
 - **Behavior:** Positive nonlethal enemy-on-enemy melee or arrow damage gives one chance roll only when the attacker is a valid visible retaliation target within the existing three-times-detection-radius range. Facing does not limit retaliation; solid cover blocks sight. Zero disables retaliation and 100 always succeeds for eligible hits. Damage itself is unchanged, as are player and NPC behaviors. Dredge requires live sight for enemy retaliation; its special player-arrow pursuit remains unchanged.
-- **Justification and tradeoff:** A single authored percentage controls incidental infighting without changing damage or existing player and NPC retaliation.
-- **Affected specifications:** [Composite Characters](composite-characters.md); game settings authoring in `docs/asset-service.md`.
+- **Justification and tradeoff:** Per-enemy authored percentages control incidental infighting without changing damage or existing player and NPC retaliation; a construction-time override supports a session-wide setting without changing assets.
+- **Affected specifications:** [Composite Characters](composite-characters.md); enemy data authoring in `docs/asset-service.md`.
 - **Source:** User-directed enemy infighting threshold.
 - **Review timing:** Revisit if retaliation eligibility or settings change.
 

@@ -179,7 +179,8 @@ public class EntityFactory extends EntitySystem {
             .add(new CompositeCharacter(region.getRegionWidth(), region.getRegionHeight()));
         entity.add(new Health(definition.maxHealth()));
         float detectionRadius = definition.detectionRadius();
-        entity.add(new ActorAi(definition.behaviorGraph(), detectionRadius * GameConsts.UNIT_SCALE));
+        int infightChance = definition instanceof MapActorData.Enemy dataEnemy ? dataEnemy.infightChance() : 0;
+        entity.add(new ActorAi(definition.behaviorGraph(), detectionRadius * GameConsts.UNIT_SCALE, infightChance));
         if (definition instanceof MapActorData.Enemy enemyData
             && enemyData.detectionBounds().shape() == MapActorData.EnemyDetectionBounds.Shape.FULL_CIRCLE) {
             entity.add(new FullCircleVision());
