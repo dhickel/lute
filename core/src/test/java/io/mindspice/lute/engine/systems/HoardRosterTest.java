@@ -32,5 +32,18 @@ public final class HoardRosterTest {
             }
         }
         System.out.println("Hoard roster and ordered tickets passed for rounds 1–35");
+
+        checkStarterCycle("basic_sword", List.of("basic_sword", "basic_bow"));
+        checkStarterCycle("basic_bow", List.of("basic_bow", "basic_sword"));
+        checkStarterCycle("unarmed", List.of("unarmed", "basic_sword", "basic_bow"));
+        checkStarterCycle("Basic_Sword", List.of("Basic_Sword", "basic_sword", "basic_bow"));
+        System.out.println("Hoard starter weapon order and exact-ID deduplication passed");
+    }
+
+    private static void checkStarterCycle(String equippedWeapon, List<String> expected) {
+        var actual = HoardSystem.starterWeaponCycle(equippedWeapon);
+        if (!actual.equals(expected)) {
+            throw new AssertionError("Wrong starter cycle with " + equippedWeapon + ": " + actual + " != " + expected);
+        }
     }
 }

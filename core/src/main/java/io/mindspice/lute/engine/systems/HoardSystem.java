@@ -17,6 +17,7 @@ import com.badlogic.gdx.math.Vector2;
 import io.mindspice.lute.engine.components.*;
 import io.mindspice.lute.engine.singletons.GameConsts;
 import java.util.ArrayList;
+import java.util.LinkedHashSet;
 import java.util.List;
 import java.util.function.BiFunction;
 import java.util.function.Consumer;
@@ -44,6 +45,14 @@ public final class HoardSystem extends EntitySystem implements EventListener {
             for (int i = 0; i < enemy.weight(); i++) { tickets.add(enemy); }
         }
         return tickets;
+    }
+
+    private static final List<String> STARTER_WEAPONS = List.of("basic_sword", "basic_bow");
+
+    static List<String> starterWeaponCycle(String equippedWeapon) {
+        var cycle = new LinkedHashSet<>(List.of(equippedWeapon));
+        cycle.addAll(STARTER_WEAPONS);
+        return List.copyOf(cycle);
     }
 
     private static final String KILL_HEALTH_KEY = "health_pack_1";
@@ -291,7 +300,9 @@ public final class HoardSystem extends EntitySystem implements EventListener {
         // Resolve contacts at this tick's positions, before a lunge ends, a wave spawns or a pickup heals.
         var engine = getEngine();
         var tiled = engine.getSystem(TiledSystem.class);
-        engine.getSystem(CombatSystem.class).resolveArenaStepHits(tiled);
+        var casualties = engine.getSystem(CombatSystem.class).resolveArenaStepHits(tiled::ownsArrivingEnemy);
+        var death = engine.getSystem(DeathSystem.class);
+        for (var victim : casualties) { death.beginContactDeath(victim); }
         if (!run.isGameOver()) {
             tiled.collectPickups();
             run.advance(interval);

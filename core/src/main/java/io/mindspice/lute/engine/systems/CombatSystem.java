@@ -19,6 +19,7 @@ import java.util.ArrayList;
 import java.util.IdentityHashMap;
 import java.util.List;
 import java.util.Map;
+import java.util.function.Predicate;
 
 public class CombatSystem extends IteratingSystem implements ContactListener, EntityListener, EventEmitter {
     private final World world;
@@ -138,24 +139,22 @@ public class CombatSystem extends IteratingSystem implements ContactListener, En
         super.update(deltaTime);
     }
 
-    /** Resolve this unlocked arena tick before pickups and clock advancement. */
-    void resolveArenaStepHits(TiledSystem arena) {
-        if (world.isLocked()) { return; }
-        var killed = applyPendingHits(arena);
-        if (killed.isEmpty()) { return; }
-        var death = getEngine().getSystem(DeathSystem.class);
-        for (var victim : killed) { death.beginContactDeath(victim); }
+    /** Drain this unlocked arena tick and return its casualties in contact order. */
+    List<Entity> resolveArenaStepHits(Predicate<Entity> ownsArrivingEnemy) {
+        if (world.isLocked()) { return List.of(); }
+        return applyPendingHits(ownsArrivingEnemy);
     }
 
-    // Drain in contact order. Only the arena's fixed-tick drain can hit a still-registering enemy.
-    private List<Entity> applyPendingHits(TiledSystem arena) {
+    // Only the arena's fixed-tick drain can hit a still-registering enemy and returns casualties.
+    private List<Entity> applyPendingHits(Predicate<Entity> ownsArrivingEnemy) {
         if (pendingHits.isEmpty()) { return List.of(); }
         var killed = new ArrayList<Entity>();
         var entities = getEngine().getEntities();
         var awareness = getEngine().getSystem(AwarenessSystem.class);
         for (var hit : pendingHits) {
             if (!entities.contains(hit.attacker(), true)) { continue; }
-            if (!entities.contains(hit.target(), true) && (arena == null || !arena.ownsArrivingEnemy(hit.target()))) {
+            if (!entities.contains(hit.target(), true)
+                && (ownsArrivingEnemy == null || !ownsArrivingEnemy.test(hit.target()))) {
                 continue;
             }
             var combat = Combat.MAPPER.get(hit.attacker());
@@ -167,7 +166,7 @@ public class CombatSystem extends IteratingSystem implements ContactListener, En
                 && health != null && health.isAlive() && clearOfDredgeCover(hit) && combat.markHit(hit.target())) {
                 int damage = HealthFeedback.land(hit.target(), health, combat.getActiveAttack().damage(), 1, combat.getAttackFacing());
                 if (!health.isAlive()) {
-                    if (arena != null) { killed.add(hit.target()); }
+                    if (ownsArrivingEnemy != null) { killed.add(hit.target()); }
                     creditKill(hit.attacker(), hit.target());
                 } else if (damage > 0 && awareness != null && Actor.MAPPER.has(hit.attacker())
                     && Actor.MAPPER.get(hit.attacker()).role() != Actor.Role.NPC && Actor.MAPPER.has(hit.target())

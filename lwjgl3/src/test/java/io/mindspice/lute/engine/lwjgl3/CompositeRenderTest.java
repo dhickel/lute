@@ -82,10 +82,9 @@ public final class CompositeRenderTest extends ApplicationAdapter {
         viewport.update(128, 128, true);
         batch = new SpriteBatch();
         output = new FrameBuffer(Pixmap.Format.RGBA8888, 128, 128, false);
-        renderer = new RenderSystem(batch, viewport, camera, assets, new GameConsts.DebugLayers(false, false, false, false, true));
         engine = new Engine();
         engine.addSystem(loadouts);
-        engine.addSystem(renderer);
+        mountRenderer();
         Entity a = character(16, 16, 1);
         engine.addEntity(a);
         for (var direction : Facing.Direction.values()) {
@@ -122,10 +121,14 @@ public final class CompositeRenderTest extends ApplicationAdapter {
         loadouts.equip(a, new Loadout.Equipment("alternate", "alternate", "alternate", "alternate"));
         try (var image = renderFrame()) { pixel(image, 34, 24, alternate(color(2, Facing.Direction.DOWN.ordinal(), 0)), "equipment switch invalidates selection"); }
         loadouts.equip(a, new Loadout.Equipment("basic", "basic", "basic", "basic"));
-        var replacement = atlas(2, true);
-        assets.atlases.put(CharacterAssets.BODY.id(), replacement);
-        try (var image = renderFrame()) { pixel(image, 34, 24, alternate(color(2, Facing.Direction.DOWN.ordinal(), 0)), "atlas identity replacement"); }
-        assets.atlases.put(CharacterAssets.BODY.id(), atlas(2, false));
+        var originalBody = assets.atlases.get(CharacterAssets.BODY.id());
+        unmountRenderer();
+        assets.atlases.put(CharacterAssets.BODY.id(), atlas(2, true));
+        mountRenderer();
+        try (var image = renderFrame()) { pixel(image, 34, 24, alternate(color(2, Facing.Direction.DOWN.ordinal(), 0)), "new renderer uses reloaded body atlas"); }
+        unmountRenderer();
+        assets.atlases.put(CharacterAssets.BODY.id(), originalBody);
+        mountRenderer();
 
         Entity b = character(16, 20, 1);
         Graphic.MAPPER.get(b).getColor().set(0, 1, 0, 1);
@@ -159,6 +162,17 @@ public final class CompositeRenderTest extends ApplicationAdapter {
         renderer.dispose();
         renderer.dispose();
         requireThrows(() -> renderer.update(0), "disposed renderer rejects updates");
+        renderer = null;
+    }
+
+    private void mountRenderer() {
+        renderer = new RenderSystem(batch, viewport, camera, assets, new GameConsts.DebugLayers(false, false, false, false, true));
+        engine.addSystem(renderer);
+    }
+
+    private void unmountRenderer() {
+        engine.removeSystem(renderer);
+        renderer.dispose();
         renderer = null;
     }
 
@@ -403,29 +417,39 @@ public final class CompositeRenderTest extends ApplicationAdapter {
         var previous = assets.atlases.get(CharacterAssets.BODY.id());
         var bad = atlas(2, false);
         bad.getRegions().first().originalWidth = 63;
+        unmountRenderer();
         assets.atlases.put(CharacterAssets.BODY.id(), bad);
+        mountRenderer();
         output.begin();
         int framebuffer = integer(GL20.GL_FRAMEBUFFER_BINDING);
         Gdx.gl.glClearColor(0.1f, 0.2f, 0.3f, 0.4f);
         try {
-            requireThrows(() -> renderer.update(0), "replacement asset is revalidated");
+            requireThrows(() -> renderer.update(0), "new compositor validates its first use of the asset");
             require(integer(GL20.GL_FRAMEBUFFER_BINDING) == framebuffer, "failure restores caller framebuffer");
             var clear = BufferUtils.newFloatBuffer(4);
             Gdx.gl.glGetFloatv(GL20.GL_COLOR_CLEAR_VALUE, clear);
             require(clear.get(0) == 0.1f && clear.get(3) == 0.4f && !batch.isDrawing(), "failure restores clear color and batch");
         } finally {
-            assets.atlases.put(CharacterAssets.BODY.id(), previous);
             output.end();
+            unmountRenderer();
+            assets.atlases.put(CharacterAssets.BODY.id(), previous);
+            mountRenderer();
         }
         try (var image = renderFrame()) { pixel(image, 48, 48, color(5, Facing.Direction.DOWN.ordinal(), 0), "valid atlas restored after rejection"); }
         var original = assets.atlases.get(CharacterAssets.CHARACTER.id());
-        assets.atlases.put(CharacterAssets.CHARACTER.id(), atlas(0, true));
-        try (var image = renderFrame()) { pixel(image, 18, 24, alternate(color(0, Facing.Direction.DOWN.ordinal(), 0)), "base identity replacement invalidates cache"); }
-        assets.atlases.put(CharacterAssets.CHARACTER.id(), original);
         var originalWeapons = assets.atlases.get(CharacterAssets.WEAPONS.id());
+        unmountRenderer();
+        assets.atlases.put(CharacterAssets.CHARACTER.id(), atlas(0, true));
         assets.atlases.put(CharacterAssets.WEAPONS.id(), atlas(5, true));
-        try (var image = renderFrame()) { pixel(image, 48, 48, alternate(color(5, Facing.Direction.DOWN.ordinal(), 0)), "weapon identity replacement invalidates cached pages"); }
+        mountRenderer();
+        try (var image = renderFrame()) {
+            pixel(image, 18, 24, alternate(color(0, Facing.Direction.DOWN.ordinal(), 0)), "new renderer uses reloaded base atlas");
+            pixel(image, 48, 48, alternate(color(5, Facing.Direction.DOWN.ordinal(), 0)), "new renderer uses reloaded weapon atlas");
+        }
+        unmountRenderer();
+        assets.atlases.put(CharacterAssets.CHARACTER.id(), original);
         assets.atlases.put(CharacterAssets.WEAPONS.id(), originalWeapons);
+        mountRenderer();
         // Graphic's old base frame is deliberately stale: only the shared clock selects all source layers.
         require(Graphic.MAPPER.get(a).getRegion() != null, "composite ignores the old fullsprite graphic region");
     }
