@@ -56,7 +56,7 @@ public final class AwarenessSystemTest {
 
     private static void checkSemicircle(World world) {
         var engine = new Engine();
-        var awareness = new AwarenessSystem(world, 0);
+        var awareness = new AwarenessSystem(world, false);
         engine.addSystem(awareness);
         var enemy = actor(engine, world, Actor.Role.ENEMY, 30, 30, .25f, .5f);
         var player = actor(engine, world, Actor.Role.PLAYER, 30, 30);
@@ -95,7 +95,7 @@ public final class AwarenessSystemTest {
 
     private static void checkArcherSight(World world) {
         var engine = new Engine();
-        engine.addSystem(new AwarenessSystem(world, 0));
+        engine.addSystem(new AwarenessSystem(world, false));
         var enemy = actor(engine, world, Actor.Role.ENEMY, 50, 50);
         var player = actor(engine, world, Actor.Role.PLAYER, 53, 50);
         Facing.MAPPER.get(enemy).setDirection(Facing.Direction.RIGHT);
@@ -144,7 +144,7 @@ public final class AwarenessSystemTest {
 
     private static void run(World world) {
         var engine = new Engine();
-        var awareness = new AwarenessSystem(world, 0);
+        var awareness = new AwarenessSystem(world, false);
         engine.addSystem(awareness);
         var enemy = actor(engine, world, Actor.Role.ENEMY, 0, 0);
         var npc = actor(engine, world, Actor.Role.NPC, 2, 0);
@@ -253,13 +253,13 @@ public final class AwarenessSystemTest {
 
     private static void checkInfighting(World world) {
         for (int chance : new int[]{0, 30, 100}) {
-            checkInfighting(world, chance, null);
-            checkInfighting(world, chance, chance == 100 ? 0 : 100);
+            checkInfighting(world, chance, true);
+            checkInfighting(world, chance, false);
         }
     }
 
-    private static void checkInfighting(World world, int authored, Integer override) {
-        int chance = override == null ? authored : override;
+    private static void checkInfighting(World world, int authored, boolean enabled) {
+        int chance = enabled ? authored : 0;
         var engine = new Engine();
         int[] roll = {29};
         int[] draws = {0};
@@ -270,7 +270,7 @@ public final class AwarenessSystemTest {
                 return roll[0];
             }
         };
-        var awareness = new AwarenessSystem(world, override, random);
+        var awareness = new AwarenessSystem(world, enabled, random);
         engine.addSystem(awareness);
         float x = 100 * (chance + 1);
         var victim = actor(engine, world, Actor.Role.ENEMY, x, 0);
@@ -299,7 +299,7 @@ public final class AwarenessSystemTest {
         final Engine engine = new Engine();
         final Projectile type = new Projectile("test", 12, 5,
             new CollisionData(CollisionData.Shape.RECT, new CharacterBounds(0, 0, 1, 2), 0f), 0, 0, 0, 0);
-        final AwarenessSystem awareness = new AwarenessSystem(world, 0);
+        final AwarenessSystem awareness = new AwarenessSystem(world, false);
         final CombatSystem combat = new CombatSystem(world, type);
 
         void run() {

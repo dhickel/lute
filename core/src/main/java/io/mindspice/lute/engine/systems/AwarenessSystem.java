@@ -28,23 +28,19 @@ public final class AwarenessSystem extends IteratingSystem {
     static final Object SENSOR_TAG = new Object();
     private static final Family ACTORS = Family.all(Actor.class, Physic.class).get();
     private final World world;
-    private final Integer infightingOverride;
+    private final boolean infightingEnabled;
     private final RandomGenerator random;
     private final Action stop = Action.stop();
     private final Action followTarget = Action.followTarget();
 
-    /** A null override uses each enemy's authored chance; zero disables infighting for the session. */
-    public AwarenessSystem(World world, Integer infightingOverride) {
-        this(world, infightingOverride, RandomGenerator.getDefault());
+    public AwarenessSystem(World world, boolean infightingEnabled) {
+        this(world, infightingEnabled, RandomGenerator.getDefault());
     }
 
-    AwarenessSystem(World world, Integer infightingOverride, RandomGenerator random) {
+    AwarenessSystem(World world, boolean infightingEnabled, RandomGenerator random) {
         super(ACTORS);
         this.world = world;
-        if (infightingOverride != null && (infightingOverride < 0 || infightingOverride > 100)) {
-            throw new IllegalArgumentException("Infighting override must be from 0 to 100");
-        }
-        this.infightingOverride = infightingOverride;
+        this.infightingEnabled = infightingEnabled;
         this.random = random;
     }
 
@@ -191,8 +187,8 @@ public final class AwarenessSystem extends IteratingSystem {
         var source = Actor.MAPPER.get(shooter);
         boolean enemyHit = source != null && source.role() == Actor.Role.ENEMY
             && Actor.MAPPER.get(victim).role() == Actor.Role.ENEMY;
-        int chance = infightingOverride == null ? ai.infightChance() : infightingOverride;
-        if (enemyHit ? chance == 0 : victim.getComponent(ArenaGuard.class) != null) { return; }
+        int chance = ai.infightChance();
+        if (enemyHit ? !infightingEnabled || chance == 0 : victim.getComponent(ArenaGuard.class) != null) { return; }
         var from = feet(victim);
         var to = retaliationFeet(victim, shooter, from);
         if (to != null && (!enemyHit || random.nextInt(100) < chance)) {
