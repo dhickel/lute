@@ -125,7 +125,7 @@ Collision shapes are `ELLIPSE`, `RECT`, `CIRCLE`, and `TRIANGLE`. Bounds `x1`, `
 
 ### Developer debug launches
 
-The shared IntelliJ `.run` configurations call `:lwjgl3:run`: `Lute Run` passes `-PluteDebugLayers=off` to disable all overlays, while `Lute Debug Run` passes `-PluteDebugLayers=on` to enable physics and trigger overlays with the special lighting views off. Select `Lute Debug Run` and use the IDE Run button for game diagnostics; the IDE Debug button separately enables breakpoints. Without the flag, the authored `debugLayers` settings apply. These launch overrides do not alter asset JSON.
+The shared IntelliJ `.run` configurations call `:lwjgl3:run`: `Lute Run` passes `-PluteDebugLayers=off` to set all overlays off by default, while `Lute Debug Run` passes `-PluteDebugLayers=on` to default physics and trigger overlays on and the special lighting views off. Without the flag, the authored `debugLayers` settings provide the defaults. In menu-started gameplay, explicit persisted Options overrides take precedence over these defaults; direct-map startup bypasses those overrides and follows the launch profile. The raw light map is displayed only at night. Select `Lute Debug Run` and use the IDE Run button for game diagnostics; the IDE Debug button separately enables breakpoints. Launch profiles do not alter asset JSON.
 
 ## Weapon assets and animation timing
 

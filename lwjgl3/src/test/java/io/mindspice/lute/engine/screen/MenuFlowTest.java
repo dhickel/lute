@@ -57,7 +57,13 @@ public final class MenuFlowTest extends ApplicationAdapter {
             .putString("key." + D, "GUI_RIGHT_CLICK").putString("key." + BACKSPACE, "GUI_RIGHT_CLICK")
             .putString("key." + F8, "SCROLL_DOWN").putString("key." + F9, "GUI_LEFT")
             .putString("pad.FACE_WEST", "GUI_TAB").putString("pad.FACE_NORTH", "GUI_LEFT_CLICK").flush();
-        GAME.create();
+        var previousProfile = System.getProperty("luteDebugLayers");
+        System.setProperty("luteDebugLayers", "off");
+        try { GAME.create(); }
+        finally {
+            if (previousProfile == null) { System.clearProperty("luteDebugLayers"); }
+            else { System.setProperty("luteDebugLayers", previousProfile); }
+        }
         try {
             GAME.resize(960, 540);
             GAME.render();
@@ -193,8 +199,11 @@ public final class MenuFlowTest extends ApplicationAdapter {
             for (String profile : List.of("off", "on")) {
                 System.setProperty("luteDebugLayers", profile);
                 boolean on = profile.equals("on");
-                require(restartLayers(file).equals(new GameConsts.DebugLayers(on, on, false, false, false)),
-                    profile + " overrides saved visual options only");
+                require(restartLayers(file).equals(new GameConsts.DebugLayers(true, false, true, true, false)),
+                    "saved options take precedence over the " + profile + " profile");
+                var empty = new FileHandle(temp.resolve("unused-visual-options").toFile());
+                require(restartLayers(empty).equals(new GameConsts.DebugLayers(on, on, false, false,
+                    GameConsts.DEBUG_LAYERS.assetValidation())), profile + " supplies defaults for untouched options");
             }
             System.clearProperty("luteDebugLayers");
             require(restartLayers(file).equals(new GameConsts.DebugLayers(true, false, true, true, false)),
