@@ -21,17 +21,26 @@ import io.mindspice.lute.engine.components.Physic;
 
 import java.util.ArrayList;
 import java.util.List;
+import java.util.random.RandomGenerator;
 
 public final class AwarenessSystem extends IteratingSystem {
     static final Object SENSOR_TAG = new Object();
     private static final Family ACTORS = Family.all(Actor.class, Physic.class).get();
     private final World world;
+    private final int infightingChance;
+    private final RandomGenerator random;
     private final Action stop = Action.stop();
     private final Action followTarget = Action.followTarget();
 
-    public AwarenessSystem(World world) {
+    public AwarenessSystem(World world, int infightingChance) {
+        this(world, infightingChance, RandomGenerator.getDefault());
+    }
+
+    AwarenessSystem(World world, int infightingChance, RandomGenerator random) {
         super(ACTORS);
         this.world = world;
+        this.infightingChance = infightingChance;
+        this.random = random;
     }
 
     @Override
@@ -81,10 +90,18 @@ public final class AwarenessSystem extends IteratingSystem {
     private void updateGuard(Entity actor, ActorAi ai, ArenaGuard guard, FocusState state) {
         var from = feet(actor);
         var attacker = ai.retaliationTarget();
-        if (attacker != null && livingActor(attacker)) {
+        if (attacker != null && livingActor(attacker) && Actor.MAPPER.get(attacker).role() == Actor.Role.PLAYER) {
             state.setTargetOffset(ai.updateTarget(from, feet(attacker), state.deltaTime()));
             if (BehaviorGraphs.attackLocksMovement(actor)) { stop.perform(actor, state); }
             else { followTarget.perform(actor, state); }
+            return;
+        }
+        var enemy = attacker == null ? null : retaliationFeet(actor, attacker, from);
+        if (enemy != null) {
+            state.setVisibleTarget(attacker);
+            state.setTargetOffset(ai.updateTarget(from, enemy, state.deltaTime()));
+            if (BehaviorGraphs.attackLocksMovement(actor)) { stop.perform(actor, state); }
+            else { BehaviorGraphs.pursuit(ActorAi.Mode.ENGAGE).travel(actor, state); }
             return;
         }
         ai.retaliateAgainst(null);
@@ -133,7 +150,9 @@ public final class AwarenessSystem extends IteratingSystem {
     }
 
     void retaliateAfterArrow(Entity victim, Entity shooter) {
-        if (victim.getComponent(ArenaGuard.class) == null) {
+        if (shooter == null) { return; }
+        var source = Actor.MAPPER.get(shooter);
+        if (victim.getComponent(ArenaGuard.class) == null || (source != null && source.role() == Actor.Role.ENEMY)) {
             retaliateAfterDamage(victim, shooter);
             return;
         }
@@ -148,11 +167,14 @@ public final class AwarenessSystem extends IteratingSystem {
 
     void retaliateAfterDamage(Entity victim, Entity shooter) {
         var ai = ActorAi.MAPPER.get(victim);
-        if (ai == null || !livingActor(victim) || Actor.MAPPER.get(victim).role() == Actor.Role.PLAYER) { return; }
-        if (victim.getComponent(ArenaGuard.class) != null) { return; }
+        if (shooter == null || ai == null || !livingActor(victim) || Actor.MAPPER.get(victim).role() == Actor.Role.PLAYER) { return; }
+        var source = Actor.MAPPER.get(shooter);
+        boolean enemyHit = source != null && source.role() == Actor.Role.ENEMY
+            && Actor.MAPPER.get(victim).role() == Actor.Role.ENEMY;
+        if (enemyHit ? infightingChance == 0 : victim.getComponent(ArenaGuard.class) != null) { return; }
         var from = feet(victim);
         var to = retaliationFeet(victim, shooter, from);
-        if (to != null) {
+        if (to != null && (!enemyHit || random.nextInt(100) < infightingChance)) {
             var combat = Combat.MAPPER.get(victim);
             if (combat.requestedTarget() != shooter) { combat.consumeAttackRequest(); }
             ai.retaliateAgainst(shooter);

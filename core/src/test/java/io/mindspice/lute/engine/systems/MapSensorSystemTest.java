@@ -502,7 +502,7 @@ public final class MapSensorSystemTest {
                 @Override public <T> T get(Class<T> type, String id) { return type.cast(atlases.get(id)); }
             };
             game.engine.addSystem(new EntityFactory(game.world, assets));
-            var awareness = new AwarenessSystem(game.world);
+            var awareness = new AwarenessSystem(game.world, 0);
             game.engine.addSystem(awareness);
             var marker = rectangle("SpawnArea1", "SpawnArea", 10, 10, 6, 6);
             var props = marker.getProperties();

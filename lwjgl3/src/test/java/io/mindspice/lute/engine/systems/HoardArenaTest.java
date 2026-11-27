@@ -969,9 +969,18 @@ public final class HoardArenaTest extends ApplicationAdapter {
         var playerBody = Physic.MAPPER.get(player()).getBody();
         var original = playerBody.getPosition().cpy();
         playerBody.setTransform(x - actor.feetX(), y - actor.feetY(), 0);
+        var hurtboxMasks = new java.util.IdentityHashMap<Fixture, Short>();
         for (int i = 0; i < guards.size(); i++) {
             var guard = guards.get(i);
             require(Loadout.MAPPER.get(guard).getWeaponId().equals("black_hammer"), "Dredge volley uses authored hammers");
+            // Isolate the coordinated whiff from collateral hits between these close lanes.
+            for (var fixture : Physic.MAPPER.get(guard).getBody().getFixtureList()) {
+                if (fixture.getUserData() != Hurtbox.INSTANCE) { continue; }
+                var filter = fixture.getFilterData();
+                hurtboxMasks.put(fixture, filter.maskBits);
+                filter.maskBits = 0;
+                fixture.setFilterData(filter);
+            }
             var feet = Actor.MAPPER.get(guard);
             Physic.MAPPER.get(guard).getBody().setTransform(x - feet.feetX() - 1.5f, y - feet.feetY() + (i - 1) * .6f, 0);
         }
@@ -1033,6 +1042,11 @@ public final class HoardArenaTest extends ApplicationAdapter {
             body.setTransform(guard.getComponent(ArenaGuard.class).home(), 0);
             body.setLinearVelocity(0, 0);
         }
+        hurtboxMasks.forEach((fixture, mask) -> {
+            var filter = fixture.getFilterData();
+            filter.maskBits = mask;
+            fixture.setFilterData(filter);
+        });
         playerBody.setTransform(original, 0);
     }
 
