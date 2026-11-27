@@ -551,11 +551,13 @@ public class TiledSystem extends EntitySystem implements EventEmitter {
     }
 
     private void loadTileLayer(RuntimeMap next, TiledMapTileLayer layer) {
+        float cellWidth = layer.getTileWidth() * GameConsts.UNIT_SCALE;
+        float cellHeight = layer.getTileHeight() * GameConsts.UNIT_SCALE;
         for (int y = 0; y < layer.getHeight(); y++) {
             for (int x = 0; x < layer.getWidth(); x++) {
                 var cell = layer.getCell(x, y);
                 if (cell == null || cell.getTile().getObjects().getCount() == 0) { continue; }
-                var body = createStaticBody(next, new Vector2(x, y));
+                var body = createStaticBody(next, new Vector2(x * cellWidth, y * cellHeight));
                 addTileFixtures(body, cell.getTile().getObjects());
             }
         }
