@@ -313,8 +313,9 @@ public class TiledSystem extends EntitySystem implements EventEmitter {
         if (physicsWorld.isLocked()) { throw new IllegalStateException("Cannot change maps during a physics step"); }
         var triggers = MapTriggers.parse(map);
         var mapId = destination.assets().mapAsset().id();
-        var arena = HoardSystem.arena(mapId, triggers);
-        var next = new RuntimeMap(map, destination, triggers, acquired, arena, hammerDemo && arena != null);
+        boolean demo = hammerDemo && "hoard_mode".equals(mapId);
+        var arena = demo ? List.of(HoardSystem.demoCenter(triggers)) : HoardSystem.arena(mapId, triggers);
+        var next = new RuntimeMap(map, destination, triggers, acquired, arena, demo);
         var corpses = active != null && active.entry.assets().mapAsset().id().equals(mapId)
             ? activeCorpses() : offMapCorpses.getOrDefault(mapId, Map.of());
         var death = getEngine().getSystem(DeathSystem.class);
@@ -334,11 +335,11 @@ public class TiledSystem extends EntitySystem implements EventEmitter {
             BiFunction<String, Facing.Direction, Rectangle> enemyFootprint = (key, facing) ->
                 stagedFootprints.computeIfAbsent(new FootprintKey(key, facing),
                     spawn -> factory.enemySpawnFootprint(spawn.spawnKey(), spawn.facing()));
-            for (var area : triggers.areas()) {
-                if (area.type() == MapTriggers.SpawnType.ENEMY && area.behaviorKey() != null) {
+            for (var area : demo ? next.arena : triggers.areas()) {
+                if (area.type() == MapTriggers.SpawnType.ENEMY && (demo || area.behaviorKey() != null)) {
                     var footprints = new HashMap<String, Rectangle>();
                     footprints.put(area.spawnKey(), enemyFootprint.apply(area.spawnKey(), area.facing()));
-                    if (next.arena != null && next.arena.contains(area)) {
+                    if (!demo && next.arena != null && next.arena.contains(area)) {
                         for (var entry : HoardSystem.WAVE_ROSTER) {
                             footprints.put(entry.key(), enemyFootprint.apply(entry.key(), area.facing()));
                         }
@@ -347,7 +348,8 @@ public class TiledSystem extends EntitySystem implements EventEmitter {
                 }
             }
             for (var marker : triggers.points()) {
-                if (next.arena != null && "idle_dredge".equals(marker.behaviorKey())) { continue; }
+                if (next.arena != null && "idle_dredge".equals(marker.behaviorKey())
+                    || demo && marker.type() == MapTriggers.SpawnType.ENEMY) { continue; }
                 switch (marker.type()) {
                     case NPC, ENEMY -> {
                         var role = marker.type() == MapTriggers.SpawnType.NPC ? Actor.Role.NPC : Actor.Role.ENEMY;
@@ -366,7 +368,8 @@ public class TiledSystem extends EntitySystem implements EventEmitter {
                 }
             }
             if (assetValidation && next.arena != null) {
-                HoardSystem.validateDelayedSpawns(factory, triggers, next.player, enemyFootprint);
+                if (demo) { HoardSystem.validateDemoSpawns(factory); }
+                else { HoardSystem.validateDelayedSpawns(factory, triggers, next.player, enemyFootprint); }
             }
             next.sensors = getEngine().getSystem(MapSensorSystem.class).prepareMap(triggers);
             return next;
@@ -504,7 +507,7 @@ public class TiledSystem extends EntitySystem implements EventEmitter {
             var loadout = runtime.sessionPlayer.loadout().copy();
             if (runtime.hammerDemo) { loadout.setWeapon("basic_hammer"); }
             var controller = runtime.hammerDemo
-                ? new Controller(GameCore.INSTANCE.getGameData().weaponsData().weapons().keySet().stream().sorted().toList())
+                ? Controller.forArenaInventory(GameCore.INSTANCE.getGameData().weaponsData().weapons().keySet().stream().sorted().toList())
                 : Controller.forArena(loadout.getWeapon().id());
             player.add(runtime.arenaHealth).add(loadout).add(controller).add(new DredgeLunge());
         }

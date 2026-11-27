@@ -151,7 +151,7 @@ public class GameScreen extends ScreenAdapter {
         sessionSeconds += step;
         renderer.gameplayFrame(physicWorld, ambient, night, sessionSeconds);
         engine.update(step);
-        if (onDeath != null && hoard.isActive() && hoard.run().isGameOver()) {
+        if (onDeath != null && hoard.run() != null && hoard.run().isGameOver()) {
             onDeath.accept(hoard.run()); // Outside engine.update: it is now safe to tear down the world.
             return;
         }

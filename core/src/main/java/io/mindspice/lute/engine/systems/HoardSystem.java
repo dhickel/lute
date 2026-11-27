@@ -49,7 +49,8 @@ public final class HoardSystem extends EntitySystem implements EventListener {
     private static final String KILL_HEALTH_KEY = "health_pack_1";
     private static final String WEAPON_BAG_KEY = "weapon_bag";
     private static final int DREDGE_BASE_XP = 100;
-    private static final int DEMO_UNDEAD_PER_AREA = 25;
+    private static final int DEMO_WAVE_SIZE = 10;
+    private static final double DEMO_WAVE_SECONDS = 15d;
     private static final float SPRINT_MULTIPLIER = 1.6f;
     private static final float SPRINT_RAMP_UP_SECONDS = .25f;
     private static final float SPRINT_RAMP_DOWN_SECONDS = .10f;
@@ -68,7 +69,9 @@ public final class HoardSystem extends EntitySystem implements EventListener {
     private final RandomGenerator roundHealthRandom = RandomGenerator.getDefault();
     private RandomGenerator dropRandom;
     private HoardRun run;
-    private boolean hammerDemo;
+    private MapTriggers.SpawnArea demoCenter;
+    private double demoWaveTime;
+    private boolean demoEnded;
     private final InputManager input;
     private double stamina = 1d;
     private double refillDelay;
@@ -77,13 +80,15 @@ public final class HoardSystem extends EntitySystem implements EventListener {
     private float sprintBoost;
     private final Consumer<Event.Player.KilledEnemy> onKill = event -> {
         // The bus drains on the next update, possibly after named travel or hide/show.
-        if (run == null || run.isGameOver()) { return; }
+        if (!isActive() || isGameOver()) { return; }
         var tiled = getEngine().getSystem(TiledSystem.class);
         var enemy = event.enemy();
         if (event.player() != tiled.activePlayer() || !tiled.owns(enemy)) { return; }
-        var bounty = enemy.getComponent(Bounty.class);
-        if (bounty == null) { return; }
-        run.enemyKilled(bounty.baseXp());
+        if (run != null) {
+            var bounty = enemy.getComponent(Bounty.class);
+            if (bounty == null) { return; }
+            run.enemyKilled(bounty.baseXp());
+        } else if (enemy.getComponent(HoardDemoCombatant.class) == null) { return; }
         if (dropRandom.nextInt(10) == 0) { drop(tiled, feet(enemy), KILL_HEALTH_KEY); }
     };
 
@@ -106,6 +111,11 @@ public final class HoardSystem extends EntitySystem implements EventListener {
         return List.copyOf(areas);
     }
 
+    static MapTriggers.SpawnArea demoCenter(MapTriggers triggers) {
+        return new MapTriggers.SpawnArea(new MapTriggers.SpawnInfo("HammerDemoCenter", MapTriggers.SpawnType.ENEMY),
+            healthArea(triggers).bounds(), null, null, "brainless_undead", Facing.Direction.DOWN);
+    }
+
     private static MapTriggers.SpawnPoint dredgePoint(MapTriggers triggers) {
         var points = triggers.points().stream().filter(p -> "idle_dredge".equals(p.behaviorKey())).toList();
         if (points.size() != 1 || points.getFirst().type() != MapTriggers.SpawnType.ENEMY
@@ -122,6 +132,10 @@ public final class HoardSystem extends EntitySystem implements EventListener {
             throw new IllegalArgumentException("Arena requires one round_health_spawn ITEM ellipse with spawnKey health_pack_2");
         }
         return areas.getFirst();
+    }
+
+    static void validateDemoSpawns(EntityFactory factory) {
+        factory.validatePickupSpawn(KILL_HEALTH_KEY, ObjectData.Kind.HEAL);
     }
 
     static void validateDelayedSpawns(EntityFactory factory, MapTriggers triggers, Entity player,
@@ -144,7 +158,9 @@ public final class HoardSystem extends EntitySystem implements EventListener {
 
     void bind(TiledSystem tiled, List<MapTriggers.SpawnArea> areas, RandomGenerator random,
               MapTriggers triggers, boolean hammerDemo) {
-        this.hammerDemo = false;
+        demoCenter = null;
+        demoWaveTime = 0d;
+        demoEnded = false;
         stamina = 1d;
         refillDelay = 0d;
         exhaustedPress = 0;
@@ -152,8 +168,7 @@ public final class HoardSystem extends EntitySystem implements EventListener {
         if (areas == null) { run = null; return; }
         dropRandom = random;
         if (hammerDemo) {
-            this.hammerDemo = true;
-            startHammerDemo(tiled, areas, random);
+            demoCenter = areas.getFirst();
             run = null;
             return;
         }
@@ -208,18 +223,20 @@ public final class HoardSystem extends EntitySystem implements EventListener {
         }
     }
 
-    private void startHammerDemo(TiledSystem tiled, List<MapTriggers.SpawnArea> areas, RandomGenerator random) {
-        var combatant = new HoardDemoCombatant(tiled.activePlayer());
-        for (var area : areas) {
-            for (int i = 0; i < DEMO_UNDEAD_PER_AREA; i++) {
-                var enemy = tiled.trySpawnAreaEnemy(area, random);
+    private void advanceDemo(TiledSystem tiled, float interval) {
+        demoWaveTime += interval;
+        while (demoWaveTime >= DEMO_WAVE_SECONDS) {
+            demoWaveTime -= DEMO_WAVE_SECONDS;
+            var combatant = new HoardDemoCombatant(tiled.activePlayer());
+            for (int i = 0; i < DEMO_WAVE_SIZE; i++) {
+                var enemy = tiled.trySpawnAreaEnemy(demoCenter, dropRandom);
                 if (enemy != null) { enemy.add(combatant); }
             }
         }
     }
 
     void dredgeDied(Entity enemy) {
-        if (hammerDemo) { return; }
+        if (run == null) { return; }
         var tiled = getEngine().getSystem(TiledSystem.class);
         if (isActive() && tiled.owns(enemy)) { drop(tiled, feet(enemy), WEAPON_BAG_KEY); }
     }
@@ -235,10 +252,19 @@ public final class HoardSystem extends EntitySystem implements EventListener {
     }
 
     void playerDied(Entity player) {
-        if (run != null && getEngine().getSystem(TiledSystem.class).owns(player)) { run.end(); }
+        if (!isActive() || !getEngine().getSystem(TiledSystem.class).owns(player)) { return; }
+        if (run != null) { run.end(); }
+        else { demoEnded = true; }
     }
 
-    public boolean isActive() { return run != null || hammerDemo; }
+    public boolean isActive() { return run != null || demoCenter != null; }
+    private boolean isGameOver() { return run != null ? run.isGameOver() : demoEnded; }
+
+    String demoStatus() {
+        if (demoCenter == null) { return null; }
+        if (demoEnded) { return "Hammer Demo   Game Over"; }
+        return "Hammer Demo   Next wave in " + (int) Math.ceil(DEMO_WAVE_SECONDS - demoWaveTime) + "s";
+    }
     public HoardRun run() { return run; }
 
     double stamina() { return stamina; }
@@ -249,7 +275,7 @@ public final class HoardSystem extends EntitySystem implements EventListener {
     }
 
     long beforeSprintStep(float interval, boolean wasBoosted) {
-        if (run == null || run.isGameOver()) { return 0; }
+        if (!isActive() || isGameOver()) { return 0; }
         var player = getEngine().getSystem(TiledSystem.class).activePlayer();
         if (!Health.MAPPER.get(player).isAlive() || !Controller.MAPPER.has(player)) { return 0; }
         if (CombatSystem.isHammerLunge(player, Combat.MAPPER.get(player))) {
@@ -316,14 +342,15 @@ public final class HoardSystem extends EntitySystem implements EventListener {
 
     // PhysicSystem has committed this tick; fixture queries and new bodies are safe here.
     void afterPhysicsStep(float interval) {
-        if ((run == null && !hammerDemo) || (run != null && run.isGameOver())) { return; }
+        if (!isActive() || isGameOver()) { return; }
         // Resolve contacts at this tick's positions, before a lunge ends, a wave spawns or a pickup heals.
         var engine = getEngine();
         var tiled = engine.getSystem(TiledSystem.class);
         engine.getSystem(CombatSystem.class).resolveArenaStepHits(tiled);
-        if (run == null || !run.isGameOver()) {
+        if (!isGameOver()) {
             tiled.collectPickups();
             if (run != null) { run.advance(interval); }
+            else { advanceDemo(tiled, interval); }
         }
     }
 
@@ -336,6 +363,6 @@ public final class HoardSystem extends EntitySystem implements EventListener {
     public void removedFromEngine(Engine engine) {
         eventUnSubscriber.accept(Event.Player.KilledEnemy.class, onKill);
         run = null;
-        hammerDemo = false;
+        demoCenter = null;
     }
 }

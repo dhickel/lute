@@ -43,6 +43,10 @@ public class Controller implements Component {
         return controller;
     }
 
+    public static Controller forArenaInventory(List<String> weapons) {
+        return new Controller(weapons, true);
+    }
+
     private Controller(List<String> weaponCycle, boolean arena) {
         this.weaponCycle = new ArrayList<>(weaponCycle);
         var actions = new ArrayList<>(List.of(

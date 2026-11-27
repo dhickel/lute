@@ -30,7 +30,8 @@ final class GameplayHud {
         this.white = white;
     }
 
-    void draw(Batch batch, Engine engine, Viewport viewport, Health player, int minute, HoardRun run, double stamina) {
+    void draw(Batch batch, Engine engine, Viewport viewport, Health player, int minute, HoardRun run,
+              String demoStatus, double stamina) {
         batch.setProjectionMatrix(projection.setToOrtho2D(0, 0, viewport.getScreenWidth(), viewport.getScreenHeight()));
         for (var entity : engine.getEntitiesFor(HealthFeedback.FAMILY)) {
             for (var number : HealthFeedback.MAPPER.get(entity).numbers) {
@@ -61,8 +62,8 @@ final class GameplayHud {
             }
         }
         int width = viewport.getScreenWidth(), top = viewport.getScreenHeight();
-        String status = statusText(minute, run);
-        if (run == null) {
+        String status = demoStatus == null ? statusText(minute, run) : demoStatus;
+        if (run == null && demoStatus == null) {
             drawRow(batch, width, top, player, status, false);
         } else {
             drawRow(batch, width, top, null, status, false);

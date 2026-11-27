@@ -6,12 +6,15 @@ import com.badlogic.gdx.Gdx;
 import com.badlogic.gdx.Input;
 import com.badlogic.gdx.backends.lwjgl3.Lwjgl3Application;
 import com.badlogic.gdx.backends.lwjgl3.Lwjgl3ApplicationConfiguration;
+import com.badlogic.gdx.controllers.ControllerMapping;
 import com.badlogic.gdx.controllers.Controllers;
 import com.badlogic.gdx.controllers.ControllerManagerStub;
 import io.mindspice.lute.engine.GameCore;
 import io.mindspice.lute.engine.components.*;
 import io.mindspice.lute.engine.singletons.GameConsts;
 import io.mindspice.lute.engine.tiled.ManifestLoader;
+
+import java.lang.reflect.Proxy;
 
 /** Exercises the isolated demo through the real menu, map, AI, and remount paths. */
 public final class HoardHammerDemoTest extends ApplicationAdapter {
@@ -57,23 +60,29 @@ public final class HoardHammerDemoTest extends ApplicationAdapter {
         require("basic_hammer".equals(Loadout.MAPPER.get(player).getWeaponId()), "demo starts with the hammer equipped");
 
         var actors = engine.getEntitiesFor(Family.all(ActorAi.class).get());
-        int swarm = 100;
-        require(actors.size() == swarm, "exactly 100 enemies spawn: " + actors.size());
+        require(actors.size() == 0 && hoard.stamina() == 1d, "demo starts with no enemies and full stamina");
+        var clock = engine.getSystem(WorldTimeSystem.class);
+        double before = clock.getTotalInGameSeconds();
+        clock.update(1f);
+        require(clock.getTotalInGameSeconds() == before, "demo keeps arena daylight and freezes session time");
+        hoard.afterPhysicsStep(14f);
+        require(actors.size() == 0 && hoard.demoStatus().endsWith("1s"), "no early wave");
+        hoard.afterPhysicsStep(1f);
+        require(actors.size() == 10, "first wave has ten enemies: " + actors.size());
+        var center = HoardSystem.demoCenter(tiled.getMapTriggers()).bounds();
         engine.getSystem(AwarenessSystem.class).update(1f / 30f);
         for (var actor : actors) {
             var demo = actor.getComponent(HoardDemoCombatant.class);
             require(demo != null && demo.player() == player && actor.getComponent(ArenaGuard.class) == null,
                 "only swarm enemies spawn, with the player as their target");
+            require(center.contains(AwarenessSystem.feet(actor)), "enemies spawn in the center zone");
             require(ActorAi.MAPPER.get(actor).mode() == ActorAi.Mode.ENGAGE, "swarm pursues the player");
         }
 
-        var clock = engine.getSystem(WorldTimeSystem.class);
-        double before = clock.getTotalInGameSeconds();
-        clock.update(1f);
-        require(clock.getTotalInGameSeconds() == before, "demo keeps arena daylight and freezes session time");
-        var physics = engine.getSystem(PhysicSystem.class);
-        physics.update(1f);
-        require(hoard.run() == null && actors.size() == swarm, "fixed-step updates do not open scored waves");
+        hoard.afterPhysicsStep(14f);
+        require(actors.size() == 10, "no second wave before 30 seconds");
+        hoard.afterPhysicsStep(1f);
+        require(hoard.run() == null && actors.size() == 20, "second wave adds ten without a scored run");
         boolean swarmAttacked = false;
         for (int i = 0; i < 600 && !swarmAttacked; i++) {
             engine.update(GameConsts.PHYSIC_INTERVAL);
@@ -89,11 +98,43 @@ public final class HoardHammerDemoTest extends ApplicationAdapter {
         require(remountedPlayer != player && remountedPlayer.getComponent(DredgeLunge.class) != null
             && "basic_hammer".equals(Loadout.MAPPER.get(remountedPlayer).getWeaponId()),
             "remount rebuilds the hammer-equipped demo player");
-        require(hoard.isActive() && hoard.run() == null
-            && actors.size() == swarm, "remount rebuilds the swarm without a boss or scored run");
+        require(hoard.isActive() && hoard.run() == null && actors.size() == 0 && hoard.stamina() == 1d,
+            "remount resets the wave timer, entities and stamina");
+        require(hoard.demoStatus().endsWith("15s"), "new instance has a fresh countdown");
+        hoard.afterPhysicsStep(15f);
+        require(actors.size() == 10, "new instance spawns its own wave");
         for (var actor : actors) {
             require(actor.getComponent(HoardDemoCombatant.class).player() == remountedPlayer,
                 "remounted swarm targets the new player entity");
+        }
+
+        var pads = Controllers.getControllers();
+        int unused = ControllerMapping.UNDEFINED;
+        var mapping = new ControllerMapping(0, unused, unused, unused, unused, 7, unused, unused, unused, unused,
+            unused, unused, unused, unused, unused, unused, unused, unused, unused, unused) { };
+        boolean[] held = {false};
+        var padType = com.badlogic.gdx.controllers.Controller.class;
+        var pad = (com.badlogic.gdx.controllers.Controller) Proxy.newProxyInstance(padType.getClassLoader(),
+            new Class<?>[]{padType}, (proxy, method, args) -> switch (method.getName()) {
+                case "getMapping" -> mapping;
+                case "isConnected" -> true;
+                case "getAxis" -> 0f;
+                case "getButton" -> (int) args[0] == 7 && held[0];
+                default -> throw new AssertionError("Unexpected controller call: " + method.getName());
+            });
+        pads.add(pad);
+        try {
+            GAME.getInputManager().updateGamepad();
+            held[0] = true;
+            GAME.getInputManager().updateGamepad();
+            Move.MAPPER.get(remountedPlayer).getDirection().set(1, 1);
+            float dt = GameConsts.PHYSIC_INTERVAL;
+            engine.getSystem(PhysicMoveSystem.class).update(dt);
+            engine.getSystem(PhysicSystem.class).update(dt);
+            require(hoard.stamina() < 1d, "demo controller sprint consumes stamina while moving");
+        } finally {
+            pads.removeValue(pad, true);
+            GAME.getInputManager().updateGamepad();
         }
     }
 
