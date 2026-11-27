@@ -9,6 +9,7 @@ import io.mindspice.lute.engine.data.json.MapActorData.EnemyDetectionBounds.Shap
 import io.mindspice.lute.engine.data.json.WeaponsData.WeaponData;
 import io.mindspice.lute.engine.data.json.WeaponsData.WeaponData.*;
 import io.mindspice.lute.engine.singletons.GameConsts;
+import tools.jackson.core.exc.StreamReadException;
 
 import java.lang.reflect.Proxy;
 import java.nio.file.Files;
@@ -22,6 +23,11 @@ public final class DataLoaderTest {
     public static void main(String[] args) throws Exception {
         var previousFiles = Gdx.files;
         try {
+            if (List.of(args).equals(List.of("--weapons-only"))) {
+                weaponJsonKeys();
+                System.out.println("DataLoaderTest: weapon JSON keys passed");
+                return;
+            }
             useAssets();
             GameConsts.loadSettings();
             if (List.of(args).equals(List.of("--actors-only"))) {
@@ -34,6 +40,7 @@ public final class DataLoaderTest {
                 System.out.println("DataLoaderTest: settings launch modes passed");
                 return;
             }
+            weaponJsonKeys();
             var settings = DataLoader.mapper.readTree(Path.of("assets/game.settings.json").toFile());
             check(GameConsts.VIEW_WIDTH == settings.required("viewWidth").floatValue()
                 && GameConsts.UNIT_SCALE == settings.required("unitScale").floatValue(), "settings constants match authored values");
@@ -69,6 +76,55 @@ public final class DataLoaderTest {
                 "generated projectiles match source");
             System.out.println("DataLoaderTest: passed");
         } finally { Gdx.files = previousFiles; }
+    }
+
+    private static void weaponJsonKeys() throws Exception {
+        String attack = """
+            {
+              "animation": {"atlas_key": "jab", "speed": 1, "frame_interval": 0.1, "sound_frame": 0},
+              "bounds": {"type": "RECT", "x1": 0, "y1": 0, "x2": 8, "y2": 8,
+                "offset_up": {"x": 0, "y": 0}, "offset_down": {"x": 0, "y": 0},
+                "offset_left": {"x": 0, "y": 0}, "offset_right": {"x": 0, "y": 0}},
+              "stats": {"damage": 3, "cost": 0, "hit_frame": 0, "cooldown_seconds": 0.5},
+              "sounds": {"attack": "swing.wav", "hit": "hit.wav"},
+              "collision_type": "MELEE"
+            }
+            """;
+        String weapon = "{\"atlas_key\":\"%s\",\"attack_stats\":{\"primary\":%s,\"secondary\":%s}}";
+        String unarmed = "\"unarmed\":" + weapon.formatted("NONE", attack, attack);
+        String club = "\"club\":" + weapon.formatted("melee/club", attack, attack);
+        String catalog = "{\"atlas\":\"weapons.atlas\",\"weapons\":{%s}}";
+        var fixture = Files.createTempFile("weapon-json-keys", ".json");
+        var previousFiles = Gdx.files;
+        try {
+            useFile(fixture);
+            Files.writeString(fixture, catalog.formatted(unarmed + "," + club));
+            var definitions = DataLoader.parseWeaponData();
+            check(definitions.weapons().size() == 2 && definitions.requireWeapon("unarmed").atlasKey().equals("NONE")
+                && definitions.requireWeapon("club").attackStats().primary().stats().cooldownSeconds() == 0.5f,
+                "Valid synthetic weapon catalog binds both definitions and nested stats");
+
+            Files.writeString(fixture, catalog.formatted(unarmed + "," + club + "," + club));
+            rejectsDuplicateWeaponKey("club");
+
+            String duplicateCost = attack.replace("\"cost\": 0", "\"cost\": 0, \"cost\": 1");
+            Files.writeString(fixture, catalog.formatted(unarmed + ",\"club\":"
+                + weapon.formatted("melee/club", duplicateCost, attack)));
+            rejectsDuplicateWeaponKey("cost");
+        } finally {
+            Gdx.files = previousFiles;
+            Files.delete(fixture);
+        }
+    }
+
+    private static void rejectsDuplicateWeaponKey(String key) {
+        try {
+            DataLoader.parseWeaponData();
+        } catch (StreamReadException e) {
+            check(e.getMessage().contains("Duplicate Object property \"" + key + "\""), e.getMessage());
+            return;
+        }
+        throw new AssertionError("Accepted duplicate weapon JSON key: " + key);
     }
 
     private static void rejectsFractionalCombatData() throws Exception {
