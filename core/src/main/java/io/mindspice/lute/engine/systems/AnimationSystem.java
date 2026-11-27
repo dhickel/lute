@@ -9,6 +9,7 @@ import com.badlogic.gdx.graphics.g2d.TextureRegion;
 import com.badlogic.gdx.utils.Array;
 import com.badlogic.gdx.utils.GdxRuntimeException;
 import io.mindspice.lute.engine.assets.AssetService;
+import io.mindspice.lute.engine.assets.CharacterAssets;
 import io.mindspice.lute.engine.components.Animation2D;
 import io.mindspice.lute.engine.components.BowAim;
 import io.mindspice.lute.engine.components.Combat;
@@ -20,17 +21,16 @@ import io.mindspice.lute.engine.events.EventEmitter;
 
 import java.util.HashMap;
 import java.util.Map;
-import java.util.WeakHashMap;
 
 public class AnimationSystem extends IteratingSystem implements EventEmitter {
     private final AssetService assetService;
-    private final Map<CacheKey, Array<TextureAtlas.AtlasRegion>> animationCache;
-    private final Map<Animation2D, TextureAtlas> currentAtlases = new WeakHashMap<>();
+    private final Map<String, AtlasFrames> characterFrames = new HashMap<>();
+
+    private record AtlasFrames(TextureAtlas atlas, Map<String, Array<TextureAtlas.AtlasRegion>> regions) { }
 
     public AnimationSystem(AssetService assetService) {
         super(Family.all(Animation2D.class, Graphic.class, Facing.class).get());
         this.assetService = assetService;
-        this.animationCache = new HashMap<>();
     }
 
     @Override
@@ -44,22 +44,12 @@ public class AnimationSystem extends IteratingSystem implements EventEmitter {
         Animation2D anim2d = Animation2D.MAPPER.get(entity);
         Facing.Direction fDirection = Facing.MAPPER.get(entity).getDirection();
 
-        TextureAtlas atlas = assetService.get(TextureAtlas.class, anim2d.getAtlasId());
-        animationCache.keySet().removeIf(key
-            -> key.atlasId().equals(anim2d.getAtlasId()) && key.atlas() != atlas
-        );
-
-        TextureAtlas previousAtlas = currentAtlases.get(anim2d);
-        boolean atlasChanged = previousAtlas != atlas;
-        if (previousAtlas != null && atlasChanged) { validateAttackFrames(anim2d, atlas); }
-
         var aim = BowAim.MAPPER.get(entity);
         boolean drawing = aim != null && aim.isAiming();
-        if (anim2d.isDirty() || fDirection != anim2d.getFdirection() || atlasChanged) {
-            boolean turningAttack = !atlasChanged && anim2d.isAttackReady();
+        if (anim2d.isDirty() || fDirection != anim2d.getFdirection()) {
+            boolean turningAttack = anim2d.isAttackReady();
             float previousTime = anim2d.getStateTime();
             updateAnimation(anim2d, fDirection);
-            currentAtlases.put(anim2d, atlas);
             // A new direction changes the pose, not the clock or the attack cues.
             if (turningAttack) { anim2d.setStateTime(previousTime); }
             else { deltaTime = 0f; }
@@ -87,24 +77,6 @@ public class AnimationSystem extends IteratingSystem implements EventEmitter {
         Graphic.MAPPER.get(entity).setRegion(anim.getAnimation().getKeyFrame(stateTime));
     }
 
-    public static void validateAttackFrames(Animation2D anim2d, TextureAtlas atlas) {
-        if (anim2d.getRequiredAttackFrames().isEmpty()) { return; }
-        var reference = atlas.findRegion(anim2d.regionKey("idle", Facing.Direction.RIGHT));
-        if (reference == null) { throw new IllegalArgumentException("Missing character reference canvas"); }
-        for (var requirement : anim2d.getRequiredAttackFrames().entrySet()) {
-            for (var direction : Facing.Direction.values()) {
-                var key = anim2d.regionKey(requirement.getKey(), direction);
-                var frames = atlas.findRegions(key);
-                if (frames.size < requirement.getValue()) {
-                    throw new IllegalArgumentException("Attack animation has too few frames for " + key);
-                }
-                for (var frame : frames) {
-                    validateCanvas(frame, reference.getRegionWidth(), reference.getRegionHeight(), key);
-                }
-            }
-        }
-    }
-
     static void validateCanvas(TextureAtlas.AtlasRegion frame, int width, int height, String key) {
         if (width <= 0 || height <= 0 || frame.rotate || frame.offsetX != 0 || frame.offsetY != 0
             || frame.getRegionWidth() != width || frame.getRegionHeight() != height
@@ -114,36 +86,30 @@ public class AnimationSystem extends IteratingSystem implements EventEmitter {
     }
 
     public void updateAnimation(Animation2D anim2d, Facing.Direction fDir) {
-        TextureAtlas atlas = assetService.get(TextureAtlas.class, anim2d.getAtlasId());
-        String atlasKey = anim2d.getAtlasKey();
-        Animation2D.AnimationType type = anim2d.getType();
-        String action = anim2d.getAction();
-        var cacheKey = new CacheKey(atlas, anim2d.getAtlasId(), atlasKey, action, fDir);
+        String atlasId = anim2d.getAtlasId();
+        var atlas = assetService.get(TextureAtlas.class, atlasId);
+        String key = anim2d.getType() == Animation2D.AnimationType.DEFAULT
+            ? anim2d.getAtlasKey()
+            : anim2d.regionKey(anim2d.getAction(), fDir);
 
-        Array<TextureAtlas.AtlasRegion> frames = animationCache.computeIfAbsent(cacheKey, k -> {
-            String combinedKey = type == Animation2D.AnimationType.DEFAULT
-                ? atlasKey
-                : anim2d.regionKey(action, fDir);
-            Array<TextureAtlas.AtlasRegion> regions = atlas.findRegions(combinedKey);
-
-
-            if (regions.isEmpty()) {
-                throw new GdxRuntimeException("No atlas regions found for key: " + combinedKey);
+        Array<TextureAtlas.AtlasRegion> frames;
+        // Environmental frames belong to their entities, not to a system that survives map travel.
+        if (atlasId.equals(CharacterAssets.CHARACTER.id()) || atlasId.equals(CharacterAssets.ENEMIES.id())) {
+            var cache = characterFrames.get(atlasId);
+            if (cache == null || cache.atlas() != atlas) {
+                cache = new AtlasFrames(atlas, new HashMap<>());
+                characterFrames.put(atlasId, cache);
             }
-            return regions;
-        });
+            frames = cache.regions().computeIfAbsent(key, name -> loadFrames(atlas, name));
+        } else {
+            frames = loadFrames(atlas, key);
+        }
         anim2d.setAnimation(new Animation<>(anim2d.getFrameDuration(), frames), fDir);
     }
 
-
-    public record CacheKey(
-        TextureAtlas atlas,
-        String atlasId,
-        String atlasKey,
-        String action,
-        Facing.Direction fDirection
-    ) {
+    private static Array<TextureAtlas.AtlasRegion> loadFrames(TextureAtlas atlas, String key) {
+        var frames = atlas.findRegions(key);
+        if (frames.isEmpty()) { throw new GdxRuntimeException("No atlas regions found for key: " + key); }
+        return frames;
     }
-
-
 }

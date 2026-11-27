@@ -144,7 +144,9 @@ Space triggers the primary attack: sword slash or bow shot. Shift triggers the s
 
 Attack frames are zero-based. For melee, `stats.hit_frame` starts the hitbox, and animation completion removes it. `animation.sound_frame` emits one attack sound when playback reaches or crosses that frame; frame 0 is immediate at animation start. `animation.speed` scales both timings and the total attack lifetime. Combat owns fixtures and damage; animation owns playback and sound emission.
 
-Player and weapon JSON values are validated on entry. At entity composition, `EntityFactory` validates weapon geometry and both cue frame limits for every facing direction against the loaded atlas. Runtime code trusts these values; animation checks the stored minimum frame count again only when a previously seen atlas is replaced.
+Player and weapon JSON values are validated on entry. At entity composition, `EntityFactory` validates weapon geometry and both cue frame limits for every facing direction against the loaded atlas. It reuses immutable validated weapon catalogues when definition and atlas identities, actor prefix, anchor, and unit scale match; changed inputs are validated again, and failures are not cached. Loadout, combat, and animation state remain per entity.
+
+Animation does not check atlas identity every frame. Shared character frame caches refresh on identity change when installing an animation; environmental frames belong to their entities. The compositor retains its layer cache until disposal. Live atlas replacement under existing consumers is not supported: stop and rebuild the affected entities and renderer before unloading or replacing their assets.
 
 The animation FSM and playback run before combat, which runs before physics. Combat accepts an attack and configures its playback data; the animation starts on the following update. Sound events retain the existing queued dispatch timing. Large updates cannot repeat or skip sound cues, but an update that crosses the entire hitbox interval does not force a physics step or fabricate a hit.
 

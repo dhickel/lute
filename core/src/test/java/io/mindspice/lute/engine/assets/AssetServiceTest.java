@@ -88,7 +88,8 @@ public final class AssetServiceTest {
                 backend.checkAllDisposed();
                 System.out.println("Asset lifecycle contract passed: " + (candidate ? "production per-type" : "original composite"));
             }
-            animationReload(backend);
+            animationReload(backend, CharacterAssets.CHARACTER.id());
+            animationReload(backend, "map-owned-animation");
             loadingScreen(backend);
             audioEvents(backend);
             backend.checkAllDisposed();
@@ -688,12 +689,12 @@ public final class AssetServiceTest {
         return false;
     }
 
-    private static void animationReload(Backend backend) {
+    private static void animationReload(Backend backend, String atlasId) {
         var service = new AssetService(backend.resolver());
-        var definition = Asset.Atlas.of("OBJECTS", "character.atlas");
+        var definition = Asset.Atlas.of(atlasId, "character.atlas");
         var engine = new Engine();
         engine.addSystem(new AnimationSystem(service));
-        var animation = new Animation2D("OBJECTS", "player", Animation2D.AnimationType.IDLE,
+        var animation = new Animation2D(definition.id(), "player", Animation2D.AnimationType.IDLE,
             Animation.PlayMode.LOOP, 1, .125f);
         var graphic = new Graphic(null, Color.WHITE);
         var entity = new Entity().add(animation).add(graphic).add(new Facing(Facing.Direction.DOWN));
@@ -703,24 +704,30 @@ public final class AssetServiceTest {
             engine.update(0);
             var firstAnimation = animation.getAnimation();
             var firstTexture = graphic.getRegion().getTexture();
+            int firstHandle = firstTexture.getTextureObjectHandle();
             engine.update(.01f);
-            check(animation.getAnimation() == firstAnimation, "Unchanged animation must reuse the cache");
-            service.unload(TextureAtlas.class, "OBJECTS");
-            rejectsRuntime(() -> engine.update(0), "An unloaded atlas must not render cached disposed regions");
+            check(animation.getAnimation() == firstAnimation, "Unchanged pose keeps its playback instance");
+            engine.removeEntity(entity);
+            service.unload(TextureAtlas.class, definition.id());
+            check(backend.textureDisposals.getOrDefault(firstHandle, 0) == 1, "Unloading disposes the outgoing frames' texture");
             service.load(definition);
+            var replacement = new Animation2D(definition.id(), "player", Animation2D.AnimationType.IDLE,
+                Animation.PlayMode.LOOP, 1, .125f);
+            var replacementGraphic = new Graphic(null, Color.WHITE);
+            engine.addEntity(new Entity().add(replacement).add(replacementGraphic).add(new Facing(Facing.Direction.DOWN)));
             engine.update(0);
-            check(animation.getAnimation() != firstAnimation, "Reload must refresh an unchanged component's cached animation");
-            check(graphic.getRegion().getTexture() != firstTexture, "Reload must replace disposed atlas regions in Graphic");
-            var slower = new Animation2D("OBJECTS", "player", Animation2D.AnimationType.IDLE,
+            check(replacementGraphic.getRegion().getTexture() != firstTexture,
+                "New animation resolves fresh regions after unloading and reloading a cached atlas ID");
+            var slower = new Animation2D(definition.id(), "player", Animation2D.AnimationType.IDLE,
                 Animation.PlayMode.NORMAL, 1, .25f);
             engine.addEntity(new Entity().add(slower).add(new Graphic(null, Color.WHITE))
                 .add(new Facing(Facing.Direction.DOWN)));
             engine.update(0);
             check(slower.getAnimation().getFrameDuration() == .25f
-                    && animation.getAnimation().getFrameDuration() == .125f,
+                    && replacement.getAnimation().getFrameDuration() == .125f,
                 "Entities must retain their own frame durations for the same atlas key");
-            check(animation.getAnimation() != slower.getAnimation()
-                    && animation.getAnimation().getPlayMode() == Animation.PlayMode.LOOP
+            check(replacement.getAnimation() != slower.getAnimation()
+                    && replacement.getAnimation().getPlayMode() == Animation.PlayMode.LOOP
                     && slower.getAnimation().getPlayMode() == Animation.PlayMode.NORMAL,
                 "Entities must not share mutable play modes");
         } finally {

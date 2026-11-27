@@ -14,6 +14,7 @@ import com.badlogic.gdx.math.Vector2;
 import com.badlogic.gdx.math.Vector3;
 import com.badlogic.gdx.graphics.OrthographicCamera;
 import com.badlogic.gdx.utils.Disposable;
+import io.mindspice.lute.engine.assets.Asset;
 import io.mindspice.lute.engine.assets.AssetService;
 import io.mindspice.lute.engine.assets.CharacterAssets;
 import io.mindspice.lute.engine.components.*;
@@ -24,6 +25,9 @@ import java.util.*;
 /** Isolated premultiplied cells; only completed cells participate in world sorting. */
 public final class CharacterCompositor implements Disposable {
     private static final Set<String> ACTIONS = Set.of("idle", "walk", "death", "slash", "jab", "shot");
+    // The compositor's source layers use shared assets, not map-owned atlases.
+    private static final List<Asset.Atlas> OVERLAYS = List.of(CharacterAssets.FEET, CharacterAssets.BODY,
+        CharacterAssets.HEAD, CharacterAssets.HANDS, CharacterAssets.WEAPONS);
     // Layers: base, feet, body, head, hands, weapon. Helmets cover gloves in every direction;
     // up-facing weapons sit behind the character, while other facings keep weapons in front.
     private static final int[] FRONT = {0, 1, 2, 4, 3, 5};
@@ -34,8 +38,6 @@ public final class CharacterCompositor implements Disposable {
     private final List<Target> targets = new ArrayList<>();
     private final Map<Entity, TextureRegion> completed = new IdentityHashMap<>();
     private final Map<LayerKey, Map<String, TextureRegion[]>> layers = new HashMap<>();
-    private final TextureAtlas[] identities = new TextureAtlas[6];
-    private final Map<String, TextureAtlas> bases = new HashMap<>();
     private final Vector3[] corners = {new Vector3(), new Vector3(), new Vector3(), new Vector3()};
     private final Vector2 rotated = new Vector2();
     private static final float[] CLIP_X = {-1f, 1f, 1f, -1f};
@@ -63,7 +65,6 @@ public final class CharacterCompositor implements Disposable {
         var state = new RenderState(desktop);
         try {
             state.prepare();
-            if (!visible.isEmpty()) { refreshIdentities(visible); }
             int pitchX = 2, pitchY = 2;
             for (var entity : visible) {
                 var canvas = CompositeCharacter.MAPPER.get(entity);
@@ -128,24 +129,6 @@ public final class CharacterCompositor implements Disposable {
         }
     }
 
-    private void refreshIdentities(List<Entity> visible) {
-        var overlays = List.of(CharacterAssets.FEET, CharacterAssets.BODY, CharacterAssets.HEAD,
-            CharacterAssets.HANDS, CharacterAssets.WEAPONS);
-        boolean changed = false;
-        var baseIds = new HashSet<String>();
-        for (var entity : visible) { baseIds.add(Animation2D.MAPPER.get(entity).getAtlasId()); }
-        for (String id : baseIds) {
-            var atlas = assets.get(TextureAtlas.class, id);
-            changed |= bases.put(id, atlas) != atlas;
-        }
-        for (int i = 1; i < identities.length; i++) {
-            var atlas = assets.get(TextureAtlas.class, overlays.get(i - 1).id());
-            changed |= identities[i] != atlas;
-            identities[i] = atlas;
-        }
-        if (changed) { layers.clear(); }
-    }
-
     private TextureRegion[] frames(Entity entity) {
         var animation = Animation2D.MAPPER.get(entity);
         var loadout = Loadout.MAPPER.get(entity);
@@ -171,12 +154,13 @@ public final class CharacterCompositor implements Disposable {
 
     private Map<String, TextureRegion[]> loadLayer(LayerKey key) {
         var result = new HashMap<String, TextureRegion[]>();
+        var base = assets.get(TextureAtlas.class, key.baseId);
+        var atlas = key.layer == 0 ? base : assets.get(TextureAtlas.class, OVERLAYS.get(key.layer - 1).id());
         for (String action : key.actions) {
             for (var direction : Facing.Direction.values()) {
                 String suffix = action + "_" + direction.atlasKey;
                 String name = key.prefix.isEmpty() ? suffix : key.prefix + "/" + suffix;
-                var base = bases.get(key.baseId);
-                var frames = (key.layer == 0 ? base : identities[key.layer]).findRegions(name);
+                var frames = atlas.findRegions(name);
                 var reference = base.findRegions(key.basePrefix.isEmpty() ? suffix : key.basePrefix + "/" + suffix);
                 if (reference.size != 8 || frames.size != reference.size) {
                     throw new IllegalArgumentException("Composite layer frame count mismatch: " + name);
@@ -320,7 +304,6 @@ public final class CharacterCompositor implements Disposable {
             targets.clear();
             completed.clear();
             layers.clear();
-            Arrays.fill(identities, null);
             if (desktop != null) { desktop.dispose(); }
             state.releasedShader(batch.getShader().getHandle());
             batch.dispose();

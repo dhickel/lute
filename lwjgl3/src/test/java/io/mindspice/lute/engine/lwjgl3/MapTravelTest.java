@@ -186,6 +186,9 @@ public final class MapTravelTest extends ApplicationAdapter {
                 "Actor loadouts are fresh rather than session-owned");
             var newNpc = actualActors.first();
             var newEnemy = actualActors.get(1);
+            require(Loadout.MAPPER.get(newNpc).getWeapon() == Loadout.MAPPER.get(oldNpc).getWeapon()
+                && Loadout.MAPPER.get(newEnemy).getWeapon() == Loadout.MAPPER.get(oldEnemy).getWeapon(),
+                "Rebuilt actors retain their validated immutable weapons, not their old loadouts");
             require(body(newNpc) != oldNpcBody && body(newNpc).getFixtureList().size == 3
                 && Health.MAPPER.get(newNpc) != oldNpcHealth && Health.MAPPER.get(newNpc).getCurrent() == npc.maxHealth(),
                 "Map replacement recreates the NPC body, fixtures and health");
