@@ -8,6 +8,7 @@ import com.badlogic.gdx.physics.box2d.PolygonShape;
 import com.badlogic.gdx.physics.box2d.World;
 import com.badlogic.gdx.utils.GdxNativesLoader;
 import io.mindspice.lute.engine.components.CombatWeapon;
+import io.mindspice.lute.engine.data.json.AttackAnimKey;
 import io.mindspice.lute.engine.components.Facing;
 import io.mindspice.lute.engine.data.json.CharacterBounds;
 import io.mindspice.lute.engine.data.json.CollisionData;
@@ -64,7 +65,7 @@ public final class GeometryGoldenTest {
         var b = test.bounds();
         var bounds = new CombatWeapon.Bounds(b[0], b[1], b[2], b[3],
             test.offset("UP"), test.offset("DOWN"), test.offset("LEFT"), test.offset("RIGHT"));
-        var attack = new CombatWeapon.Attack("golden", null, 0, 0, null, null, test.shape(), bounds, CollisionType.MELEE);
+        var attack = new CombatWeapon.Attack("golden", null, 0, 0, AttackAnimKey.SLASH, null, null, test.shape(), bounds, CollisionType.MELEE);
         var anchor = new Vector2(test.size()[0], test.size()[1]).scl(.5f * GameConsts.UNIT_SCALE);
         if (test.verticesPixels() == null) {
             rejectsWelded(() -> attack.validateGeometry(anchor), test.name());

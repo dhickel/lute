@@ -24,11 +24,13 @@ public class Combat implements Component {
     private Fixture sensor;
     private long sensorCreatedAtStep;
     private long attackId;
+    private final LungeMotion lungeMotion = new LungeMotion();
     private final Set<Entity> hitTargets = Collections.newSetFromMap(new IdentityHashMap<>());
 
     public boolean isAttacking() { return attacking; }
     public Fixture getSensor() { return sensor; }
     public long getAttackId() { return attackId; }
+    public LungeMotion getLungeMotion() { return lungeMotion; }
 
     public enum AttackSlot { PRIMARY, SECONDARY }
     private record AttackKey(String weaponId, AttackSlot slot) { }

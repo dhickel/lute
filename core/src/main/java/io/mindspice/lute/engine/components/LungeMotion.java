@@ -1,12 +1,10 @@
 package io.mindspice.lute.engine.components;
 
-import com.badlogic.ashley.core.Component;
 import com.badlogic.gdx.physics.box2d.Body;
 import io.mindspice.lute.engine.singletons.GameConsts;
 
-/** Fixed-step hammer drive for the Hoard player and Dredge guards. Distances are in logical pixels. */
-public final class DredgeLunge implements Component {
-    public static final float COMMIT_RANGE = 80f;
+/** Per-actor drive state for fixed-step lunge playback. */
+public final class LungeMotion {
     private static final float DRIVE_DISTANCE = 48f;
     private long swing = -1;
     private float elapsed;
@@ -29,7 +27,10 @@ public final class DredgeLunge implements Component {
         float frame = animation.getFrameDuration() / animation.getSpeed();
         float window = (float) animation.getPlaybackDuration() - combat.getActiveAttack().hitFrame() * frame;
         float from = Math.min(1f, elapsed / window);
-        float to = Math.min(1f, (elapsed + interval) / window);
+        // The accelerated windup can cross the hit cue between ticks. Finish the drive
+        // on the last live tick even when that leaves a fraction of the nominal window.
+        boolean lastLiveStep = animation.getAnimation().isAnimationFinished(animation.getStateTime() + interval * animation.getSpeed());
+        float to = lastLiveStep ? 1f : Math.min(1f, (elapsed + interval) / window);
         // Integrate the easing over this tick so the full hitbox window covers the configured distance.
         float fraction = (to - from) * (1.4f - .4f * (from + to));
         float speed = DRIVE_DISTANCE * GameConsts.UNIT_SCALE * fraction / interval;
@@ -39,7 +40,7 @@ public final class DredgeLunge implements Component {
             case UP -> body.setLinearVelocity(0, speed);
             case DOWN -> body.setLinearVelocity(0, -speed);
         }
-        elapsed += interval;
+        elapsed = to == 1f ? window : elapsed + interval;
         return from < 1f && to == 1f;
     }
 }

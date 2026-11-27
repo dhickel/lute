@@ -167,7 +167,7 @@ public final class MenuFlowTest extends ApplicationAdapter {
     }
 
     private void remappedBackControls(Preferences prefs, boolean physics) {
-        tap(UP); tap(UP); tap(ENTER); // Key Bindings from Main, past Hammer Demo
+        tap(UP); tap(UP); tap(ENTER); // Key Bindings from Main, past Test Area
         for (int i = 0; i < InputAction.GUI_ENTER.ordinal(); i++) { tap(DOWN); }
         tap(ENTER);
         tap(DOWN); tap(ENTER); tap(ESCAPE); // + Keyboard after F7

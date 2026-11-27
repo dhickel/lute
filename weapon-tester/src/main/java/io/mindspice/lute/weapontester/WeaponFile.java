@@ -76,14 +76,20 @@ final class WeaponFile {
 
     Attack attack(String id, Slot slot) {
         var node = attackNode(id, slot);
-        if (projectile(node) || (slot == Slot.PRIMARY && secondaryOnly(id))) {
-            throw new IllegalArgumentException("Projectile primary has no melee sensor; choose Secondary.");
-        }
         var animation = object(node, "animation");
-        String action = text(animation, "atlas_key");
-        if (!(action.equals("jab") || (slot == Slot.PRIMARY && action.equals("slash")))) {
-            throw new IllegalArgumentException("Unsupported melee animation: " + action);
+        String key = text(animation, "anim_key");
+        boolean projectile = projectile(node);
+        if (key.equals("shot") != projectile) {
+            throw new IllegalArgumentException("Only shot uses PROJECTILE collision.");
         }
+        if (projectile) {
+            throw new IllegalArgumentException("Projectile attacks have no melee sensor; choose a melee attack.");
+        }
+        String action = switch (key) {
+            case "slash", "lunge" -> "slash";
+            case "jab", "twirl" -> "jab";
+            default -> throw new IllegalArgumentException("Unknown attack anim_key: " + key);
+        };
         float speed = number(animation, "speed");
         float interval = number(animation, "frame_interval");
         if (speed <= 0 || interval <= 0) { throw new IllegalArgumentException("Animation timing must be positive."); }

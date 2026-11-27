@@ -112,10 +112,10 @@ tasks.register('hoardArenaTest', JavaExec) {
   jvmArgs '--enable-native-access=ALL-UNNAMED', '--add-exports=java.base/jdk.internal.misc=ALL-UNNAMED'
 }
 
-tasks.register('hoardHammerDemoTest', JavaExec) {
+tasks.register('testAreaTest', JavaExec) {
   dependsOn testClasses
   classpath = sourceSets.test.runtimeClasspath
-  mainClass = 'io.mindspice.lute.engine.systems.HoardHammerDemoTest'
+  mainClass = 'io.mindspice.lute.engine.systems.TestAreaTest'
   workingDir = rootProject.file('assets')
   environment 'DISPLAY', System.getenv('DISPLAY') ?: ':0'
   jvmArgs '--enable-native-access=ALL-UNNAMED', '--add-exports=java.base/jdk.internal.misc=ALL-UNNAMED'

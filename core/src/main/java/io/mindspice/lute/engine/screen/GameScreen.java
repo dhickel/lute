@@ -28,7 +28,7 @@ public class GameScreen extends ScreenAdapter {
     private final MapAssets mapAssets;
     private final TiledSystem tiled;
     private final RenderSystem renderer;
-    private final HoardSystem hoard;
+    private final ArenaSystem arena;
     private final GameConsts.NightAmbient ambient = GameConsts.NIGHT_AMBIENT;
     private final Consumer<HoardRun> onDeath;
     private final KeyListener lightingInput = new KeyListener(32, List.of(InputAction.TOGGLE_NIGHT,
@@ -41,16 +41,17 @@ public class GameScreen extends ScreenAdapter {
     private boolean disposed;
 
 
-    public GameScreen(MapAssets mapAssets) { this(mapAssets, GameConsts.DEBUG_LAYERS, null, false); }
+    public GameScreen(MapAssets mapAssets) { this(mapAssets, GameConsts.DEBUG_LAYERS, null); }
 
     public GameScreen(MapAssets mapAssets, GameConsts.DebugLayers debugLayers,
                       Consumer<HoardRun> onDeath) {
-        this(mapAssets, debugLayers, onDeath, false);
+        this(mapAssets, debugLayers, onDeath, new HoardSystem(GameCore.INSTANCE.getInputManager()));
     }
 
     public GameScreen(MapAssets mapAssets, GameConsts.DebugLayers debugLayers,
-                      Consumer<HoardRun> onDeath, boolean hammerDemo) {
+                      Consumer<HoardRun> onDeath, ArenaSystem arena) {
         this.onDeath = onDeath;
+        this.arena = arena;
         this.game = GameCore.INSTANCE;
         this.inputManager = this.game.getInputManager();
         this.engine = this.game.getEngine();
@@ -60,14 +61,13 @@ public class GameScreen extends ScreenAdapter {
         this.physicWorld.setAutoClearForces(false);
 
         try {
-            addSystem(new WorldTimeSystem(GameConsts.DAY_LENGTH_MINUTES));
+            addSystem(new WorldTimeSystem(GameConsts.DAY_LENGTH_MINUTES, arena::isActive));
             addSystem(new EventSystem());
-            hoard = new HoardSystem(inputManager);
-            addSystem(hoard);
+            addSystem(arena);
             addSystem(new AttackCooldownSystem());
             addSystem(new ControllerSystem());
             // Read the last completed physics/teleport snapshot before resolving movement and animation.
-            addSystem(new AwarenessSystem(physicWorld, !hammerDemo));
+            addSystem(arena.createAwareness(physicWorld));
             addSystem(new FacingSystem());
             addSystem(new AnimationPlayerSystem());
             addSystem(new AnimationSystem(this.game.getAssetService()));
@@ -76,13 +76,13 @@ public class GameScreen extends ScreenAdapter {
             addSystem(new LoadoutSystem());
             addSystem(new MapSensorSystem(physicWorld));
             addSystem(new PhysicMoveSystem());
-            addSystem(new PhysicSystem(physicWorld, GameConsts.PHYSIC_INTERVAL));
+            addSystem(new PhysicSystem(physicWorld, GameConsts.PHYSIC_INTERVAL, arena));
             addSystem(new AudioSystem(game.getAssetService()));
             addSystem(new CameraSystem(game.getCamera()));
             renderer = new RenderSystem(game.getBatch(), game.getViewport(), game.getCamera(), game.getAssetService(), debugLayers);
             addSystem(renderer);
             addSystem(new EntityFactory(physicWorld, game.getAssetService()));
-            tiled = new TiledSystem(game.getAssetService(), physicWorld, inputManager, debugLayers.assetValidation(), hammerDemo);
+            tiled = new TiledSystem(game.getAssetService(), physicWorld, inputManager, debugLayers.assetValidation(), arena);
             addSystem(tiled);
             if (debugLayers.physics()) { addSystem(new PhysicDebugRenderSystem(physicWorld, game.getCamera())); }
             if (debugLayers.triggers()) { addSystem(new TriggerDebugRenderSystem(physicWorld, game.getCamera())); }
@@ -123,7 +123,7 @@ public class GameScreen extends ScreenAdapter {
         if (!visible || paused) { return; }
         inputManager.unRegKeyListener(lightingInput);
         paused = true;
-        hoard.clearSprintMomentum();
+        arena.clearSprintMomentum();
         inputManager.releaseHeldInputs();
         engine.getSystem(ControllerSystem.class).update(0f);
     }
@@ -145,13 +145,13 @@ public class GameScreen extends ScreenAdapter {
         lightingInput.getQueue().consumePreviousContext((action, state) -> { });
         lightingInput.consume((action, state) -> {
             if (state == 1) { game.windowAction(action); }
-            if (action == InputAction.TOGGLE_NIGHT && state == 1 && !hoard.isActive()) { night = !night; }
+            if (action == InputAction.TOGGLE_NIGHT && state == 1 && !arena.isActive()) { night = !night; }
         });
         float step = delta > 0f ? Math.min(delta, 1 / 30f) : 0f;
         sessionSeconds += step;
         renderer.gameplayFrame(physicWorld, ambient, night, sessionSeconds);
         engine.update(step);
-        if (onDeath != null && hoard.run() != null && hoard.run().isGameOver()) {
+        if (onDeath != null && arena instanceof HoardSystem hoard && hoard.run() != null && hoard.run().isGameOver()) {
             onDeath.accept(hoard.run()); // Outside engine.update: it is now safe to tear down the world.
             return;
         }

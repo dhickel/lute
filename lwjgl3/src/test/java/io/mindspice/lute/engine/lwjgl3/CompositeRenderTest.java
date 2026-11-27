@@ -1,5 +1,6 @@
 package io.mindspice.lute.engine.lwjgl3;
 
+import io.mindspice.lute.engine.data.json.AttackAnimKey;
 import io.mindspice.lute.engine.data.json.AttackDamage.Scalar;
 
 import com.badlogic.ashley.core.*;
@@ -656,7 +657,8 @@ public final class CompositeRenderTest extends ApplicationAdapter {
     }
     private static CombatWeapon.Attack attack(String id, String action) {
         var zero = new Offset(0, 0);
-        return new CombatWeapon.Attack(id, new Scalar(1), 0, .375f, new Animation2D.Attack(action, 1, 0.1f, 0, ""), "",
+        return new CombatWeapon.Attack(id, new Scalar(1), 0, .375f, AttackAnimKey.valueOf(action.toUpperCase(java.util.Locale.ROOT)),
+            new Animation2D.Attack(action, 1, 0.1f, 0, ""), "",
             BoundsType.RECT, new CombatWeapon.Bounds(0, 0, 1, 1, zero, zero, zero, zero), CollisionType.MELEE);
     }
     private static int color(int layer, int direction, int frame) {

@@ -1,5 +1,6 @@
 package io.mindspice.lute.engine.systems;
 
+import io.mindspice.lute.engine.data.json.AttackAnimKey;
 import io.mindspice.lute.engine.data.json.AttackDamage.Scalar;
 
 import com.badlogic.ashley.core.Engine;
@@ -313,7 +314,7 @@ public final class MapSensorSystemTest {
             var player = game.entity(2, 4, true, false, 1);
             var target = game.entity(3.2f, 4.75f, false, false, 2);
             var attack = new CombatWeapon.Attack("test", new Scalar(10), 0, .375f,
-                new Animation2D.Attack("jab", 1, .125f, 0, "attack"), "hit", BoundsType.RECT,
+                AttackAnimKey.JAB, new Animation2D.Attack("jab", 1, .125f, 0, "attack"), "hit", BoundsType.RECT,
                 new CombatWeapon.Bounds(pixels(1), 0, pixels(3), pixels(2),
                     new Offset(0, 0), new Offset(0, 0), new Offset(0, 0), new Offset(0, 0)),
                 io.mindspice.lute.engine.data.json.WeaponsData.WeaponData.CollisionType.MELEE);

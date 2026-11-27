@@ -27,7 +27,7 @@ public final class MenuScreen extends InputAdapter implements Screen {
     private final GameCore game;
     private final InputManager input;
     private final Runnable start;
-    private final Runnable startDemo;
+    private final Runnable startTestArea;
     private final MenuSettings settings;
     private final HoardScores scores;
     private final FitViewport viewport = new FitViewport(WIDTH, HEIGHT);
@@ -44,11 +44,11 @@ public final class MenuScreen extends InputAdapter implements Screen {
     private HoardScores.Result result;
     private List<HoardScores.Result> board = List.of();
 
-    public MenuScreen(GameCore game, InputMap map, Runnable start, Runnable startDemo) {
+    public MenuScreen(GameCore game, InputMap map, Runnable start, Runnable startTestArea) {
         this.game = game;
         this.input = game.getInputManager();
         this.start = start;
-        this.startDemo = startDemo;
+        this.startTestArea = startTestArea;
         settings = new MenuSettings(Gdx.app.getPreferences("lute-controls-v1"), map, GameConsts.DEBUG_LAYERS);
         scores = new HoardScores(Gdx.app.getPreferences("lute-hoard-scores-v1"));
         background = new Texture(Gdx.files.internal("images/menu/mainmenubg.jpg"));
@@ -95,7 +95,7 @@ public final class MenuScreen extends InputAdapter implements Screen {
                 row("Hoard", () -> open(Page.NAME));
                 row("Options", () -> open(Page.OPTIONS));
                 row("Key Bindings", this::openBindings);
-                row("Hoard Hammer Demo", startDemo);
+                row("Test Area", startTestArea);
             }
             case OPTIONS -> {
                 title = "Options";

@@ -51,6 +51,11 @@ public final class DataLoaderTest {
             var definitions = DataLoader.parseWeaponData();
             playerSchema(player, definitions);
             characterBoundsSchema(player);
+            attackKeys(definitions);
+            if (List.of(args).contains("--attack-keys")) {
+                System.out.println("DataLoaderTest: attack keys passed");
+                return;
+            }
             weaponSchema(definitions);
             rejectsFractionalCombatData();
             projectileSchema();
@@ -160,7 +165,7 @@ public final class DataLoaderTest {
             """;
         String npc = "{\"name\":\"Town Guard\"," + common + ",\"behavior_graph\":\"wander\",\"loadout\":{\"body\":\"basic\",\"weapon\":\"basic_bow\"}}";
         String enemy = "{\"name\":\"Undead Guard\"," + common.replace("72}", "192.5, \"shape\": \"FORWARD_SEMICIRCLE\"}")
-            + ",\"behavior_graph\":\"wander_attack\",\"weapon\":\"basic_sword\"}";
+            + ",\"behavior_graph\":\"wander_attack\",\"weapon\":\"basic_sword\",\"infight_chance\":30}";
         String npcs = "{\"guard\":" + npc + ",\"merchant\":" + npc.replace("Town Guard", "Merchant").replace("80", "60") + "}";
         String entry = "{\"guard\":%s}";
         try {
@@ -187,7 +192,8 @@ public final class DataLoaderTest {
             var undead = data.enemies().get("guard");
             check(undead.weapon().equals("basic_sword") && guard.detectionBounds().radius() == 72
                 && undead.detectionBounds().radius() == 192.5f && guard.behaviorGraph().equals("wander")
-                && undead.behaviorGraph().equals("wander_attack"), "Role-scoped IDs bind distinct radii and graph keys");
+                && undead.behaviorGraph().equals("wander_attack") && undead.infightChance() == 30,
+                "Role-scoped IDs bind radii, graph keys, and enemy infight chance");
             check(undead.detectionBounds().shape() == Shape.FORWARD_SEMICIRCLE
                 && data.enemies().get("sentinel").detectionBounds().shape() == Shape.FULL_CIRCLE,
                 "Both authored shapes bind independently of spawn key");
@@ -394,40 +400,50 @@ public final class DataLoaderTest {
     }
 
     private static void weaponSchema(WeaponsData definitions) throws Exception {
-        check(definitions.atlas().equals("weapons.atlas") && definitions.weapons().size() == 3, "shared catalog");
+        check(definitions.atlas().equals("weapons.atlas"), "shared weapon atlas");
         var sword = definitions.requireWeapon("basic_sword");
         var bow = definitions.requireWeapon("basic_bow");
         var unarmed = definitions.requireWeapon("unarmed");
         check(sword.atlasKey().equals("melee/basic_sword") && bow.atlasKey().equals("ranged/basic_bow")
             && unarmed.atlasKey().equals("NONE"), "weapon layer prefixes");
-        check(sword.attackStats().primary().animation().atlasKey().equals("slash"), "sword primary slash");
-        check(bow.attackStats().primary().animation().atlasKey().equals("shot")
+        check(sword.attackStats().primary().animation().animKey() == AttackAnimKey.SLASH, "sword primary slash");
+        check(bow.attackStats().primary().animation().animKey() == AttackAnimKey.SHOT
             && bow.attackStats().primary().collisionType() == CollisionType.PROJECTILE, "bow primary projectile metadata");
-        var authored = DataLoader.mapper.readTree(Files.readString(Path.of("assets/data/weapons.json"))).get("weapons");
+        var authored = DataLoader.mapper.readTree(Path.of("raw_assets/data/weapons.json").toFile()).required("weapons");
+        check(definitions.weapons().keySet().equals(authored.propertyNames()), "all authored weapons are in the loaded catalogue");
         for (var entry : definitions.weapons().entrySet()) {
             var weapon = entry.getValue();
-            check(weapon.attackStats().secondary().animation().atlasKey().equals("jab")
-                && weapon.attackStats().secondary().collisionType() == CollisionType.MELEE, "every secondary is a melee jab");
-            for (var slot : new String[]{"primary", "secondary"}) {
+            check(weapon.attackStats().secondary().collisionType() == CollisionType.MELEE, entry.getKey() + " secondary is melee");
+            for (String slot : List.of("primary", "secondary")) {
                 var attack = slot.equals("primary") ? weapon.attackStats().primary() : weapon.attackStats().secondary();
-                var json = authored.get(entry.getKey()).get("attack_stats").get(slot);
-                check(attack.stats().cost() == json.get("stats").get("cost").asInt()
-                    && attack.stats().hitFrame() == json.get("stats").get("hit_frame").asInt()
-                    && attack.stats().cooldownSeconds() == (float) json.get("stats").get("cooldown_seconds").asDouble(),
-                    "authored " + slot + " stats");
-                check(attack.animation().speed() == (float) json.get("animation").get("speed").asDouble()
-                    && attack.animation().soundFrame() == json.get("animation").get("sound_frame").asInt()
-                    && attack.animation().frameInterval() == (float) json.get("animation").get("frame_interval").asDouble(),
-                    "authored " + slot + " animation timing");
+                var json = authored.required(entry.getKey()).required("attack_stats").required(slot);
+                var stats = json.required("stats");
+                var damage = stats.required("damage");
+                AttackDamage authoredDamage = damage.isIntegralNumber() ? new AttackDamage.Scalar(damage.intValue())
+                    : new AttackDamage.Range(damage.required("min").intValue(), damage.required("max").intValue());
+                String label = entry.getKey() + "/" + slot;
+                check(attack.stats().damage().equals(authoredDamage)
+                    && attack.stats().cost() == stats.required("cost").intValue()
+                    && attack.stats().hitFrame() == stats.required("hit_frame").intValue()
+                    && attack.stats().cooldownSeconds() == stats.required("cooldown_seconds").floatValue(), "authored stats: " + label);
+                var animation = json.required("animation");
+                check(attack.animation().animKey().dataKey().equals(animation.required("anim_key").stringValue())
+                    && attack.animation().speed() == animation.required("speed").floatValue()
+                    && attack.animation().soundFrame() == animation.required("sound_frame").intValue()
+                    && attack.animation().frameInterval() == animation.required("frame_interval").floatValue(), "authored animation: " + label);
+                var bounds = json.required("bounds");
+                check(attack.bounds().offsetUp().equals(authoredOffset(bounds, "up"))
+                    && attack.bounds().offsetDown().equals(authoredOffset(bounds, "down"))
+                    && attack.bounds().offsetLeft().equals(authoredOffset(bounds, "left"))
+                    && attack.bounds().offsetRight().equals(authoredOffset(bounds, "right")), "authored offsets: " + label);
             }
         }
-        check(unarmed.attackStats().primary().animation().atlasKey().equals("jab")
+        check(unarmed.attackStats().primary().animation().animKey() == AttackAnimKey.JAB
             && unarmed.attackStats().primary().collisionType() == CollisionType.MELEE, "unarmed primary jab");
         check(sword.attackStats().primary().stats().damage().equals(new AttackDamage.Range(15, 20))
-            && sword.attackStats().secondary().stats().damage().equals(new AttackDamage.Range(10, 10)), "exact sword tuning");
-        for (var attack : List.of(bow.attackStats().primary(), bow.attackStats().secondary())) {
-            check(attack.stats().damage().equals(new AttackDamage.Range(20, 30)), "exact bow tuning");
-        }
+            && sword.attackStats().secondary().stats().damage().equals(new AttackDamage.Range(8, 12)), "exact sword tuning");
+        check(bow.attackStats().primary().stats().damage().equals(new AttackDamage.Range(20, 30))
+            && bow.attackStats().secondary().stats().damage().equals(new AttackDamage.Range(4, 10)), "exact bow tuning");
         for (var attack : List.of(unarmed.attackStats().primary(), unarmed.attackStats().secondary())) {
             check(attack.stats().damage().equals(new AttackDamage.Scalar(3)), "unchanged scalar unarmed tuning");
         }
@@ -435,8 +451,66 @@ public final class DataLoaderTest {
             "jab has a distinct hit frame");
         var stats = DataLoader.mapper.readValue("{\"damage\":1,\"cost\":0,\"hit_frame\":2,\"cooldown_seconds\":0.375}", Stats.class);
         check(stats.cooldownSeconds() == .375f, "cooldown in seconds");
-        var animation = DataLoader.mapper.readValue("{\"speed\":1,\"atlas_key\":\"jab\",\"sound_frame\":3,\"frame_interval\":0.15}", AnimationData.class);
+        var animation = DataLoader.mapper.readValue("{\"speed\":1,\"anim_key\":\"jab\",\"sound_frame\":3,\"frame_interval\":0.15}", AttackAnimation.class);
         check(stats.hitFrame() == 2 && animation.soundFrame() == 3, "zero-based JSON cue frames");
+    }
+
+    private static Offset authoredOffset(tools.jackson.databind.JsonNode bounds, String direction) {
+        var offset = bounds.required("offset_" + direction);
+        return new Offset(offset.required("x").floatValue(), offset.required("y").floatValue());
+    }
+
+    private static void attackKeys(WeaponsData definitions) throws Exception {
+        for (String file : List.of("weapons.json", "enemies.json")) {
+            check(Files.mismatch(Path.of("raw_assets/data", file), Path.of("assets/data", file)) == -1,
+                "Raw and runtime migration match for " + file);
+        }
+        var atlasKeys = Map.of(AttackAnimKey.SLASH, "slash", AttackAnimKey.JAB, "jab", AttackAnimKey.SHOT, "shot",
+            AttackAnimKey.LUNGE, "slash", AttackAnimKey.TWIRL, "jab");
+        for (var key : AttackAnimKey.values()) {
+            check(key.atlasKey().equals(atlasKeys.get(key)), "atlas mapping for " + key);
+            String json = "\"" + key.name().toLowerCase(java.util.Locale.ROOT) + "\"";
+            check(DataLoader.mapper.readValue(json, AttackAnimKey.class) == key
+                && DataLoader.mapper.writeValueAsString(key).equals(json), "lower-case wire key " + key);
+        }
+        for (String id : List.of("basic_hammer", "black_hammer")) {
+            var attacks = definitions.requireWeapon(id).attackStats();
+            var slash = attacks.primary();
+            var lunge = attacks.secondary();
+            var damage = (AttackDamage.Range) slash.stats().damage();
+            check(slash.animation().animKey() == AttackAnimKey.SLASH && lunge.animation().animKey() == AttackAnimKey.LUNGE
+                && lunge.stats().damage().equals(new AttackDamage.Range(Math.round(damage.min() * 1.25f), Math.round(damage.max() * 1.25f)))
+                && lunge.stats().cooldownSeconds() == slash.stats().cooldownSeconds() + .2f
+                && lunge.stats().hitFrame() == slash.stats().hitFrame()
+                && lunge.bounds().equals(slash.bounds()) && lunge.sounds().equals(slash.sounds())
+                && lunge.animation().equals(new AttackAnimation(slash.animation().speed(), AttackAnimKey.LUNGE,
+                    slash.animation().soundFrame(), slash.animation().frameInterval())), "Authored hammer secondary " + id);
+        }
+        for (String id : List.of("basic_axe", "black_axe")) {
+            var attacks = definitions.requireWeapon(id).attackStats();
+            check(attacks.secondary().animation().animKey() == AttackAnimKey.TWIRL
+                && attacks.secondary().bounds().equals(attacks.primary().bounds()), "Authored axe twirl " + id);
+        }
+        for (String slot : List.of("primary", "secondary")) {
+            String path = "/weapons/basic_sword/attack_stats/" + slot + "/animation";
+            for (String invalid : List.of("null", "0", "\"0\"", "\"\"", "\"Lunge\"", "\"unknown\"", "\"melee/basic_sword/slash\"")) {
+                rejects(() -> {
+                    var tree = DataLoader.mapper.valueToTree(definitions);
+                    var fields = (tools.jackson.databind.node.ObjectNode) tree.at(path);
+                    fields.set("anim_key", DataLoader.mapper.readTree(invalid));
+                    DataLoader.mapper.treeToValue(tree, WeaponsData.class);
+                }, "invalid " + slot + " anim_key: " + invalid);
+            }
+            for (boolean legacy : List.of(false, true)) {
+                rejects(() -> {
+                    var tree = DataLoader.mapper.valueToTree(definitions);
+                    var fields = (tools.jackson.databind.node.ObjectNode) tree.at(path);
+                    var old = fields.remove("anim_key");
+                    if (legacy) { fields.set("atlas_key", old); }
+                    DataLoader.mapper.treeToValue(tree, WeaponsData.class);
+                }, "missing " + slot + " anim_key (legacy=" + legacy + ")");
+            }
+        }
     }
 
     private static void invalidMetadata(PlayerData player, WeaponsData definitions) {
@@ -457,9 +531,7 @@ public final class DataLoaderTest {
         rejects(() -> new AttackStats(null, primary), "missing primary");
         rejects(() -> new AttackStats(primary, null), "missing secondary");
         rejects(() -> new AttackData(primary.animation(), primary.bounds(), primary.stats(), primary.sounds(), null), "missing collision type");
-        rejects(() -> new AttackData(new AnimationData(1, "melee/basic_sword/slash", 0, .125f),
-            primary.bounds(), primary.stats(), primary.sounds(), CollisionType.MELEE), "prefixed animation action");
-        rejects(() -> new AttackData(new AnimationData(1, "shot", 0, .125f),
+        rejects(() -> new AttackData(new AttackAnimation(1, AttackAnimKey.SHOT, 0, .125f),
             primary.bounds(), primary.stats(), primary.sounds(), CollisionType.MELEE), "shot marked melee");
         rejects(() -> new AttackData(primary.animation(), primary.bounds(), primary.stats(), primary.sounds(), CollisionType.PROJECTILE),
             "slash marked projectile");
@@ -504,13 +576,6 @@ public final class DataLoaderTest {
         }, "missing secondary sounds");
         rejects(() -> new Bounds(BoundsType.RECT, 1, 0, 1, 2, ZERO, ZERO, ZERO, ZERO), "collapsed bounds");
         rejects(() -> new Bounds(BoundsType.RECT, Float.NaN, 0, 2, 2, ZERO, ZERO, ZERO, ZERO), "nonfinite bounds");
-        for (var weapon : definitions.weapons().values()) {
-            for (var attack : new AttackData[]{weapon.attackStats().primary(), weapon.attackStats().secondary()}) {
-                var bounds = attack.bounds();
-                check(bounds.offsetUp().equals(ZERO) && bounds.offsetDown().equals(ZERO)
-                    && bounds.offsetLeft().equals(ZERO) && bounds.offsetRight().equals(ZERO), "zero authored offsets");
-            }
-        }
         for (String direction : new String[]{"up", "down", "left", "right"}) {
             String field = "offset_" + direction;
             for (String invalid : new String[]{"null", "{}", "{\"x\":0}", "{\"y\":0}", "{\"x\":null,\"y\":0}"}) {
@@ -536,8 +601,8 @@ public final class DataLoaderTest {
         rejects(() -> DataLoader.mapper.readValue("{\"damage\":1,\"cost\":0,\"hit_frame\":null,\"cooldown_seconds\":0.25}", Stats.class), "null hit frame");
         rejects(() -> DataLoader.mapper.readValue("{\"damage\":1,\"cost\":0,\"hit_frame\":2}", Stats.class), "missing cooldown");
         rejects(() -> DataLoader.mapper.readValue("{\"damage\":1,\"cost\":0,\"hit_frame\":2,\"cooldown_seconds\":null}", Stats.class), "null cooldown");
-        rejects(() -> DataLoader.mapper.readValue("{\"speed\":1,\"atlas_key\":\"jab\",\"frame_interval\":0.1}",
-            AnimationData.class), "missing sound frame");
+        rejects(() -> DataLoader.mapper.readValue("{\"speed\":1,\"anim_key\":\"jab\",\"frame_interval\":0.1}",
+            AttackAnimation.class), "missing attack sound frame");
         rejects(() -> DataLoader.mapper.readValue("{\"type\":\"RECT\",\"y1\":0,\"x2\":64,\"y2\":64}",
             Bounds.class), "missing bounds coordinate");
     }

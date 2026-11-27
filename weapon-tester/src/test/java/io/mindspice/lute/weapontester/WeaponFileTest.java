@@ -21,7 +21,7 @@ class WeaponFileTest {
           "offset_down": { "x": 0, "y": 0 }, "offset_right": { "x": 0, "y": 0 } }
         """;
     private static final String ATTACK = """
-        {"collision_type":"MELEE", "animation":{"speed":2.5,"frame_interval":0.1,"atlas_key":"jab","sound_frame":1},
+        {"collision_type":"MELEE", "animation":{"speed":2.5,"frame_interval":0.1,"anim_key":"jab","sound_frame":1},
          "bounds": %s, "stats": {"hit_frame":2,"damage": 11.1234567890123456789}}
         """.formatted(BOUNDS);
     private static final String SOURCE = ("\ufeff{\"weapons\": {\"" + ID + "\":{\"atlas_key\":\"melee/sword\",\"attack_stats\":{"
@@ -81,11 +81,33 @@ class WeaponFileTest {
     }
 
     @Test void detectsBowsByPrimaryCollisionTypeNotIdOrAtlas() throws IOException {
-        String bow = SOURCE.replaceFirst("MELEE", "PROJECTILE");
+        String bow = SOURCE.replaceFirst("MELEE", "PROJECTILE").replaceFirst("jab", "shot");
         var path = Files.writeString(temp.resolve("weapons.json"), bow);
         var file = WeaponFile.load(path);
         assertTrue(file.secondaryOnly(ID));
-        assertThrows(IllegalArgumentException.class, () -> file.form(ID, PRIMARY));
+        assertTrue(assertThrows(IllegalArgumentException.class, () -> file.form(ID, PRIMARY))
+            .getMessage().contains("no melee sensor"));
         assertEquals("jab", file.attack(ID, SECONDARY).action());
+    }
+
+    @Test void mapsAuthoredMeleeKeysToRawClipsInEitherSlot() throws IOException {
+        for (var mapping : java.util.Map.of("slash", "slash", "jab", "jab", "lunge", "slash", "twirl", "jab").entrySet()) {
+            String source = SOURCE.replace("\"jab\"", "\"" + mapping.getKey() + "\"");
+            var file = WeaponFile.load(Files.writeString(temp.resolve("weapons.json"), source));
+            assertEquals("melee/sword", file.atlas(ID));
+            for (var slot : WeaponFile.Slot.values()) {
+                assertEquals(mapping.getValue(), file.attack(ID, slot).action(), mapping.getKey() + "/" + slot);
+                assertEquals("64", file.form(ID, slot).get("x2"));
+            }
+        }
+    }
+
+    @Test void rejectsLegacyMissingAndInvalidAttackKeys() throws IOException {
+        var path = temp.resolve("weapons.json");
+        for (String field : new String[]{"\"atlas_key\":\"jab\",", "", "\"anim_key\":null,",
+            "\"anim_key\":\"Lunge\",", "\"anim_key\":\"shot\","}) {
+            var file = WeaponFile.load(Files.writeString(path, SOURCE.replace("\"anim_key\":\"jab\",", field)));
+            assertThrows(IllegalArgumentException.class, () -> file.attack(ID, SECONDARY), field);
+        }
     }
 }

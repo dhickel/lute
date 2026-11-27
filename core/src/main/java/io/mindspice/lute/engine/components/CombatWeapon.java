@@ -2,6 +2,7 @@ package io.mindspice.lute.engine.components;
 
 import com.badlogic.gdx.math.MathUtils;
 import com.badlogic.gdx.math.Vector2;
+import io.mindspice.lute.engine.data.json.AttackAnimKey;
 import io.mindspice.lute.engine.data.json.AttackDamage;
 import io.mindspice.lute.engine.singletons.GameConsts;
 import io.mindspice.lute.engine.data.json.WeaponsData.WeaponData.BoundsType;
@@ -16,7 +17,7 @@ public final class CombatWeapon {
     public record Weapon(String id, String atlasKey, Attack primary, Attack secondary) { }
 
     public record Attack(String weaponId, AttackDamage damage, int hitFrame, float cooldownSeconds,
-                         Animation2D.Attack animation, String hitSoundId,
+                         AttackAnimKey animKey, Animation2D.Attack animation, String hitSoundId,
                          BoundsType shape, Bounds bounds, CollisionType collisionType) {
         public void validateGeometry(Vector2 anchor) {
             for (var direction : Facing.Direction.values()) {

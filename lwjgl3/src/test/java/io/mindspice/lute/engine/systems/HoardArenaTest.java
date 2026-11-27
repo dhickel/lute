@@ -29,6 +29,7 @@ import io.mindspice.lute.engine.assets.MapAssets;
 import io.mindspice.lute.engine.tiled.MapTriggers;
 import io.mindspice.lute.engine.components.*;
 import io.mindspice.lute.engine.data.json.ActorsData;
+import io.mindspice.lute.engine.data.json.AttackAnimKey;
 import io.mindspice.lute.engine.data.json.GameData;
 import io.mindspice.lute.engine.data.json.ObjectData;
 import io.mindspice.lute.engine.events.Event;
@@ -90,7 +91,6 @@ public final class HoardArenaTest extends ApplicationAdapter {
             int area = spawnArea(areas, enemy);
             require(area < areas.size(), "opening enemy is inside an authored spawn area");
             openingAreas.add(area);
-            require(enemy.getComponent(DredgeLunge.class) == null, "ordinary waves have no Dredge lunge");
             require(Health.MAPPER.get(enemy).getCurrent() == 50 && Health.MAPPER.get(enemy).getMaximum() == 50
                 && ActorAi.MAPPER.get(enemy).behaviorGraphKey().equals(BowAim.MAPPER.has(enemy) ? "wander_archer" : "wander_attack"),
                 "wave enemy has its own behavior inside the polygon");
@@ -639,7 +639,9 @@ public final class HoardArenaTest extends ApplicationAdapter {
     private enum LungeTrial { HIT, FINISH, DODGE, COVER, FREE }
 
     private void verifyGuardLunge(Entity boss) {
-        require(boss.getComponent(DredgeLunge.class) != null, "Hoard guard has lunge");
+        var weapon = Loadout.MAPPER.get(boss).getWeapon();
+        require(weapon.id().equals("black_hammer") && weapon.secondary().animKey() == AttackAnimKey.LUNGE,
+            "guard has the shared black hammer lunge");
         float dt = GameConsts.PHYSIC_INTERVAL;
         verifyGuardSwing(boss, LungeTrial.HIT, dt);
         verifyGuardSwing(boss, LungeTrial.HIT, 2 * dt);
@@ -676,13 +678,14 @@ public final class HoardArenaTest extends ApplicationAdapter {
             facing.setDirection(Facing.Direction.RIGHT);
             engine.getSystem(LoadoutSystem.class).equipWeapon(player, "basic_hammer");
             var hammer = loadout.getWeapon();
-            require(CombatSystem.attackFor(player, hammer, Combat.AttackSlot.PRIMARY) == hammer.primary(),
+            require(hammer.primary().animKey() == AttackAnimKey.SLASH,
                 "hammer primary stays a normal attack");
             combat.tickCooldown(10f);
             combat.requestAttack(Combat.AttackSlot.SECONDARY);
             engine.update(dt);
-            require(CombatSystem.isHammerLunge(player, combat), "player commits hammer secondary as a lunge");
-            require(combat.getActiveAttack().animation() == hammer.primary().animation(), "heavy lunge uses primary animation");
+            require(CombatSystem.isLunging(combat), "player commits hammer secondary as a lunge");
+            require(combat.getActiveAttack() == hammer.secondary() && combat.getActiveAttack().animation().action().equals("slash"),
+                "heavy lunge uses its authored secondary with slash atlas frames");
             require(combat.isCoolingDown(hammer.id(), Combat.AttackSlot.SECONDARY)
                 && !combat.isCoolingDown(hammer.id(), Combat.AttackSlot.PRIMARY), "heavy lunge uses the secondary cooldown slot");
             float startX = bossBody.getPosition().x;
@@ -739,6 +742,9 @@ public final class HoardArenaTest extends ApplicationAdapter {
             long previousAttack = attack.getAttackId();
             for (int i = 0; i < 10 && !attack.isAttacking(); i++) { engine.update(dt); }
             require(attack.getAttackId() == previousAttack + 1 && attack.isAttacking(), "guard commits at extended range");
+            require(attack.getActiveSlot() == Combat.AttackSlot.SECONDARY && CombatSystem.isLunging(attack)
+                && attack.isCoolingDown("black_hammer", Combat.AttackSlot.SECONDARY)
+                && !attack.isCoolingDown("black_hammer", Combat.AttackSlot.PRIMARY), "extended commit spends the shared secondary cooldown");
             require(AwarenessSystem.feet(player).x - AwarenessSystem.feet(boss).x > 60 * scale,
                 "commit well outside planted range");
             var start = bossBody.getPosition().cpy();
@@ -912,7 +918,7 @@ public final class HoardArenaTest extends ApplicationAdapter {
             world.destroyBody(wall);
         }
         awareness.processEntity(boss, .01f);
-        require(ai.mode() == ActorAi.Mode.ENGAGE && move.x > 0, "Dredge reacquires a visible player on the way home");
+        require(ai.mode() == ActorAi.Mode.ENGAGE && move.x >= 0, "Dredge stops returning home when it reacquires sight");
         playerBody.setTransform(playerAt.x + 10, playerAt.y, 0);
         awareness.processEntity(boss, .01f);
         require(ai.mode() != ActorAi.Mode.ENGAGE && move.x < 0, "Leaving detection range also sends Dredge home");

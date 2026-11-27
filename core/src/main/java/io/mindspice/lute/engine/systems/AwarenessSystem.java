@@ -17,12 +17,12 @@ import io.mindspice.lute.engine.components.Combat;
 import io.mindspice.lute.engine.components.Facing;
 import io.mindspice.lute.engine.components.FullCircleVision;
 import io.mindspice.lute.engine.components.Health;
-import io.mindspice.lute.engine.components.HoardDemoCombatant;
 import io.mindspice.lute.engine.components.Physic;
 
 import java.util.ArrayList;
 import java.util.List;
 import java.util.random.RandomGenerator;
+import java.util.function.Function;
 
 public final class AwarenessSystem extends IteratingSystem {
     static final Object SENSOR_TAG = new Object();
@@ -30,6 +30,7 @@ public final class AwarenessSystem extends IteratingSystem {
     private final World world;
     private final boolean infightingEnabled;
     private final RandomGenerator random;
+    private final Function<Entity, Entity> preferredTarget;
     private final Action stop = Action.stop();
     private final Action followTarget = Action.followTarget();
 
@@ -38,7 +39,12 @@ public final class AwarenessSystem extends IteratingSystem {
     }
 
     AwarenessSystem(World world, boolean infightingEnabled, RandomGenerator random) {
+        this(world, infightingEnabled, random, actor -> null);
+    }
+
+    AwarenessSystem(World world, boolean infightingEnabled, RandomGenerator random, Function<Entity, Entity> preferredTarget) {
         super(ACTORS);
+        this.preferredTarget = preferredTarget;
         this.world = world;
         this.infightingEnabled = infightingEnabled;
         this.random = random;
@@ -55,11 +61,6 @@ public final class AwarenessSystem extends IteratingSystem {
             stop.perform(actor, state);
             return;
         }
-        var demoCombatant = actor.getComponent(HoardDemoCombatant.class);
-        if (demoCombatant != null) {
-            updateDemoCombatant(actor, ai, demoCombatant, state);
-            return;
-        }
         var guard = actor.getComponent(ArenaGuard.class);
         if (guard != null) {
             updateGuard(actor, ai, guard, state);
@@ -69,7 +70,11 @@ public final class AwarenessSystem extends IteratingSystem {
         var shooter = ai.retaliationTarget();
         boolean detectsPlayer = Actor.MAPPER.get(actor).role() == Actor.Role.ENEMY
             && graphs.containsKey(ActorAi.Mode.ENGAGE);
-        if (detectsPlayer || ai.mode() != ActorAi.Mode.WANDER) {
+        var preferred = preferredTarget.apply(actor);
+        if (livingActor(preferred)) {
+            state.setVisibleTarget(preferred);
+            state.setTargetOffset(ai.updateTarget(feet(actor), feet(preferred), deltaTime));
+        } else if (detectsPlayer || ai.mode() != ActorAi.Mode.WANDER) {
             var from = feet(actor);
             // Prefer the visible shooter, but keep normal player detection on every tick.
             var visible = shooter == null ? null : retaliationFeet(actor, shooter, from);
@@ -93,16 +98,6 @@ public final class AwarenessSystem extends IteratingSystem {
         graph.travel(actor, state);
     }
 
-    private void updateDemoCombatant(Entity actor, ActorAi ai, HoardDemoCombatant demo, FocusState state) {
-        var player = livingActor(demo.player()) ? demo.player() : null;
-        state.setVisibleTarget(player);
-        state.setTargetOffset(ai.updateTarget(feet(actor), player == null ? null : feet(player), state.deltaTime()));
-        if (BehaviorGraphs.attackLocksMovement(actor)) { stop.perform(actor, state); return; }
-        var graphs = BehaviorGraphs.forKey(ai.behaviorGraphKey());
-        var graph = graphs.getOrDefault(ai.mode(), BehaviorGraphs.pursuit(ai.mode()));
-        graph.travel(actor, state);
-    }
-
     private void updateGuard(Entity actor, ActorAi ai, ArenaGuard guard, FocusState state) {
         var from = feet(actor);
         var attacker = ai.retaliationTarget();
@@ -116,8 +111,7 @@ public final class AwarenessSystem extends IteratingSystem {
         if (enemy != null) {
             state.setVisibleTarget(attacker);
             state.setTargetOffset(ai.updateTarget(from, enemy, state.deltaTime()));
-            if (BehaviorGraphs.attackLocksMovement(actor)) { stop.perform(actor, state); }
-            else { BehaviorGraphs.pursuit(ActorAi.Mode.ENGAGE).travel(actor, state); }
+            engageGuard(actor, ai, state);
             return;
         }
         ai.retaliateAgainst(null);
@@ -125,8 +119,7 @@ public final class AwarenessSystem extends IteratingSystem {
         if (player != null) {
             state.setVisibleTarget(player);
             state.setTargetOffset(ai.updateTarget(from, feet(player), state.deltaTime()));
-            if (BehaviorGraphs.attackLocksMovement(actor)) { stop.perform(actor, state); }
-            else { BehaviorGraphs.pursuit(ActorAi.Mode.ENGAGE).travel(actor, state); }
+            engageGuard(actor, ai, state);
             return;
         }
 
@@ -136,6 +129,12 @@ public final class AwarenessSystem extends IteratingSystem {
         state.setTargetOffset(offset);
         if (offset.len2() < .01f || BehaviorGraphs.attackLocksMovement(actor)) { stop.perform(actor, state); }
         else { followTarget.perform(actor, state); }
+    }
+
+    private void engageGuard(Entity actor, ActorAi ai, FocusState state) {
+        if (BehaviorGraphs.attackLocksMovement(actor)) { stop.perform(actor, state); return; }
+        BehaviorGraphs.forKey(ai.behaviorGraphKey()).getOrDefault(ActorAi.Mode.ENGAGE,
+            BehaviorGraphs.pursuit(ActorAi.Mode.ENGAGE)).travel(actor, state);
     }
 
     private boolean feetContact(Entity first, Entity second) {

@@ -30,8 +30,8 @@ final class GameplayHud {
         this.white = white;
     }
 
-    void draw(Batch batch, Engine engine, Viewport viewport, Health player, int minute, HoardRun run,
-              String demoStatus, double stamina) {
+    void draw(Batch batch, Engine engine, Viewport viewport, Health player, int minute,
+              String arenaStatus, double stamina) {
         batch.setProjectionMatrix(projection.setToOrtho2D(0, 0, viewport.getScreenWidth(), viewport.getScreenHeight()));
         for (var entity : engine.getEntitiesFor(HealthFeedback.FAMILY)) {
             for (var number : HealthFeedback.MAPPER.get(entity).numbers) {
@@ -62,11 +62,10 @@ final class GameplayHud {
             }
         }
         int width = viewport.getScreenWidth(), top = viewport.getScreenHeight();
-        String status = demoStatus == null ? statusText(minute, run) : demoStatus;
-        if (run == null && demoStatus == null) {
-            drawRow(batch, width, top, player, status, false);
+        if (arenaStatus == null) {
+            drawRow(batch, width, top, player, clockText(minute), false);
         } else {
-            drawRow(batch, width, top, null, status, false);
+            drawRow(batch, width, top, null, arenaStatus, false);
             drawRow(batch, width, top - BAR_HEIGHT, player, staminaText(stamina), stamina == 0d);
         }
     }
@@ -120,7 +119,10 @@ final class GameplayHud {
     }
 
     static String statusText(int minute, HoardRun run) {
-        if (run == null) { return clockText(minute); }
+        return run == null ? clockText(minute) : hoardStatus(run);
+    }
+
+    static String hoardStatus(HoardRun run) {
         if (run.isGameOver()) {
             return "Game Over   Score " + run.score() + "   Round " + run.round() + "   Alive " + run.aliveSeconds() + "s";
         }
