@@ -1,0 +1,21 @@
+{
+  "unitScale": 0.0625,
+  "viewHeight": 14,
+  "viewWidth": 26,
+  "physicInterval": 0.02,
+  "physicScaling": { "x": 1, "y": 1 },
+  "cameraSmoothFactor": 3,
+  "startupMap": "fixture_map",
+  "projectPath": "fixture.tiled-project",
+  "mapsPath": "maps/",
+  "dataPath": "data/",
+  "soundPath": "sounds/",
+  "musicPath": "music/",
+  "objectPath": "objects/",
+  "atlasPath": "atlases/",
+  "nightAmbient": { "tint": "#124578", "brightness": 0.4 },
+  "debugLayers": {
+    "physics": false, "triggers": false, "rawLightMap": false,
+    "lightingOutlines": false, "assetValidation": true
+  }
+}

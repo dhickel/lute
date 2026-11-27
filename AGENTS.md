@@ -28,6 +28,12 @@ Additional checks belong where genuinely uncertain data enters, such as random v
 
 Every new game data or settings file and field is required at load. Reject missing or invalid data rather than supplying a missing-data fallback or code default. In the same change, update both the ignored raw and generated asset trees and all affected test fixtures. This does not change genuinely optional current gameplay states or existing optional data contracts.
 
+## Tests and Authored Data
+
+Do not hardcode or mirror shipped authored or tunable values, including catalog sizes, in tests. Each test must demonstrate behavior, an invariant, or a failure; do not assert a value merely because the test just assigned it or the implementation guarantees it by construction. Fixed expected values in fixtures are appropriate when they establish meaningful behavior.
+
+Test parsing, conversion, rejection, and cross-references through the real loader using small, distinct synthetic fixtures. Shipped-pack smoke tests should check loadability or independent runtime behavior, not duplicate authored data. Do not add CI or lint machinery to enforce these rules.
+
 ## Event System Interfaces
 
 Use `EventListener` and `EventEmitter` as marker-style interfaces to declare a class's participation in the event system. Implement `EventListener` when subscribing or unsubscribing, and `EventEmitter` when emitting events. Use their provided event helpers.
