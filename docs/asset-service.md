@@ -136,7 +136,7 @@ The shared IntelliJ `.run` configurations call `:lwjgl3:run`: `Lute Run` passes 
 
 ## Weapon assets and animation timing
 
-Map manifests describe map-owned assets. Weapon definitions live in `assets/data/weapons.json`, which contains a shared `atlas` path and a `weapons` map. Each weapon has an `atlas_key` and `attack_stats` with separate `primary` and `secondary` records. Each attack owns its `animation`, `bounds`, `stats`, `collision_type`, and `sounds.attack` and `sounds.hit` paths. The unarmed definition uses `NONE` for its weapon layer.
+Map manifests describe map-owned assets. Weapon definitions live in `assets/data/weapons.json`, which contains a shared `atlas` path and a `weapons` map. The asset generator requires the top-level `atlas` in `raw_assets/data/weapons.json` to be exactly `weapons.atlas`; runtime loading is unchanged. Each weapon has an `atlas_key` and `attack_stats` with separate `primary` and `secondary` records. Each attack owns its `animation`, `bounds`, `stats`, `collision_type`, and `sounds.attack` and `sounds.hit` paths. The unarmed definition uses `NONE` for its weapon layer.
 
 `WeaponAssets.of(weaponId, definitions)` resolves both attacks' sound filenames relative to the configured sound directory. Initial loading queues attack and hit sounds for both slots of every configured weapon, including unarmed. Each attack can select its own paths; reuse of existing WAV files is approved. Runtime IDs are `weapon/<id>/<primary|secondary>/<attack|hit>`; animation receives the resolved attack ID rather than weapon filenames or selection rules. Hit sounds are loaded but not played. Loading these assets does not implement inventory, UI, or automatic unloading.
 
