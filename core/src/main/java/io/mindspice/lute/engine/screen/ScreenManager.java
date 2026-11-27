@@ -49,8 +49,13 @@ public class ScreenManager implements Disposable {
         currScreen.resize(Gdx.graphics.getWidth(), Gdx.graphics.getHeight());
     }
 
-    public Runnable getSwitchScreenThunk(String nextScreenKey) {
-        return () -> switchScreens(nextScreenKey);
+    /** The startup attempt retains ownership until the new screen has mounted. */
+    public void mountScreen(String screenKey, Screen screen) {
+        screen.show();
+        screen.resize(Gdx.graphics.getWidth(), Gdx.graphics.getHeight());
+        if (currScreen != null) { currScreen.hide(); }
+        loadedScreens.put(screenKey, screen);
+        currScreen = screen;
     }
 
     public void render(float delta) {

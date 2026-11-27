@@ -259,10 +259,10 @@ public final class MenuFlowTest extends ApplicationAdapter {
         p.touchUp(x, 540-y, 0, Input.Buttons.LEFT);
     }
     private static HoardRun waitForRun() {
-        var hoard = GAME.getEngine().getSystem(HoardSystem.class);
-        require(hoard != null, "menu started gameplay");
-        for (int i = 0; i < 250 && !hoard.isActive(); i++) { GAME.render(); }
-        require(hoard.isActive(), "arena finished loading");
+        var engine = GAME.getEngine();
+        for (int i = 0; i < 250 && engine.getSystem(HoardSystem.class) == null; i++) { GAME.render(); }
+        var hoard = engine.getSystem(HoardSystem.class);
+        require(hoard != null && hoard.isActive(), "arena finished loading");
         GAME.render();
         return hoard.run();
     }

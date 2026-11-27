@@ -63,6 +63,8 @@ public final class MenuScreen extends InputAdapter implements Screen {
 
     public GameConsts.DebugLayers layers() { return settings.layers(); }
 
+    public void launchFailed() { error = "Could not start the game. Try again."; }
+
     public void finish(HoardRun run) {
         result = HoardScores.Result.snapshot(name, run);
         board = List.of();
@@ -205,6 +207,7 @@ public final class MenuScreen extends InputAdapter implements Screen {
     private void startRun() {
         name = name.strip();
         if (name.isEmpty()) { error = "Enter a name before starting"; return; }
+        error = "";
         start.run();
     }
 

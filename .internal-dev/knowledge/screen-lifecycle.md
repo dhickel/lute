@@ -13,8 +13,8 @@ LibGDX `Game` lifecycle ownership when using the project's custom `ScreenManager
 
 ## Key Takeaways
 - `Game.render()`, `resize()`, `pause()`, and `resume()` forward to LibGDX's own screen field, not to a separate manager's current-screen reference. A custom manager needs explicit forwarding from the application.
-- Assigning a current-screen reference does not call `show()`. The initial loading screen must be activated before game-screen map callbacks retrieve atlas assets.
-- Switch away from a loading screen before unloading and disposing it. Dispose screens before shared input, batch, and asset resources.
+- Assigning a current-screen reference does not call `show()`. Startup activates the loading screen first, presents a black frame, and loads shared assets before constructing the gameplay screen and triggering map callbacks.
+- `GameCore` retains attempt ownership until `ScreenManager.mountScreen` successfully shows and resizes gameplay. A failed attempt disposes its session and newly registered shared assets, preserving pre-existing registrations and unrelated queued work; the menu permits retry while direct-map startup propagates the failure. Switch away from the loader before unloading it on success. Dispose screens before shared input, batch, and asset resources.
 - A successful startup reports loading completion, map/entity setup, and continuing FPS output. Atlas-region fallback warnings are distinct from an unloaded-atlas exception.
 - `GameScreen` records the systems it installs on the shared engine. Hiding retains them for reuse; disposal hides the screen, then removes and disposes its owned systems in reverse installation order before disposing its physics `World`. This keeps the event bus and world available while dependents detach and prevents later engine updates from reaching disposed physics. Foreign systems are not owned or disposed by the screen.
 - Disposal is idempotent, a disposed screen cannot be shown again, and a constructor installation failure invokes the same cleanup for the systems recorded so far. A cleanup failure is suppressed on the original installation failure. Never-shown screens also need disposal.

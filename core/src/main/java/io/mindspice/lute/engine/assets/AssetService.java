@@ -12,8 +12,10 @@ import com.badlogic.gdx.utils.GdxRuntimeException;
 import io.mindspice.lute.engine.singletons.GameConsts;
 import io.mindspice.lute.engine.tiled.FixedTmxMapLoader;
 
+import java.util.ArrayList;
 import java.util.HashMap;
 import java.util.LinkedHashSet;
+import java.util.List;
 import java.util.Map;
 import java.util.Objects;
 import java.util.stream.Stream;
@@ -52,8 +54,66 @@ public class AssetService implements Disposable {
     public <T> T load(Asset<T> asset) {
         queue(asset);
         var entry = entriesFor(asset.type()).get(asset.id());
-        if (entry.value == null) { loadEntry(entry); }
+        if (entry.value == null) { loadEntry(entry, true); }
         return get(asset.type(), asset.id());
+    }
+
+    /** Tracks provisional loads, distinguishing new registrations from borrowed queue entries. */
+    public final class PendingLoads {
+        private final LinkedHashSet<Entry<?>> originalQueue = new LinkedHashSet<>(queue);
+        private final List<Entry<?>> provisional = new ArrayList<>();
+        private final List<Asset<?>> acquired = new ArrayList<>();
+
+        private PendingLoads() { }
+
+        public void load(Asset<?> asset) {
+            boolean newRegistration = !isRegistered(asset);
+            queue(asset);
+            var entry = entriesFor(asset.type()).get(asset.id());
+            if (entry.value != null) { return; }
+            if (newRegistration) {
+                acquired.add(asset);
+                provisional.add(entry);
+            }
+            boolean borrowed = originalQueue.contains(entry);
+            loadEntry(entry, !borrowed && !newRegistration);
+            if (borrowed) { provisional.add(entry); }
+        }
+
+        public List<Asset<?>> acquiredRegistrations() {
+            return List.copyOf(acquired);
+        }
+
+        public void rollback(Throwable failure) {
+            if (provisional.isEmpty()) { return; }
+            for (var entry : provisional.reversed()) {
+                var asset = entry.definition;
+                if (entriesFor(asset.type()).get(asset.id()) != entry) { continue; }
+                try {
+                    if (!originalQueue.contains(entry)) {
+                        unload(asset.type(), asset.id());
+                    } else {
+                        var resource = (Disposable) entry.value;
+                        entry.value = null;
+                        queue.add(entry);
+                        resource.dispose();
+                    }
+                } catch (RuntimeException | Error cleanup) {
+                    if (cleanup != failure) { failure.addSuppressed(cleanup); }
+                }
+            }
+            // Restore the original positions without reviving cancelled entries or moving new work ahead.
+            for (var entry : originalQueue.reversed()) {
+                if (queue.contains(entry)) { queue.addFirst(entry); }
+            }
+            provisional.clear();
+            acquired.clear();
+        }
+    }
+
+    public PendingLoads preservePendingLoads() {
+        requireOpen();
+        return new PendingLoads();
     }
 
     public void queue(Asset<?> asset) {
@@ -111,11 +171,11 @@ public class AssetService implements Disposable {
 
     public boolean update() {
         requireOpen();
-        if (!queue.isEmpty()) { loadEntry(queue.getFirst()); }
+        if (!queue.isEmpty()) { loadEntry(queue.getFirst(), true); }
         return queue.isEmpty();
     }
 
-    private <T> void loadEntry(Entry<T> entry) {
+    private <T> void loadEntry(Entry<T> entry, boolean removeOnFailure) {
         Object value = null;
         var asset = entry.definition;
         try {
@@ -123,8 +183,10 @@ public class AssetService implements Disposable {
             entry.value = asset.type().cast(value);
             queue.remove(entry);
         } catch (RuntimeException failure) {
-            entriesFor(asset.type()).remove(asset.id());
-            queue.remove(entry);
+            if (removeOnFailure) {
+                entriesFor(asset.type()).remove(asset.id());
+                queue.remove(entry);
+            }
             if (value instanceof Disposable resource) {
                 try { resource.dispose(); }
                 catch (RuntimeException cleanup) { failure.addSuppressed(cleanup); }

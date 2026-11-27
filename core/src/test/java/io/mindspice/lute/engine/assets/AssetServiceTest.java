@@ -24,7 +24,6 @@ import io.mindspice.lute.engine.components.Facing;
 import io.mindspice.lute.engine.singletons.GameConsts;
 import io.mindspice.lute.engine.components.Graphic;
 import io.mindspice.lute.engine.events.Event;
-import io.mindspice.lute.engine.screen.LoadingScreen;
 import io.mindspice.lute.engine.systems.AnimationSystem;
 import io.mindspice.lute.engine.systems.AudioSystem;
 import io.mindspice.lute.engine.systems.EventSystem;
@@ -89,7 +88,6 @@ public final class AssetServiceTest {
                 System.out.println("Asset lifecycle contract passed: " + (candidate ? "production per-type" : "original composite"));
             }
             animationReload(backend);
-            loadingScreen(backend);
             audioEvents(backend);
             backend.checkAllDisposed();
             System.out.println("AssetServiceTest: passed (direct loaders; no graphics context or game launch)");
@@ -725,46 +723,6 @@ public final class AssetServiceTest {
                 "Entities must not share mutable play modes");
         } finally {
             engine.removeAllEntities();
-            service.dispose();
-        }
-    }
-
-    private static void loadingScreen(Backend backend) {
-        var service = new AssetService(backend.resolver());
-        int[] callbacks = {0};
-        var screen = new LoadingScreen(service, () -> callbacks[0]++, List.of(
-            Asset.Sound.of("screen-first", "first.wav"), Asset.Music.of("screen-second", "second.ogg")));
-        try {
-            int before = backend.audioResources.size();
-            screen.show();
-            check(backend.audioResources.size() == before, "LoadingScreen.show must queue without loading");
-            screen.render(0);
-            check(callbacks[0] == 0, "LoadingScreen must not transition while work remains");
-            screen.render(0);
-            screen.render(0);
-            check(callbacks[0] == 1, "LoadingScreen must transition exactly once after the last direct load");
-            var empty = new LoadingScreen(service, () -> callbacks[0]++, List.of());
-            empty.show();
-            empty.render(0);
-            empty.render(0);
-            check(callbacks[0] == 2, "An empty loading screen must also transition only once");
-            String failingPath = "assets/audio/screen-failure.wav";
-            var retry = new LoadingScreen(service, () -> callbacks[0]++,
-                List.of(Asset.Sound.of("screen-failure", "screen-failure.wav")));
-            backend.failAudio.add(failingPath);
-            try {
-                retry.show();
-                rejectsRuntime(() -> retry.render(0), "LoadingScreen must propagate a load failure");
-                check(callbacks[0] == 2, "Loading failure must not invoke the game-screen transition");
-                retry.render(0);
-                check(callbacks[0] == 2, "Rendering after failure must not transition without an explicit retry");
-            } finally {
-                backend.failAudio.remove(failingPath);
-            }
-            retry.show();
-            retry.render(0);
-            check(callbacks[0] == 3, "A failed loading screen can explicitly queue a retry");
-        } finally {
             service.dispose();
         }
     }

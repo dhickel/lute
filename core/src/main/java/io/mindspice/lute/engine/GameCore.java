@@ -10,6 +10,7 @@ import com.badlogic.gdx.graphics.g2d.SpriteBatch;
 import com.badlogic.gdx.graphics.profiling.GLProfiler;
 import com.badlogic.gdx.utils.viewport.FitViewport;
 import com.badlogic.gdx.utils.viewport.Viewport;
+import io.mindspice.lute.engine.assets.Asset;
 import io.mindspice.lute.engine.assets.AssetService;
 import io.mindspice.lute.engine.assets.MapAssets;
 import io.mindspice.lute.engine.assets.WeaponAssets;
@@ -18,6 +19,7 @@ import io.mindspice.lute.engine.assets.ObjectAssets;
 import io.mindspice.lute.engine.data.json.DataLoader;
 import io.mindspice.lute.engine.data.json.GameData;
 import io.mindspice.lute.engine.tiled.ManifestLoader;
+import io.mindspice.lute.engine.systems.TiledSystem;
 import io.mindspice.lute.engine.input.InputManager;
 import io.mindspice.lute.engine.input.InputSettings;
 import io.mindspice.lute.engine.screen.GameScreen;
@@ -28,8 +30,10 @@ import io.mindspice.lute.engine.input.InputAction;
 import io.mindspice.lute.engine.screen.MenuScreen;
 import io.mindspice.lute.gameplay.HoardRun;
 
-import java.util.Arrays;
 import java.util.ArrayList;
+import java.util.Arrays;
+import java.util.Iterator;
+import java.util.List;
 
 /**
  * {@link com.badlogic.gdx.ApplicationListener} implementation shared by all platforms.
@@ -86,24 +90,80 @@ public class GameCore extends Game {
     }
 
     private void startMap(String mapId) {
-        if (gameData == null) { gameData = DataLoader.loadGameData(); }
-
-        Runnable switchToGameScreen = () -> {
-            screenManager.getSwitchScreenThunk("GameScreen").run();
-            screenManager.unloadScreen("InitialLoading");
-        };
-
-        MapAssets assets = ManifestLoader.parseMapManifest(mapId);
-        var initialAssets = new ArrayList<>(CharacterAssets.all(gameData.weaponsData().atlas()));
-        initialAssets.add(ObjectAssets.OBJECTS);
-        for (String id : gameData.weaponsData().weapons().keySet()) {
-            initialAssets.addAll(WeaponAssets.of(id, gameData.weaponsData()).all());
-        }
-        screenManager.loadScreen("GameScreen", menu == null ? new GameScreen(assets)
-            : new GameScreen(assets, menu.layers(), this::finishRun));
-        screenManager.loadScreen("InitialLoading", new LoadingScreen(assetService, switchToGameScreen, initialAssets));
-
+        var attempt = new StartupAttempt(mapId);
+        screenManager.loadScreen("InitialLoading", new LoadingScreen(attempt::advance));
         screenManager.switchScreens("InitialLoading");
+    }
+
+    private final class StartupAttempt {
+        private final String mapId;
+        private final List<Asset<?>> owned = new ArrayList<>();
+        private AssetService.PendingLoads sharedLoads;
+        private AssetService.PendingLoads mapLoads;
+        private Iterator<Asset<?>> pending;
+        private GameScreen session;
+
+        StartupAttempt(String mapId) { this.mapId = mapId; }
+
+        private void queueSharedAssets() {
+            if (gameData == null) { gameData = DataLoader.loadGameData(); }
+            var assets = new ArrayList<>(CharacterAssets.all(gameData.weaponsData().atlas()));
+            assets.add(ObjectAssets.OBJECTS);
+            for (String id : gameData.weaponsData().weapons().keySet()) {
+                assets.addAll(WeaponAssets.of(id, gameData.weaponsData()).all());
+            }
+            sharedLoads = assetService.preservePendingLoads();
+            var toLoad = new ArrayList<Asset<?>>();
+            for (var asset : assets) {
+                boolean alreadyRegistered = assetService.isRegistered(asset);
+                assetService.queue(asset); // Also validates the path of an existing registration.
+                if (!alreadyRegistered) { owned.add(asset); }
+                if (!assetService.isLoaded(asset.type(), asset.id())) { toLoad.add(asset); }
+            }
+            pending = toLoad.iterator();
+        }
+
+        void advance() {
+            try {
+                if (pending == null) { queueSharedAssets(); }
+                if (pending.hasNext()) { sharedLoads.load(pending.next()); }
+                if (pending.hasNext()) { return; }
+
+                MapAssets assets = ManifestLoader.parseMapManifest(mapId);
+                session = menu == null ? new GameScreen(assets) : new GameScreen(assets, menu.layers(), GameCore.this::finishRun);
+                var tiled = engine.getSystem(TiledSystem.class);
+                mapLoads = assetService.preservePendingLoads();
+                tiled.beginStartupMount(mapLoads);
+                screenManager.mountScreen("GameScreen", session);
+                tiled.commitStartupMount();
+            } catch (RuntimeException | Error failure) {
+                rollback(failure);
+                if (menu == null || failure instanceof Error) { throw failure; }
+                Gdx.app.error("Startup", "Could not start map " + mapId, failure);
+                menu.launchFailed();
+                screenManager.switchScreens("Menu");
+                return;
+            }
+            screenManager.unloadScreen("InitialLoading");
+        }
+
+        private void rollback(Throwable failure) {
+            if (session != null) { cleanUp(failure, session::dispose); }
+            if (mapLoads != null) { cleanUp(failure, () -> mapLoads.rollback(failure)); }
+            cleanUp(failure, () -> setInputProcessors(inputManager));
+            for (var asset : owned.reversed()) {
+                cleanUp(failure, () -> assetService.unload(asset.type(), asset.id()));
+            }
+            if (sharedLoads != null) { sharedLoads.rollback(failure); }
+            cleanUp(failure, () -> screenManager.unloadScreen("InitialLoading"));
+        }
+
+        private void cleanUp(Throwable failure, Runnable cleanup) {
+            try { cleanup.run(); }
+            catch (RuntimeException | Error suppressed) {
+                if (suppressed != failure) { failure.addSuppressed(suppressed); }
+            }
+        }
     }
 
 

@@ -122,8 +122,9 @@ public final class MapTravelTest extends ApplicationAdapter {
         Gdx.app.setLogLevel(Application.LOG_ERROR);
         var screens = (ScreenManager) field(GameCore.class, "screenManager").get(GAME);
         var loaded = (Map<?, ?>) field(ScreenManager.class, "loadedScreens").get(screens);
+        for (int i = 0; i < 200 && !loaded.containsKey("GameScreen"); i++) { GAME.render(); }
+        require(loaded.containsKey("GameScreen"), "Boot commits a gameplay screen");
         bind((GameScreen) loaded.get("GameScreen"));
-        for (int i = 0; i < 200 && tiled.getCurrentMap() == null; i++) { GAME.render(); }
         require(tiled.getCurrentMap() != null, "Boot finishes loading the actual map");
         var time = GAME.getEngine().getSystem(WorldTimeSystem.class);
         checkCampfire();
