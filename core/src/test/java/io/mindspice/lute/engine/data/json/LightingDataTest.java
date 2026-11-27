@@ -56,12 +56,24 @@ public final class LightingDataTest {
         MapActorData.Enemy first = reader.readValue(definition.formatted(COLLISION, ",\"infight_chance\":30"));
         MapActorData.Enemy second = reader.readValue(definition.formatted(COLLISION, ",\"infight_chance\":80"));
         var catalogue = new ActorsData(Map.of(), Map.of("first", first, "second", second));
-        var overridden = catalogue.withInfightChance("first", 0);
-        check(overridden.enemies().get("first").infightChance() == 0 && catalogue.enemies().get("first").infightChance() == 30,
-            "Code override changes only the new catalogue");
-        check(overridden.enemies().get("second").infightChance() == 80, "Code override leaves other enemies alone");
-        rejects(() -> catalogue.withInfightChance("unknown", 0), "Unknown enemy override");
-        rejects(() -> catalogue.withInfightChance("first", 101), "Invalid enemy override");
+        var loaded = new GameData(null, null, null, catalogue, Map.of());
+        var single = loaded.withEnemyInfightChance("first", 0).actorsData().enemies();
+        check(single.get("first").infightChance() == 0 && single.get("second") == second,
+            "Named override leaves other definitions untouched");
+        var bulk = loaded.withAllInfightChances(30);
+        check(bulk.actorsData().enemies().keySet().equals(catalogue.enemies().keySet())
+            && bulk.actorsData().enemies().values().stream().allMatch(enemy -> enemy.infightChance() == 30),
+            "Bulk override gives every definition its own chance");
+        var chained = bulk.withEnemyInfightChance("first", 100).actorsData().enemies();
+        check(chained.get("first").infightChance() == 100 && chained.get("second").infightChance() == 30,
+            "Named override wins after a bulk override");
+        check(loaded.actorsData().enemies().get("first") == first && loaded.actorsData().enemies().get("second") == second
+            && bulk.actorsData().enemies().get("first").infightChance() == 30, "Original and intermediate snapshots are unchanged");
+        rejects(() -> loaded.withEnemyInfightChance("unknown", 0), "Unknown enemy override");
+        rejects(() -> loaded.withEnemyInfightChance("first", 101), "Invalid enemy override");
+        rejects(() -> loaded.withAllInfightChances(-1), "Invalid bulk override");
+        var empty = new GameData(null, null, null, new ActorsData(Map.of(), Map.of()), Map.of());
+        rejects(() -> empty.withAllInfightChances(101), "Invalid bulk override is rejected even for an empty catalog");
     }
 
     private static void catalogueSchema() {
