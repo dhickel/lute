@@ -37,6 +37,14 @@ tasks.register('geometryGoldenTest', JavaExec) {
 }
 check.dependsOn geometryGoldenTest
 
+tasks.register('cameraSystemTest', JavaExec) {
+  dependsOn testClasses
+  classpath = sourceSets.test.runtimeClasspath
+  mainClass = 'io.mindspice.lute.engine.systems.CameraSystemTest'
+  jvmArgs '--enable-native-access=ALL-UNNAMED'
+}
+check.dependsOn cameraSystemTest
+
 tasks.register('hoardRosterTest', JavaExec) {
   dependsOn testClasses
   classpath = sourceSets.test.runtimeClasspath
@@ -151,6 +159,13 @@ tasks.register('assetServiceTest', JavaExec) {
   workingDir = rootProject.projectDir
 }
 check.dependsOn assetServiceTest
+
+tasks.register('audioSubscriptionLifecycleTest', JavaExec) {
+  dependsOn testClasses
+  classpath = sourceSets.test.runtimeClasspath
+  mainClass = 'io.mindspice.lute.engine.systems.AudioSubscriptionLifecycleTest'
+}
+check.dependsOn audioSubscriptionLifecycleTest
 
 tasks.register('assetManagerLookupBenchmark', JavaExec) {
   dependsOn testClasses

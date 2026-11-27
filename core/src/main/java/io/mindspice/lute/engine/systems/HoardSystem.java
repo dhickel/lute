@@ -300,7 +300,9 @@ public final class HoardSystem extends EntitySystem implements EventListener {
         // Resolve contacts at this tick's positions, before a lunge ends, a wave spawns or a pickup heals.
         var engine = getEngine();
         var tiled = engine.getSystem(TiledSystem.class);
-        engine.getSystem(CombatSystem.class).resolveArenaStepHits(tiled);
+        var casualties = engine.getSystem(CombatSystem.class).resolveArenaStepHits(tiled::ownsArrivingEnemy);
+        var death = engine.getSystem(DeathSystem.class);
+        for (var victim : casualties) { death.beginContactDeath(victim); }
         if (!run.isGameOver()) {
             tiled.collectPickups();
             run.advance(interval);

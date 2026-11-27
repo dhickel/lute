@@ -1,6 +1,8 @@
 package io.mindspice.lute.engine.lwjgl3;
 
+import com.badlogic.ashley.core.Engine;
 import com.badlogic.ashley.core.Entity;
+import com.badlogic.ashley.core.EntitySystem;
 import com.badlogic.ashley.core.Family;
 import com.badlogic.gdx.Application;
 import com.badlogic.gdx.ApplicationAdapter;
@@ -29,6 +31,7 @@ import com.badlogic.gdx.physics.box2d.Fixture;
 import com.badlogic.gdx.physics.box2d.PolygonShape;
 import com.badlogic.gdx.physics.box2d.World;
 import com.badlogic.gdx.utils.Array;
+import com.badlogic.gdx.utils.ObjectMap;
 import io.mindspice.lute.engine.GameCore;
 import io.mindspice.lute.engine.assets.CharacterAssets;
 import io.mindspice.lute.engine.assets.ObjectAssets;
@@ -48,6 +51,7 @@ import io.mindspice.lute.engine.systems.AwarenessSystem;
 import io.mindspice.lute.engine.components.ActorAi;
 import io.mindspice.lute.engine.systems.CombatSystem;
 import io.mindspice.lute.engine.systems.DamageFeedbackProbe;
+import io.mindspice.lute.engine.systems.DeathSystem;
 import io.mindspice.lute.engine.systems.EventSystem;
 import io.mindspice.lute.engine.systems.EntityFactory;
 import io.mindspice.lute.engine.systems.HoardSystem;
@@ -182,6 +186,9 @@ public final class MapTravelTest extends ApplicationAdapter {
                 "Actor loadouts are fresh rather than session-owned");
             var newNpc = actualActors.first();
             var newEnemy = actualActors.get(1);
+            require(Loadout.MAPPER.get(newNpc).getWeapon() == Loadout.MAPPER.get(oldNpc).getWeapon()
+                && Loadout.MAPPER.get(newEnemy).getWeapon() == Loadout.MAPPER.get(oldEnemy).getWeapon(),
+                "Rebuilt actors retain their validated immutable weapons, not their old loadouts");
             require(body(newNpc) != oldNpcBody && body(newNpc).getFixtureList().size == 3
                 && Health.MAPPER.get(newNpc) != oldNpcHealth && Health.MAPPER.get(newNpc).getCurrent() == npc.maxHealth(),
                 "Map replacement recreates the NPC body, fixtures and health");
@@ -347,6 +354,7 @@ public final class MapTravelTest extends ApplicationAdapter {
                 "Invalid destination releases the candidate assets: " + invalid);
         }
         verifyStagedFailure(sourceMap, rebuilt, sourceBodies, redCenter);
+        verifyPlayerSetupTravelFailure(rebuilt);
         input.keyDown(Input.Keys.D); frame();
         require(body(rebuilt).getLinearVelocity().x > 0, "Player is still controllable after failed travel");
         input.keyUp(Input.Keys.D); frame();
@@ -405,6 +413,7 @@ public final class MapTravelTest extends ApplicationAdapter {
         var otherMap = tiled.getCurrentMap();
         verifyPlayerRespawn("arrival", true);
         require(tiled.getCurrentMap() == otherMap, "Respawn uses the named arrival when the current map has no PLAYER point");
+        verifyPlayerSetupRespawnFailure();
         frame();
         require(tiled.getCurrentMap() == otherMap, "Respawn inside a return portal suppresses it until leave and reentry");
         enter("local");
@@ -859,11 +868,12 @@ public final class MapTravelTest extends ApplicationAdapter {
             "Respawn registers fresh input, camera and combat state");
         var camera = GAME.getCamera();
         var props = map.getProperties();
-        var pos = Transform.MAPPER.get(replacement).getPosition();
+        var spawn = center(point);
         float width = props.get("width", Integer.class) * props.get("tilewidth", Integer.class) * GameConsts.UNIT_SCALE;
         float height = props.get("height", Integer.class) * props.get("tileheight", Integer.class) * GameConsts.UNIT_SCALE;
-        require(camera.position.x == cameraTarget(pos.x, camera.viewportWidth, width)
-            && camera.position.y == cameraTarget(pos.y, camera.viewportHeight, height), "Camera snaps to the replacement on respawn");
+        require(MathUtils.isEqual(camera.position.x, cameraTarget(spawn.x, camera.viewportWidth, width))
+            && MathUtils.isEqual(camera.position.y, cameraTarget(spawn.y, camera.viewportHeight, height)),
+            "Camera snaps to the logical spawn center on respawn");
         input.keyUp(Input.Keys.SPACE);
         input.keyUp(Input.Keys.W);
         screen.render(0f);
@@ -875,10 +885,9 @@ public final class MapTravelTest extends ApplicationAdapter {
             "Respawn preserves both the session timeline and the exact advancement of the game clock");
     }
 
-    private static float cameraTarget(float position, float viewport, float mapSize) {
+    private static float cameraTarget(float center, float viewport, float mapSize) {
         float half = viewport * .5f;
-        return mapSize > half ? MathUtils.clamp(position + .5f, Math.min(half, mapSize - half), Math.max(half, mapSize - half))
-            : position + .5f;
+        return mapSize <= viewport ? mapSize * .5f : MathUtils.clamp(center, half, mapSize - half);
     }
 
     private static void setObjects(Map<String, ObjectData> definitions) throws ReflectiveOperationException {
@@ -997,6 +1006,115 @@ public final class MapTravelTest extends ApplicationAdapter {
         System.out.printf("MapTravelTest: failed prepare retained %d emitters, %d bodies and %d fixtures%n",
             sourceLights.size(), bodies, sourceFixtures.size());
         checkRedLight(redCenter);
+    }
+
+    private void verifyPlayerSetupTravelFailure(Entity source) throws ReflectiveOperationException {
+        exitPortals();
+        var sourceMap = tiled.getCurrentMap();
+        var active = field(TiledSystem.class, "active");
+        var sourceRuntime = active.get(tiled);
+        var controller = Controller.MAPPER.get(source);
+        var sourceBody = body(source);
+        var sourceFixtures = fixtures();
+        int bodies = world.getBodyCount();
+        var logger = Gdx.app.getApplicationLogger();
+        var failures = new ArrayList<Throwable>();
+        var input = Gdx.input.getInputProcessor();
+        input.keyDown(Input.Keys.D);
+        try {
+            Gdx.app.setApplicationLogger(new Lwjgl3ApplicationLogger() {
+                @Override public void error(String tag, String message, Throwable error) {
+                    if (tag.equals("TiledSystem") && message.contains(B + "/arrival")) { failures.add(error); }
+                    super.error(tag, message, error);
+                }
+            });
+            failPlayerSetup(B, () -> enter("other"));
+            require(failures.size() == 1 && failures.getFirst() instanceof NullPointerException
+                && failures.getFirst().getStackTrace()[0].getMethodName().equals("createPlayer"),
+                "Travel reaches BowAim setup after allocating the destination player");
+            require(world.getBodyCount() == bodies && fixtures().equals(sourceFixtures),
+                "Post-allocation player setup failure leaves no staged body or fixtures");
+            require(active.get(tiled) == sourceRuntime && tiled.getCurrentMap() == sourceMap && player() == source
+                && body(source) == sourceBody && body(source).getUserData() == source,
+                "Failed travel preserves the source runtime, player and native ownership");
+            require(Controller.MAPPER.get(source) == controller && controller.getHeldDirection().x > 0,
+                "Failed travel preserves the source controller and held input");
+        } finally {
+            Gdx.app.setApplicationLogger(logger);
+            input.keyUp(Input.Keys.D);
+        }
+        var assets = GAME.getAssetService();
+        require(ManifestLoader.parseMapManifest(A).all().stream().allMatch(assets::isRegistered)
+            && assets.get(TiledMap.class, A) == sourceMap, "Failed travel retains the source map assets");
+        require(ManifestLoader.parseMapManifest(B).all().stream().noneMatch(assets::isRegistered),
+            "Failed travel unregisters every destination asset before the real portal retry");
+        exitPortals();
+    }
+
+    private void verifyPlayerSetupRespawnFailure() throws ReflectiveOperationException {
+        var corpse = player();
+        var corpseBody = body(corpse);
+        var health = Health.MAPPER.get(corpse);
+        var map = tiled.getCurrentMap();
+        int bodies = world.getBodyCount();
+        kill(corpse);
+        var animation = Animation2D.MAPPER.get(corpse);
+        animation.setDeathSeconds(animation.getPlaybackDuration() + 5d);
+        var death = GAME.getEngine().getSystem(DeathSystem.class);
+        death.update(0f); // Schedule respawn through the normal corpse retirement path.
+        failPlayerSetup(B, () -> {
+            try {
+                tiled.applyPendingRespawn();
+                throw new AssertionError("Missing tile width should fail respawn setup");
+            } catch (NullPointerException expected) {
+                require(expected.getStackTrace()[0].getMethodName().equals("createPlayer"),
+                    "Respawn propagates the post-allocation setup failure");
+            }
+        });
+        require(world.getBodyCount() == bodies && player() == corpse && body(corpse) == corpseBody
+            && !corpseBody.isActive() && !Controller.MAPPER.has(corpse) && !health.isAlive(),
+            "Failed respawn destroys only the staged body and leaves the corpse registered");
+        death.update(0f);
+        tiled.applyPendingRespawn();
+        var replacement = player();
+        require(replacement != corpse && tiled.getCurrentMap() == map && world.getBodyCount() == bodies
+            && Health.MAPPER.get(replacement) == health && health.getCurrent() == health.getMaximum()
+            && Controller.MAPPER.has(replacement), "Respawn retry replaces the corpse without leaking bodies");
+        atPoint(replacement, "arrival");
+    }
+
+    @SuppressWarnings("unchecked")
+    private void failPlayerSetup(String mapId, Runnable attempt) throws ReflectiveOperationException {
+        var engine = GAME.getEngine();
+        var assets = GAME.getAssetService();
+        var original = engine.getSystem(EntityFactory.class);
+        // Ashley looks up systems by exact class. Override only the test's factory lookup.
+        var manager = field(Engine.class, "systemManager").get(engine);
+        var lookup = (ObjectMap<Class<?>, EntitySystem>) field(manager.getClass(), "systemsByClass").get(manager);
+        var fault = new EntityFactory(world, assets) {
+            private TiledMap map;
+            private Integer tileWidth;
+
+            @Override public Entity getPlayerEntity(Vector2 position, PlayerState state, Facing.Direction facing) {
+                int bodies = world.getBodyCount();
+                var entity = original.getPlayerEntity(position, state, facing);
+                require(world.getBodyCount() == bodies + 1, "Fault is armed only after the factory creates a native body");
+                map = assets.get(TiledMap.class, mapId);
+                tileWidth = map.getProperties().get("tilewidth", Integer.class);
+                map.getProperties().remove("tilewidth"); // Fail BowAim setup, not map boundary validation.
+                return entity;
+            }
+        };
+        lookup.put(EntityFactory.class, fault);
+        try {
+            attempt.run();
+            require(fault.tileWidth != null, "Player setup fault was reached");
+        } finally {
+            lookup.put(EntityFactory.class, original);
+            if (fault.tileWidth != null && assets.isLoaded(TiledMap.class, mapId)) {
+                fault.map.getProperties().put("tilewidth", fault.tileWidth);
+            }
+        }
     }
 
     private void bind(GameScreen next) throws ReflectiveOperationException {

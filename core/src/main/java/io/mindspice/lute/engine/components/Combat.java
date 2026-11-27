@@ -18,7 +18,6 @@ public class Combat implements Component {
     private boolean deferredRequest;
     private CombatWeapon.Attack activeAttack;
     private Facing.Direction attackFacing;
-    private boolean attacking;
     private final Map<AttackKey, Float> cooldowns = new HashMap<>();
     private AttackKey activeKey;
     private Fixture sensor;
@@ -26,7 +25,7 @@ public class Combat implements Component {
     private long attackId;
     private final Set<Entity> hitTargets = Collections.newSetFromMap(new IdentityHashMap<>());
 
-    public boolean isAttacking() { return attacking; }
+    public boolean isAttacking() { return activeAttack != null; }
     public Fixture getSensor() { return sensor; }
     public long getAttackId() { return attackId; }
 
@@ -77,7 +76,6 @@ public class Combat implements Component {
         attackFacing = facing;
         activeKey = new AttackKey(attack.weaponId(), slot);
         cooldowns.put(activeKey, attack.cooldownSeconds());
-        attacking = true;
         attackId++;
         hitTargets.clear();
     }
@@ -90,7 +88,6 @@ public class Combat implements Component {
     public boolean sensorHasStepped(long step) { return sensor != null && step > sensorCreatedAtStep; }
 
     public void endAttack() {
-        attacking = false;
         sensor = null;
         activeKey = null;
         activeAttack = null;
