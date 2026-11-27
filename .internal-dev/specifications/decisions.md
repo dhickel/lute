@@ -6,7 +6,7 @@
 - **Options and input:** The menu provides local persisted overrides for the four debug layers and keyboard and controller bindings. Conflicting bindings require confirmation; mouse bindings remain authored in input settings. Keyboard, controller, and mouse support menu navigation. Preferences are local, not shared or online.
 - **Startup and assets:** The generator requires `raw_assets/images/menu/mainmenubg.jpg` and publishes it to `assets/images/menu/mainmenubg.jpg`. The JVM property `-DluteDirectMap=true` opts into loading the configured startup map directly; the Gradle run task forwards `-PluteDirectMap=true`. Direct-map startup bypasses the menu and its local overrides.
 - **Justification and tradeoff:** Local preferences provide a lightweight menu and leaderboard without an online service; direct-map startup remains available for development and tests.
-- **Affected specifications:** Input settings below; `README.md` and `docs/input-system.md` describe usage.
+- **Affected specifications:** Input settings below; `docs/input-system.md` describes input usage.
 - **Source:** Main menu implementation on the current branch.
 - **Review timing:** Revisit if modes, persistence, or startup routing change.
 
@@ -205,7 +205,7 @@
 
 - **Decision:** Keep `raw_assets/` and `assets/` local and ignored, except for the tracked `assets/input.setting.json` input defaults. The tracked root `generate-runtime-assets.sh` generates runtime outputs from an externally provisioned complete raw tree. Authored gameplay JSON follows `raw_assets/data/` → `assets/data/` → `DataLoader`: on first gameplay entry, `DataLoader` loads player, character, enemy, weapon, projectile, and object data through `GameConsts.DATA_PATH`, and `GameData` supplies resolved data to gameplay. There is no built-in default or legacy-data fallback; desktop packages may bundle generated assets as classpath resources.
 - **Justification and tradeoff:** The user requested untracking both trees. This is not an asset distribution mechanism: fresh checkouts must obtain settings, data, audio, maps, tilesets, sprites, and the Tiled project externally before generating and running asset-dependent tests or the game. Git ignore does not replace generator ownership checks, and existing Git history is not purged or rewritten.
-- **Affected specifications:** [Composite Characters](composite-characters.md); asset setup is documented in `README.md` and `docs/asset-service.md`.
+- **Affected specifications:** [Composite Characters](composite-characters.md); asset setup is documented in `docs/asset-service.md`.
 - **Source:** User-directed asset untracking and generation entrypoint relocation.
 - **Review timing:** Revisit if asset distribution or tracking requirements change.
 
@@ -224,6 +224,6 @@
 - **Map atlas and ownership:** Pack used grid terrain from multiple sheets, including placed tile objects and animation frames, into the map's existing manifest atlas with its object regions. Record each map's selected local IDs on its TMX tileset references, not in shared TSX definitions. Preserve tile IDs, properties, animation, and collision. Image collections use the object atlas; image-layer images remain separate. Terrain pages have a 2048×2048 maximum and can overflow, so one page is not guaranteed. Empty and terrain-only maps still have an atlas. Chunked tile layers are unsupported.
 - **Loading and fallback:** The runtime loader borrows the atlas and resolves marked terrain by reserved region name `__lute_tile/<firstgid>` and tileset-local tile ID index. Qualifying keys by tileset preserves distinct animation frames and placements when GIDs overlap; regenerate runtime assets produced by the earlier GID-only atlas format. Missing or invalid regions fail rather than falling back. Without an atlas, standalone loading uses generated padded sheets. The atlas owner must outlive maps and consumers borrowing its textures. All generated outputs follow existing ownership and transaction rules.
 - **Justification and tradeoff:** Packing used terrain together can reduce texture switches while retaining the existing atlas ownership boundary and padded sheets for standalone loads. Overflow may still require texture changes. Generated padding reduces bleed without changing raw art, but does not resolve every cause of tile seams.
-- **Affected specifications:** This decision establishes the terrain extrusion contract; `README.md` and `docs/asset-service.md` describe authoring and generation.
+- **Affected specifications:** This decision establishes the terrain extrusion contract; `docs/asset-service.md` describes authoring and generation.
 - **Source:** User-directed automated terrain tilesheet extrusion contract.
 - **Review timing:** Revisit if terrain authoring, generation, or runtime sampling requirements change.
