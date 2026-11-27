@@ -60,7 +60,7 @@ public final class HoardHammerDemoTest extends ApplicationAdapter {
         var cycle = GAME.getGameData().weaponsData().weapons().keySet().stream().sorted().toList();
         require(Controller.MAPPER.get(player).getWeaponCycle().equals(cycle), "player cycles every weapon in stable ID order");
         require(player.getComponent(DredgeLunge.class) != null, "arena player receives the hammer-lunge marker");
-        require("basic_hammer".equals(Loadout.MAPPER.get(player).getWeaponId()), "demo starts with the hammer equipped");
+        require("basic_axe".equals(Loadout.MAPPER.get(player).getWeaponId()), "demo starts with the axe equipped");
 
         var actors = engine.getEntitiesFor(Family.all(ActorAi.class).get());
         require(actors.size() == 0 && hoard.stamina() == 1d, "demo starts with no enemies and full stamina");
@@ -99,8 +99,8 @@ public final class HoardHammerDemoTest extends ApplicationAdapter {
         tiled.showMap(ManifestLoader.parseMapManifest("hoard_mode"));
         var remountedPlayer = engine.getEntitiesFor(Family.all(Player.class).get()).first();
         require(remountedPlayer != player && remountedPlayer.getComponent(DredgeLunge.class) != null
-            && "basic_hammer".equals(Loadout.MAPPER.get(remountedPlayer).getWeaponId()),
-            "remount rebuilds the hammer-equipped demo player");
+            && "basic_axe".equals(Loadout.MAPPER.get(remountedPlayer).getWeaponId()),
+            "remount rebuilds the axe-equipped demo player");
         require(hoard.isActive() && hoard.run() == null && actors.size() == 0 && hoard.stamina() == 1d,
             "remount resets the wave timer, entities and stamina");
         require(hoard.demoStatus().endsWith("15s"), "new instance has a fresh countdown");
@@ -177,7 +177,7 @@ public final class HoardHammerDemoTest extends ApplicationAdapter {
         }
         require(visited.equals(expected), "one clockwise turn, back to the starting direction: " + visited);
         require(hadSensor && !combat.isAttacking() && combat.getSensor() == null, "spin completes and clears the sensor");
-        require(loadouts.equipWeapon(player, "basic_hammer"), "restore demo hammer");
+        require(loadouts.equipWeapon(player, "basic_axe"), "restore demo starting axe");
     }
 
     private static void tap(int key) {
