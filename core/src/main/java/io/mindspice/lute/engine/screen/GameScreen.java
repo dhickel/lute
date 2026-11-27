@@ -67,7 +67,7 @@ public class GameScreen extends ScreenAdapter {
             addSystem(new AttackCooldownSystem());
             addSystem(new ControllerSystem());
             // Read the last completed physics/teleport snapshot before resolving movement and animation.
-            addSystem(new AwarenessSystem(physicWorld, GameConsts.ENEMY_INFIGHTING_CHANCE));
+            addSystem(new AwarenessSystem(physicWorld, hammerDemo ? 0 : GameConsts.ENEMY_INFIGHTING_CHANCE));
             addSystem(new FacingSystem());
             addSystem(new AnimationPlayerSystem());
             addSystem(new AnimationSystem(this.game.getAssetService()));
