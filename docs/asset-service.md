@@ -152,7 +152,7 @@ The animation FSM and playback run before combat, which runs before physics. Com
 
 ## Loading and lookup
 
-Call resource-loading operations on the render thread. `queue(definition)` registers work without loading. Each `update()` synchronously loads at most one queued entry and returns true when no queued entries remain. There is no background loading. `LoadingScreen` queues its definitions on show and calls `update()` from render. If an update fails, the screen propagates the failure and stops updating or completing until `show()` resets it and queues the definitions again. `load(definition)` synchronously loads only that requested entry, even if others are queued.
+Call resource-loading operations on the render thread. `queue(definition)` registers work without loading. Each `update()` synchronously loads at most one queued entry and returns true when no queued entries remain. There is no background loading. `load(definition)` synchronously loads only that requested entry, even if others are queued. Startup uses a separate attempt owned by `GameCore`: `LoadingScreen` first presents a black screen with a progress bar, then advances the attempt on render. The total is initially unknown; after planning game data and the map manifest, counts cover distinct shared and map asset keys, including matching definitions already loaded. The attempt synchronously loads at most one pending shared asset per advance without draining unrelated queued work, then loads map assets synchronously. The completed count is drawn before gameplay is constructed and mounted; map preparation during mounting is also synchronous.
 
 Repeating a definition with the same type, ID, and path is idempotent. A different path for an existing type and ID fails until that entry is unloaded or a failed load removes it. Load failures are reported and remove the failed entry; explicitly queue or load it again to retry. `get(type, id)` fails if the entry is absent or still queued. `isLoaded(type, id)` reports whether it has a loaded value; `debugDiagnostics()` logs queued and loaded entries and their paths.
 
@@ -182,6 +182,8 @@ TiledMap loaded = assets.load(map);
 // Use loaded while its entry remains loaded.
 assets.unload(TiledMap.class, map.id());
 ```
+
+A startup attempt owns only registrations it adds. On failure it disposes any constructed session and unloads acquired registrations in reverse order; provisionally loaded pending shared and map assets are disposed and restored to their queue positions. Existing loaded registrations and unrelated queued work remain owned by their original callers. Cleanup failures are suppressed on the original failure. Runtime failures latch in red on the loading screen. Once the error has been drawn, Escape or Enter returns to the same menu for retry; direct-map startup stays on the error screen until the window is closed. `Error` propagates after rollback. Successful mounting transfers the session to the screen manager and removes the loader.
 
 In gameplay, `TiledSystem` synchronously loads and owns map assets it acquires while preparing a runtime. It retains shared definitions needed by the destination and releases outgoing owned assets after rebinding their consumers; assets already registered by another owner remain that owner's responsibility. A named reload of the current map reuses registered asset data, not changed files on disk. The session retains player health, loadout, and facing separately from the rebuilt map entities.
 

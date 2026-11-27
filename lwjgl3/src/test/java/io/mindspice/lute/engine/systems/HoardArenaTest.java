@@ -74,9 +74,10 @@ public final class HoardArenaTest extends ApplicationAdapter {
         GAME.resize(Gdx.graphics.getWidth(), Gdx.graphics.getHeight());
         Gdx.app.setLogLevel(Application.LOG_ERROR);
         var engine = GAME.getEngine();
+        for (int i = 0; i < 200 && engine.getSystem(TiledSystem.class) == null; i++) { GAME.render(); }
         var tiled = engine.getSystem(TiledSystem.class);
-        for (int i = 0; i < 200 && tiled.getCurrentMap() == null; i++) { GAME.render(); }
         var hoard = engine.getSystem(HoardSystem.class);
+        require(tiled != null && tiled.getCurrentMap() != null, "Startup mounts the arena");
         verifySprint(tiled, hoard);
         var run = hoard.run();
         var enemies = engine.getEntitiesFor(Family.all(ActorAi.class).get());

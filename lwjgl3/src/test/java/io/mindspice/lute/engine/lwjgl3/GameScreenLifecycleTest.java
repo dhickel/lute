@@ -71,14 +71,14 @@ public final class GameScreenLifecycleTest extends ApplicationAdapter {
         var engine = GAME.getEngine();
         var screens = (ScreenManager) field(GameCore.class, "screenManager").get(GAME);
         var loaded = (Map<?, ?>) field(ScreenManager.class, "loadedScreens").get(screens);
-        var original = (GameScreen) loaded.get("GameScreen");
+        require(!loaded.containsKey("GameScreen") && engine.getSystems().size() == 0,
+            "Direct startup does not construct or register gameplay before loading");
         var assets = ManifestLoader.parseMapManifest("test_tiled");
         var input = Gdx.input.getInputProcessor();
         input.keyDown(Input.Keys.N); // The shared manager observes this before the gameplay listener is attached.
         // LoadingScreen loads one asset per render; keep this finite even if startup breaks.
-        for (int i = 0; i < 200 && engine.getSystem(TiledSystem.class).getCurrentMap() == null; i++) {
-            GAME.render();
-        }
+        for (int i = 0; i < 200 && !loaded.containsKey("GameScreen"); i++) { GAME.render(); }
+        var original = (GameScreen) loaded.get("GameScreen");
         require(playerCount(engine) == 1, "Real initial loading creates one player");
         var map = engine.getSystem(TiledSystem.class).getCurrentMap();
         var ground = (TiledMapTileLayer) map.getLayers().get("Ground");

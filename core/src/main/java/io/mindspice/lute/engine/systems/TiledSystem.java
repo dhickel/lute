@@ -45,6 +45,7 @@ import java.util.random.RandomGenerator;
 
 public class TiledSystem extends EntitySystem implements EventEmitter {
     private final AssetService assetService;
+    private AssetService.PendingLoads startupMapLoads;
     private final World physicsWorld;
     private final InputManager inputManager;
     private final boolean assetValidation;
@@ -153,6 +154,17 @@ public class TiledSystem extends EntitySystem implements EventEmitter {
             active.entities.remove(object);
             removeEntity(getEngine(), object);
         }
+    }
+
+    /** Startup has loaded the initial map assets, but still owns them until mounting succeeds. */
+    public void beginStartupMount(AssetService.PendingLoads loads) {
+        startupMapLoads = loads;
+    }
+
+    /** The attempt owns provisional assets until the entire first mount succeeds. */
+    public void commitStartupMount() {
+        active.ownedAssets.addAll(startupMapLoads.acquiredRegistrations());
+        startupMapLoads = null;
     }
 
     public void showMap(MapAssets initialAssets) {
@@ -285,15 +297,23 @@ public class TiledSystem extends EntitySystem implements EventEmitter {
     private RuntimeMap prepare(Entry destination) {
         var acquired = new ArrayList<Asset<?>>();
         try {
-            AudioSystem.validateMapMusic(destination.assets());
-            for (var asset : destination.assets().all()) {
-                if (!assetService.isRegistered(asset)) { acquired.add(asset); }
-                assetService.load(asset);
+            // Startup has already validated and loaded these assets in its own transaction.
+            if (startupMapLoads == null) {
+                AudioSystem.validateMapMusic(destination.assets());
+                for (var asset : destination.assets().all()) {
+                    if (!assetService.isRegistered(asset)) { acquired.add(asset); }
+                    assetService.load(asset);
+                }
             }
             var map = assetService.get(TiledMap.class, destination.assets().mapAsset().id());
             return prepareRuntime(map, destination, acquired);
         } catch (RuntimeException | Error failure) {
-            releaseAssets(acquired, List.of());
+            for (var asset : acquired.reversed()) {
+                try { assetService.unload(asset.type(), asset.id()); }
+                catch (RuntimeException | Error cleanup) {
+                    if (cleanup != failure) { failure.addSuppressed(cleanup); }
+                }
+            }
             throw failure;
         }
     }

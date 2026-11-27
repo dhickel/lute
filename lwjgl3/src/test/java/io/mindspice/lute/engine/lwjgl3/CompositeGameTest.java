@@ -27,7 +27,6 @@ import com.badlogic.gdx.utils.Array;
 import com.badlogic.gdx.utils.ScreenUtils;
 import io.mindspice.lute.engine.GameCore;
 import io.mindspice.lute.engine.assets.CharacterAssets;
-import io.mindspice.lute.engine.assets.WeaponAssets;
 import io.mindspice.lute.engine.components.*;
 import io.mindspice.lute.engine.data.json.WeaponsData.WeaponData.CollisionType;
 import io.mindspice.lute.engine.singletons.GameConsts;
@@ -38,7 +37,6 @@ import io.mindspice.lute.engine.systems.DamageFeedbackProbe;
 import io.mindspice.lute.engine.systems.LoadoutSystem;
 import io.mindspice.lute.engine.systems.EventSystem;
 import io.mindspice.lute.engine.systems.TiledSystem;
-import io.mindspice.lute.engine.tiled.ManifestLoader;
 
 import java.util.BitSet;
 import java.util.HashMap;
@@ -61,20 +59,11 @@ public final class CompositeGameTest {
         initialized = true;
         GAME.resize(Gdx.graphics.getWidth(), Gdx.graphics.getHeight());
         Engine engine = GAME.getEngine();
+        require(engine.getSystems().size() == 0, "Startup has not installed gameplay systems early");
+        require(engine.getEntitiesFor(Family.all(Player.class).get()).size() == 0, "Factory has not spawned the player early");
+        for (int i = 0; i < 200 && engine.getSystem(TiledSystem.class) == null; i++) { GAME.render(); }
         require(engine.getSystem(EventSystem.class) != null, "GameScreen installs the genuine EventSystem");
         require(engine.getSystem(LoadoutSystem.class) != null, "GameScreen installs the loadout coordinator");
-        require(engine.getSystem(TiledSystem.class).getCurrentMap() == null, "Map is not loaded before InitialLoading runs");
-        require(engine.getEntitiesFor(Family.all(Player.class).get()).size() == 0, "Factory has not spawned the player early");
-
-        var definitions = GAME.getGameData().weaponsData();
-        int loadingUpdates = ManifestLoader.parseMapManifest("test_tiled").all().size()
-            + CharacterAssets.all(definitions.atlas()).size() + 3;
-        for (String id : definitions.weapons().keySet()) {
-            loadingUpdates += WeaponAssets.of(id, definitions).all().size();
-        }
-        for (int i = 0; i < loadingUpdates && engine.getEntitiesFor(Family.all(Player.class).get()).size() == 0; i++) {
-            GAME.render();
-        }
         var players = engine.getEntitiesFor(Family.all(Player.class).get());
         require(players.size() == 1, "InitialLoading -> GameScreen -> map event -> factory creates exactly one player");
         require(engine.getSystem(TiledSystem.class).getCurrentMap() != null, "Real startup map is installed");
