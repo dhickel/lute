@@ -490,7 +490,8 @@ public class TiledSystem extends EntitySystem implements EventEmitter {
             var sessionPlayer = PlayerState.of(player);
             if (runtime.arenaHealth != null) {
                 var loadout = sessionPlayer.loadout().copy();
-                player.add(runtime.arenaHealth).add(loadout).add(Controller.forArena(loadout.getWeapon().id()));
+                var weaponCycle = HoardSystem.starterWeaponCycle(loadout.getWeapon().id());
+                player.add(runtime.arenaHealth).add(loadout).add(Controller.forArena(weaponCycle));
             }
             var properties = runtime.map.getProperties();
             player.add(new BowAim(properties.get("tilewidth", Integer.class) * GameConsts.UNIT_SCALE,
