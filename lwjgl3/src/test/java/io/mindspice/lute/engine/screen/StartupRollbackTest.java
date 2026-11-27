@@ -9,10 +9,13 @@ import com.badlogic.gdx.Gdx;
 import com.badlogic.gdx.Input.Keys;
 import com.badlogic.gdx.backends.lwjgl3.Lwjgl3Application;
 import com.badlogic.gdx.backends.lwjgl3.Lwjgl3ApplicationConfiguration;
+import com.badlogic.gdx.graphics.Color;
+import com.badlogic.gdx.graphics.Pixmap;
 import com.badlogic.gdx.graphics.Texture;
 import com.badlogic.gdx.graphics.g2d.TextureAtlas;
 import com.badlogic.gdx.maps.tiled.TiledMap;
 import com.badlogic.gdx.utils.GdxRuntimeException;
+import com.badlogic.gdx.utils.ScreenUtils;
 import io.mindspice.lute.engine.GameCore;
 import io.mindspice.lute.engine.assets.Asset;
 import io.mindspice.lute.engine.assets.AssetService;
@@ -36,6 +39,7 @@ public final class StartupRollbackTest extends ApplicationAdapter {
     private final Asset.Sound unrelated = Asset.Sound.of("unrelated", "never-load.wav");
     private String failingPath;
     private Asset.Atlas mapAtlas;
+    private int resolutions;
     private Texture attemptedTexture;
     private Texture borrowedTexture;
     private AssetService service;
@@ -73,6 +77,7 @@ public final class StartupRollbackTest extends ApplicationAdapter {
         loaded = (Map<?, ?>) field(ScreenManager.class, "loadedScreens").get(screens);
         GAME.getAssetService().dispose();
         service = new AssetService(path -> {
+            resolutions++;
             if (path.equals(failingPath)) {
                 if (mapAtlas != null) {
                     attemptedTexture = atlasTexture(mapAtlas);
@@ -114,6 +119,7 @@ public final class StartupRollbackTest extends ApplicationAdapter {
             input.keyDown(Keys.A); input.keyTyped('A'); input.keyUp(Keys.A);
             failingPath = CharacterAssets.FEET.path();
             tap(Keys.ENTER);
+            verifyBlackBeforeWork();
             driveLoading();
             verifyRollback("hoard_mode", shared, prequeued);
             require(attemptedTexture != null && attemptedTexture.getTextureObjectHandle() == 0,
@@ -152,6 +158,7 @@ public final class StartupRollbackTest extends ApplicationAdapter {
         try {
             var shared = service.load(CharacterAssets.CHARACTER);
             var listener = failDuringMount();
+            verifyBlackBeforeWork();
             try {
                 driveLoading();
                 throw new AssertionError("Direct-map failure was swallowed");
@@ -173,6 +180,7 @@ public final class StartupRollbackTest extends ApplicationAdapter {
             mapAtlas = assets.atlasAsset();
             failingPath = assets.mapAsset().path();
             attemptedTexture = null;
+            verifyBlackBeforeWork();
             try {
                 driveLoading();
                 throw new AssertionError("Direct-map load failure was swallowed");
@@ -274,6 +282,25 @@ public final class StartupRollbackTest extends ApplicationAdapter {
         }
         require(service.isRegistered(unrelated) && !service.isLoaded(unrelated.type(), unrelated.id()),
             "Unrelated queued work stays queued");
+    }
+
+    private void verifyBlackBeforeWork() {
+        require(GAME.getGameData() == null && !service.isRegistered(CharacterAssets.ENEMIES),
+            "Starting the loader does not read gameplay data or register assets");
+        ScreenUtils.clear(Color.MAGENTA);
+        int before = resolutions;
+        GAME.render();
+        require(resolutions == before && GAME.getGameData() == null && !service.isRegistered(CharacterAssets.ENEMIES),
+            "The first loading frame does no startup asset work");
+        var pixels = Pixmap.createFromFrameBuffer(0, 0, Gdx.graphics.getBackBufferWidth(), Gdx.graphics.getBackBufferHeight());
+        try {
+            for (int y = 0; y < pixels.getHeight(); y++) {
+                for (int x = 0; x < pixels.getWidth(); x++) {
+                    if ((pixels.getPixel(x, y) & 0xffffff00) != 0) { throw new AssertionError("Loader framebuffer is not plain black"); }
+                }
+            }
+            checks++;
+        } finally { pixels.dispose(); }
     }
 
     private void driveLoading() {
