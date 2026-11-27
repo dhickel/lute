@@ -53,6 +53,15 @@ public final class LightingDataTest {
             MapActorData.Enemy enemy = reader.readValue(definition.formatted(COLLISION, ",\"infight_chance\":" + chance));
             check(enemy.infightChance() == chance, "Valid infight_chance " + chance);
         }
+        MapActorData.Enemy first = reader.readValue(definition.formatted(COLLISION, ",\"infight_chance\":30"));
+        MapActorData.Enemy second = reader.readValue(definition.formatted(COLLISION, ",\"infight_chance\":80"));
+        var catalogue = new ActorsData(Map.of(), Map.of("first", first, "second", second));
+        var overridden = catalogue.withInfightChance("first", 0);
+        check(overridden.enemies().get("first").infightChance() == 0 && catalogue.enemies().get("first").infightChance() == 30,
+            "Code override changes only the new catalogue");
+        check(overridden.enemies().get("second").infightChance() == 80, "Code override leaves other enemies alone");
+        rejects(() -> catalogue.withInfightChance("unknown", 0), "Unknown enemy override");
+        rejects(() -> catalogue.withInfightChance("first", 101), "Invalid enemy override");
     }
 
     private static void catalogueSchema() {
