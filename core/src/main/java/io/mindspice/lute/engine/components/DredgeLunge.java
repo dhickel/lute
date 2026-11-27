@@ -7,7 +7,7 @@ import io.mindspice.lute.engine.singletons.GameConsts;
 /** Fixed-step hammer drive for the Hoard player and Dredge guards. Distances are in logical pixels. */
 public final class DredgeLunge implements Component {
     public static final float COMMIT_RANGE = 80f;
-    private static final float DRIVE_DISTANCE = 32f;
+    private static final float DRIVE_DISTANCE = 48f;
     private long swing = -1;
     private float elapsed;
 
@@ -19,17 +19,18 @@ public final class DredgeLunge implements Component {
         return false;
     }
 
-    public void driveStep(Body body, Combat combat, Animation2D animation, float interval) {
+    /** Returns true on the final movement tick. */
+    public boolean driveStep(Body body, Combat combat, Animation2D animation, float interval) {
         if (!combat.isAttacking() || combat.getSensor() == null) {
             // A second tick in the same frame can inherit a contact impulse from the first.
             body.setLinearVelocity(0f, 0f);
-            return;
+            return false;
         }
         float frame = animation.getFrameDuration() / animation.getSpeed();
         float window = (float) animation.getPlaybackDuration() - combat.getActiveAttack().hitFrame() * frame;
         float from = Math.min(1f, elapsed / window);
         float to = Math.min(1f, (elapsed + interval) / window);
-        // Integrate the easing over this tick so the full hitbox window covers 32 pixels.
+        // Integrate the easing over this tick so the full hitbox window covers the configured distance.
         float fraction = (to - from) * (1.4f - .4f * (from + to));
         float speed = DRIVE_DISTANCE * GameConsts.UNIT_SCALE * fraction / interval;
         switch (combat.getAttackFacing()) {
@@ -39,5 +40,6 @@ public final class DredgeLunge implements Component {
             case DOWN -> body.setLinearVelocity(0, -speed);
         }
         elapsed += interval;
+        return from < 1f && to == 1f;
     }
 }

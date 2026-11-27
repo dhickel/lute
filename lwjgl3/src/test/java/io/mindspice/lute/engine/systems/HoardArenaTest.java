@@ -636,18 +636,19 @@ public final class HoardArenaTest extends ApplicationAdapter {
         }
     }
 
-    private enum LungeTrial { HIT, DODGE, COVER, FREE }
+    private enum LungeTrial { HIT, FINISH, DODGE, COVER, FREE }
 
     private void verifyGuardLunge(Entity boss) {
         require(boss.getComponent(DredgeLunge.class) != null, "Hoard guard has lunge");
         float dt = GameConsts.PHYSIC_INTERVAL;
         verifyGuardSwing(boss, LungeTrial.HIT, dt);
         verifyGuardSwing(boss, LungeTrial.HIT, 2 * dt);
+        verifyGuardSwing(boss, LungeTrial.FINISH, dt);
         verifyGuardSwing(boss, LungeTrial.DODGE, dt);
         verifyGuardSwing(boss, LungeTrial.COVER, dt);
         for (float frame : new float[]{dt / 2, dt, 2 * dt}) {
             float travel = verifyGuardSwing(boss, LungeTrial.FREE, frame);
-            require(Math.abs(travel - 32f) < .01f, "demo lunge travel at frame delta " + frame + ": " + travel);
+            require(Math.abs(travel - 48f) < .01f, "demo lunge travel at frame delta " + frame + ": " + travel);
         }
         verifyPlayerHammer(boss);
     }
@@ -688,7 +689,7 @@ public final class HoardArenaTest extends ApplicationAdapter {
             float playerStartX = playerBody.getPosition().x;
             for (int i = 0; i < 120 && combat.isAttacking(); i++) { engine.update(dt); }
             float travel = (playerBody.getPosition().x - playerStartX) / scale;
-            require(Math.abs(travel - 32f) < .01f, "player lunge travels 32 pixels: " + travel);
+            require(Math.abs(travel - 48f) < .01f, "player lunge travels 48 pixels: " + travel);
             float pushPixels = (bossBody.getPosition().x - startX) / scale;
             require(pushPixels > 2 && pushPixels < 60, "player lunge carries enemy a short distance: " + pushPixels);
             var feedback = HealthFeedback.MAPPER.get(boss);
@@ -743,17 +744,27 @@ public final class HoardArenaTest extends ApplicationAdapter {
             var start = bossBody.getPosition().cpy();
             // Equalize the gap after the randomized approach ticks, without changing the committed direction.
             float playerY = playerBody.getPosition().y;
-            float gap = trial == LungeTrial.DODGE ? 76f : 58f;
+            float gap = switch (trial) {
+                case DODGE -> 76f;
+                case FINISH -> 106f;
+                default -> 58f;
+            };
             playerBody.setTransform(AwarenessSystem.feet(boss).x + gap * scale - playerActor.feetX(), playerY, 0);
             switch (trial) {
-                case HIT -> { }
-                case DODGE -> input.keyDown(Input.Keys.W);
+                case HIT, FINISH -> { }
+                case DODGE -> {
+                    // Begin the sidestep just off the swing line; the shortened windup gives less time to clear it.
+                    playerY += 24 * scale;
+                    playerBody.setTransform(playerBody.getPosition().x, playerY, 0);
+                    input.keyDown(Input.Keys.W);
+                }
                 case COVER -> wall = lungeWall(bossBody, AwarenessSystem.feet(player).x - 24 * scale, feet.y);
                 case FREE -> playerBody.setTransform(playerBody.getPosition().x + 100 * scale, playerBody.getPosition().y, 0);
             }
             int startup = 0, active = 0;
             boolean hammerContact = false;
             float lastStride = Float.POSITIVE_INFINITY;
+            float firstWidth = 0f, lastWidth = 0f;
             for (int i = 0; i < 120 && attack.isAttacking(); i++) {
                 long step = physics.completedSteps();
                 float x = bossBody.getPosition().x;
@@ -771,6 +782,11 @@ public final class HoardArenaTest extends ApplicationAdapter {
                 } else {
                     active += stepped;
                     require(sensor.getBody() == bossBody, "active hitbox moves with Dredge");
+                    lastWidth = sensorWidth(sensor);
+                    if (firstWidth == 0f) { firstWidth = lastWidth; }
+                    if (trial == LungeTrial.FINISH && lastWidth < 1.1f * firstWidth) {
+                        require(health.getCurrent() == hp, "target is out of reach until the final expansion");
+                    }
                     if (trial == LungeTrial.DODGE) {
                         require(bossBody.getPosition().y == start.y, "sidestep cannot steer the lunge");
                     } else if (trial == LungeTrial.HIT || trial == LungeTrial.COVER) {
@@ -785,10 +801,11 @@ public final class HoardArenaTest extends ApplicationAdapter {
                     }
                 }
             }
-            require(startup == 20 && active == 12, "fixed windup and active window: " + startup + "/" + active);
+            require(startup == 10 && active == 12, "halved windup and unchanged active window: " + startup + "/" + active);
+            require(Math.abs(lastWidth / firstWidth - 1.5f) < .001f, "final lunge tick scales the hitbox 1.5x");
             require(!attack.isAttacking() && attack.getSensor() == null && ai.recovering(), "fixture is gone in recovery");
             float travel = (bossBody.getPosition().x - start.x) / scale;
-            require(travel > 15f && travel <= 32.01f, "Dredge closes the gap within the lunge budget: " + travel);
+            require(travel > 15f && travel <= 48.01f, "Dredge closes the gap within the lunge budget: " + travel);
             if (trial == LungeTrial.COVER) {
                 require(hammerContact && AwarenessSystem.feet(boss).x < wall.getPosition().x && travel < 32f,
                     "thin wall stops the lunge and shields a player overlapping the hammer sensor");
@@ -806,6 +823,9 @@ public final class HoardArenaTest extends ApplicationAdapter {
                         + ", feedback count " + (feedback == null ? 0 : feedback.numbers.size()) + ", dt " + frame + ", travel " + travel);
                 float pushPixels = (AwarenessSystem.feet(player).x - start.x - Actor.MAPPER.get(boss).feetX()) / scale - gap;
                 require(pushPixels > 2 && pushPixels < 60, "guard lunge carries player a short distance: " + pushPixels);
+            } else if (trial == LungeTrial.FINISH) {
+                require(health.getCurrent() < hp && feedback != null && feedback.numbers.size() == 1,
+                    "final expansion hits a target outside the normal sensor exactly once");
             } else {
                 require(health.getCurrent() == hp, trial + " takes no lunge damage");
             }
@@ -820,6 +840,18 @@ public final class HoardArenaTest extends ApplicationAdapter {
             playerBody.setTransform(savedPlayer, 0);
             bossBody.setTransform(savedBoss, 0);
         }
+    }
+
+    private static float sensorWidth(Fixture fixture) {
+        var shape = (PolygonShape) fixture.getShape();
+        var vertex = new Vector2();
+        float left = Float.POSITIVE_INFINITY, right = Float.NEGATIVE_INFINITY;
+        for (int i = 0; i < shape.getVertexCount(); i++) {
+            shape.getVertex(i, vertex);
+            left = Math.min(left, vertex.x);
+            right = Math.max(right, vertex.x);
+        }
+        return right - left;
     }
 
     private static boolean overlapsHurtbox(Fixture hammer, Body target) {
@@ -1041,7 +1073,7 @@ public final class HoardArenaTest extends ApplicationAdapter {
         engine.getSystem(PhysicSystem.class).resetClock();
         var primary = Loadout.MAPPER.get(guards.getFirst()).getWeapon().primary();
         var animation = primary.animation();
-        float windup = Math.max(.28f, primary.hitFrame() * animation.frameInterval() / animation.speed());
+        float windup = .5f * Math.max(.28f, primary.hitFrame() * animation.frameInterval() / animation.speed());
         // The commitment tick does not sample playback. The next tick installs frame zero.
         // Allow floating-point rounding if the authored hit lies on an exact tick boundary.
         double playbackTicks = windup / dt;

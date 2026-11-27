@@ -22,6 +22,8 @@ import java.util.List;
 import java.util.Map;
 
 public class CombatSystem extends IteratingSystem implements ContactListener, EntityListener, EventEmitter {
+    private static final float LUNGE_WINDUP_RATE = 2f;
+    private static final float LUNGE_FINISH_SCALE = 1.5f;
     private final World world;
     private final List<ArrowFlight> arrows = new ArrayList<>();
     private final Projectile arrowType;
@@ -311,7 +313,8 @@ public class CombatSystem extends IteratingSystem implements ContactListener, En
         }
         var animation = Animation2D.MAPPER.get(entity);
         if (lunge.beginStep(combat.getAttackId())) {
-            getEngine().getSystem(AnimationSystem.class).advancePlayback(entity, interval);
+            float playbackDelta = combat.getSensor() == null ? interval * LUNGE_WINDUP_RATE : interval;
+            getEngine().getSystem(AnimationSystem.class).advancePlayback(entity, playbackDelta);
             updateActiveAttack(entity, combat, animation, true, ActorAi.MAPPER.get(entity));
         } else if (animation.getType() != Animation2D.AnimationType.ATTACK) {
             AnimationPlayer.MAPPER.get(entity).getAnimationFsm().changeState(AnimationState.ATTACK);
@@ -319,7 +322,12 @@ public class CombatSystem extends IteratingSystem implements ContactListener, En
             // A heavy swing can replace an ordinary attack before the next render tick.
             animation.restartQueuedAttack();
         }
-        lunge.driveStep(Physic.MAPPER.get(entity).getBody(), combat, animation, interval);
+        var body = Physic.MAPPER.get(entity).getBody();
+        if (lunge.driveStep(body, combat, animation, interval)) {
+            // Swap geometry without ending the swing or clearing its hit targets.
+            body.destroyFixture(combat.getSensor());
+            createMeleeSensor(entity, combat, LUNGE_FINISH_SCALE);
+        }
     }
 
     // Use persistent contacts, not beginContact: a target takes damage once but is
@@ -399,13 +407,23 @@ public class CombatSystem extends IteratingSystem implements ContactListener, En
         var attack = combat.getActiveAttack();
         if (attack.collisionType() != CollisionType.MELEE
             || combat.getSensor() != null || !animation.hasReachedFrame(attack.hitFrame())) { return; }
+        createMeleeSensor(entity, combat, 1f);
+    }
 
+    private void createMeleeSensor(Entity entity, Combat combat, float scale) {
         var body = Physic.MAPPER.get(entity).getBody();
         var size = Transform.MAPPER.get(entity).getSize();
         var anchor = new Vector2(size.x * 0.5f, size.y * 0.5f);
         var shape = new PolygonShape();
         try {
-            shape.set(attack.vertices(anchor, combat.getAttackFacing()));
+            var vertices = combat.getActiveAttack().vertices(anchor, combat.getAttackFacing());
+            if (scale != 1f) {
+                var center = new Vector2();
+                for (var vertex : vertices) { center.add(vertex); }
+                center.scl(1f / vertices.length);
+                for (var vertex : vertices) { vertex.sub(center).scl(scale).add(center); }
+            }
+            shape.set(vertices);
             var definition = new FixtureDef();
             definition.shape = shape;
             definition.isSensor = true;
