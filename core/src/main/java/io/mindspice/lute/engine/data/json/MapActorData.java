@@ -69,6 +69,11 @@ public sealed interface MapActorData permits MapActorData.Npc, MapActorData.Enem
             }
         }
 
+        Enemy withInfightChance(int chance) {
+            return new Enemy(name, moveSpeed, maxHealth, weapon, animation, sounds, logicalSize, collision,
+                hitboxBounds, detectionBounds, behaviorGraph, chance);
+        }
+
         @Override public float detectionRadius() { return detectionBounds.radius(); }
     }
 
