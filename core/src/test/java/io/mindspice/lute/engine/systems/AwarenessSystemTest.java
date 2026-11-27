@@ -47,6 +47,7 @@ public final class AwarenessSystemTest {
             checkSemicircle(world);
             checkArcherSight(world);
             checkLungeDecisions(world);
+            checkTwirlDecisions(world);
             checkInfighting(world);
             try (var test = new RetaliationTest()) { test.run(); }
         } finally {
@@ -157,8 +158,75 @@ public final class AwarenessSystemTest {
         check(playerHealth.isAlive(), "Ordinary melee control has a living target");
 
         enemy.add(new ActorAi("wander_attack", 12, 0));
-        check(choice.apply(60f, Vector2.Zero) == null, "Ordinary melee with the same loadout does not use the lunge profile");
-        check(choice.apply(28f, Vector2.Zero) == Combat.AttackSlot.PRIMARY, "Ordinary melee can attack the restored target up close");
+        check(choice.apply(60f, Vector2.Zero) == Combat.AttackSlot.SECONDARY, "Ordinary melee uses the same hammer to close distance");
+        check(choice.apply(28f, new Vector2(1, 0)) == Combat.AttackSlot.SECONDARY, "Ordinary hammer enemy lunges at a retreating target");
+        check(choice.apply(28f, Vector2.Zero) == Combat.AttackSlot.PRIMARY, "Ordinary hammer enemy uses primary on a stationary melee target");
+    }
+
+    private static void checkTwirlDecisions(World world) {
+        var engine = new Engine();
+        var awareness = new AwarenessSystem(world, false);
+        engine.addSystem(awareness);
+        var enemy = actor(engine, world, Actor.Role.ENEMY, 110, 110);
+        var player = actor(engine, world, Actor.Role.PLAYER, 115, 110);
+        Facing.MAPPER.get(enemy).setDirection(Facing.Direction.RIGHT);
+        for (var fixture : body(enemy).getFixtureList()) {
+            if (fixture.getUserData() == AwarenessSystem.SENSOR_TAG) { fixture.getShape().setRadius(6); }
+        }
+        var primary = new CombatWeapon.Attack("synthetic", new Scalar(10), 0, .5f,
+            AttackAnimKey.SLASH, null, null, null, null, CollisionType.MELEE);
+        var twirl = new CombatWeapon.Attack("synthetic", new Scalar(10), 0, .5f,
+            AttackAnimKey.TWIRL, null, null, null, null, CollisionType.MELEE);
+        var jab = new CombatWeapon.Attack("synthetic", new Scalar(10), 0, .5f,
+            AttackAnimKey.JAB, null, null, null, null, CollisionType.MELEE);
+        var axe = new CombatWeapon.Weapon("synthetic", "", primary, twirl);
+        var equipment = new Loadout.Equipment(null, null, null, null);
+        enemy.add(new Loadout(equipment, "synthetic", Map.of("synthetic", axe), _ -> { }));
+        var combat = Combat.MAPPER.get(enemy);
+
+        awareness.processEntity(enemy, 0f);
+        awareness.processEntity(enemy, .11f);
+        check(ActorAi.MAPPER.get(enemy).mode() == Mode.ENGAGE && !combat.hasAttackRequest(),
+            "Visible target beyond melee reach is pursued instead of triggering twirl");
+        body(player).setTransform(114, 110, 0);
+        awareness.processEntity(enemy, 0f);
+        awareness.processEntity(enemy, .02f);
+        check(!combat.hasAttackRequest(), "Twirl waits at least the minimum melee decision delay");
+        awareness.processEntity(enemy, .11f);
+        check(combat.requestedTarget() == player && combat.consumeAttackRequest() == Combat.AttackSlot.SECONDARY,
+            "Ordinary axe enemy chooses twirl over a ready primary in melee range");
+
+        combat.beginAttack(Combat.AttackSlot.SECONDARY, twirl, Facing.Direction.RIGHT);
+        combat.endAttack();
+        awareness.processEntity(enemy, 0f);
+        awareness.processEntity(enemy, .11f);
+        check(combat.consumeAttackRequest() == Combat.AttackSlot.PRIMARY, "Cooling twirl falls back to primary");
+
+        combat.tickCooldown(twirl.cooldownSeconds());
+        awareness.processEntity(enemy, 0f);
+        awareness.processEntity(enemy, .11f);
+        check(combat.consumeAttackRequest() == Combat.AttackSlot.SECONDARY, "Twirl is preferred again once ready");
+        combat.beginAttack(Combat.AttackSlot.SECONDARY, twirl, Facing.Direction.RIGHT);
+        combat.tickCooldown(twirl.cooldownSeconds());
+        awareness.processEntity(enemy, .11f);
+        check(!combat.hasAttackRequest(), "A ready twirl cannot interrupt an active attack");
+        combat.endAttack();
+        awareness.processEntity(enemy, .11f);
+        check(!combat.hasAttackRequest(), "Even if cooldown expired during playback, the next twirl starts a fresh delay");
+        awareness.processEntity(enemy, .11f);
+        check(combat.consumeAttackRequest() == Combat.AttackSlot.SECONDARY, "The new twirl opportunity completes its delay");
+
+        var ordinary = new CombatWeapon.Weapon("synthetic", "", primary, jab);
+        enemy.add(new Loadout(equipment, "synthetic", Map.of("synthetic", ordinary), _ -> { }));
+        combat.beginAttack(Combat.AttackSlot.PRIMARY, primary, Facing.Direction.RIGHT);
+        combat.endAttack();
+        awareness.processEntity(enemy, 0f);
+        awareness.processEntity(enemy, .11f);
+        check(!combat.hasAttackRequest(), "An unrelated secondary is not selected even when primary is cooling down");
+        combat.tickCooldown(primary.cooldownSeconds());
+        awareness.processEntity(enemy, 0f);
+        awareness.processEntity(enemy, .11f);
+        check(combat.consumeAttackRequest() == Combat.AttackSlot.PRIMARY, "Unrelated secondary leaves ordinary primary behavior intact");
     }
 
     private static void checkArcherSight(World world) {
@@ -168,7 +236,8 @@ public final class AwarenessSystemTest {
         var player = actor(engine, world, Actor.Role.PLAYER, 53, 50);
         Facing.MAPPER.get(enemy).setDirection(Facing.Direction.RIGHT);
         var shot = new CombatWeapon.Attack("bow", new Scalar(10), 0, .3f, AttackAnimKey.SHOT, null, null, null, null, CollisionType.PROJECTILE);
-        var bow = new CombatWeapon.Weapon("bow", "", shot, shot);
+        var twirl = new CombatWeapon.Attack("bow", new Scalar(10), 0, .3f, AttackAnimKey.TWIRL, null, null, null, null, CollisionType.MELEE);
+        var bow = new CombatWeapon.Weapon("bow", "", shot, twirl);
         body(enemy).setType(BodyDef.BodyType.DynamicBody);
         engine.addSystem(new PhysicMoveSystem());
         enemy.add(new ActorAi(BehaviorGraphs.ARCHER, 4f, 0)).add(new BowAim(1, 1)).add(new Loadout(new Loadout.Equipment(null, null, null, null),
@@ -179,8 +248,8 @@ public final class AwarenessSystemTest {
         engine.update(.14f);
         check(!combat.hasAttackRequest(), "Archer keeps the 150 ms minimum decision delay");
         engine.update(.161f);
-        check(combat.requestedTarget() == player && Move.MAPPER.get(enemy).getDirection().isZero(),
-            "Archer chooses its ranged engage graph instead of chasing");
+        check(combat.requestedTarget() == player && combat.requestedSlot() == Combat.AttackSlot.PRIMARY
+            && Move.MAPPER.get(enemy).getDirection().isZero(), "Archer shoots rather than using a melee secondary");
         combat.consumeAttackRequest();
         combat.beginAttack(Combat.AttackSlot.PRIMARY, shot, Facing.Direction.RIGHT);
         engine.update(0);

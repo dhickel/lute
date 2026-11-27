@@ -1,6 +1,7 @@
 package io.mindspice.lute.engine.behaviorgraph;
 
 import com.badlogic.ashley.core.Entity;
+import io.mindspice.lute.engine.components.Actor;
 import io.mindspice.lute.engine.components.ActorAi;
 import io.mindspice.lute.engine.components.ActorAi.Mode;
 import io.mindspice.lute.engine.components.BowAim;
@@ -9,7 +10,6 @@ import io.mindspice.lute.engine.components.Combat.AttackSlot;
 import io.mindspice.lute.engine.components.Loadout;
 import io.mindspice.lute.engine.components.Health;
 import io.mindspice.lute.engine.components.Physic;
-import io.mindspice.lute.engine.data.json.AttackAnimKey;
 import io.mindspice.lute.engine.data.json.WeaponsData.WeaponData.CollisionType;
 
 import java.util.List;
@@ -30,8 +30,7 @@ public final class BehaviorGraphs {
     private static final Map<Mode, RootNode> PURSUIT = Map.of(Mode.WANDER, WANDER, Mode.ENGAGE, BASE_MELEE.get(),
         Mode.INVESTIGATE, actionGraph("Investigate last seen position", Action.followTarget()));
     private static final Map<String, Map<Mode, RootNode>> PROFILES = Map.of(
-        "wander", Map.of(Mode.WANDER, WANDER), "wander_attack", PURSUIT,
-        "wander_lunge", Map.of(Mode.WANDER, WANDER, Mode.ENGAGE, lungeEngage(), Mode.INVESTIGATE, PURSUIT.get(Mode.INVESTIGATE)),
+        "wander", Map.of(Mode.WANDER, WANDER), "wander_attack", PURSUIT, "wander_lunge", PURSUIT,
         ARCHER, Map.of(Mode.WANDER, WANDER, Mode.ENGAGE, BASE_ARCHER.get(), Mode.INVESTIGATE, PURSUIT.get(Mode.INVESTIGATE))
     );
 
@@ -100,34 +99,40 @@ public final class BehaviorGraphs {
         return root;
     }
 
-    private static RootNode lungeEngage() {
-        var root = new RootNode();
+    private static Decision secondaryInRange(Decision primaryInRange) {
         var meleeRange = Decision.targetWithinPixels(PRIMARY_MELEE_RANGE);
-        var lunge = DecisionNode.of("Visible target to close on", List.of(
-            (entity, _) -> Loadout.MAPPER.get(entity).getWeapon().secondary().animKey() == AttackAnimKey.LUNGE,
-            Decision.targetWithinPixels(LUNGE_COMMIT_RANGE),
-            (entity, state) -> {
-                var target = state.visibleTarget();
-                if (target == null || !Health.MAPPER.get(target).isAlive()) { return false; }
-                return !meleeRange.eval(entity, state)
-                    || Physic.MAPPER.get(target).getBody().getLinearVelocity().dot(state.targetOffset()) > 0f;
-            },
-            Decision.attackReady(AttackSlot.SECONDARY)));
-        var plant = Action.stop().andThen(Action.faceTarget());
-        var ready = DecisionNode.of("Secondary opportunity", List.of(attackDue(AttackSlot.SECONDARY, MELEE_DELAY)));
-        ready.addEdgeNode(ActionNode.of("Lunge", plant.andThen(Action.attack(AttackSlot.SECONDARY))));
-        lunge.addEdgeNode(ready);
-        lunge.addEdgeNode(ActionNode.of("Plant feet for lunge", plant));
-        root.addEdgeNode(lunge);
-        root.addEdgeNode(BASE_MELEE.get());
-        return root;
+        var lungeRange = Decision.targetWithinPixels(LUNGE_COMMIT_RANGE);
+        return (entity, state) -> {
+            if (Actor.MAPPER.get(entity).role() != Actor.Role.ENEMY) { return false; }
+            var target = state.visibleTarget();
+            if (target == null || !Health.MAPPER.get(target).isAlive()) { return false; }
+            return switch (Loadout.MAPPER.get(entity).getWeapon().secondary().animKey()) {
+                case TWIRL -> meleeRange.eval(entity, state);
+                case LUNGE -> lungeRange.eval(entity, state) && (!primaryInRange.eval(entity, state)
+                    || Physic.MAPPER.get(target).getBody().getLinearVelocity().dot(state.targetOffset()) > 0f);
+                default -> false;
+            };
+        };
     }
 
     private static RootNode engage() {
         var root = new RootNode();
-        var inRange = DecisionNode.of("Player in melee range", List.of(Decision.hasPrimaryMelee(),
-            Decision.targetWithinPixels(PRIMARY_MELEE_RANGE)));
+        var primaryMelee = Decision.hasPrimaryMelee();
+        var meleeRange = Decision.targetWithinPixels(PRIMARY_MELEE_RANGE);
+        Decision primaryInRange = (entity, state) -> primaryMelee.eval(entity, state) && meleeRange.eval(entity, state);
         var stopAndFace = Action.stop().andThen(Action.faceTarget());
+        Action clearOpportunity = (entity, _) -> ActorAi.MAPPER.get(entity).clearOpportunity();
+        // The plant action keeps a pending secondary from falling through and resetting its delay to primary.
+        var secondary = DecisionNode.of("Eligible melee secondary", List.of(secondaryInRange(primaryInRange),
+            Decision.attackReady(AttackSlot.SECONDARY)));
+        var secondaryReady = DecisionNode.of("Secondary opportunity", List.of(attackDue(AttackSlot.SECONDARY, MELEE_DELAY)));
+        secondaryReady.addEdgeNode(ActionNode.of("Attack",
+            stopAndFace.andThen(clearOpportunity).andThen(Action.attack(AttackSlot.SECONDARY))));
+        secondary.addEdgeNode(secondaryReady);
+        secondary.addEdgeNode(ActionNode.of("Plant feet for secondary", stopAndFace));
+        root.addEdgeNode(secondary);
+
+        var inRange = DecisionNode.of("Player in melee range", List.of(primaryInRange));
         var ready = DecisionNode.of("Primary opportunity", List.of(attackDue(AttackSlot.PRIMARY, MELEE_DELAY)));
         ready.addEdgeNode(ActionNode.of("Attack", stopAndFace.andThen(Action.attack(AttackSlot.PRIMARY))));
         inRange.addEdgeNode(ready);
@@ -138,8 +143,7 @@ public final class BehaviorGraphs {
         inRange.addEdgeNode(step);
         inRange.addEdgeNode(ActionNode.of("Plant feet", stopAndFace));
         root.addEdgeNode(inRange);
-        Action disengage = (entity, _) -> ActorAi.MAPPER.get(entity).clearOpportunity();
-        root.addEdgeNode(ActionNode.of("Follow player", disengage.andThen(Action.followTarget())));
+        root.addEdgeNode(ActionNode.of("Follow player", clearOpportunity.andThen(Action.followTarget())));
         return root;
     }
 }

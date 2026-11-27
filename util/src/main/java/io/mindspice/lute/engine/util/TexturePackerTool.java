@@ -8,6 +8,11 @@ import com.badlogic.gdx.utils.JsonReader;
 import org.w3c.dom.Document;
 import org.w3c.dom.Element;
 import org.xml.sax.SAXException;
+import tools.jackson.core.JacksonException;
+import tools.jackson.core.StreamReadFeature;
+import tools.jackson.databind.DeserializationFeature;
+import tools.jackson.databind.JsonNode;
+import tools.jackson.databind.json.JsonMapper;
 
 import javax.imageio.ImageIO;
 import javax.xml.XMLConstants;
@@ -35,6 +40,11 @@ import java.util.regex.Pattern;
 public final class TexturePackerTool {
     private static final Pattern INDEXED_IMAGE = Pattern.compile("(.+)_([0-9]+)$");
     private static final String OWNERSHIP = ".runtime-assets-owned";
+    private static final String WEAPON_PACK_NAME = "weapons";
+    private static final JsonMapper WEAPON_CATALOG_JSON = JsonMapper.builder()
+        .enable(StreamReadFeature.STRICT_DUPLICATE_DETECTION)
+        .enable(DeserializationFeature.FAIL_ON_TRAILING_TOKENS)
+        .build();
     private static final List<String> EQUIPMENT_SLOTS = List.of("body", "head", "feet", "hands");
 
     public static void main(String[] args) throws IOException {
@@ -68,6 +78,7 @@ public final class TexturePackerTool {
         Path stage = transaction.resolve("generated");
         Path backup = transaction.resolve("previous");
         try {
+            validateWeaponAtlas(raw.resolve("data/weapons.json"));
             Files.createDirectory(stage);
             var settings = new JsonReader().parse(new FileHandle(raw.resolve("game.settings.json").toFile()));
             var project = settings.get("projectPath");
@@ -107,6 +118,20 @@ public final class TexturePackerTool {
         } finally {
             // Never remove the only surviving copy if rollback or backup cleanup failed.
             if (!Files.exists(backup)) { deleteTree(transaction); }
+        }
+    }
+
+    private static void validateWeaponAtlas(Path catalog) {
+        String expected = WEAPON_PACK_NAME + ".atlas";
+        JsonNode data;
+        try {
+            data = WEAPON_CATALOG_JSON.readTree(catalog);
+        } catch (JacksonException e) {
+            throw new IllegalArgumentException(catalog + ": expected valid JSON with top-level atlas \"" + expected + "\"", e);
+        }
+        var atlas = data.get("atlas");
+        if (atlas == null || !atlas.isString() || !expected.equals(atlas.stringValue())) {
+            throw new IllegalArgumentException(catalog + ": top-level atlas must be the string \"" + expected + "\"");
         }
     }
 
@@ -396,7 +421,7 @@ public final class TexturePackerTool {
         rejectNestedPackSettings(sprites.resolve("weapons"));
         rejectNestedPackSettings(sprites.resolve("objects"));
         Path groupedEquipment = groupEquipmentSprites(equipment, stage.getParent());
-        for (String name : List.of("character", "enemies", "body", "head", "feet", "hands", "weapons", "objects")) {
+        for (String name : List.of("character", "enemies", "body", "head", "feet", "hands", WEAPON_PACK_NAME, "objects")) {
             boolean equipmentSlot = EQUIPMENT_SLOTS.contains(name);
             Path input = (equipmentSlot ? groupedEquipment : sprites).resolve(name);
             var settings = new TexturePacker.Settings();

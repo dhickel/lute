@@ -5,8 +5,11 @@ import com.badlogic.gdx.*;
 import com.badlogic.gdx.backends.lwjgl3.*;
 import com.badlogic.gdx.controllers.*;
 import com.badlogic.gdx.files.FileHandle;
+import com.badlogic.gdx.graphics.GL20;
 import com.badlogic.gdx.graphics.Pixmap;
 import com.badlogic.gdx.graphics.PixmapIO;
+import com.badlogic.gdx.graphics.glutils.HdpiUtils;
+import com.badlogic.gdx.utils.BufferUtils;
 import io.mindspice.lute.engine.GameCore;
 import io.mindspice.lute.engine.components.Health;
 import io.mindspice.lute.engine.components.Pickup;
@@ -19,13 +22,20 @@ import io.mindspice.lute.engine.input.GamepadControl;
 import io.mindspice.lute.engine.singletons.GameConsts;
 import io.mindspice.lute.engine.systems.HoardSystem;
 import io.mindspice.lute.engine.systems.PhysicDebugRenderSystem;
+import io.mindspice.lute.engine.systems.RenderSystem;
+import io.mindspice.lute.engine.systems.TriggerDebugRenderSystem;
 import io.mindspice.lute.gameplay.HoardRun;
+import org.lwjgl.opengl.GL11;
 
+import java.lang.reflect.InvocationTargetException;
 import java.lang.reflect.Proxy;
 import java.nio.file.Files;
 import java.nio.file.Path;
+import java.util.Arrays;
 import java.util.HashMap;
+import java.util.LinkedHashMap;
 import java.util.List;
+import java.util.function.Supplier;
 
 import static com.badlogic.gdx.Input.Keys.*;
 
@@ -56,13 +66,13 @@ public final class MenuFlowTest extends ApplicationAdapter {
         prefs.putString("key." + F6, "GUI_RIGHT_CLICK").putString("key." + F7, "GUI_ENTER")
             .putString("key." + D, "GUI_RIGHT_CLICK").putString("key." + BACKSPACE, "GUI_RIGHT_CLICK")
             .putString("key." + F8, "SCROLL_DOWN").putString("key." + F9, "GUI_LEFT")
-            .putString("pad.FACE_WEST", "GUI_TAB").putString("pad.FACE_NORTH", "GUI_LEFT_CLICK").flush();
+            .putString("pad.FACE_WEST", "GUI_TAB").putString("pad.FACE_NORTH", "GUI_LEFT_CLICK")
+            .putString("PHYSICS", "false").putString("TRIGGERS", "false").flush();
         var previousProfile = System.getProperty("luteDebugLayers");
-        System.setProperty("luteDebugLayers", "off");
+        System.clearProperty("luteDebugLayers"); // Let Options control the gameplay debug passes.
         try { GAME.create(); }
         finally {
-            if (previousProfile == null) { System.clearProperty("luteDebugLayers"); }
-            else { System.setProperty("luteDebugLayers", previousProfile); }
+            if (previousProfile != null) { System.setProperty("luteDebugLayers", previousProfile); }
         }
         try {
             GAME.resize(960, 540);
@@ -73,7 +83,7 @@ public final class MenuFlowTest extends ApplicationAdapter {
             tap(F7); tap(F6); // Hoard -> name -> back using rebound GUI actions
             click(480, 158);
             tap(F7); // Toggle physics
-            boolean physics = !GameConsts.DEBUG_LAYERS.physics();
+            boolean physics = true;
             tap(F8); button(5); // scroll down; mapped GUI left click toggles triggers
             button(4); tap(F7); // mapped GUI tab; toggle raw light map
             tap(F8); tap(F7); // toggle lighting outlines
@@ -81,8 +91,9 @@ public final class MenuFlowTest extends ApplicationAdapter {
                 "asset validation starts enabled without a preference");
             tap(F8); tap(F7); // disable asset validation
             tap(F8); tap(F9); tap(F8); tap(F7); // left then scroll down -> Key Bindings
-            require(prefs.contains("PHYSICS") && prefs.contains("TRIGGERS") && prefs.contains("RAW_LIGHT_MAP")
-                && prefs.contains("LIGHTING_OUTLINES"), "all four independently persisted via logical GUI actions");
+            require(prefs.getString("PHYSICS").equals("true") && prefs.getString("TRIGGERS").equals("true")
+                && prefs.contains("RAW_LIGHT_MAP") && prefs.contains("LIGHTING_OUTLINES"),
+                "all four independently persisted via logical GUI actions");
             require(prefs.getString("ASSET_VALIDATION").equals("false"), "Options toggle persists disabled validation");
             for (int i = 0; i < InputAction.SPRINT.ordinal(); i++) { tap(DOWN); }
             tap(ENTER);
@@ -109,7 +120,7 @@ public final class MenuFlowTest extends ApplicationAdapter {
             require(GAME.getEngine().getSystems().size() == 0, "blank name does not start a run");
             button(3); button(0); // controller enters A
             type('x'); tap(BACKSPACE); type('d'); type('a'); type('!'); // name editing wins over shortcuts
-            var first = startWithoutPreflight();
+            var first = startAndCheckDebugViewport();
             require((GAME.getEngine().getSystem(PhysicDebugRenderSystem.class) != null) == physics, "options reach game renderer");
             var processor = Gdx.input.getInputProcessor();
             processor.keyDown(E);
@@ -144,6 +155,83 @@ public final class MenuFlowTest extends ApplicationAdapter {
                 && restart.map.getGamepad(GamepadControl.LEFT_STICK_UP) == InputAction.SPRINT, "restart restores overrides");
             remappedBackControls(prefs, physics);
         } finally { GAME.dispose(); Gdx.app.exit(); }
+    }
+
+    private HoardRun startAndCheckDebugViewport() {
+        var viewport = GAME.getViewport();
+        float originalWidth = viewport.getWorldWidth();
+        // Force a 4:3 gameplay viewport independently of installed assets; the menu is 16:9.
+        viewport.setWorldWidth(viewport.getWorldHeight() * 4f / 3f);
+        List<Class<?>> passes = List.of(RenderSystem.class, PhysicDebugRenderSystem.class, TriggerDebugRenderSystem.class);
+        try {
+            viewport.update(960, 540, true);
+            int[] initial = glViewport();
+            GAME.render(); // Leave the name-entry menu's viewport installed for the gameplay handoff.
+            require(initial[0] > 0 && initial[1] == 0, "wide window pillarboxes gameplay");
+            HoardRun run = checkDrawViewports("menu handoff", initial, passes, this::startWithoutPreflight);
+
+            require(Gdx.graphics.setWindowedMode(640, 640), "resize succeeds");
+            require(Gdx.graphics.getWidth() == 640 && Gdx.graphics.getHeight() == 640, "square window is active");
+            GAME.resize(640, 640);
+            int[] resized = glViewport();
+            require(resized[0] == 0 && resized[1] > 0, "square window letterboxes gameplay");
+            HdpiUtils.glViewport(0, 0, 640, 640); // Simulate another pass leaving a different viewport.
+            checkDrawViewports("after resize", resized, passes, () -> { GAME.render(); return run; });
+            checkDrawViewports("standalone renderer", resized, List.of(RenderSystem.class), () -> {
+                GAME.getEngine().getSystem(RenderSystem.class).update(0f);
+                return run;
+            });
+            return run;
+        } finally {
+            viewport.setWorldWidth(originalWidth);
+            Gdx.graphics.setWindowedMode(960, 540);
+            GAME.resize(960, 540);
+        }
+    }
+
+    private static HoardRun checkDrawViewports(String stage, int[] expected, List<Class<?>> passes,
+                                               Supplier<HoardRun> frame) {
+        var caller = glViewport();
+        require(!Arrays.equals(caller, expected), stage + " must start with a different GL viewport");
+        var draws = new LinkedHashMap<Class<?>, int[]>();
+        var gl = Gdx.gl20;
+        // The compositor also draws into private targets with their own viewports.
+        int framebuffer = GL11.glGetInteger(GL20.GL_FRAMEBUFFER_BINDING);
+        var walker = StackWalker.getInstance(StackWalker.Option.RETAIN_CLASS_REFERENCE);
+        var probe = (GL20) Proxy.newProxyInstance(GL20.class.getClassLoader(), new Class<?>[]{GL20.class},
+            (proxy, method, args) -> {
+                try {
+                    var result = method.invoke(gl, args);
+                    if ((method.getName().equals("glDrawArrays") || method.getName().equals("glDrawElements"))
+                        && GL11.glGetInteger(GL20.GL_FRAMEBUFFER_BINDING) == framebuffer) {
+                        walker.walk(stack -> stack.map(StackWalker.StackFrame::getDeclaringClass)
+                            .filter(passes::contains).findFirst()).ifPresent(pass -> {
+                                int[] actual = glViewport();
+                                // Keep any mismatch so later draws of the same pass cannot hide it.
+                                if (!Arrays.equals(actual, expected)) { draws.put(pass, actual); }
+                                else { draws.putIfAbsent(pass, actual); }
+                            });
+                    }
+                    return result;
+                } catch (InvocationTargetException failure) { throw failure.getCause(); }
+            });
+        HoardRun run;
+        Gdx.gl = Gdx.gl20 = probe;
+        try { run = frame.get(); }
+        finally { Gdx.gl = Gdx.gl20 = gl; }
+        require(List.copyOf(draws.keySet()).equals(passes), stage + " draw order: " + draws.keySet());
+        draws.forEach((pass, actual) -> require(Arrays.equals(actual, expected), stage + " " + pass.getSimpleName()
+            + " viewport: " + Arrays.toString(actual) + ", expected " + Arrays.toString(expected)));
+        require(Arrays.equals(glViewport(), caller), stage + " restores the caller viewport");
+        System.out.println("MenuFlowTest: " + stage + " drew in " + Arrays.toString(expected)
+            + " and restored " + Arrays.toString(caller));
+        return run;
+    }
+
+    private static int[] glViewport() {
+        var values = BufferUtils.newIntBuffer(4);
+        Gdx.gl.glGetIntegerv(GL20.GL_VIEWPORT, values);
+        return new int[]{values.get(0), values.get(1), values.get(2), values.get(3)};
     }
 
     private HoardRun startWithoutPreflight() {

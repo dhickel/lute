@@ -10,6 +10,10 @@ Format code for readability, with consistent indentation, sensible line breaks, 
 
 Agents need not create or maintain a root README. Use the existing documentation and living specifications instead.
 
+## Weapon Testing
+
+Use the main-menu **Test Area** mode to demo and test weapon changes. Keep test-specific setup in that mode and use shared production gameplay and combat rather than separate test implementations.
+
 ## Gameplay Scope
 
 Preserve existing gameplay behavior outside the requested scope. Obtain explicit user approval before any unspecified gameplay change, including indirect effects on existing balance, scaling, spawn rules, scoring, or timing. If such a change is needed to deliver the request, explain the exact change and wait for approval before implementing it.

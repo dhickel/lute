@@ -1266,6 +1266,9 @@ public final class CombatSystemTest {
             field.set(GameCore.INSTANCE, data);
             for (var asset : List.of(CharacterAssets.CHARACTER, CharacterAssets.HEAD, CharacterAssets.BODY,
                 CharacterAssets.HANDS, CharacterAssets.FEET, CharacterAssets.WEAPONS)) {
+                // Each altered fixture represents new inputs, not an edit to a live validated atlas.
+                var probe = new EntityFactory(world, assets);
+                new Engine().addSystem(probe);
                 var candidate = shared.get(asset.id());
                 String prefix = asset == CharacterAssets.CHARACTER ? "player/"
                     : asset.id().equals(CharacterAssets.WEAPONS.id()) ? "melee/basic_sword/" : "basic/";
@@ -1273,18 +1276,20 @@ public final class CombatSystemTest {
                 int width = frame.getRegionWidth();
                 try {
                     frame.setRegionWidth(32);
-                    rejects(() -> factory.getPlayerEntity(new Vector2(320, 640), null, Facing.Direction.RIGHT),
+                    rejects(() -> probe.getPlayerEntity(new Vector2(320, 640), null, Facing.Direction.RIGHT),
                         "Invalid loaded frame geometry: " + asset.id());
                 } finally { frame.setRegionWidth(width); }
             }
             for (var asset : List.of(CharacterAssets.HEAD, CharacterAssets.BODY, CharacterAssets.HANDS,
                 CharacterAssets.FEET, CharacterAssets.WEAPONS)) {
+                var probe = new EntityFactory(world, assets);
+                new Engine().addSystem(probe);
                 var candidate = shared.get(asset.id());
                 String key = asset == CharacterAssets.WEAPONS ? "ranged/basic_bow/jab_up" : "basic/shot_up";
                 var frame = sourceFrame(candidate, key);
                 candidate.getRegions().removeValue(frame, true);
                 try {
-                    rejects(() -> factory.getPlayerEntity(new Vector2(320, 640), null, Facing.Direction.RIGHT),
+                    rejects(() -> probe.getPlayerEntity(new Vector2(320, 640), null, Facing.Direction.RIGHT),
                         "Missing directional layer frame: " + asset.id());
                 } finally { candidate.getRegions().add(frame); }
             }
@@ -1317,10 +1322,29 @@ public final class CombatSystemTest {
             var different = new PlayerData(original.name(), original.moveSpeed(), original.maxHealth(), original.loadout(),
                 original.animation(), original.sounds(), new PlayerData.LogicalSize(80, 72), original.collision(), original.hitboxBounds());
             field.set(GameCore.INSTANCE, new GameData(different, data.weaponsData(), data.projectilesData(), data.actorsData(), data.objectsData()));
+            var weaponAtlas = (CountingAtlas) shared.get(CharacterAssets.WEAPONS.id());
+            int beforeAnchorChange = weaponAtlas.lookups;
             var differentPlayer = factory.getPlayerEntity(new Vector2(320, 640), null, Facing.Direction.RIGHT);
+            check(weaponAtlas.lookups > beforeAnchorChange, "A new logical anchor validates weapon data");
             near(80 * GameConsts.UNIT_SCALE, Transform.MAPPER.get(differentPlayer).getSize().x, "Factory accepts configured future logical width");
             near(72 * GameConsts.UNIT_SCALE, Transform.MAPPER.get(differentPlayer).getSize().y, "Factory accepts configured future logical height");
-            world.destroyBody(Physic.MAPPER.get(differentPlayer).getBody());
+            field.set(GameCore.INSTANCE, data);
+            var first = factory.getPlayerEntity(Vector2.Zero, null, Facing.Direction.DOWN);
+            check(Loadout.MAPPER.get(first).getWeapon() != Loadout.MAPPER.get(differentPlayer).getWeapon(),
+                "Different logical anchors use separate weapon catalogues");
+            int lookups = weaponAtlas.lookups;
+            var second = factory.getPlayerEntity(new Vector2(320, 640), null, Facing.Direction.UP);
+            var firstLoadout = Loadout.MAPPER.get(first);
+            var secondLoadout = Loadout.MAPPER.get(second);
+            check(weaponAtlas.lookups == lookups && firstLoadout.getWeapon() == secondLoadout.getWeapon(),
+                "Equivalent inputs reuse validated weapon records without rescanning weapon frames");
+            check(firstLoadout != secondLoadout && Combat.MAPPER.get(first) != Combat.MAPPER.get(second)
+                && Animation2D.MAPPER.get(first) != Animation2D.MAPPER.get(second), "Actor components remain independent");
+            firstLoadout.setWeapon(firstLoadout.getWeaponId() == null ? "basic_sword" : null);
+            check(firstLoadout.getWeapon() != secondLoadout.getWeapon(), "One actor's selection does not change another");
+            for (var staged : List.of(differentPlayer, first, second)) {
+                world.destroyBody(Physic.MAPPER.get(staged).getBody());
+            }
             field.set(GameCore.INSTANCE, cues);
             var player = factory.getPlayerEntity(new Vector2(320, 640), null, Facing.Direction.RIGHT);
             check(player.getComponent(Player.class) != null, "Real player factory declares map-sensor participation");
@@ -1393,13 +1417,13 @@ public final class CombatSystemTest {
                     }
                 }
             }
+            engine.removeEntity(player);
             var shortAtlas = new TextureAtlas();
             var replacement = new TextureAtlas();
             try {
                 for (var frame : shared.get(CharacterAssets.CHARACTER.id()).getRegions()) {
                     replacement.addRegion(frame.name, frame).index = frame.index;
                 }
-                var previousAnimation = animation.getAnimation();
                 for (var action : new String[]{"slash", "jab", "shot"}) {
                     for (var direction : Facing.Direction.values()) {
                         shortAtlas.getRegions().clear();
@@ -1410,17 +1434,22 @@ public final class CombatSystemTest {
                             }
                         }
                         loaded[0] = shortAtlas;
-                        rejects(() -> engine.update(0), "Reload validates all catalog actions and facings: " + key);
-                        check(animation.getAnimation() == previousAnimation, "Invalid reload does not install animation");
-                        rejects(() -> engine.update(0), "Invalid reload remains unaccepted on retry");
+                        rejects(() -> factory.getPlayerEntity(Vector2.Zero, null, Facing.Direction.DOWN),
+                            "New spawn validates a reloaded atlas: " + key);
+                        rejects(() -> factory.getPlayerEntity(Vector2.Zero, null, Facing.Direction.DOWN),
+                            "Failed validation is not cached");
                     }
                 }
                 loaded[0] = replacement;
-                engine.update(0);
-                check(animation.getAnimation() != previousAnimation, "Valid replacement reloads existing entity");
-                Facing.MAPPER.get(player).setDirection(Facing.Direction.UP);
-                state.requestAttack(Combat.AttackSlot.SECONDARY); engine.update(0); engine.update(0);
-                check(animation.getAnimation().getKeyFrames().length == 8, "Valid replacement supports action playback");
+                int before = weaponAtlas.lookups;
+                var reloaded = factory.getPlayerEntity(Vector2.Zero, null, Facing.Direction.UP);
+                check(weaponAtlas.lookups > before, "Reloaded base atlas validates even with an equivalent spawn");
+                engine.addEntity(reloaded);
+                Combat.MAPPER.get(reloaded).requestAttack(Combat.AttackSlot.SECONDARY);
+                engine.update(0); engine.update(0);
+                check(Animation2D.MAPPER.get(reloaded).getAnimation().getKeyFrames().length == 8,
+                    "New entity plays attacks after successful reload");
+                engine.removeEntity(reloaded);
             } finally { shortAtlas.dispose(); replacement.dispose(); }
         } finally {
             engine.removeAllEntities(); world.dispose(); assets.dispose(); atlas.dispose(); input.dispose();
@@ -1456,7 +1485,7 @@ public final class CombatSystemTest {
     private static Map<String, TextureAtlas> sharedAtlases() {
         var atlases = new java.util.HashMap<String, TextureAtlas>();
         for (var asset : CharacterAssets.all("weapons.atlas")) {
-            var atlas = new TextureAtlas();
+            var atlas = new CountingAtlas();
             var file = new FileHandle("assets/" + asset.path());
             var data = new TextureAtlas.TextureAtlasData(file, file.parent(), false);
             for (var region : data.getRegions()) {
@@ -1470,26 +1499,48 @@ public final class CombatSystemTest {
         return atlases;
     }
 
+    private static final class CountingAtlas extends TextureAtlas {
+        int lookups;
+        @Override public com.badlogic.gdx.utils.Array<AtlasRegion> findRegions(String name) {
+            lookups++;
+            return super.findRegions(name);
+        }
+    }
+
     private static void atlasReload() {
         var first = new TextureAtlas(); var second = new TextureAtlas();
         first.addRegion("loop", new DimensionTexture(16, 16), 0, 0, 16, 16);
         second.addRegion("loop", new DimensionTexture(32, 32), 0, 0, 32, 32);
         TextureAtlas[] loaded = {first};
+        int[] lookups = {0};
         var assets = new AssetService(FileHandle::new) {
-            @Override public <T> T get(Class<T> type, String id) { return type.cast(loaded[0]); }
+            @Override public <T> T get(Class<T> type, String id) { lookups[0]++; return type.cast(loaded[0]); }
         };
         var engine = new Engine(); engine.addSystem(new AnimationSystem(assets));
-        var player = new Entity().add(new Animation2D("OBJECTS", "loop", Animation2D.AnimationType.DEFAULT,
-            Animation.PlayMode.LOOP, 1, .125f)).add(new Facing(Facing.Direction.DOWN)).add(new Graphic(new TextureRegion(), Color.WHITE));
-        engine.addEntity(player);
+        var object = newAnimatedObject();
+        engine.addEntity(object);
         try {
-            engine.update(0); engine.update(.125f);
-            near(.125f, Animation2D.MAPPER.get(player).incAndGetStateTime(0), "Playback advances");
-            var old = Animation2D.MAPPER.get(player).getAnimation();
-            loaded[0] = second; engine.update(0);
-            check(Animation2D.MAPPER.get(player).getAnimation() != old, "Atlas identity change rebuilds cache");
-            near(0, Animation2D.MAPPER.get(player).incAndGetStateTime(0), "Reload resets time");
+            engine.update(0);
+            check(lookups[0] == 1, "Initial pose resolves its atlas");
+            engine.update(.125f);
+            near(.125f, Animation2D.MAPPER.get(object).getStateTime(), "Playback advances");
+            check(lookups[0] == 1, "Steady playback does not resolve or scan the atlas");
+            engine.removeEntity(object);
+            first.dispose();
+            loaded[0] = second;
+            var rebuilt = newAnimatedObject();
+            engine.addEntity(rebuilt);
+            engine.update(0);
+            check(Graphic.MAPPER.get(rebuilt).getRegion().getRegionWidth() == 32,
+                "Rebuilt environmental object uses the new map atlas under the same ID");
+            near(0, Animation2D.MAPPER.get(rebuilt).getStateTime(), "Rebuilt animation starts at zero");
         } finally { first.dispose(); second.dispose(); assets.dispose(); }
+    }
+
+    private static Entity newAnimatedObject() {
+        return new Entity().add(new Animation2D("OBJECTS", "loop", Animation2D.AnimationType.DEFAULT,
+            Animation.PlayMode.LOOP, 1, .125f)).add(new Facing(Facing.Direction.DOWN))
+            .add(new Graphic(new TextureRegion(), Color.WHITE));
     }
 
     private static CombatWeapon.Weapon weapon(float speed, int hit, int sound, BoundsType shape) {

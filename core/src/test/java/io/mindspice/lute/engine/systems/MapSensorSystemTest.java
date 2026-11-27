@@ -19,6 +19,8 @@ import com.badlogic.gdx.maps.objects.PointMapObject;
 import com.badlogic.gdx.maps.objects.RectangleMapObject;
 import com.badlogic.gdx.maps.tiled.BaseTiledMapLoader;
 import com.badlogic.gdx.maps.tiled.TiledMap;
+import com.badlogic.gdx.maps.tiled.TiledMapTileLayer;
+import com.badlogic.gdx.maps.tiled.tiles.StaticTiledMapTile;
 import com.badlogic.gdx.math.Intersector;
 import com.badlogic.gdx.math.Vector2;
 import com.badlogic.gdx.physics.box2d.Body;
@@ -110,6 +112,8 @@ public final class MapSensorSystemTest {
             boundedEnemyPlacement();
             replacementAfterExternalPlayerRemoval();
             invalidMapLoadCleansPartialBodies();
+            terrainCellCollision(48, 16, 4.5f, 2f);
+            terrainCellCollision(32, 32, 3f, 4f);
             tiledNativeShapesAndRotation();
             tiledCompoundSeams();
             tiledTeleportShapeUnions();
@@ -1049,6 +1053,40 @@ public final class MapSensorSystemTest {
     }
 
     private static float pixels(float worldUnits) { return worldUnits / GameConsts.UNIT_SCALE; }
+
+    private static void terrainCellCollision(int tileWidth, int tileHeight, float originX, float originY) {
+        try (var game = new Harness()) {
+            var map = map(); // Map metadata stays 32×32; terrain placement must use the layer's dimensions.
+            var layer = new TiledMapTileLayer(8, 8, tileWidth, tileHeight);
+            layer.setName("Terrain");
+            var tile = new StaticTiledMapTile(new TextureRegion());
+            var rectangle = new RectangleMapObject(4, 2, 12, 8);
+            rectangle.setName("terrain-rectangle");
+            tile.getObjects().add(rectangle);
+            layer.setCell(3, 4, new TiledMapTileLayer.Cell().setTile(tile));
+            map.getLayers().add(layer);
+            game.load(map);
+
+            var bodies = new Array<Body>();
+            game.world.getBodies(bodies);
+            check(bodies.size == 2, "Expected only the map boundary and one terrain body");
+            var terrain = bodies.get(0).getFixtureList().size == 1 ? bodies.get(0) : bodies.get(1);
+            near(originX, terrain.getPosition().x, "Terrain body uses layer tile width for X");
+            near(originY, terrain.getPosition().y, "Terrain body uses layer tile height for Y");
+
+            var fixture = terrain.getFixtureList().first();
+            check("terrain-rectangle".equals(fixture.getUserData()), "Expected the authored terrain fixture");
+            // Tile-local rectangle spans (4, 2) to (16, 10) pixels, independent of cell dimensions.
+            check(fixture.testPoint(originX + 5f / 32f, originY + 3f / 32f)
+                    && fixture.testPoint(originX + 15f / 32f, originY + 9f / 32f),
+                "Terrain fixture contains both interior corners at the authored local offset");
+            check(!fixture.testPoint(originX + 3f / 32f, originY + 6f / 32f)
+                    && !fixture.testPoint(originX + 17f / 32f, originY + 6f / 32f)
+                    && !fixture.testPoint(originX + 10f / 32f, originY + 1f / 32f)
+                    && !fixture.testPoint(originX + 10f / 32f, originY + 11f / 32f),
+                "Terrain fixture does not extend beyond its authored local bounds");
+        }
+    }
 
     private static TiledMap map(MapObject... objects) {
         var map = new TiledMap();

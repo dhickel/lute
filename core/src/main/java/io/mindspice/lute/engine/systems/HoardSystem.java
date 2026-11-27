@@ -13,6 +13,7 @@ import com.badlogic.gdx.math.Vector2;
 import io.mindspice.lute.engine.components.*;
 import io.mindspice.lute.engine.singletons.GameConsts;
 import java.util.ArrayList;
+import java.util.LinkedHashSet;
 import java.util.List;
 import java.util.function.BiFunction;
 import java.util.random.RandomGenerator;
@@ -39,6 +40,14 @@ public final class HoardSystem extends ArenaSystem {
             for (int i = 0; i < enemy.weight(); i++) { tickets.add(enemy); }
         }
         return tickets;
+    }
+
+    private static final List<String> STARTER_WEAPONS = List.of("basic_sword", "basic_bow");
+
+    static List<String> starterWeaponCycle(String equippedWeapon) {
+        var cycle = new LinkedHashSet<>(List.of(equippedWeapon));
+        cycle.addAll(STARTER_WEAPONS);
+        return List.copyOf(cycle);
     }
 
     private static final String WEAPON_BAG_KEY = "weapon_bag";
@@ -78,7 +87,9 @@ public final class HoardSystem extends ArenaSystem {
                 return !"idle_dredge".equals(point.behaviorKey());
             }
             @Override public Component pointEnemyComponent(String key) { return rosterBounty(key); }
-            @Override public Controller setupLoadout(Loadout loadout) { return Controller.forArena(loadout.getWeapon().id()); }
+            @Override public Controller setupLoadout(Loadout loadout) {
+                return Controller.forArena(starterWeaponCycle(loadout.getWeapon().id()));
+            }
             @Override public void validate(EntityFactory factory, Entity player,
                                            BiFunction<String, Facing.Direction, Rectangle> enemyFootprint) {
                 validateDelayedSpawns(factory, triggers, player, enemyFootprint);
@@ -152,7 +163,6 @@ public final class HoardSystem extends ArenaSystem {
             if (round % 5 == 0) {
                 var boss = getEngine().getSystem(EntityFactory.class).getMapActor(marker.position(), Actor.Role.ENEMY,
                     marker.spawnKey(), marker.facing());
-                Loadout.MAPPER.get(boss).setWeapon("black_hammer");
                 int baseHealth = Health.MAPPER.get(boss).getMaximum();
                 boss.add(new Health((int) Math.min(Integer.MAX_VALUE, HoardRun.scaleForRound(baseHealth, round))));
                 boss.add(new ArenaGuard(Physic.MAPPER.get(boss).getBody().getPosition().cpy()));

@@ -36,11 +36,8 @@ public class Controller implements Component {
 
     public Controller(List<String> weaponCycle) { this(weaponCycle, false); }
 
-    public static Controller forArena(String initialWeapon) {
-        var controller = new Controller(List.of(initialWeapon), true);
-        controller.collectWeapon("basic_sword");
-        controller.collectWeapon("basic_bow");
-        return controller;
+    public static Controller forArena(List<String> weaponCycle) {
+        return new Controller(weaponCycle, true);
     }
 
     public static Controller forArenaInventory(List<String> weapons) {

@@ -266,8 +266,11 @@ public final class GameScreenLifecycleTest extends ApplicationAdapter {
                     view.setScreenBounds(vx + 19, vy + 7, vw - 52, vh - 30);
                     replacement.render(0f);
                     hudGlyphs(); // Recheck both endpoints and the group's center with nonzero X and Y offsets.
+                    var cameraPosition = GAME.getCamera().position.cpy();
                     for (int width : new int[]{260, 96, 72}) {
                         GAME.resize(width, 180);
+                        require(GAME.getCamera().position.equals(cameraPosition),
+                            "Window resize preserves gameplay camera framing");
                         require(view.getScreenWidth() == width && view.getScreenY() > 0,
                             "Resize exercises the letterboxed gameplay viewport at " + width + "px");
                         replacement.render(0f);

@@ -179,7 +179,10 @@ public abstract class ArenaSystem extends EntitySystem implements EventListener 
     // Hits resolve at this tick's positions, before a wave spawns or a pickup heals.
     final void afterPhysicsStep(float interval) {
         if (!isActive() || isGameOver()) { return; }
-        getEngine().getSystem(CombatSystem.class).resolveArenaStepHits(tiled);
+        var engine = getEngine();
+        var casualties = engine.getSystem(CombatSystem.class).resolveArenaStepHits(tiled::ownsArrivingEnemy);
+        var death = engine.getSystem(DeathSystem.class);
+        for (var victim : casualties) { death.beginContactDeath(victim); }
         if (!isGameOver()) {
             tiled.collectPickups();
             advance(tiled, interval);

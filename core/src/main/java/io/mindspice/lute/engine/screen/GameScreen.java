@@ -2,9 +2,13 @@ package io.mindspice.lute.engine.screen;
 
 import com.badlogic.ashley.core.Engine;
 import com.badlogic.ashley.core.EntitySystem;
+import com.badlogic.gdx.Gdx;
 import com.badlogic.gdx.ScreenAdapter;
+import com.badlogic.gdx.graphics.GL20;
+import com.badlogic.gdx.graphics.glutils.HdpiUtils;
 import com.badlogic.gdx.math.Vector2;
 import com.badlogic.gdx.physics.box2d.World;
+import com.badlogic.gdx.utils.BufferUtils;
 import com.badlogic.gdx.utils.Disposable;
 import io.mindspice.lute.engine.GameCore;
 import io.mindspice.lute.engine.assets.MapAssets;
@@ -16,9 +20,10 @@ import io.mindspice.lute.engine.systems.*;
 
 import io.mindspice.lute.gameplay.HoardRun;
 
-import java.util.function.Consumer;
+import java.nio.IntBuffer;
 import java.util.ArrayList;
 import java.util.List;
+import java.util.function.Consumer;
 
 public class GameScreen extends ScreenAdapter {
     private final InputManager inputManager;
@@ -29,6 +34,7 @@ public class GameScreen extends ScreenAdapter {
     private final TiledSystem tiled;
     private final RenderSystem renderer;
     private final ArenaSystem arena;
+    private final IntBuffer callerViewport = BufferUtils.newIntBuffer(4);
     private final GameConsts.NightAmbient ambient = GameConsts.NIGHT_AMBIENT;
     private final Consumer<HoardRun> onDeath;
     private final KeyListener lightingInput = new KeyListener(32, List.of(InputAction.TOGGLE_NIGHT,
@@ -150,13 +156,28 @@ public class GameScreen extends ScreenAdapter {
         float step = delta > 0f ? Math.min(delta, 1 / 30f) : 0f;
         sessionSeconds += step;
         renderer.gameplayFrame(physicWorld, ambient, night, sessionSeconds);
-        engine.update(step);
-        if (onDeath != null && arena instanceof HoardSystem hoard && hoard.run() != null && hoard.run().isGameOver()) {
+        updateGameplayFrame(step);
+        if (onDeath != null && arena instanceof HoardSystem hoard && hoard.isActive() && hoard.run().isGameOver()) {
             onDeath.accept(hoard.run()); // Outside engine.update: it is now safe to tear down the world.
             return;
         }
         tiled.applyPendingRespawn();
         tiled.applyPendingTravel();
+    }
+
+    private void updateGameplayFrame(float step) {
+        var viewport = game.getViewport();
+        Gdx.gl.glGetIntegerv(GL20.GL_VIEWPORT, callerViewport);
+        try {
+            // RenderSystem restores its input viewport before the debug systems draw. Give
+            // all three passes the gameplay bounds without updating the camera here.
+            HdpiUtils.glViewport(viewport.getScreenX(), viewport.getScreenY(),
+                viewport.getScreenWidth(), viewport.getScreenHeight());
+            engine.update(step);
+        } finally {
+            // The saved GL viewport is already in framebuffer pixels.
+            Gdx.gl.glViewport(callerViewport.get(0), callerViewport.get(1), callerViewport.get(2), callerViewport.get(3));
+        }
     }
 
     @Override

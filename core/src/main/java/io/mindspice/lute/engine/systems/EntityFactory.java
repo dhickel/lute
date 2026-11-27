@@ -48,6 +48,13 @@ public class EntityFactory extends EntitySystem {
     private static final String PLAYER_PREFIX = "player";
     private final World world;
     private final AssetService assetService;
+    // Only shared character/weapon atlases participate; map-owned art never enters this cache.
+    private final Map<String, WeaponCatalogs> weaponCatalogs = new HashMap<>();
+
+    private record WeaponInputs(String prefix, float anchorX, float anchorY, float unitScale) { }
+
+    private record WeaponCatalogs(WeaponsData definitions, TextureAtlas base, TextureAtlas weapons,
+                                  Map<WeaponInputs, Map<String, CombatWeapon.Weapon>> validated) { }
 
     public EntityFactory(World world, AssetService assetService) {
         this.world = world;
@@ -203,6 +210,22 @@ public class EntityFactory extends EntitySystem {
     }
 
     private Map<String, CombatWeapon.Weapon> createWeapons(WeaponsData definitions, Animation2D animation, Vector2 anchor) {
+        var baseId = animation.getAtlasId();
+        var base = assetService.get(TextureAtlas.class, baseId);
+        var weaponAtlas = assetService.get(TextureAtlas.class, CharacterAssets.WEAPONS.id());
+        var catalogs = weaponCatalogs.get(baseId);
+        if (catalogs == null || catalogs.definitions() != definitions || catalogs.base() != base
+            || catalogs.weapons() != weaponAtlas) {
+            catalogs = new WeaponCatalogs(definitions, base, weaponAtlas, new HashMap<>());
+            weaponCatalogs.put(baseId, catalogs);
+        }
+        var inputs = new WeaponInputs(animation.getAtlasKey(), anchor.x, anchor.y, GameConsts.UNIT_SCALE);
+        return catalogs.validated().computeIfAbsent(inputs,
+            ignored -> validateWeapons(definitions, animation, anchor, base, weaponAtlas));
+    }
+
+    private Map<String, CombatWeapon.Weapon> validateWeapons(WeaponsData definitions, Animation2D animation,
+                                                            Vector2 anchor, TextureAtlas base, TextureAtlas weaponAtlas) {
         var weapons = new HashMap<String, CombatWeapon.Weapon>();
         var requiredFrames = new HashMap<String, Long>();
         requiredFrames.put("idle", 1L);
@@ -215,14 +238,30 @@ public class EntityFactory extends EntitySystem {
             var primary = createAttack(id, definition.attackStats().primary(), sounds.primary(), anchor, requiredFrames);
             var secondary = createAttack(id, definition.attackStats().secondary(), sounds.secondary(), anchor, requiredFrames);
             if (!id.equals("unarmed")) {
-                validateLayer(animation.getAtlasId(), animation.getAtlasKey(), CharacterAssets.WEAPONS, definition.atlasKey(),
+                validateLayer(base, animation.getAtlasKey(), weaponAtlas, CharacterAssets.WEAPONS.id(), definition.atlasKey(),
                     Set.copyOf(List.of("idle", "walk", "death", primary.animation().action(), secondary.animation().action())));
             }
             weapons.put(id, new CombatWeapon.Weapon(id, definition.atlasKey(), primary, secondary));
         }
-        animation.setRequiredAttackFrames(requiredFrames);
-        AnimationSystem.validateAttackFrames(animation, assetService.get(TextureAtlas.class, animation.getAtlasId()));
+        validateAttackFrames(animation, base, requiredFrames);
         return Map.copyOf(weapons);
+    }
+
+    private static void validateAttackFrames(Animation2D animation, TextureAtlas atlas, Map<String, Long> requiredFrames) {
+        var reference = atlas.findRegion(animation.regionKey("idle", Facing.Direction.RIGHT));
+        if (reference == null) { throw new IllegalArgumentException("Missing character reference canvas"); }
+        for (var requirement : requiredFrames.entrySet()) {
+            for (var direction : Facing.Direction.values()) {
+                var key = animation.regionKey(requirement.getKey(), direction);
+                var frames = atlas.findRegions(key);
+                if (frames.size < requirement.getValue()) {
+                    throw new IllegalArgumentException("Attack animation has too few frames for " + key);
+                }
+                for (var frame : frames) {
+                    AnimationSystem.validateCanvas(frame, reference.getRegionWidth(), reference.getRegionHeight(), key);
+                }
+            }
+        }
     }
 
     private CombatWeapon.Attack createAttack(String id, WeaponsData.WeaponData.AttackData data, WeaponAssets.AttackSounds sounds,
@@ -262,20 +301,24 @@ public class EntityFactory extends EntitySystem {
     }
 
     private void validateLayer(String baseId, String basePrefix, Asset.Atlas asset, String prefix, Set<String> actions) {
+        validateLayer(assetService.get(TextureAtlas.class, baseId), basePrefix,
+            assetService.get(TextureAtlas.class, asset.id()), asset.id(), prefix, actions);
+    }
+
+    private static void validateLayer(TextureAtlas base, String basePrefix, TextureAtlas atlas, String atlasId,
+                                      String prefix, Set<String> actions) {
         if (prefix == null || prefix.isBlank()) { throw new IllegalArgumentException("Equipment region prefix is required"); }
-        var base = assetService.get(TextureAtlas.class, baseId);
-        var atlas = assetService.get(TextureAtlas.class, asset.id());
         for (String action : actions) {
             for (var direction : Facing.Direction.values()) {
                 String suffix = action + "_" + direction.atlasKey;
                 var reference = base.findRegions(basePrefix.isEmpty() ? suffix : basePrefix + "/" + suffix);
                 var frames = atlas.findRegions(prefix + "/" + suffix);
                 if (reference.isEmpty() || frames.size != reference.size) {
-                    throw new IllegalArgumentException("Layer frame count must match character: " + asset.id() + "/" + prefix + "/" + suffix);
+                    throw new IllegalArgumentException("Layer frame count must match character: " + atlasId + "/" + prefix + "/" + suffix);
                 }
                 for (int i = 0; i < frames.size; i++) {
                     AnimationSystem.validateCanvas(frames.get(i), reference.get(i).getRegionWidth(),
-                        reference.get(i).getRegionHeight(), asset.id() + "/" + prefix + "/" + suffix);
+                        reference.get(i).getRegionHeight(), atlasId + "/" + prefix + "/" + suffix);
                 }
             }
         }
@@ -451,6 +494,8 @@ public class EntityFactory extends EntitySystem {
         Animation<TextureRegion> animation = new Animation<>(frameInterval, regions, Animation.PlayMode.LOOP);
         var anim2d = new Animation2D(atlas.id(), atlasKey, animType, Animation.PlayMode.LOOP, speed, frameInterval);
         anim2d.setAnimation(animation, facing);
+        // Seed the staged graphic, but start the playback clock at zero on its first update.
+        anim2d.setType(animType);
         return anim2d;
     }
 

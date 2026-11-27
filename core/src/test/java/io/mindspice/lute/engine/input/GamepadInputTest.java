@@ -185,7 +185,7 @@ final class GamepadInputTest {
         var fixture = new Fixture(defaults());
         var pad = fixture.addPad(MAPPED);
         var ordinary = new io.mindspice.lute.engine.components.Controller(List.of("first", "second"));
-        var arena = io.mindspice.lute.engine.components.Controller.forArena("first");
+        var arena = io.mindspice.lute.engine.components.Controller.forArena(List.of("first", "second"));
         fixture.input.regKeyListener(ordinary.getInputListener());
         fixture.input.regKeyListener(arena.getInputListener());
         fixture.expect("neutral before Y");

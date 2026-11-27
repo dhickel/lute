@@ -103,11 +103,12 @@ public final class TexturePackerToolTest {
             ownershipAndStaleOutputs(directory.resolve("ownership"));
             atlasCollisions(directory.resolve("collisions"));
             publicationRollback(directory.resolve("publication"));
+            weaponAtlasName(directory.resolve("weapon-atlas-name"));
             spriteAtlases(directory.resolve("sprites"));
             sharedObjectsAtlas(directory.resolve("shared-objects"));
             spritePageDefaults(directory.resolve("sprite-page-defaults"));
             singleFrameArrows(directory.resolve("single-frame-arrows"));
-            System.out.println("TexturePackerToolTest: passed (required sprite inputs, names, two maps, ownership, stale outputs, collisions, rollback, path and symlink safety)");
+            System.out.println("TexturePackerToolTest: passed (required sprite inputs, weapon atlas name, two maps, ownership, stale outputs, collisions, rollback, path and symlink safety)");
         } finally {
             try (var paths = Files.walk(directory)) {
                 for (Path path : paths.sorted(Comparator.reverseOrder()).toList()) { Files.delete(path); }
@@ -716,8 +717,52 @@ public final class TexturePackerToolTest {
         check(Files.readString(output.resolve("game.tiled-session")).equals("unchanged"), "Failed first rename must leave original output intact");
     }
 
+    private static void weaponAtlasName(Path directory) throws IOException {
+        Path raw = directory.resolve("raw_assets");
+        Path output = directory.resolve("assets");
+        createInputs(raw);
+        createMap(raw, "alpha");
+        Path weapons = raw.resolve("data/weapons.json");
+        TexturePackerTool.generate(raw, output);
+        check(Files.isRegularFile(output.resolve("atlases/weapons.atlas")), "Publish the conventional weapon atlas");
+        check(Files.mismatch(weapons, output.resolve("data/weapons.json")) == -1, "Publish weapon JSON unchanged");
+        Files.writeString(output.resolve("game.tiled-session"), "keep unowned output");
+        var published = snapshot(output);
+        Path freshRaw = directory.resolve("fresh/raw_assets");
+        Path freshOutput = directory.resolve("fresh/assets");
+        createInputs(freshRaw);
+        createMap(freshRaw, "alpha");
+        for (String invalid : new String[]{
+                "{\"atlas\":\"other.atlas\"}", "{\"atlas\":\"Weapons.atlas\"}", "{\"atlas\":\"atlases/weapons.atlas\"}",
+                "{\"atlas\":\" weapons.atlas \"}", "{\"atlas\":\"\"}", "{\"atlas\":null}", "{\"atlas\":42}",
+                "{\"atlas\":[\"weapons.atlas\"]}", "{\"Atlas\":\"weapons.atlas\"}",
+                "{\"weapons\":{\"atlas\":\"weapons.atlas\"}}", "{}",
+                "{\"atlas\":weapons.atlas}", "{\"atlas\":\"weapons.atlas\", weapons:{}}",
+                "{\"atlas\":\"weapons.atlas\"} {}", "{\"atlas\":\"other.atlas\",\"atlas\":\"weapons.atlas\"}"}) {
+            rejectsWeaponAtlas(raw, output, invalid);
+            check(snapshot(output).equals(published), "Invalid weapon atlas must preserve all published files: " + invalid);
+            rejectsWeaponAtlas(freshRaw, freshOutput, invalid);
+            check(!Files.exists(freshOutput), "Invalid weapon atlas must not create a fresh output: " + invalid);
+        }
+    }
+
+    private static void rejectsWeaponAtlas(Path raw, Path output, String invalid) throws IOException {
+        Path weapons = raw.resolve("data/weapons.json");
+        Files.writeString(weapons, invalid);
+        try {
+            TexturePackerTool.generate(raw, output);
+        } catch (IllegalArgumentException expected) {
+            check(expected.getMessage().contains(weapons.toString()) && expected.getMessage().contains("weapons.atlas"),
+                "Failure must identify the weapon catalog and required atlas name");
+            check(!Files.exists(raw.getParent().resolve(".runtime-assets-transaction")), "Failed generation must clean staging");
+            return;
+        }
+        throw new AssertionError("Invalid weapon atlas must fail generation: " + invalid);
+    }
+
     private static void createInputs(Path raw) throws IOException {
         Files.createDirectories(raw.resolve("data"));
+        Files.writeString(raw.resolve("data/weapons.json"), "{\"atlas\":\"weapons.atlas\",\"weapons\":{}}");
         Files.createDirectories(raw.resolve("audio"));
         Files.createDirectories(raw.resolve("images/menu"));
         Files.write(raw.resolve("images/menu/mainmenubg.jpg"), new byte[]{42});

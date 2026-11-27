@@ -116,7 +116,7 @@ public class GameCore extends Game {
 
     @Override
     public void resize(int width, int height) {
-        viewport.update(width, height, true);
+        viewport.update(width, height);
         screenManager.resize(width, height);
     }
 
@@ -133,21 +133,10 @@ public class GameCore extends Game {
     @Override
     public void render() {
         glProfiler.reset();
-        input();
-        logic();
         draw();
 
         Gdx.graphics.setTitle("Lute - Draw Calls: " + glProfiler.getDrawCalls());
         fpsLogger.log();
-    }
-
-    private void input() {
-
-    }
-
-    private void logic() {
-
-
     }
 
     private void draw() {
