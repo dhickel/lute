@@ -82,7 +82,10 @@ public class PhysicSystem extends IteratingSystem implements EntityListener {
         physic.getPrevPos().set(physic.getBody().getPosition());
         var lunge = entity.getComponent(DredgeLunge.class);
         var combat = getEngine().getSystem(CombatSystem.class);
-        if (lunge != null && combat != null) { combat.beforeLungeStep(entity, lunge, interval); }
+        if (lunge != null && combat != null) {
+            combat.beforeLungeStep(entity, lunge, interval);
+            combat.beforeAxeSpinStep(entity, interval);
+        }
     }
 
     private void interpolateEntity(Entity entity, float alpha) {

@@ -7,6 +7,7 @@ import com.badlogic.gdx.Input;
 import com.badlogic.gdx.backends.lwjgl3.Lwjgl3Application;
 import com.badlogic.gdx.backends.lwjgl3.Lwjgl3ApplicationConfiguration;
 import com.badlogic.gdx.controllers.ControllerMapping;
+import com.badlogic.gdx.graphics.g2d.TextureAtlas.AtlasRegion;
 import com.badlogic.gdx.controllers.Controllers;
 import com.badlogic.gdx.controllers.ControllerManagerStub;
 import io.mindspice.lute.engine.GameCore;
@@ -15,6 +16,8 @@ import io.mindspice.lute.engine.singletons.GameConsts;
 import io.mindspice.lute.engine.tiled.ManifestLoader;
 
 import java.lang.reflect.Proxy;
+import java.util.ArrayList;
+import java.util.List;
 
 /** Exercises the isolated demo through the real menu, map, AI, and remount paths. */
 public final class HoardHammerDemoTest extends ApplicationAdapter {
@@ -101,6 +104,10 @@ public final class HoardHammerDemoTest extends ApplicationAdapter {
         require(hoard.isActive() && hoard.run() == null && actors.size() == 0 && hoard.stamina() == 1d,
             "remount resets the wave timer, entities and stamina");
         require(hoard.demoStatus().endsWith("15s"), "new instance has a fresh countdown");
+        verifyAxeSpin(remountedPlayer, "basic_axe", List.of(Facing.Direction.RIGHT, Facing.Direction.DOWN,
+            Facing.Direction.LEFT, Facing.Direction.UP, Facing.Direction.RIGHT));
+        verifyAxeSpin(remountedPlayer, "black_axe", List.of(Facing.Direction.UP, Facing.Direction.RIGHT,
+            Facing.Direction.DOWN, Facing.Direction.LEFT, Facing.Direction.UP));
         hoard.afterPhysicsStep(15f);
         require(actors.size() == 10, "new instance spawns its own wave");
         for (var actor : actors) {
@@ -136,6 +143,41 @@ public final class HoardHammerDemoTest extends ApplicationAdapter {
             pads.removeValue(pad, true);
             GAME.getInputManager().updateGamepad();
         }
+    }
+
+    private static void verifyAxeSpin(com.badlogic.ashley.core.Entity player, String weapon, List<Facing.Direction> expected) {
+        var engine = GAME.getEngine();
+        var facing = Facing.MAPPER.get(player);
+        var animation = Animation2D.MAPPER.get(player);
+        var combat = Combat.MAPPER.get(player);
+        var loadouts = engine.getSystem(LoadoutSystem.class);
+        require(loadouts.equipWeapon(player, weapon), "equip axe for spin");
+        var secondary = Loadout.MAPPER.get(player).getWeapon().secondary();
+        facing.setDirection(expected.getFirst());
+        combat.requestAttack(Combat.AttackSlot.SECONDARY);
+        var visited = new ArrayList<Facing.Direction>();
+        int previousFrame = -1;
+        boolean hadSensor = false;
+        for (int i = 0; i < 120; i++) {
+            engine.update(GameConsts.PHYSIC_INTERVAL);
+            if (!combat.isAttacking()) { break; }
+            var direction = facing.getDirection();
+            if (visited.isEmpty() || visited.getLast() != direction) { visited.add(direction); }
+            int frame = animation.getFrameIndex();
+            require(frame >= previousFrame && animation.getAction().equals(secondary.animation().action()),
+                "turning preserves the secondary frame sequence");
+            var region = (AtlasRegion) Graphic.MAPPER.get(player).getRegion();
+            require(region.name.equals(animation.regionKey(secondary.animation().action(), direction)),
+                "rendered frame is drawn from the matching direction");
+            require(region == animation.getAnimation().getKeyFrames()[frame], "renderer uses the current frame index");
+            require((combat.getSensor() != null) == animation.hasReachedFrame(secondary.hitFrame()),
+                "spin preserves the authored hit frame");
+            hadSensor |= combat.getSensor() != null;
+            previousFrame = frame;
+        }
+        require(visited.equals(expected), "one clockwise turn, back to the starting direction: " + visited);
+        require(hadSensor && !combat.isAttacking() && combat.getSensor() == null, "spin completes and clears the sensor");
+        require(loadouts.equipWeapon(player, "basic_hammer"), "restore demo hammer");
     }
 
     private static void tap(int key) {

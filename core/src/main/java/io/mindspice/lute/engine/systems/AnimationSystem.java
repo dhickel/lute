@@ -35,7 +35,7 @@ public class AnimationSystem extends IteratingSystem implements EventEmitter {
 
     @Override
     protected void processEntity(Entity entity, float deltaTime) {
-        if (!CombatSystem.isHammerLunge(entity, Combat.MAPPER.get(entity))) {
+        if (!CombatSystem.usesFixedAttackPlayback(entity, Combat.MAPPER.get(entity))) {
             advancePlayback(entity, deltaTime);
         }
     }

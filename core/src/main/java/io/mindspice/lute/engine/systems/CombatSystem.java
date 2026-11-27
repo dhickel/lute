@@ -171,7 +171,7 @@ public class CombatSystem extends IteratingSystem implements ContactListener, En
                 && health != null && health.isAlive() && clearOfDredgeCover(hit) && combat.markHit(hit.target())) {
                 float damageScale = hit.hammerLunge() && combat.getActiveSlot() == Combat.AttackSlot.SECONDARY ? 1.25f : 1f;
                 int damage = HealthFeedback.land(hit.target(), health, combat.getActiveAttack().damage(), damageScale,
-                    combat.getAttackFacing());
+                    hit.facing());
                 if (!health.isAlive()) {
                     if (arena != null) { killed.add(hit.target()); }
                     creditKill(hit.attacker(), hit.target());
@@ -211,7 +211,7 @@ public class CombatSystem extends IteratingSystem implements ContactListener, En
         var move = Move.MAPPER.get(entity);
         boolean movingPlayer = alive && Controller.MAPPER.has(entity) && move != null
             && !move.isRooted() && !move.getDirection().isZero();
-        if (isHammerLunge(entity, combat)) {
+        if (usesFixedAttackPlayback(entity, combat)) {
             if (!alive) { stopAttack(entity); }
             return;
         }
@@ -302,6 +302,49 @@ public class CombatSystem extends IteratingSystem implements ContactListener, En
     static boolean isHammerLunge(Entity entity, Combat combat) {
         return combat != null && combat.isAttacking()
             && usesHammerLunge(entity, combat.getActiveAttack().weaponId(), combat.getActiveSlot());
+    }
+
+    private static boolean isAxeSpin(Entity entity, Combat combat) {
+        if (combat == null || !combat.isAttacking() || combat.getActiveSlot() != Combat.AttackSlot.SECONDARY
+            || !Controller.MAPPER.has(entity) || entity.getComponent(DredgeLunge.class) == null) { return false; }
+        String weapon = combat.getActiveAttack().weaponId();
+        return "basic_axe".equals(weapon) || "black_axe".equals(weapon);
+    }
+
+    static boolean usesFixedAttackPlayback(Entity entity, Combat combat) {
+        return isHammerLunge(entity, combat) || isAxeSpin(entity, combat);
+    }
+
+    void beforeAxeSpinStep(Entity entity, float interval) {
+        var combat = Combat.MAPPER.get(entity);
+        if (!isAxeSpin(entity, combat)) { return; }
+        var animation = Animation2D.MAPPER.get(entity);
+        var facing = Facing.MAPPER.get(entity);
+        var previous = facing.getDirection();
+        if (animation.getType() != Animation2D.AnimationType.ATTACK) {
+            AnimationPlayer.MAPPER.get(entity).getAnimationFsm().changeState(AnimationState.ATTACK);
+        } else { animation.restartQueuedAttack(); }
+        if (animation.isAttackReady()) {
+            double nextTime = animation.getStateTime() / animation.getSpeed() + interval;
+            int turns = (int) Math.round(4 * Math.min(1, nextTime / animation.getPlaybackDuration()));
+            var direction = combat.getAttackFacing();
+            for (int i = 0; i < turns; i++) {
+                direction = switch (direction) {
+                    case UP -> Facing.Direction.RIGHT;
+                    case RIGHT -> Facing.Direction.DOWN;
+                    case DOWN -> Facing.Direction.LEFT;
+                    case LEFT -> Facing.Direction.UP;
+                };
+            }
+            facing.setDirection(direction);
+        }
+        getEngine().getSystem(AnimationSystem.class).advancePlayback(entity, interval);
+        if (previous != facing.getDirection() && combat.getSensor() != null) {
+            combat.getSensor().getBody().destroyFixture(combat.getSensor());
+            combat.setSensor(null, physicsStep());
+        }
+        var health = Health.MAPPER.get(entity);
+        updateActiveAttack(entity, combat, animation, health == null || health.isAlive(), null);
     }
 
     void beforeLungeStep(Entity entity, DredgeLunge lunge, float interval) {
@@ -416,7 +459,8 @@ public class CombatSystem extends IteratingSystem implements ContactListener, En
         var anchor = new Vector2(size.x * 0.5f, size.y * 0.5f);
         var shape = new PolygonShape();
         try {
-            var vertices = combat.getActiveAttack().vertices(anchor, combat.getAttackFacing());
+            var direction = isAxeSpin(entity, combat) ? Facing.MAPPER.get(entity).getDirection() : combat.getAttackFacing();
+            var vertices = combat.getActiveAttack().vertices(anchor, direction);
             if (scale != 1f) {
                 var center = new Vector2();
                 for (var vertex : vertices) { center.add(vertex); }
@@ -430,7 +474,7 @@ public class CombatSystem extends IteratingSystem implements ContactListener, En
             var sensor = body.createFixture(definition);
             body.setAwake(true);
             combat.setSensor(sensor, physicsStep());
-            sensor.setUserData(new AttackSensor(entity, combat.getAttackId(), isHammerLunge(entity, combat)));
+            sensor.setUserData(new AttackSensor(entity, combat.getAttackId(), isHammerLunge(entity, combat), direction));
         } finally {
             shape.dispose();
         }
@@ -443,6 +487,10 @@ public class CombatSystem extends IteratingSystem implements ContactListener, En
         if (sensor != null) { sensor.getBody().destroyFixture(sensor); }
         var physics = Physic.MAPPER.get(entity);
         if (physics != null && isHammerLunge(entity, combat)) { physics.getBody().setLinearVelocity(0f, 0f); }
+        if (isAxeSpin(entity, combat)) {
+            var facing = Facing.MAPPER.get(entity);
+            if (facing != null) { facing.setDirection(combat.getAttackFacing()); }
+        }
         combat.endAttack();
     }
 
@@ -467,7 +515,7 @@ public class CombatSystem extends IteratingSystem implements ContactListener, En
                 if (fixture.getUserData() == Hurtbox.INSTANCE) { return; }
             }
         }
-        pendingHits.add(new Hit(attack.attacker(), entity, attack.attackId(), attack.hammerLunge()));
+        pendingHits.add(new Hit(attack.attacker(), entity, attack.attackId(), attack.hammerLunge(), attack.facing()));
     }
 
     @Override
@@ -498,7 +546,7 @@ public class CombatSystem extends IteratingSystem implements ContactListener, En
         mountedCombat.remove(entity);
     }
 
-    private record AttackSensor(Entity attacker, long attackId, boolean hammerLunge) { }
-    private record Hit(Entity attacker, Entity target, long attackId, boolean hammerLunge) { }
+    private record AttackSensor(Entity attacker, long attackId, boolean hammerLunge, Facing.Direction facing) { }
+    private record Hit(Entity attacker, Entity target, long attackId, boolean hammerLunge, Facing.Direction facing) { }
     private record LungePush(Vector2 direction, float baseline, float added) { }
 }
