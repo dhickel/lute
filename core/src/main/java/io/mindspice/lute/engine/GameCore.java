@@ -126,21 +126,10 @@ public class GameCore extends Game {
     @Override
     public void render() {
         glProfiler.reset();
-        input();
-        logic();
         draw();
 
         Gdx.graphics.setTitle("Lute - Draw Calls: " + glProfiler.getDrawCalls());
         fpsLogger.log();
-    }
-
-    private void input() {
-
-    }
-
-    private void logic() {
-
-
     }
 
     private void draw() {
