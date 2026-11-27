@@ -22,7 +22,7 @@ LibGDX `Game` lifecycle ownership when using the project's custom `ScreenManager
 - Map preparation loads synchronously and leaves the active runtime intact on preparation failure. An explicit current-map ID rebuilds runtime objects but reuses registered asset data; it is not a disk hot reload.
 
 ## Project Relevance
-The refactor initially bypassed `LoadingScreen.show()` and never called its `render()` callback. The minimal repair keeps the custom manager and forwards the missing lifecycle calls. A historical 15-second desktop smoke run reached loading completion and game rendering; a separate `old_tree1` region fallback was tracked in `.internal-dev/bugs/missing-old-tree-atlas-region/report.md`. This is not a new smoke run.
+The refactor initially bypassed `LoadingScreen.show()` and never called its `render()` callback. The minimal repair keeps the custom manager and forwards the missing lifecycle calls. A historical 15-second desktop smoke run reached loading completion and game rendering; a separate `old_tree1` region fallback was tracked in `.internal-dev/bugs/.archive/missing-old-tree-atlas-region/report.md`. This is not a new smoke run.
 
 PR #21 is merged and issue #16 resolved. Its validation, based on merged PR #19, passed the full check (21 tasks) and real-GL lifecycle 157, gameplay 15,815 checks and 480 comparisons, and synthetic 11,854 checks. The lifecycle checks cover hide/show reuse, recreation, updates after disposal, foreign-system survival, repeated and never-shown disposal, partial installation failure, and normal shutdown. PR #19 cleared the stale input assertion.
 
@@ -31,4 +31,4 @@ PR #22, based on #21, passed the full check and actual generator run. PR #23, ba
 The earlier isolated combined validation of fixes #6, #8, #16, #17, and #18 was historical; it does not imply that audio PR #20 is included in the current merged changes.
 
 ## Open Questions
-Audio lifecycle issue #8 and PR #20 remain open; PR #20 is not merged. Screen-owned system teardown does not establish that audio subscription internals are fixed. The tree atlas-content issue also remains separate.
+Historical PR and issue status above is not a current status check. Screen-owned system teardown alone does not establish audio subscription behavior.
