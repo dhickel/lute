@@ -270,7 +270,6 @@ public class TiledSystem extends EntitySystem implements EventEmitter {
         active.entities.remove(corpse);
         detachPlayerState(corpse);
         active.player = replacement;
-        active.entities.add(replacement);
         Health.MAPPER.get(replacement).restore();
         engine.addEntity(replacement);
         inputManager.regKeyListener(Controller.MAPPER.get(replacement).getInputListener());
@@ -316,7 +315,6 @@ public class TiledSystem extends EntitySystem implements EventEmitter {
             loadMapObjects(next);
             if (point != null) {
                 next.player = createPlayer(next, point);
-                next.entities.add(next.player);
                 if (hiddenPlayerCorpse != null) { death.restore(next.player, hiddenPlayerCorpse, simulationSeconds); }
             }
             var factory = getEngine().getSystem(EntityFactory.class);
@@ -486,16 +484,25 @@ public class TiledSystem extends EntitySystem implements EventEmitter {
 
     private Entity createPlayer(RuntimeMap runtime, MapTriggers.SpawnPoint point) {
         var player = getEngine().getSystem(EntityFactory.class).getPlayerEntity(point.position(), playerState, point.facing());
-        // Keep ordinary health and equipment out of the visit's temporary inventory and health pool.
-        runtime.sessionPlayer = PlayerState.of(player);
-        if (runtime.arenaHealth != null) {
-            var loadout = runtime.sessionPlayer.loadout().copy();
-            player.add(runtime.arenaHealth).add(loadout).add(Controller.forArena(loadout.getWeapon().id()));
+        try {
+            runtime.entities.add(player);
+            // Keep ordinary health and equipment out of the visit's temporary inventory and health pool.
+            var sessionPlayer = PlayerState.of(player);
+            if (runtime.arenaHealth != null) {
+                var loadout = sessionPlayer.loadout().copy();
+                player.add(runtime.arenaHealth).add(loadout).add(Controller.forArena(loadout.getWeapon().id()));
+            }
+            var properties = runtime.map.getProperties();
+            player.add(new BowAim(properties.get("tilewidth", Integer.class) * GameConsts.UNIT_SCALE,
+                properties.get("tileheight", Integer.class) * GameConsts.UNIT_SCALE));
+            runtime.sessionPlayer = sessionPlayer;
+            return player;
+        } catch (RuntimeException | Error failure) {
+            // The player has not entered Ashley, including when replacing a corpse on the active map.
+            runtime.entities.remove(player);
+            physicsWorld.destroyBody(Physic.MAPPER.get(player).getBody());
+            throw failure;
         }
-        var properties = runtime.map.getProperties();
-        player.add(new BowAim(properties.get("tilewidth", Integer.class) * GameConsts.UNIT_SCALE,
-            properties.get("tileheight", Integer.class) * GameConsts.UNIT_SCALE));
-        return player;
     }
 
     private void initMapBoundary(RuntimeMap next) {
