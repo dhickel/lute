@@ -22,7 +22,7 @@ public final class LightingDataTest {
         "startupMap":"map","mapsPath":"maps/","dataPath":"data/","soundPath":"audio/",
         "musicPath":"audio/","objectPath":"objects/","atlasPath":"atlases/"
         """;
-    private static final String SETTINGS_FIELDS = LEGACY_FIELDS + ",\"debugLayers\":" + DEBUG_LAYERS;
+    private static final String SETTINGS_FIELDS = LEGACY_FIELDS + ",\"enemyInfightingChance\":30,\"debugLayers\":" + DEBUG_LAYERS;
     private static int checks;
 
     public static void main(String[] args) {
@@ -30,7 +30,22 @@ public final class LightingDataTest {
         lightSchema();
         ambientSchema();
         debugLayersSchema();
+        infightingSchema();
         System.out.println("LightingDataTest: " + checks + " checks passed");
+    }
+
+    private static void infightingSchema() {
+        var field = ",\"enemyInfightingChance\":";
+        var prefix = "{" + SETTINGS_FIELDS.replace(field + "30", "") + ",\"nightAmbient\":" + AMBIENT;
+        rejects(() -> GameConsts.parseSettings(prefix + "}"), "Missing infighting chance");
+        for (var bad : List.of("null", "-1", "101", "30.5", "30.0", "\"30\"", "true", "4294967326")) {
+            rejects(() -> GameConsts.parseSettings(prefix + field + bad + "}"), "Invalid infighting chance: " + bad);
+        }
+        rejects(() -> GameConsts.parseSettings(prefix + field + "30" + field + "0}"), "Duplicate infighting chance");
+        for (int chance : new int[]{0, 30, 100}) {
+            check(GameConsts.parseSettings(prefix + field + chance + "}").enemyInfightingChance() == chance,
+                "Valid infighting chance " + chance);
+        }
     }
 
     private static void catalogueSchema() {
@@ -119,7 +134,7 @@ public final class LightingDataTest {
     }
 
     private static void debugLayersSchema() {
-        String prefix = "{" + LEGACY_FIELDS + ",\"nightAmbient\":" + AMBIENT;
+        String prefix = "{" + LEGACY_FIELDS + ",\"enemyInfightingChance\":30,\"nightAmbient\":" + AMBIENT;
         rejects(() -> GameConsts.parseSettings(prefix + "}"), "Missing debugLayers");
         rejects(() -> GameConsts.parseSettings(prefix + ",\"debugLayers\":null,\"debugLayers\":" + DEBUG_LAYERS + "}"),
             "Duplicate debugLayers");

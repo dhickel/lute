@@ -8,6 +8,12 @@
 
 `ManifestLoader.parseMapManifest(mapName)` uses `mapName` as the logical ID for both the map and its single atlas. Each manifest supplies an `atlasAsset` filename; music and sound manifest keys remain their logical IDs. `MapAssets` checks keyed definitions and `all()` collects the map, atlas, music, and sound definitions for loading. `startMusic` selects a music ID or `RANDOM`.
 
+## Game settings
+
+`raw_assets/game.settings.json` requires a top-level JSON integer `enemyInfightingChance` from 0 through 100 inclusive. The normal local authored value is `30`; it is not a code fallback. Missing, null, fractional, or out-of-range values fail settings loading. After editing the raw settings, run `./generate-runtime-assets.sh` and restart.
+
+The percentage controls retaliation after positive nonlethal enemy-on-enemy melee or arrow damage. An eligible hit makes one roll only if the attacker is a valid visible retaliation target within three times the victim's detection radius; facing is ignored and solid cover blocks sight. At 0 retaliation is disabled; at 100 it always succeeds for eligible hits. Damage and existing player and NPC behavior are unchanged. Dredge requires live sight to retaliate against enemies; its special player-arrow chase remains unchanged.
+
 ## Local asset storage
 
 `raw_assets/` and `assets/` are ignored and absent from new checkouts except for tracked `assets/input.setting.json`. Provision the complete current source tree externally, including settings, data, audio, maps, tilesets, sprites, and the Tiled project, then run `./generate-runtime-assets.sh` from the repository root. The root entrypoint also works when invoked from another directory, fails with an actionable message if the source directory is missing, and creates the runtime directory before generation. Running the game and asset-dependent tests requires the provisioned data. Git ignore is separate from runtime resource ownership; existing Git history has not been purged and may contain asset objects.

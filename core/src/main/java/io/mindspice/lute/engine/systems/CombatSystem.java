@@ -176,7 +176,7 @@ public class CombatSystem extends IteratingSystem implements ContactListener, En
                     if (arena != null) { killed.add(hit.target()); }
                     creditKill(hit.attacker(), hit.target());
                 } else if (damage > 0 && awareness != null && Actor.MAPPER.has(hit.attacker())
-                    && Actor.MAPPER.get(hit.attacker()).role() == Actor.Role.PLAYER && Actor.MAPPER.has(hit.target())
+                    && Actor.MAPPER.get(hit.attacker()).role() != Actor.Role.NPC && Actor.MAPPER.has(hit.target())
                     && Actor.MAPPER.get(hit.target()).role() == Actor.Role.ENEMY) {
                     awareness.retaliateAfterDamage(hit.target(), hit.attacker());
                 }
