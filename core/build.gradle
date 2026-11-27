@@ -152,6 +152,13 @@ tasks.register('assetServiceTest', JavaExec) {
 }
 check.dependsOn assetServiceTest
 
+tasks.register('audioSubscriptionLifecycleTest', JavaExec) {
+  dependsOn testClasses
+  classpath = sourceSets.test.runtimeClasspath
+  mainClass = 'io.mindspice.lute.engine.systems.AudioSubscriptionLifecycleTest'
+}
+check.dependsOn audioSubscriptionLifecycleTest
+
 tasks.register('assetManagerLookupBenchmark', JavaExec) {
   dependsOn testClasses
   classpath = sourceSets.test.runtimeClasspath
