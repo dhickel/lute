@@ -30,7 +30,50 @@ public final class LightingDataTest {
         lightSchema();
         ambientSchema();
         debugLayersSchema();
+        enemyInfightingSchema();
         System.out.println("LightingDataTest: " + checks + " checks passed");
+    }
+
+    private static void enemyInfightingSchema() {
+        String definition = """
+            {"name":"Test","move_speed":1,"max_health":10,"weapon":null,
+             "animation":{"speed":1,"atlas_key":"test","sound_frame":0,"frame_interval":0.1},
+             "sounds":{"move":"step","damage":"hit"},"logical_size":{"width":64,"height":64},
+             "hitbox_bounds":{"x1":1,"y1":1,"x2":20,"y2":20},
+             "detection_bounds":{"radius":64,"shape":"FULL_CIRCLE"},"behavior_graph":"wander_attack",
+             "collision":%s%s}
+            """;
+        var reader = DataLoader.mapper.readerFor(MapActorData.Enemy.class);
+        rejects(() -> reader.readValue(definition.formatted(COLLISION, "")), "Missing infight_chance");
+        for (var bad : List.of("null", "-1", "101", "30.0", "\"30\"", "true", "4294967326")) {
+            rejects(() -> reader.readValue(definition.formatted(COLLISION, ",\"infight_chance\":" + bad)),
+                "Invalid infight_chance: " + bad);
+        }
+        for (int chance : new int[]{0, 30, 100}) {
+            MapActorData.Enemy enemy = reader.readValue(definition.formatted(COLLISION, ",\"infight_chance\":" + chance));
+            check(enemy.infightChance() == chance, "Valid infight_chance " + chance);
+        }
+        MapActorData.Enemy first = reader.readValue(definition.formatted(COLLISION, ",\"infight_chance\":30"));
+        MapActorData.Enemy second = reader.readValue(definition.formatted(COLLISION, ",\"infight_chance\":80"));
+        var catalogue = new ActorsData(Map.of(), Map.of("first", first, "second", second));
+        var loaded = new GameData(null, null, null, catalogue, Map.of());
+        var single = loaded.withEnemyInfightChance("first", 0).actorsData().enemies();
+        check(single.get("first").infightChance() == 0 && single.get("second") == second,
+            "Named override leaves other definitions untouched");
+        var bulk = loaded.withAllInfightChances(30);
+        check(bulk.actorsData().enemies().keySet().equals(catalogue.enemies().keySet())
+            && bulk.actorsData().enemies().values().stream().allMatch(enemy -> enemy.infightChance() == 30),
+            "Bulk override gives every definition its own chance");
+        var chained = bulk.withEnemyInfightChance("first", 100).actorsData().enemies();
+        check(chained.get("first").infightChance() == 100 && chained.get("second").infightChance() == 30,
+            "Named override wins after a bulk override");
+        check(loaded.actorsData().enemies().get("first") == first && loaded.actorsData().enemies().get("second") == second
+            && bulk.actorsData().enemies().get("first").infightChance() == 30, "Original and intermediate snapshots are unchanged");
+        rejects(() -> loaded.withEnemyInfightChance("unknown", 0), "Unknown enemy override");
+        rejects(() -> loaded.withEnemyInfightChance("first", 101), "Invalid enemy override");
+        rejects(() -> loaded.withAllInfightChances(-1), "Invalid bulk override");
+        var empty = new GameData(null, null, null, new ActorsData(Map.of(), Map.of()), Map.of());
+        rejects(() -> empty.withAllInfightChances(101), "Invalid bulk override is rejected even for an empty catalog");
     }
 
     private static void catalogueSchema() {

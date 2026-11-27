@@ -8,6 +8,12 @@
 
 `ManifestLoader.parseMapManifest(mapName)` uses `mapName` as the logical ID for both the map and its single atlas. Each manifest supplies an `atlasAsset` filename; music and sound manifest keys remain their logical IDs. `MapAssets` checks keyed definitions and `all()` collects the map, atlas, music, and sound definitions for loading. `startMusic` selects a music ID or `RANDOM`.
 
+## Enemy infighting
+
+Each definition in `raw_assets/data/enemies.json` requires a JSON integer `infight_chance` from 0 through 100 inclusive. Missing, null, fractional, or out-of-range values fail loading. The nine local enemy definitions use `30` in both ignored raw and generated trees; this is authored data, not a fallback. For other checkouts, remove the former `enemyInfightingChance` from `raw_assets/game.settings.json`, add `infight_chance` to every enemy definition, run `./generate-runtime-assets.sh`, and restart.
+
+The victim's percentage controls retaliation after positive nonlethal enemy-on-enemy melee or arrow damage. An eligible hit makes one roll only if the attacker is a valid visible retaliation target within three times the victim's detection radius; facing is ignored and solid cover blocks sight. At 0 retaliation is disabled; at 100 it always succeeds for eligible hits. At startup, `GameData.withAllInfightChances(int chance)` returns a copy with every enemy definition updated in one pass, while `GameData.withEnemyInfightChance(String enemyId, int chance)` returns a copy with only the specified enemy updated. Both validate the inclusive 0–100 range, leave the original unchanged, and can be chained. The former public `ActorsData` helper is replaced by package-private copy implementation; these methods add no configuration or gameplay changes. Awareness provides a boolean mode opt-out, and the separate demo disables infighting. Damage and existing player and NPC behavior are unchanged. Dredge requires live sight to retaliate against enemies; its special player-arrow chase remains unchanged.
+
 ## Local asset storage
 
 `raw_assets/` and `assets/` are ignored and absent from new checkouts except for tracked `assets/input.setting.json`. Provision the complete current source tree externally, including settings, data, audio, maps, tilesets, sprites, and the Tiled project, then run `./generate-runtime-assets.sh` from the repository root. The root entrypoint also works when invoked from another directory, fails with an actionable message if the source directory is missing, and creates the runtime directory before generation. Running the game and asset-dependent tests requires the provisioned data. Git ignore is separate from runtime resource ownership; existing Git history has not been purged and may contain asset objects.
@@ -76,6 +82,7 @@ The old fixed `CourtyardArcher` placement is absent; archers spawn through batch
   "name": "Undead Archer",
   "max_health": 50,
   "behavior_graph": "wander_archer",
+  "infight_chance": 30,
   "move_speed": 4.0,
   "logical_size": { "width": 64, "height": 64 },
   "collision": { "shape": "ELLIPSE", "bounds": { "x1": 20, "y1": 4, "x2": 44, "y2": 14 }, "rotation": 0 },

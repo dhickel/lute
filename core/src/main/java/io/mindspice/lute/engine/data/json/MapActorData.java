@@ -3,7 +3,12 @@ package io.mindspice.lute.engine.data.json;
 import com.fasterxml.jackson.annotation.JsonCreator;
 import com.fasterxml.jackson.annotation.JsonProperty;
 import io.mindspice.lute.engine.behaviorgraph.BehaviorGraphs;
+import tools.jackson.core.JsonParser;
+import tools.jackson.core.JsonToken;
+import tools.jackson.databind.DeserializationContext;
 import tools.jackson.databind.JsonNode;
+import tools.jackson.databind.ValueDeserializer;
+import tools.jackson.databind.annotation.JsonDeserialize;
 
 public sealed interface MapActorData permits MapActorData.Npc, MapActorData.Enemy {
     AnimationData animation();
@@ -51,15 +56,34 @@ public sealed interface MapActorData permits MapActorData.Npc, MapActorData.Enem
         @JsonProperty(required = true) CollisionData collision,
         @JsonProperty("hitbox_bounds") CharacterBounds hitboxBounds,
         @JsonProperty("detection_bounds") EnemyDetectionBounds detectionBounds,
-        @JsonProperty("behavior_graph") String behaviorGraph
+        @JsonProperty("behavior_graph") String behaviorGraph,
+        @JsonProperty(value = "infight_chance", required = true)
+        @JsonDeserialize(using = InfightChanceReader.class) Integer infightChance
     ) implements MapActorData {
         public Enemy {
             validate(name, moveSpeed, maxHealth, animation, sounds, logicalSize, collision, hitboxBounds,
                 detectionBounds != null, behaviorGraph);
             if (weapon != null && weapon.isBlank()) { throw new IllegalArgumentException("Enemy weapon must not be blank"); }
+            if (infightChance == null || infightChance < 0 || infightChance > 100) {
+                throw new IllegalArgumentException("Enemy infight_chance must be an integer from 0 to 100");
+            }
+        }
+
+        Enemy withInfightChance(int chance) {
+            return new Enemy(name, moveSpeed, maxHealth, weapon, animation, sounds, logicalSize, collision,
+                hitboxBounds, detectionBounds, behaviorGraph, chance);
         }
 
         @Override public float detectionRadius() { return detectionBounds.radius(); }
+    }
+
+    final class InfightChanceReader extends ValueDeserializer<Integer> {
+        @Override public Integer deserialize(JsonParser parser, DeserializationContext context) {
+            if (parser.currentToken() != JsonToken.VALUE_NUMBER_INT) {
+                throw new IllegalArgumentException("Enemy infight_chance must be a JSON integer");
+            }
+            return parser.getIntValue();
+        }
     }
 
     /** Circular detection bounds centered on the feet, in logical sprite pixels. */

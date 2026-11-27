@@ -53,6 +53,16 @@
 - **Source:** Lighting implementation, user-confirmed short collision-outline shadows, and tracked authoring guidance in `docs/asset-service.md` and `README.md`.
 - **Review timing:** Revisit when automatic time-of-day or lighting authoring expands.
 
+## Enemy infighting retaliation
+
+- **Decision:** Each enemy definition requires integer `infight_chance` from 0 through 100 inclusive; missing, null, fractional, and out-of-range values fail loading. The victim's value controls retaliation. All nine local enemy definitions use 30 in the ignored raw and generated trees, not as a fallback. Remove the former `enemyInfightingChance` game setting and migrate other checkouts' enemy data before regenerating assets.
+- **Override:** At startup, `GameData.withAllInfightChances(int chance)` returns a copy with every enemy definition updated in one pass; `GameData.withEnemyInfightChance(String enemyId, int chance)` returns a copy with only the specified enemy updated. Both validate the inclusive 0–100 range, leave the original unchanged, and can be chained. The former public `ActorsData` helper is replaced by package-private copy implementation. No configuration or gameplay behavior changes; awareness retains its boolean mode opt-out and the separate demo disables infighting.
+- **Behavior:** Positive nonlethal enemy-on-enemy melee or arrow damage gives one chance roll only when the attacker is a valid visible retaliation target within the existing three-times-detection-radius range. Facing does not limit retaliation; solid cover blocks sight. Zero disables retaliation and 100 always succeeds for eligible hits. Damage itself is unchanged, as are player and NPC behaviors. Dredge requires live sight for enemy retaliation; its special player-arrow pursuit remains unchanged.
+- **Justification and tradeoff:** Per-enemy percentages control incidental infighting without changing damage or existing player and NPC retaliation; startup copies can adjust all enemies or one enemy without changing assets.
+- **Affected specifications:** [Composite Characters](composite-characters.md); enemy data authoring in `docs/asset-service.md`.
+- **Source:** User-directed enemy infighting threshold.
+- **Review timing:** Revisit if retaliation eligibility or settings change.
+
 ## Map actor awareness
 
 - **Decision:** NPCs and enemies own query-only circles centered on their physical feet; the player is detectable but has no awareness circle. Mandatory `data/characters.json` and `data/enemies.json`, loaded through `GameConsts.DATA_PATH`, are each top-level maps keyed by spawn key. Both files must be present and may be empty; spawn role selects the map. Every definition requires `detection_bounds` with a positive finite `radius` in pixels and a `behavior_graph` key. Enemy definitions also require a string `detection_bounds.shape` of `FULL_CIRCLE` or `FORWARD_SEMICIRCLE`; the NPC schema is unchanged. Graphs are reusable across definitions; sample keys are `wander` and `wander_attack`. The old `decision_graph` field is not accepted and has no alias; migrate the ignored raw actor files, preserve the values, and regenerate runtime assets. Missing or invalid data fails loading without a fallback. Local NPC and enemy radii are 96 and 160 pixels, not code defaults. Author the files in the local raw data tree and regenerate runtime assets.
