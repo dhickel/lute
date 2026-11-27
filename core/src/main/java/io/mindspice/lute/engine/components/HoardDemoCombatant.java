@@ -1,8 +1,7 @@
 package io.mindspice.lute.engine.components;
 
 import com.badlogic.ashley.core.Component;
+import com.badlogic.ashley.core.Entity;
 
-/** Marks actors whose opponents are selected by the isolated Hoard hammer demo. */
-public record HoardDemoCombatant(Side side) implements Component {
-    public enum Side { DREDGE, SWARM }
-}
+/** Keeps the demo swarm focused on the player from every spawn zone. */
+public record HoardDemoCombatant(Entity player) implements Component { }

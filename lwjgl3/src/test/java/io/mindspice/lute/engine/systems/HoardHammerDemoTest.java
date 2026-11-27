@@ -1,6 +1,5 @@
 package io.mindspice.lute.engine.systems;
 
-import com.badlogic.ashley.core.Entity;
 import com.badlogic.ashley.core.Family;
 import com.badlogic.gdx.ApplicationAdapter;
 import com.badlogic.gdx.Gdx;
@@ -58,28 +57,14 @@ public final class HoardHammerDemoTest extends ApplicationAdapter {
         require("basic_hammer".equals(Loadout.MAPPER.get(player).getWeaponId()), "demo starts with the hammer equipped");
 
         var actors = engine.getEntitiesFor(Family.all(ActorAi.class).get());
-        Entity dredge = null;
-        int swarm = 0;
-        for (var actor : actors) {
-            var demo = actor.getComponent(HoardDemoCombatant.class);
-            if (demo == null) { continue; }
-            if (demo.side() == HoardDemoCombatant.Side.DREDGE) { dredge = actor; }
-            else { swarm++; }
-        }
-        require(dredge != null && swarm == 48, "one Dredge and 48 undead spawn: " + swarm);
-        require("black_hammer".equals(Loadout.MAPPER.get(dredge).getWeaponId())
-            && dredge.getComponent(ArenaGuard.class) != null
-            && dredge.getComponent(DredgeLunge.class) != null,
-            "demo Dredge is explicitly equipped and marked for hammer lunge");
+        int swarm = 100;
+        require(actors.size() == swarm, "exactly 100 enemies spawn: " + actors.size());
         engine.getSystem(AwarenessSystem.class).update(1f / 30f);
-        require(ActorAi.MAPPER.get(dredge).mode() == ActorAi.Mode.ENGAGE,
-            "Dredge selects a live swarm target through demo AI state");
         for (var actor : actors) {
             var demo = actor.getComponent(HoardDemoCombatant.class);
-            if (demo != null && demo.side() == HoardDemoCombatant.Side.SWARM) {
-                require(ActorAi.MAPPER.get(actor).mode() == ActorAi.Mode.ENGAGE,
-                    "swarm selects the Dredge rather than the player");
-            }
+            require(demo != null && demo.player() == player && actor.getComponent(ArenaGuard.class) == null,
+                "only swarm enemies spawn, with the player as their target");
+            require(ActorAi.MAPPER.get(actor).mode() == ActorAi.Mode.ENGAGE, "swarm pursues the player");
         }
 
         var clock = engine.getSystem(WorldTimeSystem.class);
@@ -88,17 +73,15 @@ public final class HoardHammerDemoTest extends ApplicationAdapter {
         require(clock.getTotalInGameSeconds() == before, "demo keeps arena daylight and freezes session time");
         var physics = engine.getSystem(PhysicSystem.class);
         physics.update(1f);
-        require(hoard.run() == null && actors.size() == swarm + 1, "fixed-step updates do not open scored waves");
+        require(hoard.run() == null && actors.size() == swarm, "fixed-step updates do not open scored waves");
         boolean swarmAttacked = false;
         for (int i = 0; i < 600 && !swarmAttacked; i++) {
             engine.update(GameConsts.PHYSIC_INTERVAL);
             for (var actor : actors) {
-                var demo = actor.getComponent(HoardDemoCombatant.class);
-                if (demo != null && demo.side() == HoardDemoCombatant.Side.SWARM
-                    && Combat.MAPPER.get(actor).getAttackId() > 0) { swarmAttacked = true; break; }
+                if (Combat.MAPPER.get(actor).getAttackId() > 0) { swarmAttacked = true; break; }
             }
         }
-        require(swarmAttacked, "the swarm reaches attack range and swings at Dredge without player input");
+        require(swarmAttacked, "the swarm reaches attack range and swings at the player without player input");
 
         tiled.hideMap();
         tiled.showMap(ManifestLoader.parseMapManifest("hoard_mode"));
@@ -107,8 +90,11 @@ public final class HoardHammerDemoTest extends ApplicationAdapter {
             && "basic_hammer".equals(Loadout.MAPPER.get(remountedPlayer).getWeaponId()),
             "remount rebuilds the hammer-equipped demo player");
         require(hoard.isActive() && hoard.run() == null
-            && engine.getEntitiesFor(Family.all(HoardDemoCombatant.class).get()).size() == swarm + 1,
-            "remount rebuilds only the bounded demo fight without a run");
+            && actors.size() == swarm, "remount rebuilds the swarm without a boss or scored run");
+        for (var actor : actors) {
+            require(actor.getComponent(HoardDemoCombatant.class).player() == remountedPlayer,
+                "remounted swarm targets the new player entity");
+        }
     }
 
     private static void tap(int key) {

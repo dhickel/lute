@@ -49,7 +49,7 @@ public final class HoardSystem extends EntitySystem implements EventListener {
     private static final String KILL_HEALTH_KEY = "health_pack_1";
     private static final String WEAPON_BAG_KEY = "weapon_bag";
     private static final int DREDGE_BASE_XP = 100;
-    private static final int DEMO_UNDEAD_PER_AREA = 12;
+    private static final int DEMO_UNDEAD_PER_AREA = 25;
     private static final float SPRINT_MULTIPLIER = 1.6f;
     private static final float SPRINT_RAMP_UP_SECONDS = .25f;
     private static final float SPRINT_RAMP_DOWN_SECONDS = .10f;
@@ -153,7 +153,7 @@ public final class HoardSystem extends EntitySystem implements EventListener {
         dropRandom = random;
         if (hammerDemo) {
             this.hammerDemo = true;
-            startHammerDemo(tiled, areas, dredgePoint(triggers), random);
+            startHammerDemo(tiled, areas, random);
             run = null;
             return;
         }
@@ -208,18 +208,12 @@ public final class HoardSystem extends EntitySystem implements EventListener {
         }
     }
 
-    private void startHammerDemo(TiledSystem tiled, List<MapTriggers.SpawnArea> areas,
-                                 MapTriggers.SpawnPoint marker, RandomGenerator random) {
-        var boss = getEngine().getSystem(EntityFactory.class).getMapActor(marker.position(), Actor.Role.ENEMY,
-            marker.spawnKey(), marker.facing());
-        Loadout.MAPPER.get(boss).setWeapon("black_hammer");
-        boss.add(new ArenaGuard(Physic.MAPPER.get(boss).getBody().getPosition().cpy()))
-            .add(new DredgeLunge()).add(new HoardDemoCombatant(HoardDemoCombatant.Side.DREDGE));
-        tiled.addArenaEntity(boss);
+    private void startHammerDemo(TiledSystem tiled, List<MapTriggers.SpawnArea> areas, RandomGenerator random) {
+        var combatant = new HoardDemoCombatant(tiled.activePlayer());
         for (var area : areas) {
             for (int i = 0; i < DEMO_UNDEAD_PER_AREA; i++) {
-                var enemy = tiled.trySpawnAreaEnemy(area, "brainless_undead", random);
-                if (enemy != null) { enemy.add(new HoardDemoCombatant(HoardDemoCombatant.Side.SWARM)); }
+                var enemy = tiled.trySpawnAreaEnemy(area, random);
+                if (enemy != null) { enemy.add(combatant); }
             }
         }
     }

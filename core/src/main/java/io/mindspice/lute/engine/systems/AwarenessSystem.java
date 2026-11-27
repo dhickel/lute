@@ -85,19 +85,9 @@ public final class AwarenessSystem extends IteratingSystem {
     }
 
     private void updateDemoCombatant(Entity actor, ActorAi ai, HoardDemoCombatant demo, FocusState state) {
-        Entity target = null;
-        float closest = Float.POSITIVE_INFINITY;
-        var origin = feet(actor);
-        var opponents = getEngine().getEntitiesFor(Family.all(Actor.class, ActorAi.class, HoardDemoCombatant.class).get());
-        for (var opponent : opponents) {
-            var marker = opponent.getComponent(HoardDemoCombatant.class);
-            if (opponent == actor || marker.side() == demo.side() || !livingActor(opponent)) { continue; }
-            float distance = origin.dst2(feet(opponent));
-            if (distance < closest) { target = opponent; closest = distance; }
-        }
-        Vector2 visible = target == null ? null : feet(target);
-        state.setVisibleTarget(target);
-        state.setTargetOffset(ai.updateTarget(origin, visible, state.deltaTime()));
+        var player = livingActor(demo.player()) ? demo.player() : null;
+        state.setVisibleTarget(player);
+        state.setTargetOffset(ai.updateTarget(feet(actor), player == null ? null : feet(player), state.deltaTime()));
         if (BehaviorGraphs.attackLocksMovement(actor)) { stop.perform(actor, state); return; }
         var graphs = BehaviorGraphs.forKey(ai.behaviorGraphKey());
         var graph = graphs.getOrDefault(ai.mode(), BehaviorGraphs.pursuit(ai.mode()));
