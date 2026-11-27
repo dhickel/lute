@@ -103,7 +103,7 @@ public final class AwarenessSystemTest {
         var bow = new CombatWeapon.Weapon("bow", "", shot, shot);
         body(enemy).setType(BodyDef.BodyType.DynamicBody);
         engine.addSystem(new PhysicMoveSystem());
-        enemy.add(new ActorAi(BehaviorGraphs.ARCHER, 4f)).add(new BowAim(1, 1)).add(new Loadout(new Loadout.Equipment(null, null, null, null),
+        enemy.add(new ActorAi(BehaviorGraphs.ARCHER, 4f, 0)).add(new BowAim(1, 1)).add(new Loadout(new Loadout.Equipment(null, null, null, null),
             "bow", Map.of("bow", bow), _ -> { }));
         var combat = Combat.MAPPER.get(enemy);
         engine.update(0);
@@ -253,38 +253,45 @@ public final class AwarenessSystemTest {
 
     private static void checkInfighting(World world) {
         for (int chance : new int[]{0, 30, 100}) {
-            var engine = new Engine();
-            int[] roll = {29};
-            int[] draws = {0};
-            var random = new java.util.Random() {
-                @Override public int nextInt(int bound) {
-                    check(bound == 100, "Infighting rolls a percentile");
-                    draws[0]++;
-                    return roll[0];
-                }
-            };
-            var awareness = new AwarenessSystem(world, chance, random);
-            engine.addSystem(awareness);
-            float x = 100 * (chance + 1);
-            var victim = actor(engine, world, Actor.Role.ENEMY, x, 0);
-            var attacker = actor(engine, world, Actor.Role.ENEMY, x + 2, 0);
-            var ai = ActorAi.MAPPER.get(victim);
-            awareness.retaliateAfterDamage(victim, attacker);
-            check(ai.retaliationTarget() == (chance == 0 ? null : attacker), "Roll 29 passes 30 and 100, but not zero");
-            ai.forgetTarget();
-            roll[0] = chance == 100 ? 99 : 30;
-            awareness.retaliateAfterArrow(victim, attacker);
-            check(ai.retaliationTarget() == (chance == 100 ? attacker : null), "Roll 30 fails 30 and roll 99 passes 100");
-            check(draws[0] == (chance == 0 ? 0 : 2), "Disabled hits do not roll; enabled hits roll once each");
-            ai.forgetTarget();
-            var player = actor(engine, world, Actor.Role.PLAYER, x - 2, 0);
-            awareness.retaliateAfterDamage(victim, player);
-            check(ai.retaliationTarget() == player, "Player retaliation ignores the threshold");
-            engine.removeAllEntities();
-            world.destroyBody(body(victim));
-            world.destroyBody(body(attacker));
-            world.destroyBody(body(player));
+            checkInfighting(world, chance, null);
+            checkInfighting(world, chance, chance == 100 ? 0 : 100);
         }
+    }
+
+    private static void checkInfighting(World world, int authored, Integer override) {
+        int chance = override == null ? authored : override;
+        var engine = new Engine();
+        int[] roll = {29};
+        int[] draws = {0};
+        var random = new java.util.Random() {
+            @Override public int nextInt(int bound) {
+                check(bound == 100, "Infighting rolls a percentile");
+                draws[0]++;
+                return roll[0];
+            }
+        };
+        var awareness = new AwarenessSystem(world, override, random);
+        engine.addSystem(awareness);
+        float x = 100 * (chance + 1);
+        var victim = actor(engine, world, Actor.Role.ENEMY, x, 0);
+        var attacker = actor(engine, world, Actor.Role.ENEMY, x + 2, 0);
+        var ai = new ActorAi("wander_attack", 4f, authored);
+        victim.add(ai);
+        awareness.retaliateAfterDamage(victim, attacker);
+        check(ai.retaliationTarget() == (chance == 0 ? null : attacker), "Roll 29 passes 30 and 100, but not zero");
+        ai.forgetTarget();
+        roll[0] = chance == 100 ? 99 : 30;
+        awareness.retaliateAfterArrow(victim, attacker);
+        check(ai.retaliationTarget() == (chance == 100 ? attacker : null), "Roll 30 fails 30 and roll 99 passes 100");
+        check(draws[0] == (chance == 0 ? 0 : 2), "Disabled hits do not roll; enabled hits roll once each");
+        ai.forgetTarget();
+        var player = actor(engine, world, Actor.Role.PLAYER, x - 2, 0);
+        awareness.retaliateAfterDamage(victim, player);
+        check(ai.retaliationTarget() == player, "Player retaliation ignores the threshold");
+        engine.removeAllEntities();
+        world.destroyBody(body(victim));
+        world.destroyBody(body(attacker));
+        world.destroyBody(body(player));
     }
 
     private static final class RetaliationTest implements AutoCloseable {
@@ -523,7 +530,7 @@ public final class AwarenessSystemTest {
             var attack = new CombatWeapon.Attack("unarmed", new Scalar(10), 0, .3f,
                 new Animation2D.Attack("jab", 1, .125f, 0, "jab"), null, null, null, CollisionType.MELEE);
             var weapon = new CombatWeapon.Weapon("unarmed", "", attack, attack);
-            entity.add(new ActorAi(role == Actor.Role.ENEMY ? "wander_attack" : "wander", 4f))
+            entity.add(new ActorAi(role == Actor.Role.ENEMY ? "wander_attack" : "wander", 4f, 0))
                 .add(new Combat()).add(new Move(1f))
                 .add(new Loadout(new Loadout.Equipment(null, null, null, null), null, Map.of("unarmed", weapon), _ -> { }));
         }

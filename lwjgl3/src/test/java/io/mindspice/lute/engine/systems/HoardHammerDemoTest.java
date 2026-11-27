@@ -45,7 +45,6 @@ public final class HoardHammerDemoTest extends ApplicationAdapter {
 
     private void exercise() {
         GAME.create();
-        GameConsts.ENEMY_INFIGHTING_CHANCE = 100; // Demo must override even a guaranteed normal-game roll.
         GAME.resize(Gdx.graphics.getWidth(), Gdx.graphics.getHeight());
         for (int i = 0; i < 3; i++) { tap(Input.Keys.DOWN); }
         tap(Input.Keys.ENTER); // Demo is appended after the original four menu rows.
@@ -77,6 +76,9 @@ public final class HoardHammerDemoTest extends ApplicationAdapter {
         require(actors.size() == 10, "first wave has ten enemies: " + actors.size());
         var victim = actors.get(0);
         var attacker = actors.get(1);
+        var originalAi = ActorAi.MAPPER.get(victim);
+        // The demo must override even a guaranteed authored chance.
+        victim.add(new ActorAi(originalAi.behaviorGraphKey(), originalAi.detectionRadius(), 100));
         var attackerBody = Physic.MAPPER.get(attacker).getBody();
         var attackerStart = attackerBody.getPosition().cpy();
         var neighbor = Physic.MAPPER.get(victim).getBody().getPosition().cpy().add(1f, 0f);
@@ -84,7 +86,8 @@ public final class HoardHammerDemoTest extends ApplicationAdapter {
         var awareness = engine.getSystem(AwarenessSystem.class);
         awareness.retaliateAfterDamage(victim, attacker);
         awareness.retaliateAfterArrow(victim, attacker);
-        require(ActorAi.MAPPER.get(victim).retaliationTarget() == null, "demo disables enemy retaliation even at a normal setting of 100");
+        require(ActorAi.MAPPER.get(victim).retaliationTarget() == null, "demo disables enemy retaliation even at an authored chance of 100");
+        victim.add(originalAi);
         attackerBody.setTransform(attackerStart, 0f);
         var center = HoardSystem.demoCenter(tiled.getMapTriggers()).bounds();
         engine.getSystem(AwarenessSystem.class).update(1f / 30f);

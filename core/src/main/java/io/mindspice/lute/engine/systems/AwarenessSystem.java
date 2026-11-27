@@ -28,19 +28,23 @@ public final class AwarenessSystem extends IteratingSystem {
     static final Object SENSOR_TAG = new Object();
     private static final Family ACTORS = Family.all(Actor.class, Physic.class).get();
     private final World world;
-    private final int infightingChance;
+    private final Integer infightingOverride;
     private final RandomGenerator random;
     private final Action stop = Action.stop();
     private final Action followTarget = Action.followTarget();
 
-    public AwarenessSystem(World world, int infightingChance) {
-        this(world, infightingChance, RandomGenerator.getDefault());
+    /** A null override uses each enemy's authored chance; zero disables infighting for the session. */
+    public AwarenessSystem(World world, Integer infightingOverride) {
+        this(world, infightingOverride, RandomGenerator.getDefault());
     }
 
-    AwarenessSystem(World world, int infightingChance, RandomGenerator random) {
+    AwarenessSystem(World world, Integer infightingOverride, RandomGenerator random) {
         super(ACTORS);
         this.world = world;
-        this.infightingChance = infightingChance;
+        if (infightingOverride != null && (infightingOverride < 0 || infightingOverride > 100)) {
+            throw new IllegalArgumentException("Infighting override must be from 0 to 100");
+        }
+        this.infightingOverride = infightingOverride;
         this.random = random;
     }
 
@@ -187,10 +191,11 @@ public final class AwarenessSystem extends IteratingSystem {
         var source = Actor.MAPPER.get(shooter);
         boolean enemyHit = source != null && source.role() == Actor.Role.ENEMY
             && Actor.MAPPER.get(victim).role() == Actor.Role.ENEMY;
-        if (enemyHit ? infightingChance == 0 : victim.getComponent(ArenaGuard.class) != null) { return; }
+        int chance = infightingOverride == null ? ai.infightChance() : infightingOverride;
+        if (enemyHit ? chance == 0 : victim.getComponent(ArenaGuard.class) != null) { return; }
         var from = feet(victim);
         var to = retaliationFeet(victim, shooter, from);
-        if (to != null && (!enemyHit || random.nextInt(100) < infightingChance)) {
+        if (to != null && (!enemyHit || random.nextInt(100) < chance)) {
             var combat = Combat.MAPPER.get(victim);
             if (combat.requestedTarget() != shooter) { combat.consumeAttackRequest(); }
             ai.retaliateAgainst(shooter);

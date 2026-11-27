@@ -26,7 +26,6 @@ public final class GameConsts {
     public static double DAY_LENGTH_MINUTES = DEFAULT_DAY_LENGTH_MINUTES;
     public static NightAmbient NIGHT_AMBIENT;
     public static DebugLayers DEBUG_LAYERS;
-    public static int ENEMY_INFIGHTING_CHANCE;
     private static Boolean visualLaunchOverride;
     public static final Vector2 PHYSIC_SCALING = new Vector2(1f, 1f);
     public static float CAMERA_SMOOTH_FACTOR = 4f;
@@ -55,7 +54,6 @@ public final class GameConsts {
             PHYSIC_INTERVAL = settings.physicInterval();
             DAY_LENGTH_MINUTES = settings.dayLengthMinutes();
             NIGHT_AMBIENT = settings.nightAmbient();
-            ENEMY_INFIGHTING_CHANCE = settings.enemyInfightingChance();
             DEBUG_LAYERS = applyVisualLaunchProfile(settings.debugLayers());
             PHYSIC_SCALING.set(settings.physicScaling().x(), settings.physicScaling().y());
             CAMERA_SMOOTH_FACTOR = settings.cameraSmoothFactor();
@@ -129,7 +127,7 @@ public final class GameConsts {
                            Scaling physicScaling, float cameraSmoothFactor, String projectPath, String startupMap,
                            String mapsPath, String dataPath, String soundPath, String musicPath,
                            String objectPath, String atlasPath, Double dayLengthMinutes, NightAmbient nightAmbient,
-                           DebugLayers debugLayers, int enemyInfightingChance) {
+                           DebugLayers debugLayers) {
         public Settings {
             dayLengthMinutes = dayLengthMinutes == null ? DEFAULT_DAY_LENGTH_MINUTES : dayLengthMinutes;
             positive(unitScale, "unitScale");
@@ -173,7 +171,7 @@ public final class GameConsts {
             .with(JsonNodeFeature.USE_BIG_DECIMAL_FOR_FLOATS); // Preserve exact ambient brightness for validation.
         var root = DataLoader.mapper.createObjectNode();
         for (String key; (key = parser.nextName()) != null;) {
-            boolean strictSetting = key.equals("nightAmbient") || key.equals("debugLayers") || key.equals("enemyInfightingChance");
+            boolean strictSetting = key.equals("nightAmbient") || key.equals("debugLayers");
             if (strictSetting && root.has(key)) { throw new IllegalArgumentException("Duplicate " + key + " setting"); }
             parser.nextToken();
             root.set(key, (strictSetting ? strict : subtree).readTree(parser));
@@ -187,11 +185,6 @@ public final class GameConsts {
         var dayLength = root.get("dayLengthMinutes");
         if (dayLength != null && (!dayLength.isNumber() || dayLength.isNull())) {
             throw new IllegalArgumentException("dayLengthMinutes must be a JSON number");
-        }
-        var infighting = root.path("enemyInfightingChance");
-        if (!infighting.isIntegralNumber() || !infighting.canConvertToInt()
-            || infighting.intValue() < 0 || infighting.intValue() > 100) {
-            throw new IllegalArgumentException("enemyInfightingChance must be a JSON integer from 0 to 100");
         }
         return DataLoader.mapper.treeToValue(root, Settings.class);
     }
