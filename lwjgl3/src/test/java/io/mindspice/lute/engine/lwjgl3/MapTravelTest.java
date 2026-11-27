@@ -865,11 +865,12 @@ public final class MapTravelTest extends ApplicationAdapter {
             "Respawn registers fresh input, camera and combat state");
         var camera = GAME.getCamera();
         var props = map.getProperties();
-        var pos = Transform.MAPPER.get(replacement).getPosition();
+        var spawn = center(point);
         float width = props.get("width", Integer.class) * props.get("tilewidth", Integer.class) * GameConsts.UNIT_SCALE;
         float height = props.get("height", Integer.class) * props.get("tileheight", Integer.class) * GameConsts.UNIT_SCALE;
-        require(camera.position.x == cameraTarget(pos.x, camera.viewportWidth, width)
-            && camera.position.y == cameraTarget(pos.y, camera.viewportHeight, height), "Camera snaps to the replacement on respawn");
+        require(MathUtils.isEqual(camera.position.x, cameraTarget(spawn.x, camera.viewportWidth, width))
+            && MathUtils.isEqual(camera.position.y, cameraTarget(spawn.y, camera.viewportHeight, height)),
+            "Camera snaps to the logical spawn center on respawn");
         input.keyUp(Input.Keys.SPACE);
         input.keyUp(Input.Keys.W);
         screen.render(0f);
@@ -881,10 +882,9 @@ public final class MapTravelTest extends ApplicationAdapter {
             "Respawn preserves both the session timeline and the exact advancement of the game clock");
     }
 
-    private static float cameraTarget(float position, float viewport, float mapSize) {
+    private static float cameraTarget(float center, float viewport, float mapSize) {
         float half = viewport * .5f;
-        return mapSize > half ? MathUtils.clamp(position + .5f, Math.min(half, mapSize - half), Math.max(half, mapSize - half))
-            : position + .5f;
+        return mapSize <= viewport ? mapSize * .5f : MathUtils.clamp(center, half, mapSize - half);
     }
 
     private static void setObjects(Map<String, ObjectData> definitions) throws ReflectiveOperationException {

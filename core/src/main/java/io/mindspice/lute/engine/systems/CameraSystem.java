@@ -15,46 +15,34 @@ public class CameraSystem extends IteratingSystem {
     private final Camera camera;
     private float mapW;
     private float mapH;
-    private Vector2 targetPos;
+    private final Vector2 targetPos = new Vector2();
 
     public CameraSystem(Camera camera) {
         super(Family.all(CameraFollow.class, Transform.class).get());
         this.camera = camera;
-        this.targetPos = new Vector2();
     }
 
     @Override
     protected void processEntity(Entity entity, float deltaTime) {
-        Transform transform = Transform.MAPPER.get(entity);
-
-        calcTargetPosition(transform.getPosition());
+        calcTargetPosition(Transform.MAPPER.get(entity));
 
         float smoothVal = GameConsts.CAMERA_SMOOTH_FACTOR * deltaTime;
         float smoothedX = MathUtils.lerp(camera.position.x, targetPos.x, smoothVal);
         float smoothedY = MathUtils.lerp(camera.position.y, targetPos.y, smoothVal);
-        camera.position.set(smoothedX, smoothedY, camera.position.z);
-
+        // An enlarged viewport can leave the previous camera position outside the new bounds.
+        camera.position.set(boundAxis(smoothedX, camera.viewportWidth, mapW),
+            boundAxis(smoothedY, camera.viewportHeight, mapH), camera.position.z);
     }
 
-    private void calcTargetPosition(Vector2 entityPos) {
-        float tX = entityPos.x + 0.5f;
-        float tY = entityPos.y + 0.5f; // Offset down 1 tile, TODO later properly center using player tile height
-        float camHalfW = camera.viewportWidth * 0.5f;
-        float camHalfH = camera.viewportHeight * 0.5f;
+    private void calcTargetPosition(Transform transform) {
+        targetPos.set(boundAxis(transform.centerX(), camera.viewportWidth, mapW),
+            boundAxis(transform.centerY(), camera.viewportHeight, mapH));
+    }
 
-        if (mapW > camHalfW) {
-            float min = Math.min(camHalfW, mapW - camHalfW);
-            float max = Math.max(camHalfW, mapW - camHalfW);
-            tX = MathUtils.clamp(tX, min, max);
-        }
-
-        if (mapH > camHalfH) {
-            float min = Math.min(camHalfH, mapH - camHalfH);
-            float max = Math.max(camHalfH, mapH - camHalfH);
-            tY = MathUtils.clamp(tY, min, max);
-        }
-
-        this.targetPos.set(tX, tY);
+    private static float boundAxis(float target, float viewportSize, float mapSize) {
+        if (mapSize <= viewportSize) { return mapSize * 0.5f; }
+        float halfView = viewportSize * 0.5f;
+        return MathUtils.clamp(target, halfView, mapSize - halfView);
     }
 
     void setMap(TiledMap map, Entity player) {
@@ -66,7 +54,7 @@ public class CameraSystem extends IteratingSystem {
         mapW = (float) width * tileWidth * GameConsts.UNIT_SCALE;
         mapH = (float) height * tileHeight * GameConsts.UNIT_SCALE;
         if (player != null) {
-            calcTargetPosition(Transform.MAPPER.get(player).getPosition());
+            calcTargetPosition(Transform.MAPPER.get(player));
             camera.position.set(targetPos.x, targetPos.y, camera.position.z);
             camera.update();
         }

@@ -109,7 +109,7 @@ public class GameCore extends Game {
 
     @Override
     public void resize(int width, int height) {
-        viewport.update(width, height, true);
+        viewport.update(width, height);
         screenManager.resize(width, height);
     }
 

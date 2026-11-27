@@ -37,6 +37,14 @@ tasks.register('geometryGoldenTest', JavaExec) {
 }
 check.dependsOn geometryGoldenTest
 
+tasks.register('cameraSystemTest', JavaExec) {
+  dependsOn testClasses
+  classpath = sourceSets.test.runtimeClasspath
+  mainClass = 'io.mindspice.lute.engine.systems.CameraSystemTest'
+  jvmArgs '--enable-native-access=ALL-UNNAMED'
+}
+check.dependsOn cameraSystemTest
+
 tasks.register('hoardRosterTest', JavaExec) {
   dependsOn testClasses
   classpath = sourceSets.test.runtimeClasspath
