@@ -13,3 +13,4 @@ Record possible future direction that has not been accepted as a commitment.
   - Apply lift perpendicular to the aim direction. This introduces sideways drift and changes the collision lane. A prior local prototype was rejected for flattening after aim, not necessarily for perpendicular lift alone.
   - Separate visual height from the ground and collision path. This is a natural top-down model, but requires explicit collision, occlusion, and speed semantics to avoid a mismatch between what is drawn and what gameplay resolves.
 - Consider inventory and weapon management in the future; the temporary weapon cycle does not define either.
+- Other animation schemas may later replace `atlas_key` with domain-specific typed keys if custom movement or similar behavior is added. This is not committed scope. The current attack design leaves raw atlas keys elsewhere and weapon sprite IDs unchanged.
