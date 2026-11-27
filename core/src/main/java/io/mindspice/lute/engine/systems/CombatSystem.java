@@ -87,7 +87,7 @@ public class CombatSystem extends IteratingSystem implements ContactListener, En
     }
 
     private final List<Hit> pendingHits = new ArrayList<>();
-    private final Map<Body, LungePush> lungePushes = new IdentityHashMap<>();
+    private final Map<Body, MeleePush> meleePushes = new IdentityHashMap<>();
     // Family removal may arrive after Ashley has detached the component, even mid-handoff.
     private final Map<Entity, Combat> mountedCombat = new IdentityHashMap<>();
 
@@ -284,10 +284,15 @@ public class CombatSystem extends IteratingSystem implements ContactListener, En
 
     static CombatWeapon.Attack attackFor(Entity entity, CombatWeapon.Weapon weapon, Combat.AttackSlot slot) {
         if (slot == Combat.AttackSlot.PRIMARY) { return weapon.primary(); }
-        if (!usesHammerLunge(entity, weapon.id(), slot)) { return weapon.secondary(); }
         var primary = weapon.primary();
-        return new CombatWeapon.Attack(primary.weaponId(), primary.damage(), primary.hitFrame(), primary.cooldownSeconds() + .2f,
-            primary.animation(), primary.hitSoundId(), primary.shape(), primary.bounds(), primary.collisionType());
+        if (usesHammerLunge(entity, weapon.id(), slot)) {
+            return new CombatWeapon.Attack(primary.weaponId(), primary.damage(), primary.hitFrame(), primary.cooldownSeconds() + .2f,
+                primary.animation(), primary.hitSoundId(), primary.shape(), primary.bounds(), primary.collisionType());
+        }
+        var secondary = weapon.secondary();
+        if (!usesAxeSpin(entity, weapon.id(), slot)) { return secondary; }
+        return new CombatWeapon.Attack(secondary.weaponId(), secondary.damage(), secondary.hitFrame(), secondary.cooldownSeconds(),
+            secondary.animation(), secondary.hitSoundId(), primary.shape(), primary.bounds(), secondary.collisionType());
     }
 
     private static boolean usesHammerLunge(Entity entity, String weaponId, Combat.AttackSlot slot) {
@@ -305,10 +310,14 @@ public class CombatSystem extends IteratingSystem implements ContactListener, En
     }
 
     private static boolean isAxeSpin(Entity entity, Combat combat) {
-        if (combat == null || !combat.isAttacking() || combat.getActiveSlot() != Combat.AttackSlot.SECONDARY
-            || !Controller.MAPPER.has(entity) || entity.getComponent(DredgeLunge.class) == null) { return false; }
-        String weapon = combat.getActiveAttack().weaponId();
-        return "basic_axe".equals(weapon) || "black_axe".equals(weapon);
+        return combat != null && combat.isAttacking()
+            && usesAxeSpin(entity, combat.getActiveAttack().weaponId(), combat.getActiveSlot());
+    }
+
+    private static boolean usesAxeSpin(Entity entity, String weapon, Combat.AttackSlot slot) {
+        return slot == Combat.AttackSlot.SECONDARY && Controller.MAPPER.has(entity)
+            && entity.getComponent(DredgeLunge.class) != null
+            && ("basic_axe".equals(weapon) || "black_axe".equals(weapon));
     }
 
     static boolean usesFixedAttackPlayback(Entity entity, Combat combat) {
@@ -344,7 +353,12 @@ public class CombatSystem extends IteratingSystem implements ContactListener, En
             combat.setSensor(null, physicsStep());
         }
         var health = Health.MAPPER.get(entity);
-        updateActiveAttack(entity, combat, animation, health == null || health.isAlive(), null);
+        if ((health != null && !health.isAlive()) || animation.isFinished()) {
+            stopAttack(entity);
+        } else if (combat.getSensor() == null) {
+            // The spin is live from its first pose, not the authored jab hit frame.
+            createMeleeSensor(entity, combat, 1f);
+        }
     }
 
     void beforeLungeStep(Entity entity, DredgeLunge lunge, float interval) {
@@ -375,45 +389,50 @@ public class CombatSystem extends IteratingSystem implements ContactListener, En
 
     // Use persistent contacts, not beginContact: a target takes damage once but is
     // carried for every fixed step it remains in the moving hitbox.
-    void beforeLungePushStep() {
+    void beforeMeleePushStep() {
         for (var contact : world.getContactList()) {
             if (!contact.isTouching()) { continue; }
-            pushAlongLunge(contact.getFixtureA(), contact.getFixtureB());
-            pushAlongLunge(contact.getFixtureB(), contact.getFixtureA());
+            pushFromMelee(contact.getFixtureA(), contact.getFixtureB());
+            pushFromMelee(contact.getFixtureB(), contact.getFixtureA());
         }
     }
 
-    private void pushAlongLunge(Fixture sensor, Fixture target) {
-        if (!(sensor.getUserData() instanceof AttackSensor attack) || !attack.hammerLunge()
+    private void pushFromMelee(Fixture sensor, Fixture target) {
+        if (!(sensor.getUserData() instanceof AttackSensor attack) || !(attack.hammerLunge() || attack.axeSpin())
             || target.getUserData() != Hurtbox.INSTANCE
             || !(target.getBody().getUserData() instanceof Entity victim)) { return; }
         var actor = Actor.MAPPER.get(victim);
         var health = Health.MAPPER.get(victim);
         var body = target.getBody();
         if (actor == null || actor.role() == Actor.Role.NPC || health == null || !health.isAlive()
-            || body.getType() != BodyDef.BodyType.DynamicBody || lungePushes.containsKey(body)
+            || (attack.axeSpin() && actor.role() != Actor.Role.ENEMY)
+            || body.getType() != BodyDef.BodyType.DynamicBody || meleePushes.containsKey(body)
             || isHammerLunge(victim, Combat.MAPPER.get(victim))
             || !clearOfCover(attack.attacker(), victim)) { return; }
 
         var drive = sensor.getBody().getLinearVelocity();
-        var direction = new Vector2(drive).nor();
+        var direction = attack.axeSpin()
+            ? AwarenessSystem.feet(victim).sub(AwarenessSystem.feet(attack.attacker())).nor()
+            : new Vector2(drive).nor();
+        if (direction.isZero()) { return; }
         var velocity = body.getLinearVelocity();
         float baseline = velocity.dot(direction);
-        float carrySpeed = Math.min(220f * GameConsts.UNIT_SCALE, drive.len() * .85f);
+        float maxSpeed = 220f * GameConsts.UNIT_SCALE;
+        float carrySpeed = attack.axeSpin() ? maxSpeed : Math.min(maxSpeed, drive.len() * .85f);
         if (carrySpeed <= 0f || baseline >= carrySpeed) { return; }
         body.setLinearVelocity(velocity.mulAdd(direction, carrySpeed - baseline));
-        lungePushes.put(body, new LungePush(direction, baseline, carrySpeed - baseline));
+        meleePushes.put(body, new MeleePush(direction, baseline, carrySpeed - baseline));
     }
 
-    void finishLungePushStep() {
+    void finishMeleePushStep() {
         // The temporary carry isn't a lasting knockback impulse. Keep lateral
         // velocity and any independent forward motion from the contact solver.
-        lungePushes.forEach((body, push) -> {
+        meleePushes.forEach((body, push) -> {
             var velocity = body.getLinearVelocity();
             float added = velocity.dot(push.direction()) - push.baseline();
             if (added > 0f) { body.setLinearVelocity(velocity.mulAdd(push.direction(), -Math.min(added, push.added()))); }
         });
-        lungePushes.clear();
+        meleePushes.clear();
     }
 
     private void updateActiveAttack(Entity entity, Combat combat, Animation2D animation, boolean alive, ActorAi ai) {
@@ -474,7 +493,8 @@ public class CombatSystem extends IteratingSystem implements ContactListener, En
             var sensor = body.createFixture(definition);
             body.setAwake(true);
             combat.setSensor(sensor, physicsStep());
-            sensor.setUserData(new AttackSensor(entity, combat.getAttackId(), isHammerLunge(entity, combat), direction));
+            sensor.setUserData(new AttackSensor(entity, combat.getAttackId(),
+                isHammerLunge(entity, combat), isAxeSpin(entity, combat), direction));
         } finally {
             shape.dispose();
         }
@@ -546,7 +566,7 @@ public class CombatSystem extends IteratingSystem implements ContactListener, En
         mountedCombat.remove(entity);
     }
 
-    private record AttackSensor(Entity attacker, long attackId, boolean hammerLunge, Facing.Direction facing) { }
+    private record AttackSensor(Entity attacker, long attackId, boolean hammerLunge, boolean axeSpin, Facing.Direction facing) { }
     private record Hit(Entity attacker, Entity target, long attackId, boolean hammerLunge, Facing.Direction facing) { }
-    private record LungePush(Vector2 direction, float baseline, float added) { }
+    private record MeleePush(Vector2 direction, float baseline, float added) { }
 }

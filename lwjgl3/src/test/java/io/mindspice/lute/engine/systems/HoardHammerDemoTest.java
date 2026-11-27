@@ -8,6 +8,8 @@ import com.badlogic.gdx.backends.lwjgl3.Lwjgl3Application;
 import com.badlogic.gdx.backends.lwjgl3.Lwjgl3ApplicationConfiguration;
 import com.badlogic.gdx.controllers.ControllerMapping;
 import com.badlogic.gdx.graphics.g2d.TextureAtlas.AtlasRegion;
+import com.badlogic.gdx.math.Vector2;
+import com.badlogic.gdx.physics.box2d.PolygonShape;
 import com.badlogic.gdx.controllers.Controllers;
 import com.badlogic.gdx.controllers.ControllerManagerStub;
 import io.mindspice.lute.engine.GameCore;
@@ -108,6 +110,7 @@ public final class HoardHammerDemoTest extends ApplicationAdapter {
             Facing.Direction.LEFT, Facing.Direction.UP, Facing.Direction.RIGHT));
         verifyAxeSpin(remountedPlayer, "black_axe", List.of(Facing.Direction.UP, Facing.Direction.RIGHT,
             Facing.Direction.DOWN, Facing.Direction.LEFT, Facing.Direction.UP));
+        verifyAxePush(remountedPlayer);
         hoard.afterPhysicsStep(15f);
         require(actors.size() == 10, "new instance spawns its own wave");
         for (var actor : actors) {
@@ -152,12 +155,14 @@ public final class HoardHammerDemoTest extends ApplicationAdapter {
         var combat = Combat.MAPPER.get(player);
         var loadouts = engine.getSystem(LoadoutSystem.class);
         require(loadouts.equipWeapon(player, weapon), "equip axe for spin");
-        var secondary = Loadout.MAPPER.get(player).getWeapon().secondary();
+        var axe = Loadout.MAPPER.get(player).getWeapon();
+        var secondary = axe.secondary();
+        var anchor = Transform.MAPPER.get(player).getSize().cpy().scl(.5f);
         facing.setDirection(expected.getFirst());
         combat.requestAttack(Combat.AttackSlot.SECONDARY);
         var visited = new ArrayList<Facing.Direction>();
         int previousFrame = -1;
-        boolean hadSensor = false;
+        boolean coveredFrameZero = false;
         for (int i = 0; i < 120; i++) {
             engine.update(GameConsts.PHYSIC_INTERVAL);
             if (!combat.isAttacking()) { break; }
@@ -170,14 +175,55 @@ public final class HoardHammerDemoTest extends ApplicationAdapter {
             require(region.name.equals(animation.regionKey(secondary.animation().action(), direction)),
                 "rendered frame is drawn from the matching direction");
             require(region == animation.getAnimation().getKeyFrames()[frame], "renderer uses the current frame index");
-            require((combat.getSensor() != null) == animation.hasReachedFrame(secondary.hitFrame()),
-                "spin preserves the authored hit frame");
-            hadSensor |= combat.getSensor() != null;
+            require(combat.getSensor() != null && combat.getSensor().isSensor(),
+                "axe hitbox is active on every spin tick, including during turns");
+            var shape = (PolygonShape) combat.getSensor().getShape();
+            var vertices = axe.primary().vertices(anchor, direction);
+            require(shape.getVertexCount() == vertices.length, "spin uses the primary hitbox shape");
+            var vertex = new Vector2();
+            for (int j = 0; j < shape.getVertexCount(); j++) {
+                shape.getVertex(j, vertex);
+                boolean matches = false;
+                for (var expectedVertex : vertices) { matches |= vertex.epsilonEquals(expectedVertex, .0001f); }
+                require(matches, "spin uses the primary hitbox bounds and facing offset");
+            }
+            coveredFrameZero |= frame == 0;
             previousFrame = frame;
         }
         require(visited.equals(expected), "one clockwise turn, back to the starting direction: " + visited);
-        require(hadSensor && !combat.isAttacking() && combat.getSensor() == null, "spin completes and clears the sensor");
+        require(coveredFrameZero && !combat.isAttacking() && combat.getSensor() == null,
+            "spin is live from frame zero and clears the sensor when it ends");
         require(loadouts.equipWeapon(player, "basic_axe"), "restore demo starting axe");
+    }
+
+    private static void verifyAxePush(com.badlogic.ashley.core.Entity player) {
+        var engine = GAME.getEngine();
+        var body = Physic.MAPPER.get(player).getBody();
+        var original = body.getPosition().cpy();
+        float scale = GameConsts.UNIT_SCALE;
+        body.setTransform(-100, -100, 0);
+        var enemy = engine.getSystem(EntityFactory.class).getMapActor(
+            body.getPosition().cpy().scl(1f / scale).add(42, 0), Actor.Role.ENEMY, "brainless_undead", Facing.Direction.LEFT);
+        enemy.remove(ActorAi.class);
+        engine.addEntity(enemy);
+        try {
+            var victimBody = Physic.MAPPER.get(enemy).getBody();
+            float start = victimBody.getPosition().x;
+            var combat = Combat.MAPPER.get(player);
+            combat.tickCooldown(2f);
+            Facing.MAPPER.get(player).setDirection(Facing.Direction.RIGHT);
+            combat.requestAttack(Combat.AttackSlot.SECONDARY);
+            engine.update(GameConsts.PHYSIC_INTERVAL);
+            for (int i = 0; i < 120 && combat.isAttacking(); i++) { engine.update(GameConsts.PHYSIC_INTERVAL); }
+            float pushed = (victimBody.getPosition().x - start) / scale;
+            require(pushed > 1f && pushed < 30f && victimBody.getLinearVelocity().isZero(.0001f),
+                "spin pushes the enemy outward without residual knockback: " + pushed);
+            var feedback = HealthFeedback.MAPPER.get(enemy);
+            require(feedback != null && feedback.numbers.size() == 1, "turning hitbox hits the enemy only once");
+        } finally {
+            engine.removeEntity(enemy);
+            body.setTransform(original, 0);
+        }
     }
 
     private static void tap(int key) {

@@ -43,9 +43,9 @@ public class PhysicSystem extends IteratingSystem implements EntityListener {
             accumulator -= interval;
             super.update(deltaTime);
             if (hoard != null) { boostedPress = hoard.beforeSprintStep(interval, boostedPress != 0); }
-            if (combat != null) { combat.beforeLungePushStep(); }
+            if (combat != null) { combat.beforeMeleePushStep(); }
             world.step(interval, 6, 2);
-            if (combat != null) { combat.finishLungePushStep(); }
+            if (combat != null) { combat.finishMeleePushStep(); }
             completedSteps++;
             if (boostedPress != 0) { hoard.finishSprintStep(interval, boostedPress); }
             var sensors = getEngine().getSystem(MapSensorSystem.class);
