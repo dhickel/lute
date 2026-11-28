@@ -5,10 +5,10 @@ import com.badlogic.ashley.core.Entity;
 import java.util.ArrayList;
 import java.util.List;
 
-public abstract sealed class Node permits ActionNode, DecisionNode, RootNode {
+public abstract sealed class Node<C> permits ActionNode, DecisionNode, RootNode {
     protected final String name;
     protected final NodeType nodeType;
-    protected final List<Node> edgeNodes;
+    protected final List<Node<C>> edgeNodes;
 
     public Node(NodeType nodeType, String name) {
         this.name = name;
@@ -16,9 +16,9 @@ public abstract sealed class Node permits ActionNode, DecisionNode, RootNode {
         this.edgeNodes = new ArrayList<>();
     }
 
-    public abstract boolean travel(Entity entity, FocusState state);
+    public abstract boolean travel(Entity self, C context);
 
-    public List<Node> getEdgeNodes() {
+    public List<Node<C>> getEdgeNodes() {
         return edgeNodes;
     }
 
@@ -30,7 +30,7 @@ public abstract sealed class Node permits ActionNode, DecisionNode, RootNode {
         return nodeType;
     }
 
-    public void addEdgeNode(Node node) {
+    public void addEdgeNode(Node<C> node) {
         if (nodeType == NodeType.ACTION) {
             throw new IllegalStateException("Cannot add edges to action nodes");
         }

@@ -1,32 +1,27 @@
 package io.mindspice.lute.engine.behaviorgraph;
 
-import java.util.List;
-import java.util.concurrent.ThreadLocalRandom;
-
 import com.badlogic.ashley.core.Entity;
+import java.util.List;
 
-public final class DecisionNode extends Node {
-    List<Decision> decisions;
+public final class DecisionNode<C> extends Node<C> {
+    private final List<Decision<C>> decisions;
 
-    public DecisionNode(String name, List<Decision> decisions) {
+    public DecisionNode(String name, List<Decision<C>> decisions) {
         super(NodeType.DECISION, name);
         this.decisions = decisions;
     }
 
-    public static DecisionNode of(String name, List<Decision> decisions) {
-        return new DecisionNode(name, decisions);
+    public static <C> DecisionNode<C> of(String name, List<Decision<C>> decisions) {
+        return new DecisionNode<>(name, decisions);
     }
 
     @Override
-    public boolean travel(Entity entity, FocusState state) {
+    public boolean travel(Entity self, C context) {
         for (var decision : decisions) {
-            var decided = decision.eval(entity, state);
-            // if any decision fails return
-            if (!decided) { return false; }
+            if (!decision.eval(self, context)) { return false; }
         }
-
-        for (Node node : edgeNodes) {
-            if (node.travel(entity, state)) { return true; }
+        for (var node : edgeNodes) {
+            if (node.travel(self, context)) { return true; }
         }
         return false;
     }

@@ -79,6 +79,7 @@ public final class HoardSystem extends ArenaSystem {
     }
 
     private MapRules arenaRules(List<MapTriggers.SpawnArea> areas, MapTriggers triggers) {
+        var markers = areas.stream().map(HoardSpawnMarker::new).toList();
         var roster = WAVE_ROSTER.stream().map(RosterEntry::key).toList();
         return new MapRules() {
             @Override public List<MapTriggers.SpawnArea> enemyAreas() { return areas; }
@@ -95,7 +96,7 @@ public final class HoardSystem extends ArenaSystem {
                 validateDelayedSpawns(factory, triggers, player, enemyFootprint);
             }
             @Override public void start(TiledSystem tiled, RandomGenerator random) {
-                startRun(tiled, areas, triggers, random);
+                startRun(tiled, markers, triggers, random);
             }
         };
     }
@@ -106,7 +107,7 @@ public final class HoardSystem extends ArenaSystem {
         healthArea(triggers);
         var areas = new ArrayList<MapTriggers.SpawnArea>();
         for (int i = 1; i <= 4; i++) {
-            var area = triggers.requireEnemyArea("SpawnArea" + i, "agroWanderingHoard");
+            var area = triggers.requireEnemyArea("SpawnArea" + i, HoardSpawnMarker.AGRO_WANDERING_HOARD);
             if (area.polygon() == null || !"brainless_undead".equals(area.spawnKey())) {
                 throw new IllegalArgumentException(area.name() + " requires a brainless_undead polygon");
             }
@@ -151,7 +152,7 @@ public final class HoardSystem extends ArenaSystem {
         bind(tiled, areas == null ? null : arenaRules(areas, tiled.getMapTriggers()), random);
     }
 
-    private void startRun(TiledSystem tiled, List<MapTriggers.SpawnArea> areas, MapTriggers triggers, RandomGenerator random) {
+    private void startRun(TiledSystem tiled, List<HoardSpawnMarker> markers, MapTriggers triggers, RandomGenerator random) {
         var marker = dredgePoint(triggers);
         var center = healthArea(triggers);
         var box = center.bounds();
@@ -171,14 +172,14 @@ public final class HoardSystem extends ArenaSystem {
             }
         }, (amount, round) -> {
             var tickets = spawnTickets(round);
-            int count = areas.size();
+            int count = markers.size();
             int next = random.nextInt(count);
             for (int i = 0; i < amount; i++) {
                 var entry = tickets.get(random.nextInt(tickets.size()));
                 for (int attempt = 0; attempt < count; attempt++) {
                     int zone = next;
                     next = (next + 1) % count;
-                    var enemy = tiled.trySpawnAreaEnemy(areas.get(zone), entry.key(), random);
+                    var enemy = markers.get(zone).trySpawn(tiled, entry.key(), random);
                     if (enemy != null) { enemy.add(new Bounty(entry.baseXp())); break; }
                 }
             }

@@ -129,6 +129,13 @@ tasks.register('mapSensorSystemTest', JavaExec) {
 }
 check.dependsOn mapSensorSystemTest
 
+tasks.register('behaviorGraphTest', JavaExec) {
+  dependsOn testClasses
+  classpath = sourceSets.test.runtimeClasspath
+  mainClass = 'io.mindspice.lute.engine.behaviorgraph.BehaviorGraphTest'
+}
+check.dependsOn behaviorGraphTest
+
 tasks.register('awarenessSystemTest', JavaExec) {
   dependsOn testClasses
   classpath = sourceSets.test.runtimeClasspath
