@@ -529,13 +529,15 @@ public final class MapSensorSystemTest {
             check(game.tiled.trySpawnAreaEnemy(area, center) == null && center.draws == 64
                 && game.world.getBodyCount() == bodies, "Solid feet collision exhausts bounded retries without leaking bodies");
             game.engine.removeEntity(blocker);
-            var actor = game.tiled.trySpawnAreaEnemy(area, center);
+            var waveMarker = new HoardSpawnMarker(area);
+            var actor = waveMarker.trySpawn(game.tiled, area.spawnKey(), center);
             check(actor != null && Actor.MAPPER.get(actor).role() == Actor.Role.ENEMY
                 && Facing.MAPPER.get(actor).getDirection() == Facing.Direction.RIGHT, "Area materializes a normal map actor");
             check(Health.MAPPER.get(actor).getMaximum() == 50 && Health.MAPPER.get(actor).getCurrent() == 50,
                 "Factory uses the selected enemy's initial and maximum HP");
             position(actor, 12, 12, "Logical center converted once from area world space to factory pixels");
-            check(game.tiled.trySpawnAreaEnemy(area, center) == null, "New actor blocks another placement before physics steps");
+            check(waveMarker.trySpawn(game.tiled, area.spawnKey(), center) == null,
+                "Keyed marker returns no actor on a blocked retry, not its previous placement");
             var ai = ActorAi.MAPPER.get(actor);
             awareness.update(STEP);
             check(ai.mode() == ActorAi.Mode.WANDER, "Area-spawned actor starts wandering");

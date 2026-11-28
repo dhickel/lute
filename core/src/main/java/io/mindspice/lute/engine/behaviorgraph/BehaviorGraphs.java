@@ -24,12 +24,12 @@ public final class BehaviorGraphs {
     private static final float LUNGE_COMMIT_RANGE = 80f;
     private static final DoubleSupplier MELEE_DELAY = () -> ThreadLocalRandom.current().nextFloat(.025f, .10f);
     private static final DoubleSupplier ARCHER_DELAY = () -> ThreadLocalRandom.current().nextFloat(.15f, .30f);
-    public static final Supplier<RootNode> BASE_MELEE = BehaviorGraphs::engage;
-    public static final Supplier<RootNode> BASE_ARCHER = BehaviorGraphs::archer;
-    private static final RootNode WANDER = actionGraph("Wander", Action.wander());
-    private static final Map<Mode, RootNode> PURSUIT = Map.of(Mode.WANDER, WANDER, Mode.ENGAGE, BASE_MELEE.get(),
-        Mode.INVESTIGATE, actionGraph("Investigate last seen position", Action.followTarget()));
-    private static final Map<String, Map<Mode, RootNode>> PROFILES = Map.of(
+    public static final Supplier<RootNode<FocusState>> BASE_MELEE = BehaviorGraphs::engage;
+    public static final Supplier<RootNode<FocusState>> BASE_ARCHER = BehaviorGraphs::archer;
+    private static final RootNode<FocusState> WANDER = actionGraph("Wander", ActorActions.wander());
+    private static final Map<Mode, RootNode<FocusState>> PURSUIT = Map.of(Mode.WANDER, WANDER, Mode.ENGAGE, BASE_MELEE.get(),
+        Mode.INVESTIGATE, actionGraph("Investigate last seen position", ActorActions.followTarget()));
+    private static final Map<String, Map<Mode, RootNode<FocusState>>> PROFILES = Map.of(
         "wander", Map.of(Mode.WANDER, WANDER), "wander_attack", PURSUIT, "wander_lunge", PURSUIT,
         ARCHER, Map.of(Mode.WANDER, WANDER, Mode.ENGAGE, BASE_ARCHER.get(), Mode.INVESTIGATE, PURSUIT.get(Mode.INVESTIGATE))
     );
@@ -42,12 +42,12 @@ public final class BehaviorGraphs {
         }
     }
 
-    public static Map<Mode, RootNode> forKey(String key) { return PROFILES.get(key); }
+    public static Map<Mode, RootNode<FocusState>> forKey(String key) { return PROFILES.get(key); }
 
-    public static RootNode pursuit(Mode mode) { return PURSUIT.get(mode); }
+    public static RootNode<FocusState> pursuit(Mode mode) { return PURSUIT.get(mode); }
 
-    private static RootNode actionGraph(String name, Action action) {
-        var root = new RootNode();
+    private static RootNode<FocusState> actionGraph(String name, Action<FocusState> action) {
+        var root = new RootNode<FocusState>();
         root.addEdgeNode(ActionNode.of(name, action));
         return root;
     }
@@ -62,8 +62,8 @@ public final class BehaviorGraphs {
             || combat.getActiveAttack().collisionType() != CollisionType.PROJECTILE;
     }
 
-    private static Decision attackDue(AttackSlot slot, DoubleSupplier delaySeconds) {
-        var ready = Decision.attackReady(slot);
+    private static Decision<FocusState> attackDue(AttackSlot slot, DoubleSupplier delaySeconds) {
+        var ready = ActorDecisions.attackReady(slot);
         return (entity, state) -> {
             var ai = ActorAi.MAPPER.get(entity);
             if (Combat.MAPPER.get(entity).isAttacking() || !ready.eval(entity, state)) {
@@ -74,34 +74,34 @@ public final class BehaviorGraphs {
         };
     }
 
-    private static RootNode archer() {
-        var root = new RootNode();
-        var bow = DecisionNode.of("Primary projectile weapon", List.of((entity, _) ->
+    private static RootNode<FocusState> archer() {
+        var root = new RootNode<FocusState>();
+        var bow = DecisionNode.<FocusState>of("Primary projectile weapon", List.of((entity, _) ->
             Loadout.MAPPER.get(entity).getWeapon().primary().collisionType() == CollisionType.PROJECTILE));
-        var face = Action.faceTarget();
-        Action track = (entity, state) -> {
+        var face = ActorActions.faceTarget();
+        Action<FocusState> track = (entity, state) -> {
             var aim = BowAim.MAPPER.get(entity);
             if (!Combat.MAPPER.get(entity).isAttacking() && (aim == null || !aim.isLocked())) { face.perform(entity, state); }
         };
-        var plant = Action.stop().andThen(track);
+        var plant = ActorActions.stop().andThen(track);
         var ready = DecisionNode.of("Bow opportunity", List.of(attackDue(AttackSlot.PRIMARY, ARCHER_DELAY)));
-        ready.addEdgeNode(ActionNode.of("Plant and draw", plant.andThen(Action.attack(AttackSlot.PRIMARY))));
+        ready.addEdgeNode(ActionNode.of("Plant and draw", plant.andThen(ActorActions.attack(AttackSlot.PRIMARY))));
         bow.addEdgeNode(ready);
-        var near = DecisionNode.of("Within half detection radius", List.of((entity, state) -> {
+        var near = DecisionNode.<FocusState>of("Within half detection radius", List.of((entity, state) -> {
             float range = ActorAi.MAPPER.get(entity).detectionRadius() * .5f;
             return state.targetOffset().len2() <= range * range;
         }));
         near.addEdgeNode(ActionNode.of("Hold position", plant));
         bow.addEdgeNode(near);
-        bow.addEdgeNode(ActionNode.of("Approach between shots", Action.followTarget()));
+        bow.addEdgeNode(ActionNode.of("Approach between shots", ActorActions.followTarget()));
         root.addEdgeNode(bow);
         root.addEdgeNode(BASE_MELEE.get());
         return root;
     }
 
-    private static Decision secondaryInRange(Decision primaryInRange) {
-        var meleeRange = Decision.targetWithinPixels(PRIMARY_MELEE_RANGE);
-        var lungeRange = Decision.targetWithinPixels(LUNGE_COMMIT_RANGE);
+    private static Decision<FocusState> secondaryInRange(Decision<FocusState> primaryInRange) {
+        var meleeRange = ActorDecisions.targetWithinPixels(PRIMARY_MELEE_RANGE);
+        var lungeRange = ActorDecisions.targetWithinPixels(LUNGE_COMMIT_RANGE);
         return (entity, state) -> {
             if (Actor.MAPPER.get(entity).role() != Actor.Role.ENEMY) { return false; }
             var target = state.visibleTarget();
@@ -115,35 +115,35 @@ public final class BehaviorGraphs {
         };
     }
 
-    private static RootNode engage() {
-        var root = new RootNode();
-        var primaryMelee = Decision.hasPrimaryMelee();
-        var meleeRange = Decision.targetWithinPixels(PRIMARY_MELEE_RANGE);
-        Decision primaryInRange = (entity, state) -> primaryMelee.eval(entity, state) && meleeRange.eval(entity, state);
-        var stopAndFace = Action.stop().andThen(Action.faceTarget());
-        Action clearOpportunity = (entity, _) -> ActorAi.MAPPER.get(entity).clearOpportunity();
+    private static RootNode<FocusState> engage() {
+        var root = new RootNode<FocusState>();
+        var primaryMelee = ActorDecisions.hasPrimaryMelee();
+        var meleeRange = ActorDecisions.targetWithinPixels(PRIMARY_MELEE_RANGE);
+        Decision<FocusState> primaryInRange = (entity, state) -> primaryMelee.eval(entity, state) && meleeRange.eval(entity, state);
+        var stopAndFace = ActorActions.stop().andThen(ActorActions.faceTarget());
+        Action<FocusState> clearOpportunity = (entity, _) -> ActorAi.MAPPER.get(entity).clearOpportunity();
         // The plant action keeps a pending secondary from falling through and resetting its delay to primary.
         var secondary = DecisionNode.of("Eligible melee secondary", List.of(secondaryInRange(primaryInRange),
-            Decision.attackReady(AttackSlot.SECONDARY)));
+            ActorDecisions.attackReady(AttackSlot.SECONDARY)));
         var secondaryReady = DecisionNode.of("Secondary opportunity", List.of(attackDue(AttackSlot.SECONDARY, MELEE_DELAY)));
         secondaryReady.addEdgeNode(ActionNode.of("Attack",
-            stopAndFace.andThen(clearOpportunity).andThen(Action.attack(AttackSlot.SECONDARY))));
+            stopAndFace.andThen(clearOpportunity).andThen(ActorActions.attack(AttackSlot.SECONDARY))));
         secondary.addEdgeNode(secondaryReady);
         secondary.addEdgeNode(ActionNode.of("Plant feet for secondary", stopAndFace));
         root.addEdgeNode(secondary);
 
         var inRange = DecisionNode.of("Player in melee range", List.of(primaryInRange));
         var ready = DecisionNode.of("Primary opportunity", List.of(attackDue(AttackSlot.PRIMARY, MELEE_DELAY)));
-        ready.addEdgeNode(ActionNode.of("Attack", stopAndFace.andThen(Action.attack(AttackSlot.PRIMARY))));
+        ready.addEdgeNode(ActionNode.of("Attack", stopAndFace.andThen(ActorActions.attack(AttackSlot.PRIMARY))));
         inRange.addEdgeNode(ready);
-        var planted = Decision.targetWithinPixels(24f);
-        var step = DecisionNode.of("Room to step in", List.of(Decision.attackReady(AttackSlot.PRIMARY),
+        var planted = ActorDecisions.targetWithinPixels(24f);
+        var step = DecisionNode.of("Room to step in", List.of(ActorDecisions.attackReady(AttackSlot.PRIMARY),
             (entity, state) -> !planted.eval(entity, state)));
-        step.addEdgeNode(ActionNode.of("Close to striking distance", Action.followTarget()));
+        step.addEdgeNode(ActionNode.of("Close to striking distance", ActorActions.followTarget()));
         inRange.addEdgeNode(step);
         inRange.addEdgeNode(ActionNode.of("Plant feet", stopAndFace));
         root.addEdgeNode(inRange);
-        root.addEdgeNode(ActionNode.of("Follow player", clearOpportunity.andThen(Action.followTarget())));
+        root.addEdgeNode(ActionNode.of("Follow player", clearOpportunity.andThen(ActorActions.followTarget())));
         return root;
     }
 }

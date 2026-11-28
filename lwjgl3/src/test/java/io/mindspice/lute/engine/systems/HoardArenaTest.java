@@ -269,6 +269,15 @@ public final class HoardArenaTest extends ApplicationAdapter {
             require(random.dropRolls == 1 && pickups.size() == 1 && pickups.first().getComponent(Pickup.class).rule().amount() == 50,
                 "authored enemy gets one kill-drop roll and the winning roll drops a small heal");
 
+            var zone = map.getLayers().get("Triggers").getObjects().get("SpawnArea1").getProperties();
+            String key = zone.get("behaviorKey", String.class);
+            zone.remove("behaviorKey");
+            rejectsPreflight(() -> tiled.setMap(map, manifest), "behaviorKey");
+            zone.put("behaviorKey", "wander_attack"); // Actor keys are not spawn graph keys.
+            rejectsPreflight(() -> tiled.setMap(map, manifest), "behaviorKey");
+            zone.put("behaviorKey", key);
+            require(hoard.run() == run && tiled.owns(authored), "invalid wave keys never replace the active run");
+
             point.getProperties().put("spawnKey", "dredge"); // Valid catalog entry, but reserved for the delayed boss in Hoard.
             var player = player();
             var world = body.getWorld();

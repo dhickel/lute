@@ -8,6 +8,7 @@ import com.badlogic.gdx.physics.box2d.CircleShape;
 import com.badlogic.gdx.physics.box2d.Fixture;
 import com.badlogic.gdx.physics.box2d.World;
 import io.mindspice.lute.engine.behaviorgraph.Action;
+import io.mindspice.lute.engine.behaviorgraph.ActorActions;
 import io.mindspice.lute.engine.behaviorgraph.BehaviorGraphs;
 import io.mindspice.lute.engine.behaviorgraph.FocusState;
 import io.mindspice.lute.engine.components.Actor;
@@ -31,8 +32,8 @@ public final class AwarenessSystem extends IteratingSystem {
     private final boolean infightingEnabled;
     private final RandomGenerator random;
     private final Function<Entity, Entity> preferredTarget;
-    private final Action stop = Action.stop();
-    private final Action followTarget = Action.followTarget();
+    private final Action<FocusState> stop = ActorActions.stop();
+    private final Action<FocusState> followTarget = ActorActions.followTarget();
 
     public AwarenessSystem(World world, boolean infightingEnabled) {
         this(world, infightingEnabled, RandomGenerator.getDefault());
